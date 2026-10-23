@@ -179,18 +179,30 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     const tool = isString(req.tool_name) ? req.tool_name : "";
     const input = (req.input && typeof req.input === "object" ? req.input : {}) as Record<string, unknown>;
     const toolUseId = isString(req.tool_use_id) ? req.tool_use_id : undefined;
-    let answered = false;
-    const reply = (response: Record<string, unknown>) => {
-      if (answered) return;
-      answered = true;
-      s.prompts.delete(requestId);
+    permit(s, requestId, tool, input, (answer) => {
       if (s.closed || !s.child?.stdin) return;
+      const response = answer.allow ? { behavior: "allow", updatedInput: answer.input } : { behavior: "deny", message: answer.message };
       try {
         s.child.stdin.write(`${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: { ...response, ...(toolUseId ? { toolUseID: toolUseId } : {}) } } })}\n`);
       } catch {}
+    });
+  };
+
+  /**
+   * D194, issue #106: whether a built-in tool may run, decided by the turn's access, for either CLI
+   * (claude's can_use_tool, a Codex approval request named as claude's tool: Bash, Write). `respond`
+   * is called once, except when the CLI gives up on the request (s.prompts.get(key)).
+   */
+  const permit = (s: ClaudeSession, requestId: string, tool: string, input: Record<string, unknown>, respond: (answer: { allow: true; input: Record<string, unknown> } | { allow: false; message: string }) => void) => {
+    let answered = false;
+    const reply = (answer: Parameters<typeof respond>[0]) => {
+      if (answered) return;
+      answered = true;
+      s.prompts.delete(requestId);
+      respond(answer);
     };
-    const allow = (updated?: Record<string, unknown>) => reply({ behavior: "allow", updatedInput: updated ?? input });
-    const deny = (message: string) => reply({ behavior: "deny", message });
+    const allow = (updated?: Record<string, unknown>) => reply({ allow: true, input: updated ?? input });
+    const deny = (message: string) => reply({ allow: false, message });
     const r = s.turn;
     if (!r || r.turn.status !== "running" || r.cancelled) return deny("Not done: no turn is running in Uncut.");
     // D194: approvals can't be trusted without the handshake: fail closed.
@@ -265,7 +277,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     };
   };
 
-  return { askUser, mediaDownload, uiShow, canUseTool };
+  return { askUser, mediaDownload, uiShow, canUseTool, permit };
 };
 
 export type AskCtx = TranscriptCtx & ReturnType<typeof makeAskTools>;

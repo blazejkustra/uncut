@@ -243,7 +243,7 @@ export const makeStream = (ctx: RunCtx) => {
     }
   };
 
-  return { publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext };
+  return { publishNow, publishSoon, label, doing, watchData, delivered, onStream, onAssistant, finish, noteContext };
 };
 
 export type StreamCtx = RunCtx & ReturnType<typeof makeStream>;

@@ -1,6 +1,6 @@
 // User feedback round 3, agent (planning/FEEDBACK.md U1–U6, D181–D185), on the packaged app run
 // invisibly and muted, with the stand-in claude:
-// - U4: the composer's bottom row: provider (Claude; Codex disabled), a searchable model menu with
+// - U4: the composer's bottom row: provider (Claude; Codex when it's set up), a searchable model menu with
 //   favourites, effort and access, remembered per project; an attached image shows as a thumbnail
 //   and goes with the message (claude gets an image block), then on the turn card.
 // - U5: typing @0:01 offers "Moment 0:01"; right-click on the ruler adds a moment, and with In/Out set
@@ -79,7 +79,11 @@ test("round 3 agent: composer choices and images, moments, live status, failed s
     // ---- U4: provider, model (search, favourite), effort, access ----
     await page.click("[data-testid=agent-provider]");
     await waitFor("[data-testid=agent-provider-menu]");
-    assert.equal(await page.$eval("[data-testid=agent-provider-codex]", (el) => (el as HTMLButtonElement).disabled), true, "Codex is there, not yet usable");
+    // Issue #106: Codex is offered; usable when the setup check found it signed in, else it says why.
+    await page.waitForFunction(() => !/Checking/.test(document.querySelector<HTMLElement>("[data-testid=agent-provider-codex]")!.innerText));
+    const codex = await page.$eval("[data-testid=agent-provider-codex]", (el) => ({ disabled: (el as HTMLButtonElement).disabled, text: (el as HTMLElement).innerText }));
+    assert.doesNotMatch(codex.text, /Coming later/);
+    if (codex.disabled) assert.match(codex.text, /Not installed|Not signed in|Found/);
     await page.click("[data-testid=agent-provider]");
     await page.click("[data-testid=agent-model]");
     await waitFor("[data-testid=agent-model-menu]");

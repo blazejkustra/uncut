@@ -167,13 +167,22 @@ export type AgentItem = typeof AgentItem.Type;
 
 // ---- the composer's choices (U4, D184) ----
 
-/** The models the composer offers (Claude Code's model ids); none chosen = Claude Code's default. */
-export const AGENT_MODELS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly detail: string; readonly provider: "claude" | "codex"; readonly isNew: boolean }> = [
+/** Issue #106: the agent CLIs a turn can run in: Claude Code, or Codex (its app-server). */
+export const AGENT_PROVIDERS = ["claude", "codex"] as const;
+export const AgentProvider = Schema.Literals(AGENT_PROVIDERS);
+export type AgentProvider = typeof AgentProvider.Type;
+
+/** The models the composer offers (each CLI's own model ids); none chosen = that CLI's default (for Codex: its config.toml's model). */
+export const AGENT_MODELS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly detail: string; readonly provider: AgentProvider; readonly isNew: boolean }> = [
   // D209: isNew marks the newest generation (a NEW badge in the model menu).
   { id: "claude-opus-5-5", name: "Opus 5.5", detail: "Most capable", provider: "claude", isNew: true },
   { id: "claude-sonnet-5-5", name: "Sonnet 5.5", detail: "Fast and capable", provider: "claude", isNew: true },
   { id: "claude-fable-5-1", name: "Fable 5.1", detail: "Creative", provider: "claude", isNew: false },
   { id: "claude-haiku-5-5", name: "Haiku 5.5", detail: "Fastest", provider: "claude", isNew: true },
+  // Issue #106: Codex's model/list (codex-cli 0.164), its visible current generation.
+  { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", detail: "Workhorse for everyday work", provider: "codex", isNew: true },
+  { id: "gpt-6-astra", name: "GPT-6 Astra", detail: "Most capable", provider: "codex", isNew: false },
+  { id: "gpt-6-luna", name: "GPT-6 Luna", detail: "Fast and affordable", provider: "codex", isNew: false },
 ];
 /** --effort levels (claude 2.1.299 also has xhigh; the composer offers these four). */
 export const AGENT_EFFORTS = ["low", "medium", "high", "max"] as const;

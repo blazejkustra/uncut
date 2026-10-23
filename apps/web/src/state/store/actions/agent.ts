@@ -23,7 +23,7 @@ export const agentActions = {
     const ranges = state.snapshot ? exportSpans(projectOf(state.snapshot), { markIn, markOut, selected, also }) : {};
     // Only the chips whose @label is still in the prompt.
     const kept = mentions.filter((m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i);
-    // The composer's choices for this project (D184): model, effort, access.
+    // The composer's choices for this project (D184): provider, model, effort, access.
     const prefs = state.snapshot ? agentPrefs(state.snapshot.dir) : DEFAULT_AGENT_PREFS;
     const result = await call((c) =>
       c["agent.send"]({
@@ -31,6 +31,8 @@ export const agentActions = {
         frame: Math.floor(frame),
         ...(selected ? { selected } : {}),
         ...(kept.length ? { mentions: kept } : {}),
+        // Issue #106: the agent CLI (Claude Code when never chosen).
+        ...(prefs.provider !== "claude" ? { provider: prefs.provider } : {}),
         ...(prefs.model ? { model: prefs.model } : {}),
         ...(prefs.effort ? { effort: prefs.effort } : {}),
         access: opts.access ?? prefs.access,

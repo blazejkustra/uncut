@@ -15,7 +15,7 @@
 // left alone and turns are refused until it can be.
 import { rm } from "node:fs/promises";
 
-import { AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentMention, type AgentState, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type IntendedFinding, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { AgentError, type AgentAccess, type AgentEffort, type AgentProvider, type AgentImage, type AgentMention, type AgentState, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type IntendedFinding, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -60,6 +60,7 @@ import { makeLibraryTools } from "./tools/library.ts";
 import { makeRunTool } from "./tools/run.ts";
 import { makeStream } from "./session/stream.ts";
 import { makeSpawn } from "./session/spawn.ts";
+import { makeCodex } from "./session/codex.ts";
 import { makeSend } from "./session/send.ts";
 export { PROVIDER } from "./session/config.ts";
 export { findClaude, sessionArgs, sessionEnv } from "./session/config.ts";
@@ -95,6 +96,7 @@ export interface AgentShape {
     frame?: number | undefined;
     selected?: string | undefined;
     mentions?: ReadonlyArray<AgentMention> | undefined;
+    provider?: AgentProvider | undefined;
     model?: string | undefined;
     effort?: AgentEffort | undefined;
     access?: AgentAccess | undefined;
@@ -214,7 +216,8 @@ export const layer = Layer.effect(
     const withLibrary = { ...withBrand, ...makeLibraryTools(withBrand) };
     const withRun = { ...withLibrary, ...makeRunTool(withLibrary) };
     const withStream = { ...withRun, ...makeStream(withRun) };
-    const withSpawn = { ...withStream, ...makeSpawn(withStream) };
+    // Issue #106: claude (makeSpawn) or Codex (makeCodex) runs a session.
+    const withSpawn = { ...withStream, ...makeSpawn(withStream), ...makeCodex(withStream) };
     const { send } = makeSend(withSpawn);
     const { allowed, runTool, publishNow } = withSpawn;
 

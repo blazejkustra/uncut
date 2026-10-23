@@ -3,7 +3,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import { RPC_METHODS, ServerHello, MediaCoreError, Canvas, ProjectSnapshot, ProjectError, EditRefused, RecentProject } from "../server.ts";
 import { LibrarySearchResult, LibraryError, LibraryState, SoundFolderSchema } from "../library.ts";
 import { ImportJob, ProxyState, SetupCheck, MediaRecentEntry } from "../media.ts";
-import { AgentState, AgentMention, AgentEffort, AgentAccess, AgentImage, AgentError, AgentAnswer, StoryboardBeat, Brief, Storyboard, IntendedFinding, AgentPlan } from "../agent.ts";
+import { AgentState, AgentMention, AgentEffort, AgentProvider, AgentAccess, AgentImage, AgentError, AgentAnswer, StoryboardBeat, Brief, Storyboard, IntendedFinding, AgentPlan } from "../agent.ts";
 import { ExportRange } from "../export.ts";
 import { BrandState, BrandError, BrandKit, BrandScope, BrandSkill, BrandActive, BrandImported } from "../brand.ts";
 
@@ -141,7 +141,9 @@ export const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     selected: Schema.optional(Schema.String),
     // @mentions and Add to chat chips (D140, D141).
     mentions: Schema.optional(Schema.Array(AgentMention)),
-    // The composer's choices (D184): a model id (absent: Claude Code's default), effort, access, images.
+    // The composer's choices (D184): a model id (absent: the CLI's default), effort, access, images.
+    // Issue #106: the agent CLI (absent: Claude Code).
+    provider: Schema.optional(AgentProvider),
     model: Schema.optional(Schema.String),
     effort: Schema.optional(AgentEffort),
     access: Schema.optional(AgentAccess),
