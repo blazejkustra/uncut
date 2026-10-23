@@ -1,7 +1,8 @@
 import { AtSign, AudioLines, AudioWaveform, Image as ImageIcon, Film, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useState, useRef, useEffect, type ReactNode } from "react";
 import { timecode } from "../../state/format.ts";
-import { type MediaItem, useApp, isRemote, actions, getState, activeAnalyses, thumbUrl, mediaUrl, proxyOf, proxyUrl } from "../../state/store.ts";
+import { type MediaItem, useApp, isRemote, actions, getState, activeAnalyses, thumbUrl, mediaUrl, proxyOf, proxyUrl, projectOf } from "../../state/store.ts";
+import { planReplaceMarks } from "../../timeline/replace.ts";
 import { useProxiesOn } from "../../settings/proxies.ts";
 import { MEDIA_DRAG_TYPE } from "../../timeline/dnd.ts";
 import { openMenu } from "../../timeline/ContextMenu.tsx";
@@ -54,9 +55,19 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
     const t = setTimeout(() => setFlash(false), 1200);
     return () => clearTimeout(t);
   }, [focusSeq]);
+  /** Issue #118: In to Out on the timeline plays this media from frame `from`; nothing after it moves. */
+  const replaceMarks = (from: number) => {
+    const now = getState().snapshot;
+    if (!now) return;
+    const { markIn, markOut, selected } = getPlayback();
+    const plan = planReplaceMarks(projectOf(now), item.id, { markIn, markOut, selected }, from);
+    return actions.timelineEdit("problem" in plan ? plan : { ops: plan.ops, summary: plan.summary }, { baseRevision: now.revision, dir: now.dir });
+  };
   const menu = (e: React.MouseEvent) => {
     e.preventDefault();
     const local = !isRemote();
+    // The frame (canvas fps) skimmed on the thumbnail when the menu opened: where a replacement starts.
+    const at = scrub !== undefined && seconds ? Math.round(scrub * seconds * fps) : 0;
     openMenu(e.clientX, e.clientY, [
       // D264 (#77): the media (or a generated picture) as a chip in the Agent tab's composer.
       { id: "media-add-to-chat", label: "Add to chat", run: () => void actions.addMediaToChat(item.id) },
@@ -67,7 +78,11 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             { id: "generated-again", label: "Make again", disabled: !online || !generated.canAgain, run: generated.again },
             { id: "generated-edit", label: "Edit prompt", disabled: !online, run: generated.edit },
           ]
-        : [{ id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) }]),
+        : [
+            { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
+            // Issue #118: an overwrite of In to Out (nothing after it moves), from the frame skimmed on the thumbnail.
+            ...(item.kind !== "audio" ? [{ id: "media-replace-range", label: "Replace In to Out with this", disabled: !online, run: () => void replaceMarks(at) }] : []),
+          ]),
       { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
       ...(local ? [{ id: "media-reveal", label: "Reveal in Finder", run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`) }] : []),
       "-",

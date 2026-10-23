@@ -22,6 +22,7 @@ const CONVENIENCE: ReadonlyArray<{ readonly op: string; readonly def: string; re
   { op: "put_on_main", def: "putOnMain", line: "moves a picture off Main onto it at the nearest cut; a take's microphone and other parts get linked under it" },
   { op: "detach_audio", def: "detachAudio", line: "moves a clip's sound to its own audio item and mutes the clip" },
   { op: "set_speed", def: "setSpeed", line: "changes a clip's or audio item's speed (0.1 to 10) and its length with it" },
+  { op: "replace_range", def: "replaceRange", line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves (stays in sync)" },
   { op: "edit_captions", def: "editCaptions", line: "fixes caption words (by transcript word id), forces card starts, changes mode, grouping or fillers" },
 ];
 export const CONVENIENCE_OPS: ReadonlyArray<string> = CONVENIENCE.map((c) => c.op);
