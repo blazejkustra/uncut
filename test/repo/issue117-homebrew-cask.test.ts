@@ -31,7 +31,7 @@ test("the cask: version, sha256, the versioned update zip of the GitHub release,
   assert.match(cask, /\nend\n$/);
 });
 
-test("the cask's macOS minimum and app name match the build", () => {
+test("the cask's app name, bundle id and arm64-only build match electron-builder.yml", () => {
   const builder = readFileSync(resolve("apps/desktop/electron-builder.yml"), "utf8");
   assert.match(builder, /^productName: Uncut$/m);
   assert.match(builder, /^appId: com\.blazejkustra\.uncut$/m);
@@ -72,7 +72,7 @@ test("the CLI hashes the zip it's given and writes the cask", async () => {
   }
 });
 
-test("the release workflow: a homebrew job on a published release (or by hand), skipped without the token", () => {
+test("the release workflow: a homebrew job on the latest published release (or by hand), skipped without the token", () => {
   const yml = readFileSync(resolve(".github/workflows/release.yml"), "utf8");
   assert.match(yml, /\n  release:\n    types: \[published\]\n/);
   const job = yml.slice(yml.indexOf("\n  homebrew:\n"));
@@ -82,6 +82,9 @@ test("the release workflow: a homebrew job on a published release (or by hand), 
   assert.match(job, /node scripts\/homebrew-cask\.ts --version/);
   assert.match(job, /repository: blazejkustra\/homebrew-tap/);
   assert.match(job, /Casks\/uncut\.rb/);
+  // Only the latest published release (never a draft, a prerelease or an older one), one push at a time.
+  assert.match(job, /releases\/latest/);
+  assert.match(job, /\n    concurrency:\n      group: homebrew-tap\n/);
   // The dmg job never runs for the release event or a cask-only run by hand.
   const dmg = yml.slice(yml.indexOf("\n  dmg:\n"), yml.indexOf("\n  homebrew:\n"));
   assert.match(dmg, /\n    if: github\.event_name != 'release' && !inputs\.cask_tag\n/);

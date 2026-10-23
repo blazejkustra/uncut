@@ -135,10 +135,16 @@ jobs:
   # The cask for a published release: the zip's sha256, the cask rendered by the same script a
   # maintainer can run, committed to the tap if it changed. Not `needs: dmg`: the dmg job only drafts
   # the release, and a cask must never point at a draft's files, so this runs when it is published.
+  # Only the latest published release (what livecheck and the update feed see): never a draft, a
+  # prerelease or an older release published late (by hand too), so the cask never goes back. One
+  # run at a time, so two pushes to the tap never race.
   homebrew:
     if: (github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v')) || inputs.cask_tag
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: homebrew-tap
+      cancel-in-progress: false
     env:
       HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
       TAG: ${{ github.event.release.tag_name || inputs.cask_tag }}
@@ -153,23 +159,33 @@ jobs:
         with:
           node-version: 24
       - name: Render the cask
+        id: render
         if: env.HAS_TAP_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="v${TAG#v}"
+          LATEST="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          if [ "$TAG" != "$LATEST" ]; then
+            echo "::notice::$TAG is not the latest published release ($LATEST), so the Homebrew cask was not updated."
+            exit 0
+          fi
           VERSION="${TAG#v}"
           gh release download "$TAG" --pattern "Uncut-$VERSION-arm64-mac.zip" --dir "$RUNNER_TEMP/cask"
           node scripts/homebrew-cask.ts --version "$TAG" --zip "$RUNNER_TEMP/cask/Uncut-$VERSION-arm64-mac.zip" --out "$RUNNER_TEMP/uncut.rb"
           cat "$RUNNER_TEMP/uncut.rb"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
-        if: env.HAS_TAP_TOKEN == 'true'
+        if: steps.render.outputs.tag
         with:
           repository: blazejkustra/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
       - name: Push the cask to the tap
-        if: env.HAS_TAP_TOKEN == 'true'
+        if: steps.render.outputs.tag
         working-directory: tap
+        env:
+          TAG: ${{ steps.render.outputs.tag }}
         run: |
           mkdir -p Casks
           cp "$RUNNER_TEMP/uncut.rb" Casks/uncut.rb
