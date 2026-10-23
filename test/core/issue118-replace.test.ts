@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyEdit, createSession, layout, loadModules, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
-import { planReplaceRange } from "../../packages/core/src/timeline/arrange.ts";
+import { planDetachAudio, planReplaceRange, takenIds, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
 import { planReplaceMarks } from "../../apps/web/src/timeline/replace.ts";
 import { expandArrangeOps } from "../../apps/server/src/agent/tools/expand.ts";
 import { OP_SHAPES, CONVENIENCE_OPS } from "../../apps/server/src/agent/tools/opShapes.ts";
@@ -113,4 +113,24 @@ test("replace_range for the agent: a convenience op with its shape, expanded int
   assert.match("problem" in bad ? bad.problem : "", /from and to are required/);
   const extra = expandArrangeOps(project, [{ op: "replace_range", item: "c1", from: 30, to: 40, media: "m-b", speed: 2 }]);
   assert.match("problem" in extra ? extra.problem : "", /unknown field speed/);
+});
+
+test("replace a fragment of a clip whose sound was detached: the sound plays on under the new piece, in sync", () => {
+  const detach = planDetachAudio(project, "c1", takenIds(project));
+  assert.ok(!("problem" in detach), JSON.stringify(detach));
+  const detached = applyEdit(createSession(project), { actor: "user", ops: detach.ops }).project;
+  const plan = planReplaceRange(detached, { item: "c1", from: 30, to: 60, media: "m-b", in: 100 });
+  assert.ok(!("problem" in plan), JSON.stringify(plan));
+  // As the server applies an edit: the linked sound kept in step with its clip.
+  const after = applyEdit(createSession(detached), { actor: "user", ops: withLinkedAudio(detached, plan.ops) }).project;
+  const [, piece, last] = after.tracks[0]!.items;
+  assert.equal(piece!.media, "m-b");
+  const sound = after.tracks.find((t) => t.id === detach.trackId)!.items.map((i) => ({ start: i.start, in: i.in, duration: i.duration, linkedTo: i.linkedTo }));
+  assert.deepEqual(sound, [
+    { start: 0, in: 0, duration: 30, linkedTo: "c1" },
+    // Under the new picture: the old clip's sound from where it was (not from the new media's frame 100), on its own.
+    { start: 30, in: 30, duration: 30, linkedTo: undefined },
+    { start: 60, in: 60, duration: 60, linkedTo: last!.id },
+  ]);
+  assert.deepEqual(validateProject(after, modules), []);
 });
