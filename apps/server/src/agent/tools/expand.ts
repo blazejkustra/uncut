@@ -1,6 +1,6 @@
 // The modules list and the timeline_edit ops expanded before they're applied.
 import { type ModuleManifest, DRAWN_MOVES, DRAWN_TRANSITIONS, DRAWN_COMPONENTS, HEARD_EFFECTS, TEXT_STYLES, type Modules, UNDRAWN_COMPONENTS, type Project, applyEdit, createSession, type Op, planDeviceFrame, type Device, type TextLook, planInsertText } from "@uncut/core";
-import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed } from "@uncut/core/arrange";
+import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed, planReplaceRange } from "@uncut/core/arrange";
 import { withoutDecisionIds } from "./decisionIds.ts";
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
@@ -183,12 +183,12 @@ export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>, p
 }
 
 /**
- * timeline_edit's ops with each detach_audio (D123), set_speed (D125) and put_on_main (D215)
- * expanded into the edit ops that do it (core planDetachAudio / planSetSpeed / planPutOnMain),
+ * timeline_edit's ops with each detach_audio (D123), set_speed (D125), put_on_main (D215) and replace_range (issue #118)
+ * expanded into the edit ops that do it (core planDetachAudio / planSetSpeed / planPutOnMain / planReplaceRange),
  * planned against the project as the ops before it leave it. Other ops pass through.
  */
 export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
-  const kinds = new Set(["detach_audio", "set_speed", "put_on_main"]);
+  const kinds = new Set(["detach_audio", "set_speed", "put_on_main", "replace_range"]);
   if (!ops.some((op) => kinds.has((op as { op?: unknown })?.op as string))) return { ops: [...ops] };
   const out: Array<unknown> = [];
   for (const [i, raw] of ops.entries()) {
@@ -198,7 +198,7 @@ export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>):
       continue;
     }
     const where = `ops[${i}] (${String(op.op)})`;
-    const allowed = op.op === "detach_audio" ? ["op", "item", "id", "track"] : op.op === "put_on_main" ? ["op", "item", "frame"] : ["op", "item", "speed", "keepPitch"];
+    const allowed = op.op === "detach_audio" ? ["op", "item", "id", "track"] : op.op === "put_on_main" ? ["op", "item", "frame"] : op.op === "replace_range" ? ["op", "item", "from", "to", "media", "in", "id"] : ["op", "item", "speed", "keepPitch"];
     const extra = Object.keys(op).filter((k) => !allowed.includes(k));
     if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
     if (typeof op.item !== "string") return { problem: `${where}: item must be an item id.` };
@@ -206,7 +206,16 @@ export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>):
     try {
       if (out.length) now = applyEdit(createSession(project), { actor: "agent", ops: out as ReadonlyArray<Op> }).project;
     } catch {}
-    if (op.op === "put_on_main") {
+    if (op.op === "replace_range") {
+      // Issue #118: an overwrite edit, nothing after the piece moves.
+      if (typeof op.media !== "string") return { problem: `${where}: media must be a media id.` };
+      for (const k of ["from", "to", "in"] as const) if (op[k] !== undefined && !(Number.isInteger(op[k]) && (op[k] as number) >= 0)) return { problem: `${where}: ${k} must be a whole frame from 0.` };
+      if (op.from === undefined || op.to === undefined) return { problem: `${where}: from and to are required (timeline frames).` };
+      if (op.id !== undefined && typeof op.id !== "string") return { problem: `${where}: id must be a string.` };
+      const plan = planReplaceRange(now, { item: op.item, from: op.from as number, to: op.to as number, media: op.media, in: op.in as number | undefined, id: op.id as string | undefined });
+      if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+      out.push(...plan.ops);
+    } else if (op.op === "put_on_main") {
       if (op.frame !== undefined && !(Number.isInteger(op.frame) && (op.frame as number) >= 0)) return { problem: `${where}: frame must be a whole frame from 0.` };
       const plan = planPutOnMain(now, op.item, { frame: op.frame as number | undefined });
       if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };

@@ -183,6 +183,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   for (const op of ops) if (op.op === "split_item") origin.set(op.newId, op.item);
   const touched = new Set(ops.map(retimes).filter((id): id is string => !!id));
   const { starts } = layout(after);
+  const beforeStarts = layout(project).starts;
   const beforeItems = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
   const afterItems = new Map(after.tracks.flatMap((t) => t.items.map((i) => [i.id, { item: i, track: t }] as const)));
   const taken = takenIds(after);
@@ -213,16 +214,34 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     // The linked item's in point moves with the clip's (equal for a detached sound: D123 unchanged).
     const offset = (a.in ?? 0) - (clipBefore?.in ?? a.in ?? 0);
     const isClip = a.type === "clip";
+    const aStart = beforeStarts.get(a.id) ?? 0;
     pieces.forEach(({ item: d }, i) => {
-      const speed = d.speed ?? 1;
-      const from = Math.max(0, (d.in ?? 0) + offset);
+      let speed = d.speed ?? 1;
+      let from = Math.max(0, (d.in ?? 0) + offset);
       let duration = d.duration;
-      if (frames && !d.loop && !(isClip && a.hold) && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
-      const start = starts.get(d.id) ?? 0;
+      let start = starts.get(d.id) ?? 0;
+      let keepPitch = d.keepPitch;
+      let linkedTo: string | undefined = d.id;
+      // Issue #118: a piece that plays another media now (a replaced fragment): the linked item
+      // plays on there as it did before (a cutaway over the same sound), no longer following it.
+      if (clipBefore && d.media !== clipBefore.media) {
+        const s = Math.max(start, aStart);
+        const e = Math.min(start + d.duration, aStart + a.duration);
+        if (e <= s) {
+          if (i === 0) extra.push({ op: "delete_item", item: a.id });
+          return;
+        }
+        speed = a.speed ?? 1;
+        from = (a.in ?? 0) + Math.round((s - aStart) * speed);
+        start = s;
+        duration = e - s;
+        keepPitch = a.keepPitch;
+        linkedTo = undefined;
+      } else if (frames && !d.loop && !(isClip && a.hold) && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
       const several = pieces.length > 1;
       const fadeIn = i === 0 && a.fadeIn ? Math.min(a.fadeIn, duration) : undefined;
       const fadeOut = i === pieces.length - 1 && a.fadeOut ? Math.min(a.fadeOut, duration - (fadeIn ?? 0)) : undefined;
-      const want = { start, in: from, duration, speed: speed === 1 ? undefined : speed, keepPitch: d.keepPitch === false ? false : undefined, linkedTo: d.id };
+      const want = { start, in: from, duration, speed: speed === 1 ? undefined : speed, keepPitch: keepPitch === false ? false : undefined, linkedTo };
       if (i === 0) {
         const cur = now.item;
         const same = cur.start === want.start && (cur.in ?? 0) === want.in && cur.duration === want.duration && cur.speed === want.speed && cur.keepPitch === want.keepPitch && cur.linkedTo === want.linkedTo && !several;
@@ -232,7 +251,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         extra.push({
           op: "update_item",
           item: a.id,
-          set: { start, in: from, duration, speed: want.speed ?? null, keepPitch: want.keepPitch ?? null, linkedTo: d.id, fadeIn: fadeIn || null, fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null, ...(keys ? { gainKeys: null } : {}), ...(boxKeys ? { keys: null } : {}) },
+          set: { start, in: from, duration, speed: want.speed ?? null, keepPitch: want.keepPitch ?? null, linkedTo: linkedTo ?? null, fadeIn: fadeIn || null, fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null, ...(keys ? { gainKeys: null } : {}), ...(boxKeys ? { keys: null } : {}) },
         });
         return;
       }
@@ -240,14 +259,14 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         // A linked picture's piece: the same clip (box, effects, look) over the piece's stretch.
         const { fadeIn: _fi, fadeOut: _fo, keys: _k, gainKeys: _g, animation: _a, speed: _s, keepPitch: _p, ...rest } = a;
         const id = uniqueIn(a.id.replace(/-\d+$/, "") || "clip", taken);
-        extra.push({ op: "insert_item", track: now.track.id, item: { ...rest, id, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), linkedTo: d.id } as Item });
+        extra.push({ op: "insert_item", track: now.track.id, item: { ...rest, id, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), ...(linkedTo ? { linkedTo } : {}) } as Item });
         return;
       }
       const id = uniqueIn("audio", taken);
       extra.push({
         op: "insert_item",
         track: now.track.id,
-        item: { id, type: "audio", media: a.media!, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}), ...(a.mute ? { mute: true } : {}), ...(a.name ? { name: a.name } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), linkedTo: d.id },
+        item: { id, type: "audio", media: a.media!, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}), ...(a.mute ? { mute: true } : {}), ...(a.name ? { name: a.name } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), ...(linkedTo ? { linkedTo } : {}) },
       });
     });
   }

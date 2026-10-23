@@ -211,6 +211,19 @@ export interface Scene {
   readonly end: Frame;
 }
 
+/**
+ * Issue #118: a stretch of the timeline the user marked, frames [start, end). "locked": nothing
+ * playing there may move or change (applyEdit refuses an edit that would, whoever makes it);
+ * "redo": not OK yet, for the agent to redo (`note` says what's wrong).
+ */
+export interface Section {
+  readonly id: Id;
+  readonly start: Frame;
+  readonly end: Frame;
+  readonly state: "locked" | "redo";
+  readonly note?: string;
+}
+
 export interface Marker {
   readonly frame: Frame;
   readonly label?: string;
@@ -227,6 +240,8 @@ export interface Project {
   readonly tracks: ReadonlyArray<Track>;
   readonly scenes?: ReadonlyArray<Scene>;
   readonly markers?: ReadonlyArray<Marker>;
+  /** Issue #118: locked stretches and ones flagged for the agent to redo. */
+  readonly sections?: ReadonlyArray<Section>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
   readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
   /**

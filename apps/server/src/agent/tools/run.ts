@@ -235,7 +235,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // edit_captions (D82) becomes the update_item of the captions it changes.
           const captions = expandCaptionEdits(v.session.project as Project, texts.ops);
           if ("problem" in captions) return refuse(captions.problem);
-          // detach_audio (D123) and set_speed (D125) become the item ops that do them.
+          // detach_audio (D123), set_speed (D125) and replace_range (issue #118) become the item ops that do them.
           const arranged = expandArrangeOps(v.session.project as Project, captions.ops);
           if ("problem" in arranged) return refuse(arranged.problem);
           // D206: place_item (overlaps resolved as asked) and set_transition's allowTrim.

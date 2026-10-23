@@ -17,7 +17,11 @@
 //
 // Tools (issue #57, D230): Select (V) works as above; Blade (C) cuts the item clicked at the
 // snapped frame under the pointer, with a line where it would cut; Hand (H) drags the view.
-import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+//
+// Skimming (issue #118, as in iMovie): with the pointer over the ruler or the lanes (no button
+// held, not the Hand), the preview shows the frame under it and a faint line marks it; the
+// playhead stays. A press, or the pointer leaving, shows the playhead's frame again.
+import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, ScanLine, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cutsOf } from "@uncut/core/transitions";
 import { captionCards, captionExtent } from "@uncut/core/captions";
@@ -28,9 +32,10 @@ import { findItem } from "./edit.ts";
 import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
-import { actions, getState, projectOf, useApp } from "../state/store.ts";
+import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
 import { ItemBox } from "./ItemBox.tsx";
-import { Playhead } from "./Playhead.tsx";
+import { Playhead, Skimmer } from "./Playhead.tsx";
+import { Sections } from "./Sections.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
 import { onTransitionDrop, useDraggedTransition, useTilePointer } from "./dnd.ts";
@@ -58,10 +63,15 @@ export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./d
 const MIN_FIT_SECONDS = 10;
 const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800];
 
-export function Timeline({ project }: { project: ProjectModel }) {
-  const { thumbIds, connection, snapshot, agent } = useApp();
-  const online = connection === "connected";
-  const flash = useAgentFlash(project, snapshot?.revision, agent);
+// Issue #118: drawn again only when its project changes (the editor around it renders on every app
+// state change), and reading only the app state it shows.
+export const Timeline = React.memo(TimelineView);
+
+function TimelineView({ project }: { project: ProjectModel }) {
+  const thumbIds = useAppSelect((s) => s.thumbIds);
+  const online = useAppSelect((s) => s.connection === "connected");
+  const snapshot = useAppSelect((s) => s.snapshot);
+  const flash = useAgentFlash(project, snapshot?.revision);
   const zoom = usePlayback((s) => s.zoom);
   const selected = usePlayback((s) => s.selected);
   const also = usePlayback((s) => s.also);
@@ -76,6 +86,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
   }, [transitionDragged]);
   const snapping = usePlayback((s) => s.snapping);
   const linkOverlays = usePlayback((s) => s.linkOverlays);
+  const skimming = usePlayback((s) => s.skimming);
   const beatMap = useBeats((s) => s.map);
   const [drag, setDrag] = useState<DragView | undefined>();
   const [marquee, setMarquee] = useState<Marquee | undefined>();
@@ -92,6 +103,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
   // The running drag's cancel: a new press or unmounting (another project) ends it.
   const stopDrag = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => stopDrag.current?.(), []);
+  // Issue #118: the timeline gone while skimmed (the Mixer shown instead): the preview shows the playhead's frame.
+  useEffect(() => () => playback.hover(undefined), []);
   const bodyRef = useRef<HTMLDivElement>(null);
   const lanesRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(800);
@@ -173,6 +186,13 @@ export function Timeline({ project }: { project: ProjectModel }) {
 
   const { scrub, onEmptyDown } = makeScrubMarquee({ project, ppf, lanesRef, frameAt, setScrubSnap, setMarquee });
 
+  /** Issue #118: skim the frame under the pointer (no button held, not panning); past the project's end, stop. */
+  const skim = (e: React.PointerEvent) => {
+    if (e.buttons !== 0 || tool === "hand" || !lanesRef.current) return playback.hover(undefined);
+    const frame = frameAt(e.clientX);
+    playback.hover(frame >= 0 && frame <= end ? frame : undefined);
+  };
+
   const { cutNear, overLanes, onDragOver, onDrop } = makeLaneDrop({ fps, ppf, online, cuts, lanesRef, bodyRef, frameAt, laneHit, dropCut, dropLane, dropSpan, setDropCut, setDropLane, setDropSpan, setDropping });
   // A transition tile dragged with the pointer (F16, D154): the cut under it while it's over the
   // lanes, and on release over them, the transition goes there.
@@ -199,6 +219,11 @@ export function Timeline({ project }: { project: ProjectModel }) {
     e.preventDefault();
     openMenu(e.clientX, e.clientY, emptyMenu(project, Math.max(0, Math.round(frameAt(e.clientX))), track, online), "Timeline");
   };
+
+  // Issue #118: items are memoised (ItemBox) and don't compare their handlers, so these read the
+  // project, the gesture handlers and the connection as they are when the press comes.
+  const live = useRef({ project, online, onItemDown, onItemMenu });
+  live.current = { project, online, onItemDown, onItemMenu };
 
   const newTrackY = drag?.newTrack?.y;
 
@@ -240,6 +265,11 @@ export function Timeline({ project }: { project: ProjectModel }) {
         <Tooltip label={snapping ? "Snapping on (hold ⌘ while dragging to skip)" : "Snapping off"}>
           <button className={`icon-btn ${snapping ? "on" : ""}`} data-testid="snap-toggle" aria-pressed={snapping} onClick={playback.toggleSnapping}>
             <Magnet />
+          </button>
+        </Tooltip>
+        <Tooltip label={skimming ? "Skimming on: the preview shows the frame under the pointer" : "Skimming off"}>
+          <button className={`icon-btn ${skimming ? "on" : ""}`} data-testid="skim-toggle" aria-pressed={skimming} onClick={playback.toggleSkimming}>
+            <ScanLine />
           </button>
         </Tooltip>
         <Tooltip label={linkOverlays ? "Linked: overlays follow the footage under them when a main clip's speed or length changes" : "Unlinked: overlays stay put when main clips change"}>
@@ -290,9 +320,18 @@ export function Timeline({ project }: { project: ProjectModel }) {
             data-tool={tool}
             ref={lanesRef}
             style={{ width }}
-            onPointerDownCapture={toolPress.onPointerDownCapture}
-            onPointerMove={toolPress.onPointerMove}
-            onPointerLeave={toolPress.onPointerLeave}
+            onPointerDownCapture={(e) => {
+              playback.hover(undefined);
+              toolPress.onPointerDownCapture(e);
+            }}
+            onPointerMove={(e) => {
+              skim(e);
+              toolPress.onPointerMove(e);
+            }}
+            onPointerLeave={() => {
+              playback.hover(undefined);
+              toolPress.onPointerLeave();
+            }}
             onDragOver={onDragOver}
             onDragLeave={(e) => {
               if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -315,7 +354,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                 // On the playhead: the playhead's frame; elsewhere on the ruler: the frame under the pointer.
                 const onHead = (e.target as Element).closest?.(".playhead");
                 const frame = onHead ? Math.floor(getPlayback().frame) : Math.max(0, Math.round(frameAt(e.clientX)));
-                openMenu(e.clientX, e.clientY, rulerMenu(frame, { markIn, markOut, end }), "Ruler");
+                openMenu(e.clientX, e.clientY, rulerMenu(project, frame, { markIn, markOut, end }, online), "Ruler");
               }}
             >
               {ticks.map((s) => (
@@ -335,7 +374,9 @@ export function Timeline({ project }: { project: ProjectModel }) {
                   {markOut !== undefined && <span className="mark out" />}
                 </div>
               )}
-              <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} />
+              <Sections project={project} ppf={ppf} online={online} />
+              <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
+              <Skimmer ppf={ppf} />
             </div>
             {dropSpan && <div className="tl-drop-ghost" data-testid="timeline-drop-ghost" data-frame={dropSpan.frame} style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }} />}
             {tracks.map((track) => {
@@ -377,9 +418,16 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         renaming={renaming === item.id}
                         onRenamed={() => setRenaming(undefined)}
                         {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
-                        onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
-                        onContextMenu={(e) => onItemMenu(e, item)}
-                        onDoubleClick={() => online && editable && item.type !== "captions" && setRenaming(item.id)}
+                        onPointerDown={(e) => {
+                          const now = live.current;
+                          now.onItemDown(e, findItem(now.project, item.id)?.item ?? item, now.project.tracks.find((t) => t.id === track.id) ?? track);
+                        }}
+                        onContextMenu={(e) => live.current.onItemMenu(e, item)}
+                        onDoubleClick={() => {
+                          const now = live.current;
+                          const lane = now.project.tracks.find((t) => t.id === track.id);
+                          if (now.online && lane && !lane.locked && item.type !== "captions") setRenaming(item.id);
+                        }}
                       />
                     );
                   })}

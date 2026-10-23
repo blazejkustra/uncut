@@ -101,12 +101,22 @@ export function ItemWaveform({ item, media, fps, width, compact }: { item: Item;
   const from = (item.in ?? 0) / fps;
   const length = (item.duration * (item.speed ?? 1)) / fps;
   const scale = Math.min(2, dbToGain(item.gainDb ?? 0) || 0);
+  // Issue #118: the canvas's height as a ResizeObserver reports it. Read from clientHeight on every
+  // redraw (each zoom step), it made the browser lay out the whole timeline once per waveform.
+  const [cssHeight, setCssHeight] = useState(0);
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !peaks) return;
+    if (!canvas) return;
+    const ro = new ResizeObserver(([entry]) => entry && setCssHeight(entry.contentRect.height));
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !peaks || cssHeight <= 0) return;
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, Math.min(MAX_CANVAS_PX, Math.round(width * dpr)));
-    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    const h = Math.max(1, Math.round(cssHeight * dpr));
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
     const ctx = canvas.getContext("2d");
@@ -116,6 +126,8 @@ export function ItemWaveform({ item, media, fps, width, compact }: { item: Item;
     const total = peaks.data.length;
     const loopLength = item.loop ? peaks.seconds : Infinity;
     let drawn = 0;
+    // Issue #118: one path filled once, not a fillRect per column (thousands per item on every zoom step).
+    ctx.beginPath();
     for (let x = 0; x < w; x++) {
       // The seconds of media this column covers, wrapping for looped audio.
       let t0 = from + (x / w) * length;
@@ -133,11 +145,12 @@ export function ItemWaveform({ item, media, fps, width, compact }: { item: Item;
       if (v <= 0) continue;
       drawn++;
       const bar = Math.max(1, v * (compact ? h : h - 2));
-      if (compact) ctx.fillRect(x, h - bar, 1, bar);
-      else ctx.fillRect(x, (h - bar) / 2, 1, bar);
+      if (compact) ctx.rect(x, h - bar, 1, bar);
+      else ctx.rect(x, (h - bar) / 2, 1, bar);
     }
+    ctx.fill();
     canvas.dataset.ready = "true";
     canvas.dataset.drawn = String(drawn);
-  }, [peaks, width, from, length, scale, compact, item.loop]);
+  }, [peaks, width, from, length, scale, compact, item.loop, cssHeight]);
   return <canvas ref={ref} className={`wave ${compact ? "compact" : ""}`} data-testid="waveform" data-media={media.id} />;
 }

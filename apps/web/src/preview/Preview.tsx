@@ -9,7 +9,7 @@
 // dragged and resized by its corners (D75); a component dropped from Elements lands where it's dropped.
 import { isDrawnComponent } from "@uncut/core/components";
 import { RENDER_CSS } from "@uncut/core/render";
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
@@ -33,6 +33,8 @@ import { type InlineEdit, InlineEditor } from "./stage/InlineEditor.tsx";
 import { dropGhostHtml } from "./stage/dropGhost.ts";
 import { ClipSelection, TextSelection } from "./stage/selection.tsx";
 import { AgentChangePill } from "./stage/AgentChangePill.tsx";
+import { MediaSkim } from "./stage/MediaSkim.tsx";
+import { RegionPins, RegionSelect } from "./stage/Region.tsx";
 
 interface CanvasDrag {
   readonly id: string;
@@ -110,6 +112,9 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   // A tile dragged over the canvas (X2, D132): the element as it would land there, drawn faint with an outline.
   const [dropGhost, setDropGhost] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<InlineEdit | undefined>();
+  // Issue #118: the Area tool (a rectangle over the picture into the chat).
+  const [region, setRegion] = useState(false);
+  const endRegion = useCallback(() => setRegion(false), []);
   useEffect(() => {
     const c = new Compositor(dir, frameRef.current!, mediaRef.current!, textRef.current!);
     compositor.current = c;
@@ -416,10 +421,13 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             {!editing && <TextSelection layer={textRef} project={project} />}
             </div>
           </div>
+          <MediaSkim />
+          <RegionPins project={project} />
+          {region && <RegionSelect project={project} onDone={endRegion} />}
         </div>
       </div>
       <AgentChangePill fps={project.canvas.fps} />
-      <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} />
+      <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} region={region} onRegion={() => setRegion(!region)} />
     </main>
   );
 }

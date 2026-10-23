@@ -138,11 +138,17 @@ export function ClipFilmstrip({ item, media, fps, duration, ppf, poster }: { ite
     };
   }, []);
   // The clip moved without its own box changing size (the timeline zoomed around it): measure again.
+  // Issue #118: in the next animation frame, all clips together, when the browser has laid the
+  // timeline out anyway; measured right after the render, each clip made it lay out the whole
+  // timeline before it was drawn (most of a zoom step's time on a long edit).
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const next = shownSpan(el);
-    setSpan((prev) => (!next ? undefined : prev && prev.left === next.left && prev.right === next.right && prev.height === next.height ? prev : next));
+    const frame = requestAnimationFrame(() => {
+      const next = shownSpan(el);
+      setSpan((prev) => (!next ? undefined : prev && prev.left === next.left && prev.right === next.right && prev.height === next.height ? prev : next));
+    });
+    return () => cancelAnimationFrame(frame);
   }, [duration, ppf]);
 
   const width = duration * ppf;

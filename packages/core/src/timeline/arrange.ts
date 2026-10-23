@@ -14,5 +14,7 @@ export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts"
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, withLinkedAudio } from "./arrange/retime.ts";
 export type { DetachAudioPlan } from "./arrange/retime.ts";
 export { planPutOnMain } from "./arrange/putOnMain.ts";
+export { planReplaceRange } from "./arrange/replace.ts";
+export type { ReplaceRange } from "./arrange/replace.ts";
 export { gapOpsFor, keepMainTimes, mainStartsById, rippleMainGaps, shiftMainItems } from "./arrange/gaps.ts";
 export type { PutOnMainPlan } from "./arrange/putOnMain.ts";

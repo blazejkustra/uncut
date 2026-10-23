@@ -4,16 +4,18 @@
 import { componentInfo } from "../visual/components.ts";
 import { effectInfo } from "../visual/fx/defs.ts";
 import { transitionName } from "../visual/transitions.ts";
-import { layout } from "../timeline/timeline.ts";
+import { layout, visualsAt } from "../timeline/timeline.ts";
 import type { Item, Project } from "../timeline/types.ts";
 
-export type MentionKind = "media" | "item" | "track" | "marker" | "moment" | "range" | "effect" | "transition";
+export type MentionKind = "media" | "item" | "track" | "marker" | "moment" | "range" | "effect" | "transition" | "region";
 export interface Mention {
   readonly kind: MentionKind;
   readonly id: string;
   readonly label: string;
   readonly range?: { readonly start: number; readonly end: number } | undefined;
   readonly frame?: number | undefined;
+  /** Issue #118: a region's rectangle on the canvas, in canvas pixels. */
+  readonly area?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | undefined;
 }
 
 const oneLine = (s: string) => s.replace(/\[\[|\]\]|\*\*|`/g, "").replace(/\s+/g, " ").trim();
@@ -102,7 +104,7 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     const key = `${m.kind}:${m.id}:${m.label}:${m.range?.start ?? ""}:${m.frame ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const at = m.kind === "moment" || m.kind === "range" ? "" : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
+    const at = m.kind === "moment" || m.kind === "range" || m.kind === "region" ? "" : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
     if (m.kind === "media") {
       const media = project.media.find((x) => x.id === m.id);
       if (!media) {
@@ -128,6 +130,8 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     } else if (m.kind === "range") {
       const r = m.range ?? { start: 0, end: 0 };
       lines.push(`@${m.label} = the stretch from frame ${r.start} to ${r.end} (${secs(r.start, fps)}–${secs(r.end, fps)}, end not included): ${describeAt(project, r.start, Math.max(r.start + 1, r.end))}`);
+    } else if (m.kind === "region") {
+      lines.push(`@${m.label} = ${regionLine(project, m)}`);
     } else if (m.kind === "effect") {
       const ref = parseEffectId(m.id);
       const track = ref && project.tracks.find((t) => t.items.some((i) => i.id === ref.item));
@@ -160,6 +164,45 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     }
   }
   return `<context>\nWhat the user's @labels point at (use the ids in tools; say the names to the user):\n${lines.join("\n")}\n</context>`;
+}
+
+const pct = (n: number, of: number) => Math.round((n / of) * 100);
+
+/**
+ * Issue #118: a region's <context> line: the rectangle the user dragged over the picture (canvas
+ * pixels and fractions of the frame), at a frame or over a stretch, and what's drawn in it then:
+ * each visible item whose box overlaps it (texts and graphics, which have no box, are listed as on
+ * screen), at the stretch's first, middle and last frames.
+ */
+export function regionLine(project: Project, m: Pick<Mention, "area" | "frame" | "range">): string {
+  const { width, height, fps } = project.canvas;
+  const a = m.area ?? { x: 0, y: 0, w: width, h: height };
+  const x0 = Math.max(0, Math.round(a.x));
+  const y0 = Math.max(0, Math.round(a.y));
+  const x1 = Math.min(width, Math.round(a.x + a.w));
+  const y1 = Math.min(height, Math.round(a.y + a.h));
+  const where = `x ${x0}–${x1}, y ${y0}–${y1} of the ${width}x${height} canvas (${pct(x0, width)}–${pct(x1, width)}% across, ${pct(y0, height)}–${pct(y1, height)}% down)`;
+  const from = m.range ? m.range.start : (m.frame ?? 0);
+  const to = m.range ? Math.max(m.range.start + 1, m.range.end) : from + 1;
+  const when = m.range ? `over frames ${from}–${to} (${secs(from, fps)}–${secs(to, fps)}, end not included)` : `at frame ${from} (${secs(from, fps)})`;
+  const { starts } = layout(project);
+  const inside: Array<string> = [];
+  const shown: Array<string> = [];
+  for (const f of [...new Set([from, Math.floor((from + to - 1) / 2), to - 1])]) {
+    for (const v of visualsAt(project, starts, f)) {
+      if (v.opacity <= 0 || v.item.id.startsWith("dip:")) continue;
+      const name = itemName(project, v.item);
+      const words = `${v.item.id} (${v.item.type}${name === v.item.id ? "" : ` "${cut(name, 40)}"`}, track ${v.track.id})`;
+      if (!v.box) {
+        if (!shown.includes(words) && !inside.includes(words)) shown.push(words);
+        continue;
+      }
+      const b = v.box;
+      if (b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0 && !inside.includes(words)) inside.push(words);
+    }
+  }
+  const what = [inside.length ? `drawn in it: ${inside.slice(0, 8).join("; ")}` : "no clip's box is in it", shown.length ? `also on screen (texts and graphics, place not measured): ${shown.slice(0, 6).join("; ")}` : ""].filter(Boolean).join("; ");
+  return `an area of the picture the user marked: ${where}, ${when}; ${what}. render_frames there shows it; change what's in that area (and only for that time) unless they say otherwise`;
 }
 
 /**

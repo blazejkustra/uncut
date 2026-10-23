@@ -11,7 +11,7 @@
 // text, chips and images live in the store.
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
 import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
-import { ArrowLeftRight, ArrowUp, AtSign, Blend, BookOpen, Clock3, FileText, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Sparkles, Square, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, Blend, BookOpen, Clock3, FileText, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Sparkles, Square, SquareDashed, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
@@ -56,7 +56,7 @@ export function withChips(text: string, labels: ReadonlyArray<string>, className
   return out;
 }
 
-const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, moment: Clock3, range: ArrowLeftRight, effect: Sparkles, transition: Blend } as const;
+const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, moment: Clock3, range: ArrowLeftRight, effect: Sparkles, transition: Blend, region: SquareDashed } as const;
 
 /** An image file as an attachment (D184), or why it can't be one. */
 async function readImage(file: File): Promise<AgentImage | string> {

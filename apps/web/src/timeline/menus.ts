@@ -3,6 +3,7 @@
 // ⌘Z) or a UI step (rename in place, the Inspector's custom speed).
 import { soundMedia } from "@uncut/core/audio";
 import { SPEED_PRESETS, speedLabel } from "@uncut/core/arrange";
+import { planLockRest, planMarkSection, planRemoveSection } from "@uncut/core/sections";
 
 import { clipboardItems, copySelection, deleteSelection, duplicate, paste } from "../editor/keys.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
@@ -155,13 +156,41 @@ function addTrackEntries(project: ProjectModel, off: boolean, near?: Track): Men
 
 /** Right-click on empty timeline (a lane's background or below the tracks) at `frame`. */
 /** D183: right-click on the ruler or the playhead: that moment, or the In/Out range, into the chat. */
-export function rulerMenu(frame: number, marks: { readonly markIn?: number | undefined; readonly markOut?: number | undefined; readonly end: number }): MenuItems {
+export function rulerMenu(project: ProjectModel, frame: number, marks: { readonly markIn?: number | undefined; readonly markOut?: number | undefined; readonly end: number }, online: boolean): MenuItems {
   const hasRange = marks.markIn !== undefined || marks.markOut !== undefined;
   const start = marks.markIn ?? 0;
   const end = marks.markOut ?? marks.end;
+  const redo = (project.sections ?? []).some((s) => s.state === "redo");
   return [
+    // Issue #118: start playback where the user pointed, not where the playhead was.
+    { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
+    "-",
     { id: "add-moment-to-chat", label: "Add this moment to chat", run: () => actions.addMomentToChat(frame) },
     ...(hasRange ? [{ id: "add-range-to-chat", label: "Add range to chat", disabled: end <= start, run: () => actions.addRangeToChat(start, end) }] : []),
+    // Issue #118: In to Out locked (nothing there may move or change) or flagged for the agent to redo.
+    ...(hasRange
+      ? [
+          "-" as const,
+          { id: "lock-range", label: "Lock In to Out", disabled: !online || end <= start, run: () => void actions.timelineEdit(planMarkSection(project, start, end, "locked")) },
+          { id: "redo-range", label: "Mark In to Out as not OK", disabled: !online || end <= start, run: () => void actions.timelineEdit(planMarkSection(project, start, end, "redo")) },
+        ]
+      : []),
+    ...(redo ? [{ id: "lock-rest", label: "Lock everything not marked to redo", disabled: !online, run: () => void actions.timelineEdit(planLockRest(project)) }] : []),
+  ];
+}
+
+/** Issue #118: right-click a marked section on the ruler: unlock or unflag it, ask the agent about it, lock the rest. */
+export function sectionMenu(project: ProjectModel, id: string, online: boolean): MenuItems {
+  const s = project.sections?.find((x) => x.id === id);
+  if (!s) return [];
+  return [
+    { id: "section-play", label: "Play from its start", run: () => playback.playFrom(s.start) },
+    { id: "section-add-to-chat", label: "Add to chat", run: () => actions.addRangeToChat(s.start, s.end) },
+    "-",
+    s.state === "locked"
+      ? { id: "section-unlock", label: "Unlock", disabled: !online, run: () => void actions.timelineEdit(planRemoveSection(project, id)) }
+      : { id: "section-unflag", label: "Mark as OK", disabled: !online, run: () => void actions.timelineEdit(planRemoveSection(project, id)) },
+    ...(s.state === "redo" ? [{ id: "section-lock-rest", label: "Lock everything not marked to redo", disabled: !online, run: () => void actions.timelineEdit(planLockRest(project)) }] : []),
   ];
 }
 
@@ -169,6 +198,8 @@ export function emptyMenu(project: ProjectModel, frame: number, track: Track | u
   const off = !online;
   const label = track ? itemsLabel(project, track) : undefined;
   return [
+    { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
+    "-",
     { id: "paste-here", label: "Paste here", shortcut: "⌘V", disabled: off || !clipboardItems().length, run: () => void paste(frame) },
     { id: "split-playhead", label: "Split at the playhead", shortcut: "S", disabled: off, run: () => void actions.split() },
     "-",

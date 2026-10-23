@@ -24,6 +24,7 @@
     "./arrange": "./src/timeline/arrange.ts",
     "./agentPlace": "./src/timeline/agentPlace.ts",
     "./slice": "./src/timeline/slice.ts",
+    "./sections": "./src/timeline/sections.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",
     "./transitions": "./src/visual/transitions.ts",

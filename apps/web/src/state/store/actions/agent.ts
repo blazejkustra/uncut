@@ -76,6 +76,25 @@ export const agentActions = {
     const label = `${momentLabel(start, fps)}–${momentLabel(end, fps)}`;
     actions.addToChat({ kind: "range", id: `range:${start}-${end}`, label, range: { start: Math.floor(start), end: Math.floor(end) } });
   },
+  /**
+   * Issue #118: an area of the picture (canvas pixels, dragged over the preview) at a frame or over
+   * a stretch, as a chip; the agent gets the rectangle and what's drawn in it (core regionLine).
+   */
+  addRegionToChat(area: { x: number; y: number; w: number; h: number }, at: { readonly frame: number } | { readonly start: number; readonly end: number }) {
+    const snap = state.snapshot;
+    if (!snap) return;
+    const fps = projectOf(snap).canvas.fps;
+    const box = { x: Math.round(area.x), y: Math.round(area.y), w: Math.max(1, Math.round(area.w)), h: Math.max(1, Math.round(area.h)) };
+    const frame = "frame" in at ? Math.max(0, Math.floor(at.frame)) : undefined;
+    const range = "frame" in at ? undefined : { start: Math.floor(at.start), end: Math.floor(at.end) };
+    const time = range ? `${momentLabel(range.start, fps)}–${momentLabel(range.end, fps)}` : momentLabel(frame!, fps);
+    // Two areas at the same time get their own labels: the prompt's @label picks the chip.
+    const taken = new Set(state.agentMentions.filter((m) => m.kind === "region").map((m) => m.label));
+    let label = `Area ${time}`;
+    for (let n = 2; taken.has(label); n++) label = `Area ${n} ${time}`;
+    const span = range ? `${range.start}-${range.end}` : `${frame}`;
+    actions.addToChat({ kind: "region", id: `region:${box.x},${box.y},${box.w},${box.h}@${span}`, label, area: box, ...(range ? { range } : { frame: frame! }) });
+  },
   /** Add to chat (D141) for a timeline item: its name, with the stretch of the timeline it covers. */
   addItemToChat(itemId: string, frame?: number) {
     const snap = state.snapshot;

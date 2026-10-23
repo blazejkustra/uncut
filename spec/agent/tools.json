@@ -1624,6 +1624,44 @@
         }
       }
     },
+    "replaceRange": {
+      "type": "object",
+      "required": [
+        "op",
+        "item",
+        "from",
+        "to",
+        "media"
+      ],
+      "additionalProperties": false,
+      "description": "Replace a fragment without moving anything (an overwrite edit): timeline frames [from, to) of a clip or audio item play another media from its frame in (default 0) at normal speed. The item is split at both ends and the piece keeps its box, effects and volume; it stays exactly as long, so nothing after it shifts and the cut stays in sync with the music.",
+      "properties": {
+        "op": {
+          "const": "replace_range"
+        },
+        "item": {
+          "type": "string"
+        },
+        "from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media": {
+          "type": "string"
+        },
+        "in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
     "editCaptions": {
       "type": "object",
       "required": [

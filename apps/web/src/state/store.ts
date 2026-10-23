@@ -15,7 +15,7 @@ import { onJobs, onExportJobs, onAnalysisJobs, applyFromServer } from "./store/s
 import { applyAgentUi } from "./store/agentUi.ts";
 export { MAX_NAME_LENGTH } from "./store/types.ts";
 export type { ConnectionState, Project, Notice, AppStateShape, PickerPurpose, RemotePickerRequest, GenerateDraft, SettingsSection } from "./store/types.ts";
-export { pluginRules, pluginRuleList, pluginLooks, textPresets, subscribeApp, useApp, getState, projectOf, online, isRemote } from "./store/core.ts";
+export { pluginRules, pluginRuleList, pluginLooks, textPresets, subscribeApp, useApp, useAppSelect, getState, projectOf, online, isRemote } from "./store/core.ts";
 export { plainError } from "./store/server.ts";
 export { brandFileUrl, agentImageUrl, thumbUrl, recentThumbUrl, mediaUrl, proxyUrl, proxyOf, sfxUrl, folderSoundUrl, libraryPreviewUrl, waveformUrl, filmstripUrl, graphicUrl, graphicMediaUrl } from "./store/urls.ts";
 export { activeAnalyses, activeJobs } from "./store/sync.ts";
