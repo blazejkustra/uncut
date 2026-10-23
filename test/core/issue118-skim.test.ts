@@ -73,3 +73,19 @@ test("play from the cursor: Space while skimming plays from the skimmed frame; o
   assert.equal(getPlayback().playing, true);
   playback.pause();
 });
+
+test("skimming: moving the playhead (arrow keys, Home, a marker) shows its frame again until the pointer moves", () => {
+  playback.reset();
+  playback.setProject(301, 30, 300);
+  playback.seek(40);
+  playback.hover(200);
+  playback.step(1);
+  assert.equal(getPlayback().frame, 41);
+  assert.equal(getPlayback().hover, undefined, "the preview shows the frame the playhead stepped to");
+  playback.hover(210);
+  playback.toStart();
+  assert.equal(getPlayback().frame, 0);
+  assert.equal(getPlayback().hover, undefined);
+  playback.hover(220);
+  assert.equal(getPlayback().hover, 220, "the pointer's next move skims again");
+});

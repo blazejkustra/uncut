@@ -103,6 +103,8 @@ function TimelineView({ project }: { project: ProjectModel }) {
   // The running drag's cancel: a new press or unmounting (another project) ends it.
   const stopDrag = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => stopDrag.current?.(), []);
+  // Issue #118: the timeline gone while skimmed (the Mixer shown instead): the preview shows the playhead's frame.
+  useEffect(() => () => playback.hover(undefined), []);
   const bodyRef = useRef<HTMLDivElement>(null);
   const lanesRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(800);

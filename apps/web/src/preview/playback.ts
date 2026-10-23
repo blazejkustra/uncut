@@ -214,7 +214,9 @@ export const playback = {
   seek(frame: number) {
     const f = clamp(Math.round(frame), 0, lastPosition(state));
     if (state.playing) clock = { f0: f, t0: performance.now() };
-    set({ frame: f });
+    // Issue #118: a seek while skimming (the arrow keys, Home, a marker) shows the playhead's frame
+    // again; the pointer's next move over the timeline skims on.
+    set(state.hover !== undefined ? { frame: f, hover: undefined } : { frame: f });
   },
 
   step(frames: number) {
