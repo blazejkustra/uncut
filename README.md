@@ -8,6 +8,14 @@ An AI-first video editor for macOS: it runs your installed Claude Code, which ed
 
 **[Download Uncut for macOS](https://github.com/blazejkustra/uncut/releases/latest/download/Uncut-arm64.dmg)** (Apple silicon, macOS 13 or later). Signed and notarized, and it updates itself from [GitHub releases](https://github.com/blazejkustra/uncut/releases). Website: [uncut.video](https://uncut.video).
 
+Or with [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask blazejkustra/tap/uncut
+```
+
+The cask lives in the [blazejkustra/homebrew-tap](https://github.com/blazejkustra/homebrew-tap) tap and is updated by the release workflow when a release is published. The app updates itself after that, so there's no need for `brew upgrade` (`brew uninstall --zap --cask uncut` also removes its data).
+
 On first launch Uncut checks what it needs and shows how to install anything missing:
 
 - **[Claude Code](https://claude.com/claude-code)**, installed and signed in. Uncut uses whatever sign-in Claude Code has: a Claude subscription, an API key, or Bedrock, Vertex AI or Foundry. Usage is billed the way your Claude Code usage normally is.
@@ -53,7 +61,7 @@ pnpm site:dev       # the website (site/, Next.js) at localhost:3000
 pnpm site:build     # its static export in site/out, ready for Cloudflare Pages (site/DEPLOY.txt)
 ```
 
-**Releases.** Bump the version in `apps/desktop/package.json`, then push a signed tag that matches it (`git tag -s v0.0.2 && git push origin v0.0.2`). CI builds, signs and notarizes the dmg with the auto-update feed and drafts a GitHub release. Publish the draft and installed apps pick up the update.
+**Releases.** Bump the version in `apps/desktop/package.json`, then push a signed tag that matches it (`git tag -s v0.0.2 && git push origin v0.0.2`). CI builds, signs and notarizes the dmg with the auto-update feed and drafts a GitHub release. Publish the draft and installed apps pick up the update; publishing also pushes the Homebrew cask to `blazejkustra/homebrew-tap` (with the `HOMEBREW_TAP_TOKEN` secret; without it the job only leaves a notice). To render the cask by hand: `node scripts/homebrew-cask.ts --version v0.0.4 --zip Uncut-0.0.4-arm64-mac.zip`.
 
 ## Privacy
 

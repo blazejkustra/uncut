@@ -8,19 +8,33 @@
 # reads the latest published release, never a draft). So a tag without MACOS_CERT_P12 fails: a
 # dmg-only release would become "latest" and leave signed users without an update feed. Without the
 # certificate, run the workflow by hand (workflow_dispatch) for an ad-hoc dmg artifact, no release.
+# Homebrew (#117): publishing the draft release runs the homebrew job, which renders the cask for the
+# release's update zip (scripts/homebrew-cask.ts) and pushes it to blazejkustra/homebrew-tap
+# (Casks/uncut.rb), for `brew install --cask blazejkustra/tap/uncut`. Secret: HOMEBREW_TAP_TOKEN
+# (contents read and write on the tap repo); without it the job says so and does nothing.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  # A draft published by hand: the cask follows (never on the draft, whose files brew can't download).
+  release:
+    types: [published]
   # By hand: without MACOS_CERT_P12 an ad-hoc dmg as an artifact (no release); with it, a signed one.
+  # With cask_tag, only the cask for that published release (e.g. the first one, once the tap exists).
   workflow_dispatch:
+    inputs:
+      cask_tag:
+        description: "Only push the Homebrew cask for this published release tag (e.g. v0.0.4); empty builds a dmg"
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 jobs:
   dmg:
+    if: github.event_name != 'release' && !inputs.cask_tag
     runs-on: macos-latest
     timeout-minutes: 90
     env:
@@ -117,3 +131,54 @@ jobs:
       - name: Remove the signing keychain
         if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
         run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"
+
+  # The cask for a published release: the zip's sha256, the cask rendered by the same script a
+  # maintainer can run, committed to the tap if it changed. Not `needs: dmg`: the dmg job only drafts
+  # the release, and a cask must never point at a draft's files, so this runs when it is published.
+  homebrew:
+    if: (github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v')) || inputs.cask_tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+      TAG: ${{ github.event.release.tag_name || inputs.cask_tag }}
+    steps:
+      - name: No HOMEBREW_TAP_TOKEN
+        if: env.HAS_TAP_TOKEN != 'true'
+        run: echo "::notice::No HOMEBREW_TAP_TOKEN secret, so the Homebrew cask was not updated. Add a token that can push to blazejkustra/homebrew-tap, then run this workflow by hand with cask_tag=$TAG."
+      - uses: actions/checkout@v4
+        if: env.HAS_TAP_TOKEN == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_TAP_TOKEN == 'true'
+        with:
+          node-version: 24
+      - name: Render the cask
+        if: env.HAS_TAP_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${TAG#v}"
+          gh release download "$TAG" --pattern "Uncut-$VERSION-arm64-mac.zip" --dir "$RUNNER_TEMP/cask"
+          node scripts/homebrew-cask.ts --version "$TAG" --zip "$RUNNER_TEMP/cask/Uncut-$VERSION-arm64-mac.zip" --out "$RUNNER_TEMP/uncut.rb"
+          cat "$RUNNER_TEMP/uncut.rb"
+      - uses: actions/checkout@v4
+        if: env.HAS_TAP_TOKEN == 'true'
+        with:
+          repository: blazejkustra/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Push the cask to the tap
+        if: env.HAS_TAP_TOKEN == 'true'
+        working-directory: tap
+        run: |
+          mkdir -p Casks
+          cp "$RUNNER_TEMP/uncut.rb" Casks/uncut.rb
+          git add Casks/uncut.rb
+          if git diff --cached --quiet; then
+            echo "::notice::Casks/uncut.rb is already at $TAG."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "uncut ${TAG#v}"
+          git push
