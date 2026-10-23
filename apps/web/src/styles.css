@@ -217,7 +217,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 @container stage (max-width: 560px) { .transport > [data-testid="canvas-info"] { display: none; } }
 @container stage (max-width: 540px) { .transport .tc-end, .transport .tp-jump { display: none; } }
 @container stage (max-width: 400px) { .transport .zoom-select, .transport .tp-step { display: none; } }
-@container stage (max-width: 260px) { .transport { gap: 6px; padding: 0 8px; } .transport .tp-hand { display: none; } }
+@container stage (max-width: 260px) { .transport { gap: 6px; padding: 0 8px; } .transport .tp-hand, .transport .tp-region { display: none; } }
 @container stage (max-width: 190px) { .transport .timecode { display: none; } }
 @container stage (max-height: 260px) { .stage-canvas { padding: 6px; } }
 .icon-btn.play { color: var(--fg); }

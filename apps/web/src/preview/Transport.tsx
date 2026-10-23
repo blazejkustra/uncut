@@ -2,7 +2,7 @@
 // hand (G6) and the full-window preview (G7b). Split out of Preview.tsx.
 // Issue #62 (D233): the bar is always 40px tall and never clips. As the preview gets narrow the
 // less important parts go first (styles.css, @container stage): the canvas label, the end time,
-// the jumps to start and end, the zoom and the frame steps, then the hand and the time itself.
+// the jumps to start and end, the zoom and the frame steps, then the hand, the area and the time itself.
 import { Hand, Maximize, SquareDashedMousePointer, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 
 import { canvasLabel, frameTimecode } from "../state/format.ts";
@@ -71,7 +71,7 @@ export function Transport({ project, view, full, onFull, region, onRegion }: { p
       </select>
       {/* Issue #118: point the agent at part of the picture. */}
       <Tooltip label="Area: drag over the picture to point the agent at it (at this frame, or In to Out)">
-        <button className={`icon-btn ${region ? "on" : ""}`} data-testid="preview-region" aria-pressed={region} disabled={frames <= 1} onClick={onRegion}>
+        <button className={`icon-btn tp-region ${region ? "on" : ""}`} data-testid="preview-region" aria-pressed={region} disabled={frames <= 1} onClick={onRegion}>
           <SquareDashedMousePointer />
         </button>
       </Tooltip>
