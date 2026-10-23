@@ -95,6 +95,17 @@ export const useApp = () =>
     () => state,
   );
 
+/**
+ * Issue #118: a slice of the app state; re-renders only when the selected value changes (useApp
+ * re-renders on every change: a key typed in the chat, a job's progress). `select` must return the
+ * same value for the same state (a field, a primitive), not a new object each time.
+ */
+export const useAppSelect = <T,>(select: (s: AppStateShape) => T): T =>
+  useSyncExternalStore(
+    (listener) => (listeners.add(listener), () => listeners.delete(listener)),
+    () => select(state),
+  );
+
 export const getState = () => state;
 export const projectOf = (snapshot: ProjectSnapshot) => snapshot.project as Project;
 export const online = () => state.connection === "connected";

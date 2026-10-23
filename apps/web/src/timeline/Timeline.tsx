@@ -32,7 +32,7 @@ import { findItem } from "./edit.ts";
 import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
-import { actions, getState, projectOf, useApp } from "../state/store.ts";
+import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
 import { ItemBox } from "./ItemBox.tsx";
 import { Playhead, Skimmer } from "./Playhead.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
@@ -62,10 +62,15 @@ export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./d
 const MIN_FIT_SECONDS = 10;
 const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800];
 
-export function Timeline({ project }: { project: ProjectModel }) {
-  const { thumbIds, connection, snapshot, agent } = useApp();
-  const online = connection === "connected";
-  const flash = useAgentFlash(project, snapshot?.revision, agent);
+// Issue #118: drawn again only when its project changes (the editor around it renders on every app
+// state change), and reading only the app state it shows.
+export const Timeline = React.memo(TimelineView);
+
+function TimelineView({ project }: { project: ProjectModel }) {
+  const thumbIds = useAppSelect((s) => s.thumbIds);
+  const online = useAppSelect((s) => s.connection === "connected");
+  const snapshot = useAppSelect((s) => s.snapshot);
+  const flash = useAgentFlash(project, snapshot?.revision);
   const zoom = usePlayback((s) => s.zoom);
   const selected = usePlayback((s) => s.selected);
   const also = usePlayback((s) => s.also);
@@ -211,6 +216,11 @@ export function Timeline({ project }: { project: ProjectModel }) {
     e.preventDefault();
     openMenu(e.clientX, e.clientY, emptyMenu(project, Math.max(0, Math.round(frameAt(e.clientX))), track, online), "Timeline");
   };
+
+  // Issue #118: items are memoised (ItemBox) and don't compare their handlers, so these read the
+  // project, the gesture handlers and the connection as they are when the press comes.
+  const live = useRef({ project, online, onItemDown, onItemMenu });
+  live.current = { project, online, onItemDown, onItemMenu };
 
   const newTrackY = drag?.newTrack?.y;
 
@@ -361,7 +371,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                   {markOut !== undefined && <span className="mark out" />}
                 </div>
               )}
-              <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} />
+              <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>
             {dropSpan && <div className="tl-drop-ghost" data-testid="timeline-drop-ghost" data-frame={dropSpan.frame} style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }} />}
@@ -404,9 +414,16 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         renaming={renaming === item.id}
                         onRenamed={() => setRenaming(undefined)}
                         {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
-                        onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
-                        onContextMenu={(e) => onItemMenu(e, item)}
-                        onDoubleClick={() => online && editable && item.type !== "captions" && setRenaming(item.id)}
+                        onPointerDown={(e) => {
+                          const now = live.current;
+                          now.onItemDown(e, findItem(now.project, item.id)?.item ?? item, now.project.tracks.find((t) => t.id === track.id) ?? track);
+                        }}
+                        onContextMenu={(e) => live.current.onItemMenu(e, item)}
+                        onDoubleClick={() => {
+                          const now = live.current;
+                          const lane = now.project.tracks.find((t) => t.id === track.id);
+                          if (now.online && lane && !lane.locked && item.type !== "captions") setRenaming(item.id);
+                        }}
                       />
                     );
                   })}

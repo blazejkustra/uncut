@@ -20,8 +20,31 @@ import { RenameField } from "./RenameField.tsx";
 // A press has to move this far before it becomes a drag (a click only selects).
 export const DRAG_PX = 3;
 
+// Issue #118: how many times items were drawn, for the performance test (as the preview's __uncutPreview).
+const timelineStats = { itemRenders: 0 };
+(globalThis as { __uncutTimeline?: unknown }).__uncutTimeline = { stats: () => ({ ...timelineStats }) };
+
+type BoxProps = Parameters<typeof ItemBoxView>[0];
+/**
+ * Issue #118: an item is drawn again only when something it shows changed, not on every render of
+ * the timeline (a key typed in the chat, a job's progress, another item selected). The handlers
+ * aren't compared: the timeline's read the latest state when they run.
+ */
+const sameBox = (a: BoxProps, b: BoxProps) => {
+  for (const key of Object.keys({ ...a, ...b }) as Array<keyof BoxProps>) {
+    const x = a[key];
+    const y = b[key];
+    if (x === y || (typeof x === "function" && typeof y === "function")) continue;
+    if (key === "data" && x && y && Object.keys(x).length === Object.keys(y).length && Object.entries(x as object).every(([k, v]) => (y as Record<string, unknown>)[k] === v)) continue;
+    return false;
+  }
+  return true;
+};
+
 /** One item on a lane: its box, name, length and (when it can be edited) trim handles at both edges. */
-export function ItemBox({
+export const ItemBox = React.memo(ItemBoxView, sameBox);
+
+function ItemBoxView({
   project,
   item,
   start,
@@ -69,6 +92,7 @@ export function ItemBox({
   onDoubleClick?: () => void;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+  timelineStats.itemRenders++;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
   const kind = item.type === "clip" ? "video" : item.type;
   const label = itemLabel(project, item);
@@ -196,10 +220,12 @@ function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { pro
   useEffect(() => {
     if (selectedKey !== undefined && selectedKey >= keyCount) playback.selectGainKey(item.id, undefined);
   }, [selectedKey, keyCount, item.id]);
-  // The line: sampled every few pixels, plus each key, so the corners are exact.
+  // The line: sampled every few pixels, plus each key, so the corners are exact. Issue #118: only
+  // between the first and last key (outside them the level holds, a straight line), so a long item
+  // with no keys is two points, not one every 3 px of its (zoomed) width.
   const step = Math.max(1, Math.round(3 / ppf));
   const frames = new Set<number>([0, view.duration, ...keys.map((k) => k.frame)]);
-  for (let f = 0; f < view.duration; f += step) frames.add(f);
+  if (keys.length > 1) for (let f = Math.max(0, keys[0]!.frame); f < Math.min(view.duration, keys.at(-1)!.frame); f += step) frames.add(f);
   const pts = [...frames].sort((a, b) => a - b).map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f)) * 100).toFixed(2)}`);
   const d = `M${pts.join("L")}`;
   // The ducking (D85): the volume line with the duck curve added, where the curve dips inside the item.
@@ -207,6 +233,7 @@ function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { pro
   let duckPath: string | undefined;
   if (duckKeys.length) {
     const df = new Set(frames);
+    for (let f = 0; f < view.duration; f += step) df.add(f);
     for (const k of duckKeys) if (k.frame - start > 0 && k.frame - start < view.duration) df.add(k.frame - start);
     duckPath = `M${[...df]
       .sort((a, b) => a - b)
