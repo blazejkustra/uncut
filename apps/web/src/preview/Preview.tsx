@@ -33,6 +33,7 @@ import { type InlineEdit, InlineEditor } from "./stage/InlineEditor.tsx";
 import { dropGhostHtml } from "./stage/dropGhost.ts";
 import { ClipSelection, TextSelection } from "./stage/selection.tsx";
 import { AgentChangePill } from "./stage/AgentChangePill.tsx";
+import { MediaSkim } from "./stage/MediaSkim.tsx";
 
 interface CanvasDrag {
   readonly id: string;
@@ -416,6 +417,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             {!editing && <TextSelection layer={textRef} project={project} />}
             </div>
           </div>
+          <MediaSkim />
         </div>
       </div>
       <AgentChangePill fps={project.canvas.fps} />

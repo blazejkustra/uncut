@@ -17,7 +17,11 @@
 //
 // Tools (issue #57, D230): Select (V) works as above; Blade (C) cuts the item clicked at the
 // snapped frame under the pointer, with a line where it would cut; Hand (H) drags the view.
-import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+//
+// Skimming (issue #118, as in iMovie): with the pointer over the ruler or the lanes (no button
+// held, not the Hand), the preview shows the frame under it and a faint line marks it; the
+// playhead stays. A press, or the pointer leaving, shows the playhead's frame again.
+import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, ScanLine, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cutsOf } from "@uncut/core/transitions";
 import { captionCards, captionExtent } from "@uncut/core/captions";
@@ -30,7 +34,7 @@ import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, projectOf, useApp } from "../state/store.ts";
 import { ItemBox } from "./ItemBox.tsx";
-import { Playhead } from "./Playhead.tsx";
+import { Playhead, Skimmer } from "./Playhead.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
 import { onTransitionDrop, useDraggedTransition, useTilePointer } from "./dnd.ts";
@@ -76,6 +80,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
   }, [transitionDragged]);
   const snapping = usePlayback((s) => s.snapping);
   const linkOverlays = usePlayback((s) => s.linkOverlays);
+  const skimming = usePlayback((s) => s.skimming);
   const beatMap = useBeats((s) => s.map);
   const [drag, setDrag] = useState<DragView | undefined>();
   const [marquee, setMarquee] = useState<Marquee | undefined>();
@@ -173,6 +178,13 @@ export function Timeline({ project }: { project: ProjectModel }) {
 
   const { scrub, onEmptyDown } = makeScrubMarquee({ project, ppf, lanesRef, frameAt, setScrubSnap, setMarquee });
 
+  /** Issue #118: skim the frame under the pointer (no button held, not panning); past the project's end, stop. */
+  const skim = (e: React.PointerEvent) => {
+    if (e.buttons !== 0 || tool === "hand" || !lanesRef.current) return playback.hover(undefined);
+    const frame = frameAt(e.clientX);
+    playback.hover(frame >= 0 && frame <= end ? frame : undefined);
+  };
+
   const { cutNear, overLanes, onDragOver, onDrop } = makeLaneDrop({ fps, ppf, online, cuts, lanesRef, bodyRef, frameAt, laneHit, dropCut, dropLane, dropSpan, setDropCut, setDropLane, setDropSpan, setDropping });
   // A transition tile dragged with the pointer (F16, D154): the cut under it while it's over the
   // lanes, and on release over them, the transition goes there.
@@ -242,6 +254,11 @@ export function Timeline({ project }: { project: ProjectModel }) {
             <Magnet />
           </button>
         </Tooltip>
+        <Tooltip label={skimming ? "Skimming on: the preview shows the frame under the pointer" : "Skimming off"}>
+          <button className={`icon-btn ${skimming ? "on" : ""}`} data-testid="skim-toggle" aria-pressed={skimming} onClick={playback.toggleSkimming}>
+            <ScanLine />
+          </button>
+        </Tooltip>
         <Tooltip label={linkOverlays ? "Linked: overlays follow the footage under them when a main clip's speed or length changes" : "Unlinked: overlays stay put when main clips change"}>
           <button className={`icon-btn ${linkOverlays ? "on" : ""}`} data-testid="link-overlays" aria-pressed={linkOverlays} onClick={playback.toggleLinkOverlays}>
             <Link2 />
@@ -290,9 +307,18 @@ export function Timeline({ project }: { project: ProjectModel }) {
             data-tool={tool}
             ref={lanesRef}
             style={{ width }}
-            onPointerDownCapture={toolPress.onPointerDownCapture}
-            onPointerMove={toolPress.onPointerMove}
-            onPointerLeave={toolPress.onPointerLeave}
+            onPointerDownCapture={(e) => {
+              playback.hover(undefined);
+              toolPress.onPointerDownCapture(e);
+            }}
+            onPointerMove={(e) => {
+              skim(e);
+              toolPress.onPointerMove(e);
+            }}
+            onPointerLeave={() => {
+              playback.hover(undefined);
+              toolPress.onPointerLeave();
+            }}
             onDragOver={onDragOver}
             onDragLeave={(e) => {
               if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -336,6 +362,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                 </div>
               )}
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} />
+              <Skimmer ppf={ppf} />
             </div>
             {dropSpan && <div className="tl-drop-ghost" data-testid="timeline-drop-ghost" data-frame={dropSpan.frame} style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }} />}
             {tracks.map((track) => {

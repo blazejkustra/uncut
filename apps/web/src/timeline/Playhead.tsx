@@ -23,3 +23,10 @@ export function Playhead({ ppf, bodyRef, headWidth }: { ppf: number; bodyRef: Re
     </div>
   );
 }
+
+/** Issue #118: the skimmer, a faint line at the frame under the pointer (the one the preview shows while skimming). */
+export function Skimmer({ ppf }: { ppf: number }) {
+  const hover = usePlayback((s) => s.hover);
+  if (hover === undefined) return null;
+  return <div className="skimmer" data-testid="skimmer" data-frame={hover} style={{ left: hover * ppf }} />;
+}

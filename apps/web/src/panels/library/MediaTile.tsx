@@ -9,6 +9,7 @@ import { RenameField } from "../../timeline/RenameField.tsx";
 import { analysisText } from "../../state/analysisText.ts";
 import { actionFor, keymap, keyOf } from "../../editor/keymap.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
+import { getPlayback, playback } from "../../preview/playback.ts";
 import "./mediaChat.css";
 
 /** "59.94", "30", "23.98" */
@@ -95,6 +96,8 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
     if (v.readyState >= 1) v.currentTime = t;
     else v.onloadedmetadata = () => (v.currentTime = t);
   }, [scrub, seconds]);
+  // A tile that goes while skimmed (removed, another project) leaves the preview to the playhead.
+  useEffect(() => () => void (getPlayback().hoverMedia?.media === item.id && playback.hoverMedia(undefined)), [item.id]);
   return (
     <div
       className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}${generated ? " gen-tile" : ""}`}
@@ -138,9 +141,16 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         onPointerMove={(e) => {
           if (!canScrub) return;
           const r = e.currentTarget.getBoundingClientRect();
-          setScrub(Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width))));
+          const at = Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width)));
+          setScrub(at);
+          // Issue #118: and the main preview shows that frame too (skimming), while no button is held.
+          if (e.buttons === 0) playback.hoverMedia(item.id, Math.min(seconds! - 0.05, Math.max(0, at * seconds!)));
         }}
-        onPointerLeave={() => setScrub(undefined)}
+        onPointerLeave={() => {
+          setScrub(undefined);
+          playback.hoverMedia(undefined);
+        }}
+        onPointerDown={() => playback.hoverMedia(undefined)}
       >
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
         {canScrub && scrub !== undefined && (

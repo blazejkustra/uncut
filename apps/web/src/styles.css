@@ -171,6 +171,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
    so the editor's own lines stay one screen pixel wide. */
 .pv-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; container-type: size; }
 .pv-layer { position: absolute; inset: 0; }
+/* Issue #118: a skimmed media tile over the frame, letterboxed. */
+.frame > .pv-skim { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; z-index: 20; pointer-events: none; }
 /* A clip's box (D75): the wrapper clips and rounds the picture; core places both per frame (full frame by default). */
 .pv-box { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
 /* Issue #61 (D233): no native image drag on the canvas: a press on a picture moves the layer. */
@@ -261,6 +263,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .playhead { position: absolute; top: 0; height: calc(var(--tl-view-h, 200px) - 1px); width: 1px; background: var(--fg); z-index: 4; pointer-events: none; }
 .playhead-handle { position: absolute; top: 0; left: -7px; width: 15px; height: 44px; pointer-events: auto; cursor: ew-resize; }
 .playhead::before { content: ""; position: absolute; top: 0; left: -5px; border: 5px solid transparent; border-top: 7px solid var(--fg); }
+/* Issue #118: the skimmer, where the pointer is (the frame the preview shows while skimming). */
+.skimmer { position: absolute; top: 0; height: calc(var(--tl-view-h, 200px) - 1px); width: 1px; background: var(--warn); opacity: 0.85; z-index: 3; pointer-events: none; }
 /* Over the visible lanes (not the scrolled timeline), wrapping at narrow widths. */
 .bottom { position: relative; }
 .tl-empty { position: absolute; left: 184px; right: 0; top: 82px; bottom: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; pointer-events: none; color: var(--dim); font-size: 12px; }

@@ -41,7 +41,9 @@ export class Compositor extends CompositorBase {
     const gpuScale = gpuCompositorOn() && !this.gpuBroken ? this.screenScale(project.canvas.width) : 1;
     const background = canvasBackground(project);
     if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
-    const { frame, playing: running, rate, selected } = getPlayback();
+    const { frame: playhead, playing: running, rate, selected, hover } = getPlayback();
+    // Issue #118: while paused, the frame skimmed on the timeline is drawn instead of the playhead's.
+    const frame = !running && hover !== undefined ? hover : playhead;
     // Shuttling (J/L at another speed, G3): the videos are seeked per frame, like scrubbing, and silent.
     const playing = running && rate === 1;
     const fps = project.canvas.fps;
@@ -463,6 +465,8 @@ export class Compositor extends CompositorBase {
     // Sound after picture: the mix uses the <video> elements made above.
     this.mix.render(project, frame, playing);
     this.frameEl.dataset.frame = String(Math.floor(frame));
+    if (!running && hover !== undefined) this.frameEl.dataset.hover = "true";
+    else delete this.frameEl.dataset.hover;
     this.frameEl.dataset.playing = playing ? "true" : "false";
   }
 

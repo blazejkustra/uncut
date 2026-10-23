@@ -60,6 +60,16 @@ export interface PlaybackState {
   readonly markOut: number | undefined;
   /** More items selected along with `selected` (⌘A, G3): deleted, copied and duplicated together. */
   readonly also: ReadonlyArray<string>;
+  /**
+   * Issue #118 (skimming, as in iMovie): the frame under the pointer while it moves over the
+   * timeline, drawn in the preview instead of the playhead's while paused; undefined when the
+   * pointer leaves (the playhead's frame is drawn again). The playhead itself doesn't move.
+   */
+  readonly hover: number | undefined;
+  /** Issue #118: a media tile's video skimmed in the preview (its seconds), while the pointer is on its thumbnail. */
+  readonly hoverMedia: { readonly media: string; readonly seconds: number } | undefined;
+  /** Issue #118: skimming on or off (the timeline toolbar's switch), remembered on this Mac. */
+  readonly skimming: boolean;
 }
 
 const SNAP_KEY = "uncut.snapping";
@@ -78,7 +88,15 @@ const savedLink = () => {
     return true;
   }
 };
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), linkOverlays: savedLink(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] };
+const SKIM_KEY = "uncut.skimming";
+const savedSkimming = () => {
+  try {
+    return globalThis.localStorage?.getItem(SKIM_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), linkOverlays: savedLink(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [], hover: undefined, hoverMedia: undefined, skimming: savedSkimming() };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -144,7 +162,7 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] });
+    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [], hover: undefined, hoverMedia: undefined });
   },
 
   play(rate = 1) {
@@ -157,7 +175,7 @@ export const playback = {
     // At the end, play starts over (backwards: from the end).
     const frame = rate > 0 && state.frame >= state.frames - 1 ? 0 : rate < 0 && state.frame <= 0 ? lastPosition(state) : state.frame;
     clock = { f0: frame, t0: performance.now() };
-    set({ frame, playing: true, rate });
+    set({ frame, playing: true, rate, hover: undefined, hoverMedia: undefined });
     raf = requestAnimationFrame(tick);
   },
 
@@ -235,6 +253,27 @@ export const playback = {
     } catch {}
   },
   setBottom: (bottom: PlaybackState["bottom"]) => (bottom === state.bottom ? undefined : set({ bottom })),
+  /**
+   * Issue #118: skim to `frame` (the pointer over the timeline), or with undefined stop skimming.
+   * Ignored while playing or with skimming off; whole frames, within the project.
+   */
+  hover(frame: number | undefined) {
+    const f = frame === undefined || state.playing || !state.skimming ? undefined : clamp(Math.round(frame), 0, lastPosition(state));
+    if (f !== state.hover || state.hoverMedia) set({ hover: f, hoverMedia: undefined });
+  },
+  /** Issue #118: skim a media tile's video at `seconds`, or with undefined stop. */
+  hoverMedia(media: string | undefined, seconds = 0) {
+    const next = media === undefined || state.playing || !state.skimming ? undefined : { media, seconds };
+    if (next?.media === state.hoverMedia?.media && next?.seconds === state.hoverMedia?.seconds) return;
+    set({ hoverMedia: next, hover: undefined });
+  },
+  /** Skimming on or off (issue #118); remembered on this Mac. */
+  toggleSkimming: () => {
+    set({ skimming: !state.skimming, hover: undefined, hoverMedia: undefined });
+    try {
+      globalThis.localStorage?.setItem(SKIM_KEY, state.skimming ? "on" : "off");
+    } catch {}
+  },
   /** Show (or with undefined, stop showing) a local preview of an edit in progress. */
   setDraft: (draft: PreviewDraft | undefined) => (draft === state.draft ? undefined : set({ draft })),
 };
