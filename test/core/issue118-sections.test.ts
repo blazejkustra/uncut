@@ -120,6 +120,51 @@ test("edits around a locked section that leave it as it was go through", () => {
   assert.ok("problem" in inside && /locked/.test(inside.problem), JSON.stringify(inside));
 });
 
+test("a split or trim outside a locked section of a keyed clip that reaches into it goes through", () => {
+  // c2 (120–270) zooms in over its whole length: its keys reach into the lock.
+  const keyed = user(base, [{ op: "update_item", item: "c2", set: { keys: [{ frame: 0, scale: 1 }, { frame: 150, scale: 2, ease: "inOut" }], gainKeys: [{ frame: 0, db: -6 }, { frame: 150, db: 0 }] } }]);
+  const lockedKeyed = mark(keyed, 150, 240, "locked");
+  // Split before the lock: the half in it gets a key at the cut and the values in the lock stay the same.
+  const split = agent(lockedKeyed, [{ op: "split_item", item: "c2", at: 10, newId: "c2b" }]);
+  assert.deepEqual(split.tracks[0]!.items.map((i) => i.id), ["c1", "c2", "c2b", "c3"]);
+  // But keys changed inside it are refused.
+  refused(() => agent(lockedKeyed, [{ op: "update_item", item: "c2", set: { keys: [{ frame: 0, scale: 1 }, { frame: 150, scale: 3 }] } }]), /locked-section/);
+  refused(() => user(lockedKeyed, [{ op: "update_item", item: "c2", set: { gainKeys: [{ frame: 0, db: -6 }, { frame: 150, db: 6 }] } }]), /locked-section/);
+});
+
+test("captions over a locked section: a word fixed outside it goes through, one inside it is refused", () => {
+  // Words in seconds of m-a: the first heard on c1 (frames 15–30), the second on c2 inside the lock (in 300: frames 150–180).
+  const words = [
+    { text: "hello", start: 0.5, end: 1 },
+    { text: "world", start: 11, end: 12 },
+  ];
+  const withCaptions = user(locked, [{ op: "add_track", track: { id: "cap", kind: "text", name: "Captions", items: [] } }]);
+  const captioned = user({ ...withCaptions, sections: [] }, [{ op: "insert_item", track: "cap", item: { id: "cc", type: "captions", source: "m-a", coversMain: true, start: 0, duration: 360, words } as never }]);
+  const both = { ...captioned, sections: locked.sections! };
+  assert.deepEqual(agent(both, [{ op: "update_item", item: "cc", set: { edits: [{ word: 0, text: "Hello" }] } }]).tracks.at(-1)!.items[0]!.edits, [{ word: 0, text: "Hello" }]);
+  refused(() => agent(both, [{ op: "update_item", item: "cc", set: { edits: [{ word: 1, text: "World" }] } }]), /locked-section/);
+});
+
+test("the agent can't change a locked section from outside its items: tracks, solo, media files, canvas, master", () => {
+  const withTracks = user({ ...locked, sections: [] }, [{ op: "add_track", track: { id: "fx", kind: "audio", name: "FX", items: [] } }]);
+  const lockedTracks = { ...withTracks, sections: locked.sections! };
+  for (const ops of [
+    [{ op: "update_track", track: "main", set: { hidden: true } }],
+    [{ op: "update_track", track: "audio", set: { mixer: { mute: true } } }],
+    [{ op: "update_track", track: "audio", set: { mixer: { gainDb: -12 } } }],
+    [{ op: "update_track", track: "fx", set: { mixer: { solo: true } } }],
+    [{ op: "update_media", media: "m-a", set: { path: "/x/other.mp4" } }],
+    [{ op: "update_project", set: { master: { gainDb: -6 } } }],
+    [{ op: "update_project", set: { canvas: { width: 1080, height: 1920, fps: 30 } } }],
+  ] as Array<Array<Op>>) {
+    refused(() => agent(lockedTracks, ops), /locked-section/);
+  }
+  // A track with nothing in the section is the agent's to change; the user's own track, media and master changes are theirs.
+  agent(lockedTracks, [{ op: "update_track", track: "fx", set: { mixer: { gainDb: -3 } } }]);
+  user(lockedTracks, [{ op: "update_track", track: "audio", set: { mixer: { mute: true } } }]);
+  user(lockedTracks, [{ op: "update_project", set: { master: { gainDb: -6 } } }]);
+});
+
 test("only the user unlocks: the agent can't remove, move or resize a lock, but may clear a redo mark", () => {
   const flagged = mark(locked, 0, 100, "redo");
   const lock = flagged.sections!.find((s) => s.state === "locked")!;

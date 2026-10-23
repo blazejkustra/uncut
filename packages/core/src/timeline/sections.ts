@@ -3,12 +3,41 @@
 // OK" for the agent to redo. applyEdit refuses any edit that would change what a locked section
 // plays, by the user (a ripple trim or delete before it) or the agent alike; the planners here make
 // the update_project edits the editor sends. Browser-safe.
+import { keyDbAt } from "../audio/audio.ts";
+import { captionCards } from "../text/captions.ts";
+import { KEY_PROPS, keyAt } from "../visual/box.ts";
 import { layout } from "./timeline.ts";
 import type { Item, Op, Problem, Project, Section } from "./types.ts";
 
 // Fields that say nothing about what plays (names, ids, grouping, the item's own lock) or that the
 // content descriptor below gives in timeline frames instead (where it starts, how long, its in point).
 const NOT_CONTENT = new Set(["id", "name", "group", "linkedTo", "locked", "start", "gap", "duration", "in", "keys", "gainKeys", "fadeIn", "fadeOut", "transitionIn", "animation"]);
+// Captions: their words, corrections and card breaks are compared as the cards they make in the section.
+const NOT_CAPTION_CONTENT = new Set([...NOT_CONTENT, "words", "edits", "breaks"]);
+
+const round = (n: number) => Math.round(n * 1e4) / 1e4;
+
+/**
+ * Box keys (x, y, scale, opacity) and volume keys as the values they give on each frame of [a, b)
+ * (timeline frames), so a split or trim outside the section (which moves, adds or drops keys there)
+ * compares equal while the values in it are the same. Other keyed fields are compared as they are.
+ */
+function keyedValues(project: Project, item: Item, start: number, a: number, b: number) {
+  const fps = project.canvas.fps;
+  const keys = item.keys ?? [];
+  const props = new Set(keys.flatMap((k) => Object.keys(k)).filter((p) => p !== "frame" && p !== "ease"));
+  const box: Record<string, Array<number | null>> = {};
+  for (const p of KEY_PROPS) {
+    if (!props.has(p)) continue;
+    const values: Array<number | null> = [];
+    for (let f = a; f < b; f++) values.push(round(keyAt(keys, p, f - start, fps) ?? Number.NaN));
+    box[p] = values;
+  }
+  const other = keys.filter((k) => Object.keys(k).some((p) => p !== "frame" && p !== "ease" && !(KEY_PROPS as ReadonlyArray<string>).includes(p))).map((k) => ({ ...k, frame: k.frame + start }));
+  const gain: Array<number> = [];
+  if (item.gainKeys?.length) for (let f = a; f < b; f++) gain.push(round(keyDbAt(item.gainKeys, f - start)));
+  return { box, other, gain };
+}
 
 /**
  * What one item plays inside [from, to): its fields that change the picture or the sound, the part
@@ -18,7 +47,7 @@ const NOT_CONTENT = new Set(["id", "name", "group", "linkedTo", "locked", "start
  */
 function itemContent(project: Project, item: Item, track: string, start: number, from: number, to: number) {
   const rest: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(item)) if (!NOT_CONTENT.has(k)) rest[k] = v;
+  for (const [k, v] of Object.entries(item)) if (!(item.type === "captions" ? NOT_CAPTION_CONTENT : NOT_CONTENT).has(k)) rest[k] = v;
   const a = Math.max(start, from);
   const b = Math.min(start + item.duration, to);
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
@@ -29,8 +58,8 @@ function itemContent(project: Project, item: Item, track: string, start: number,
     to: b,
     ...(timed ? { src: Math.round(((item.in ?? 0) + (a - start) * (item.speed ?? 1)) * 1000) / 1000 } : {}),
     rest,
-    keys: (item.keys ?? []).map((k) => ({ ...k, frame: k.frame + start })),
-    gainKeys: (item.gainKeys ?? []).map((k) => ({ ...k, frame: k.frame + start })),
+    ...(item.type === "captions" ? { cards: cardsIn(project, item, from, to) } : {}),
+    keys: keyedValues(project, item, start, a, b),
     // A fade, a move in or out and a transition only matter where they reach into the section.
     fadeIn: item.fadeIn && start + item.fadeIn > from ? [start, start + item.fadeIn] : undefined,
     fadeOut: item.fadeOut && start + item.duration - item.fadeOut < to ? [start + item.duration - item.fadeOut, start + item.duration] : undefined,
@@ -41,21 +70,75 @@ function itemContent(project: Project, item: Item, track: string, start: number,
   };
 }
 
+/** A captions item's cards shown in [from, to) (timeline frames): their words, timing and lines. */
+function cardsIn(project: Project, item: Item, from: number, to: number) {
+  return captionCards(project, item)
+    .filter((c) => c.from < to && c.to > from)
+    .map((c) => ({ from: c.from, to: c.to, lines: c.lines, words: c.words.map((w) => [w.text, w.from, w.to]) }));
+}
+
 /** What plays in frames [from, to) on every track, as one string: equal strings, nothing there changed. */
 export function sectionContent(project: Project, from: number, to: number): string {
+  const parts = sectionItems(project, from, to).map(({ item, track, start }) => itemContent(project, item, track.id, start, from, to));
+  parts.sort((a, b) => (a.track < b.track ? -1 : a.track > b.track ? 1 : a.from - b.from));
+  return JSON.stringify(parts);
+}
+
+/** The items that play in frames [from, to), with their tracks and timeline starts. */
+function sectionItems(project: Project, from: number, to: number) {
   const { starts } = layout(project);
-  const parts: Array<ReturnType<typeof itemContent>> = [];
+  const out: Array<{ readonly item: Item; readonly track: Project["tracks"][number]; readonly start: number }> = [];
   for (const track of project.tracks) {
     for (const item of track.items) {
       const start = starts.get(item.id) ?? 0;
-      // An incoming transition plays before its cut too.
+      // An incoming transition plays before its cut too; captions draw where their cards are
+      // (over Main's clips when they cover it, whatever their own start and length say).
       const reach = item.transitionIn?.duration ?? 0;
-      if (start - reach >= to || start + item.duration <= from) continue;
-      parts.push(itemContent(project, item, track.id, start, from, to));
+      const outside = start - reach >= to || start + item.duration <= from;
+      if (outside && !(item.type === "captions" && cardsIn(project, item, from, to).length)) continue;
+      out.push({ item, track, start });
     }
   }
-  parts.sort((a, b) => (a.track < b.track ? -1 : a.track > b.track ? 1 : a.from - b.from));
-  return JSON.stringify(parts);
+  return out;
+}
+
+/**
+ * What else decides how [from, to) looks and sounds, outside its items: the tracks they're on (in
+ * their order, shown or hidden, their mixer), which tracks are soloed, the files of the media they
+ * play, and the canvas, theme, master and motion blur.
+ */
+function sectionContext(project: Project, from: number, to: number): string {
+  const items = sectionItems(project, from, to);
+  const tracks = new Set(items.map(({ track }) => track.id));
+  const media = new Set(items.map(({ item }) => item.media).filter((m): m is string => !!m));
+  return JSON.stringify({
+    tracks: project.tracks.filter((t) => tracks.has(t.id)).map((t) => ({ id: t.id, hidden: t.hidden === true, mixer: t.mixer ? { ...t.mixer, solo: undefined, linkedTo: undefined } : undefined })),
+    solo: project.tracks.filter((t) => t.mixer?.solo).map((t) => t.id),
+    media: project.media.filter((m) => media.has(m.id)).map((m) => ({ id: m.id, kind: m.kind, path: m.path })),
+    canvas: project.canvas,
+    theme: project.theme,
+    master: project.master,
+    motionBlur: (project as { motionBlur?: unknown }).motionBlur,
+  });
+}
+
+/**
+ * Issue #118, the agent's edits only: the problem when one changes how a locked section looks or
+ * sounds from outside its items (a track there hidden, muted, soloed against, turned down, given an
+ * effect or moved in the stack; a file it plays relinked; the canvas, theme or master changed), else
+ * undefined. The user's own such changes are theirs to make.
+ */
+export function lockedContextProblem(before: Project, after: Project): Problem | undefined {
+  for (const s of stillLocked(before, after)) {
+    if (sectionContext(before, s.start, s.end) === sectionContext(after, s.start, s.end)) continue;
+    const fps = before.canvas.fps;
+    return {
+      code: "locked-section",
+      path: `/sections/${s.id}`,
+      message: `frames ${s.start}–${s.end} (${secs(s.start, fps)}–${secs(s.end, fps)}) are locked, and this would change how they look or sound (a track, the master, the canvas or a media file they use); leave those as they are, or ask the user to unlock it`,
+    };
+  }
+  return undefined;
 }
 
 const secs = (frame: number, fps: number) => {

@@ -4,7 +4,7 @@ import { keyDbAt } from "../audio/audio.ts";
 import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
-import { lockedSectionProblem, unlockProblem } from "./sections.ts";
+import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
 import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
@@ -295,7 +295,10 @@ export function applyEdit(session: Session, { actor, ops, baseRevision = session
   const project = structuredClone(session.project) as Draft;
   for (const op of ops) applyOp(project, op);
   // Issue #118: what a locked section plays never changes (a ripple from before it included), whoever edits.
-  const locked = session.project.sections?.length ? (actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ?? lockedSectionProblem(session.project, project as Project) : undefined;
+  // The agent also can't unlock one, or change its tracks, media files, canvas or master.
+  const locked = session.project.sections?.length
+    ? ((actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ?? lockedSectionProblem(session.project, project as Project) ?? (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
+    : undefined;
   if (locked) throw new EditError("The edit would change a locked section", [locked]);
   if (validate) {
     const errors = validate(project);
