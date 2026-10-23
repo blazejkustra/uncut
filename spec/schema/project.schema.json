@@ -41,6 +41,22 @@
         "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "start": { "$ref": "#/$defs/frame" }, "end": { "$ref": "#/$defs/frame" } }
       }
     },
+    "sections": {
+      "type": "array",
+      "description": "Issue #118: stretches of the timeline the user marked. locked: nothing playing in [start, end) may move or change (core refuses any edit that would, the user's ripple and the agent's alike); redo: not OK yet, for the agent to redo (note says what's wrong).",
+      "items": {
+        "type": "object",
+        "required": ["id", "start", "end", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "start": { "$ref": "#/$defs/frame" },
+          "end": { "$ref": "#/$defs/frame" },
+          "state": { "enum": ["locked", "redo"] },
+          "note": { "type": "string", "maxLength": 500 }
+        }
+      }
+    },
     "markers": {
       "type": "array",
       "items": {

@@ -4,7 +4,7 @@ import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IMAGE_MAX, AGENT_IMAGES_MAX, AgentError, type AgentFolder } from "@uncut/contracts";
-import type { Project } from "@uncut/core";
+import { type Project, sectionsNote } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
@@ -100,7 +100,9 @@ export const makeSend = (ctx: SpawnCtx) => {
         .filter((m) => text.includes(`@${m.label}`))
         .slice(0, 50)
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
-      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), capNote(note)].filter(Boolean);
+      // Issue #118: the sections the user locked and flagged "not OK", with every message.
+      const sections = sectionsNote(project);
+      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "", accessLine(access), capNote(note)].filter(Boolean);
       // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
       // D198: and each one is listed in the message (names only), so the agent can't miss one.
       const named = namedFolders(text, v.dir, (p) => {

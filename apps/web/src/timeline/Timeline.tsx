@@ -35,6 +35,7 @@ import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } fro
 import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
 import { ItemBox } from "./ItemBox.tsx";
 import { Playhead, Skimmer } from "./Playhead.tsx";
+import { Sections } from "./Sections.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
 import { onTransitionDrop, useDraggedTransition, useTilePointer } from "./dnd.ts";
@@ -351,7 +352,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                 // On the playhead: the playhead's frame; elsewhere on the ruler: the frame under the pointer.
                 const onHead = (e.target as Element).closest?.(".playhead");
                 const frame = onHead ? Math.floor(getPlayback().frame) : Math.max(0, Math.round(frameAt(e.clientX)));
-                openMenu(e.clientX, e.clientY, rulerMenu(frame, { markIn, markOut, end }), "Ruler");
+                openMenu(e.clientX, e.clientY, rulerMenu(project, frame, { markIn, markOut, end }, online), "Ruler");
               }}
             >
               {ticks.map((s) => (
@@ -371,6 +372,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                   {markOut !== undefined && <span className="mark out" />}
                 </div>
               )}
+              <Sections project={project} ppf={ppf} online={online} />
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>

@@ -212,6 +212,13 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     if (s.end > duration) errors.push(err("scene-range", `/scenes/${s.id}`, `ends at ${s.end}, after the video ends (${duration})`));
     if (i > 0 && s.start < scenes[i - 1]!.end) errors.push(err("scene-overlap", `/scenes/${s.id}`, `overlaps "${scenes[i - 1]!.id}"`));
   });
+  // Issue #118: marked sections end after they start, have their own ids and don't overlap.
+  const sections = [...(project.sections ?? [])].sort((a, b) => a.start - b.start);
+  sections.forEach((s, i) => {
+    if (s.end <= s.start) errors.push(err("section-range", `/sections/${s.id}`, "a section must end after it starts"));
+    if (sections.findIndex((x) => x.id === s.id) !== i) errors.push(err("duplicate-id", `/sections/${s.id}`, `section id "${s.id}" is used twice`));
+    if (i > 0 && s.start < sections[i - 1]!.end) errors.push(err("section-overlap", `/sections/${s.id}`, `overlaps "${sections[i - 1]!.id}"`));
+  });
   for (const mk of project.markers ?? []) {
     if (mk.frame > duration) errors.push(err("marker-range", "/markers", `marker at ${mk.frame} is after the video ends (${duration})`));
   }

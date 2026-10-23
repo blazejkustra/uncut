@@ -127,7 +127,7 @@
             "set": {
               "type": "object",
               "minProperties": 1,
-              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master", "checks", "motionBlur"] },
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "sections", "master", "checks", "motionBlur"] },
               "properties": { "motionBlur": { "type": ["object", "null"], "additionalProperties": false, "properties": { "on": { "type": ["boolean", "null"] }, "samples": { "type": ["integer", "null"], "minimum": 2, "maximum": 16 }, "shutter": { "type": ["number", "null"], "minimum": 1, "maximum": 360 } } } }
             }
           }

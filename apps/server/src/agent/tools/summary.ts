@@ -1,5 +1,5 @@
 // project_read's project summary, and edit_captions' expansion.
-import { type Project, subtitleCues, layout, mixNote, type Item, captionCardList, applyEdit, createSession, type Op, planCaptionEdit } from "@uncut/core";
+import { type Project, subtitleCues, layout, mixNote, type Item, captionCardList, applyEdit, createSession, type Op, planCaptionEdit, sectionsNote } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
 /** D105: project_read's line about subtitles (cues from captions and Subtitles tracks), or undefined. */
@@ -81,6 +81,8 @@ export function projectSummary(project: Project, revision: number, range?: { sta
     ...(compact ? { itemsNote: `${count} items, listed compactly. project_read with detail "items" and items [ids] (or a range) gives every field; read an item that way before update_item.` } : {}),
     ...(only ? { itemsNote: `Only the items asked for${[...only].some((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))) ? `; not found: ${[...only].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))).join(", ")}` : ""}.` } : {}),
     ...(project.master ? { master: project.master } : {}),
+    // Issue #118: what the user locked (edits that would change it are refused) and flagged to redo.
+    ...(sectionsNote(project) ? { sections: sectionsNote(project), sectionsNote: "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it)." } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.

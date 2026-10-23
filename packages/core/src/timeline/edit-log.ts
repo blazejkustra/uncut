@@ -280,6 +280,12 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         if (parts.length === 1 && typeof m.gainDb === "number") return `Set master volume to ${dbWords(m.gainDb)}`;
         if (parts.length) return `Set the master: ${parts.join(", ")}`;
       }
+      // Issue #118: the marked sections, replaced whole; the editor's summary says what changed.
+      if (keys.length === 1 && keys[0] === "sections") {
+        if (hint) return past(hint);
+        const list = (op.set.sections ?? []) as ReadonlyArray<{ readonly start: number; readonly end: number; readonly state: string }>;
+        return list.length ? `Marked sections: ${list.map((s) => `${s.state === "locked" ? "locked" : "to redo"} ${s.start}–${s.end}`).join(", ")}` : "Cleared the marked sections";
+      }
       // Taste checks turned off (D90): checks is replaced whole.
       if (keys.length === 1 && keys[0] === "checks") {
         // The editor's summary names the one rule switched ("Turn off the check …"); otherwise the

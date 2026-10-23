@@ -1256,6 +1256,16 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .shortcut-keys { display: flex; gap: 4px; flex: none; }
 kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--raised); color: var(--fg); }
 /* In and out marks (I/O, G3) on the ruler. */
+/* Issue #118: marked sections, a band on the ruler and a wash over the lanes: locked (hatched) or not OK (red). */
+.tl-section { position: absolute; top: 0; height: 22px; box-sizing: border-box; border-left: 1px solid; border-right: 1px solid; }
+.tl-section.locked { border-color: rgb(255 255 255 / 45%); background: repeating-linear-gradient(135deg, rgb(255 255 255 / 16%) 0 4px, rgb(255 255 255 / 5%) 4px 8px); }
+.tl-section.redo { border-color: var(--error); background: rgb(248 113 113 / 28%); }
+.tl-section-tag { display: flex; align-items: center; gap: 3px; height: 100%; padding: 0 4px; overflow: hidden; white-space: nowrap; font-size: 10px; color: var(--fg); }
+.tl-section.redo .tl-section-tag { color: var(--error); }
+.tl-section-tag svg { width: 11px; height: 11px; flex: none; }
+.tl-section-wash { position: absolute; left: -1px; right: -1px; top: 44px; height: calc(var(--tl-view-h, 200px) - 45px); pointer-events: none; }
+.tl-section.locked .tl-section-wash { background: repeating-linear-gradient(135deg, rgb(255 255 255 / 7%) 0 4px, transparent 4px 10px); border-left: 1px dashed rgb(255 255 255 / 30%); border-right: 1px dashed rgb(255 255 255 / 30%); }
+.tl-section.redo .tl-section-wash { background: rgb(248 113 113 / 10%); border-left: 1px dashed rgb(248 113 113 / 60%); border-right: 1px dashed rgb(248 113 113 / 60%); }
 .tl-marks { position: absolute; top: 0; height: 22px; background: rgb(109 140 255 / 18%); pointer-events: none; }
 .tl-marks .mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--select); }
 .tl-marks .mark.in { left: 0; }
