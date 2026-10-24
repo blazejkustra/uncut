@@ -1,9 +1,10 @@
 // Issue #63 (D234) on the packaged app, run invisibly: the redesigned Generate tab. The Picture /
 // Video / Sound switch shows each type's own models and options; the coming-soon models (Grok
-// Imagine, Seedance, Higgsfield, ...) show their real options, all disabled, and can't be run; no
-// "free" wording anywhere; and a generation (Claude's SVG, here the scripted stand-in) lands in
-// Media, marked Generated. No provider is called: every keyed base URL points at a closed port.
-// Screenshots: test-output/issue63-picture.png, issue63-video-soon.png, issue63-sound.png, issue63-media.png.
+// Imagine, Seedance, Higgsfield, ...) show their real options, all disabled, and can't be run (none
+// are left since #107 and #108: Sound's Voiceover and Music are the ElevenLabs plugin's, with working
+// options); no "free" wording anywhere; and a generation (Claude's SVG, here the scripted stand-in)
+// lands in Media, marked Generated. No provider is called: every keyed base URL points at a closed port.
+// Screenshots: test-output/issue63-picture.png, issue63-voiceover.png, issue63-sound.png, issue63-media.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -90,9 +91,9 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     const ids = (t: string, soon: boolean) => seen[t]!.models.filter((m) => m.soon === soon).map((m) => m.id);
     assert.deepEqual(ids("image", false), ["generate.svg", "generate.gpt-image"]);
     assert.deepEqual(ids("video", false), ["generate.svg", "generate.veo"]);
-    assert.deepEqual(ids("audio", false), ["generate.sound"]);
-    // D277 (#103): no brand-named coming-soon models; only Sound's generic ElevenLabs ones remain.
-    assert.deepEqual([ids("image", true), ids("video", true), ids("audio", true)], [[], [], ["soon.music", "soon.voice"]]);
+    assert.deepEqual(ids("audio", false), ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"]);
+    // D277 (#103): no brand-named coming-soon models; #107, #108: Sound's ElevenLabs ones are wired now.
+    assert.deepEqual([ids("image", true), ids("video", true), ids("audio", true)], [[], [], []]);
     assert.notEqual(seen.image!.placeholder, seen.video!.placeholder);
     assert.deepEqual([seen.image!.button, seen.video!.button, seen.audio!.button].map((b) => b.replace(/\s*⌘↩$/, "")), ["Generate picture", "Generate video", "Generate sound"]);
     const brand = (id: string) => seen.video!.models.find((m) => m.id === id)!.brand;
@@ -101,19 +102,20 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     await waitFor(page, "[data-testid=generator][data-id='generate.veo']");
     assert.ok(await page.$("[data-testid=generator][data-id='generate.veo'] [data-testid=generator-mark] svg"), "Google's mark is an SVG");
 
-    // Coming soon: Voiceover's real options show, every one disabled, and Generate can't run it.
+    // #108: Voiceover (the ElevenLabs plugin) without its key: its options show and can be set, Generate waits for the key.
     await page.click("[data-testid=generate-type-audio]");
-    await waitFor(page, "[data-testid=generator][data-id='soon.voice']");
-    await page.click("[data-testid=generator][data-id='soon.voice']");
-    await waitFor(page, "[data-testid=generate-options][data-model='soon.voice'] [data-testid=generate-option]");
+    await waitFor(page, "[data-testid=generator][data-id='generate.elevenlabs.voiceover']");
+    await page.click("[data-testid=generator][data-id='generate.elevenlabs.voiceover']");
+    await waitFor(page, "[data-testid=generate-options][data-model='generate.elevenlabs.voiceover'] [data-testid=generate-option]");
     await page.type("[data-testid=generate-prompt]", "a calm narrator");
-    const grok = await page.evaluate(() => {
-      const row = document.querySelector<HTMLElement>("[data-testid=generator][data-id='soon.voice']")!;
+    const voice = await page.evaluate(() => {
+      const row = document.querySelector<HTMLElement>("[data-testid=generator][data-id='generate.elevenlabs.voiceover']")!;
       const options = document.querySelector<HTMLElement>("[data-testid=generate-options]")!;
       return {
         disabled: row.getAttribute("aria-disabled"),
         tag: row.closest("[data-testid=generators]")!.querySelector<HTMLElement>(".gen-group-label")?.innerText.trim(),
-        lab: row.querySelector<HTMLElement>("[data-testid=generator-soon]")?.innerText.trim(),
+        lab: row.querySelector<HTMLElement>("[data-testid=generator-price]")?.innerText.trim(),
+        needs: document.querySelector<HTMLElement>("[data-testid=generate-needs]")?.innerText.trim(),
         labels: [...options.querySelectorAll<HTMLElement>("[data-testid=generate-option] .k")].map((k) => k.innerText.trim()),
         text: options.innerText,
         controls: [...options.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("button, input, select")].map((c) => c.disabled),
@@ -121,17 +123,18 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
         estimate: document.querySelector<HTMLElement>("[data-testid=generate-estimate]")!.innerText.trim(),
       };
     });
-    assert.equal(grok.disabled, "true");
-    assert.equal(grok.tag, "Coming soon");
-    assert.equal(grok.lab, "ElevenLabs");
-    assert.deepEqual(grok.labels, ["Model", "Voice", "Speed"]);
-    assert.ok(grok.controls.length >= 3 && grok.controls.every(Boolean), `every option disabled (${grok.controls})`);
-    assert.equal(grok.run, true, "Generate is disabled for a coming-soon model");
-    assert.equal(grok.estimate, "Voiceover is coming soon");
+    assert.equal(voice.disabled, null);
+    assert.equal(voice.tag, undefined, "no Coming soon group");
+    assert.equal(voice.lab, "$0.08 per 1,000 characters, needs your ElevenLabs key");
+    assert.match(voice.needs ?? "", /^Needs your ElevenLabs key\./);
+    assert.deepEqual(voice.labels, ["Voice", "Model", "Speed"]);
+    assert.ok(voice.controls.length >= 3 && voice.controls.every((d) => !d), `every option can be set (${voice.controls})`);
+    assert.equal(voice.run, true, "Generate waits for the key");
+    assert.equal(voice.estimate, "Under $0.01, billed to your ElevenLabs key");
     // D263: the options (selects, not chips) fit the panel: nothing scrolls sideways.
     const wide = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generate-library], [data-testid=generate-library] *"), ...(() => { const up: Array<HTMLElement> = []; for (let el = document.querySelector<HTMLElement>("[data-testid=generate-library]")?.parentElement; el && el !== document.body; el = el.parentElement) up.push(el); return up; })()].filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1).map((el) => el.className));
     assert.deepEqual(wide, [], "no sideways scrolling in the Generate panel");
-    await page.screenshot({ path: "test-output/issue63-video-soon.png" });
+    await page.screenshot({ path: "test-output/issue63-voiceover.png" });
     // Every coming-soon model, in every type: disabled options, Generate off.
     for (const t of ["image", "video", "audio"]) {
       await page.click(`[data-testid=generate-type-${t}]`);

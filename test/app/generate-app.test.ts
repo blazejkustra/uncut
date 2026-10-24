@@ -99,7 +99,7 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     await fits(page, "Veo");
     await page.screenshot({ path: "test-output/generate-video.png" });
     await page.click("[data-testid=generate-type-audio]");
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator][data-soon=false]")].map((e) => e.dataset.id).join() === "generate.sound");
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator][data-soon=false]")].map((e) => e.dataset.id).join() === "generate.sound,generate.elevenlabs.voiceover,generate.elevenlabs.music");
     await page.click("[data-testid=generate-type-image]");
 
     // GPT Image without its key: the line with a key field right there, Generate disabled, and the

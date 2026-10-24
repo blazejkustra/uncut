@@ -1,0 +1,82 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "uncut.elevenlabs",
+  "kind": "generator",
+  "name": "ElevenLabs",
+  "icon": "icon.svg",
+  "version": "0.1.0",
+  "description": "Voiceovers and music from ElevenLabs in the Generate tab and for the agent, with your own ElevenLabs key (Settings › Keys), billed to your ElevenLabs credits. Uncut sends the key to ElevenLabs itself; this plugin never sees it.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 900 },
+  "capabilities": ["network", "api-key"],
+  "generators": [
+    {
+      "id": "elevenlabs.voiceover",
+      "name": "Voiceover",
+      "media": "audio",
+      "provider": "elevenlabs",
+      "billing": "Billed to your ElevenLabs credits, about $0.08 per 1,000 characters",
+      "promptLabel": "Script",
+      "placeholder": "Welcome back. Today we're building a tiny app in five minutes.",
+      "maxPrompt": 4000,
+      "options": [
+        {
+          "id": "voice",
+          "label": "Voice",
+          "type": "choice",
+          "dynamic": true,
+          "default": "JBFqnCBsd6RMkjVDRZzb",
+          "choices": [{ "value": "JBFqnCBsd6RMkjVDRZzb", "label": "George" }],
+          "description": "A voice of the user's ElevenLabs account, by name (George, Sarah, Brian…) or id."
+        },
+        {
+          "id": "model",
+          "label": "Model",
+          "type": "choice",
+          "default": "eleven_multilingual_v2",
+          "choices": [
+            { "value": "eleven_multilingual_v2", "label": "Multilingual v2" },
+            { "value": "eleven_v3", "label": "Eleven v3" },
+            { "value": "eleven_v4", "label": "Eleven v4" },
+            { "value": "eleven_flash_v2_5", "label": "Flash v2.5 (half price)" }
+          ],
+          "description": "Multilingual v2 is steady and natural; v3 and v4 are the most expressive; Flash v2.5 is fast and half the price."
+        },
+        {
+          "id": "speed",
+          "label": "Speed",
+          "type": "choice",
+          "default": "1",
+          "choices": [
+            { "value": "0.8", "label": "0.8×" },
+            { "value": "0.9", "label": "0.9×" },
+            { "value": "1", "label": "1×" },
+            { "value": "1.1", "label": "1.1×" },
+            { "value": "1.2", "label": "1.2×" }
+          ],
+          "description": "How fast it speaks, 1 is normal."
+        }
+      ],
+      "price": {
+        "unit": "character",
+        "usd": 0.00008,
+        "by": { "option": "model", "usd": { "eleven_multilingual_v2": 0.00008, "eleven_v3": 0.00008, "eleven_v4": 0.00008, "eleven_flash_v2_5": 0.00004 } }
+      }
+    },
+    {
+      "id": "elevenlabs.music",
+      "name": "Music",
+      "media": "audio",
+      "provider": "elevenlabs",
+      "model": "music_v1",
+      "billing": "Billed to your ElevenLabs credits, about $0.15 a minute",
+      "placeholder": "Upbeat lo-fi beat with warm keys and soft drums, for a product demo",
+      "maxPrompt": 2000,
+      "seconds": [30, 60, 120, 180],
+      "options": [{ "id": "instrumental", "label": "Instrumental only", "type": "toggle", "default": false, "description": "No vocals." }],
+      "price": { "unit": "second", "usd": 0.0025 }
+    }
+  ]
+}

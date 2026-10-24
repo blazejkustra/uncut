@@ -96,10 +96,10 @@ const MAX_JSON_BYTES = 64 * 1024 * 1024;
 /** The most a downloaded video or sound may be. */
 const MAX_FILE_BYTES = 1024 * 1024 * 1024;
 
-const redact = (text: string, key: string) => (key ? text.split(key).join("[key]") : text);
+export const redact = (text: string, key: string) => (key ? text.split(key).join("[key]") : text);
 
 /** An error sentence from a failed reply: the provider's own message when it gives one. */
-async function replyError(provider: string, res: Response, key: string): Promise<Error> {
+export async function replyError(provider: string, res: Response, key: string): Promise<Error> {
   let detail = "";
   try {
     const text = (await res.text()).slice(0, 4000);
@@ -174,7 +174,7 @@ async function jsonOf(provider: string, res: Response): Promise<unknown> {
 }
 
 /** Streams a reply body to `path` (at most MAX_FILE_BYTES); removes the part on failure. */
-async function download(provider: string, res: Response, path: string, signal: AbortSignal) {
+export async function download(provider: string, res: Response, path: string, signal: AbortSignal) {
   if (!res.body) throw new Error(`${provider} sent an empty file.`);
   let bytes = 0;
   const limit = new Transform({
@@ -194,6 +194,16 @@ async function download(provider: string, res: Response, path: string, signal: A
     throw new Error(`${provider} sent an empty file.`);
   }
 }
+
+/**
+ * The providers whose key a plugin's generator may use (#107): each one's API, the only origin
+ * Uncut sends that key to for a plugin (uncut/fetch), and how the key goes in a request.
+ */
+export const PROVIDER_API: Partial<Record<KeyProvider, { readonly name: string; readonly env: string; readonly fallback: string; readonly auth: (key: string) => Record<string, string> }>> = {
+  openai: { name: "OpenAI", env: "UNCUT_OPENAI_BASE", fallback: "https://api.openai.com", auth: (key) => ({ authorization: `Bearer ${key}` }) },
+  google: { name: "Google", env: "UNCUT_GOOGLE_BASE", fallback: "https://generativelanguage.googleapis.com", auth: (key) => ({ "x-goog-api-key": key }) },
+  elevenlabs: { name: "ElevenLabs", env: "UNCUT_ELEVENLABS_BASE", fallback: "https://api.elevenlabs.io", auth: (key) => ({ "xi-api-key": key }) },
+};
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {

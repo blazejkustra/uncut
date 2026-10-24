@@ -77,6 +77,7 @@ export const RPC_METHODS = {
   generateStart: "generate.start",
   generateJobs: "generate.jobs",
   generateCancel: "generate.cancel",
+  generateChoices: "generate.choices",
   keysList: "keys.list",
   keysSet: "keys.set",
   keysRemove: "keys.remove",

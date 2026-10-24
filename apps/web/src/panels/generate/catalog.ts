@@ -1,5 +1,6 @@
 // Issue #63 (D234): the Generate tab's models per type. The ones that work come from the server
-// (generate.list: the SVG/HTML generator, GPT Image, Veo, Sound effects); this file only dresses them
+// (generate.list: the SVG/HTML generator, GPT Image, Veo, Sound effects, and the generator plugins'
+// models, #107 and #108: the ElevenLabs plugin's Voiceover and Music); this file only dresses them
 // (brand, display name) and adds the models that aren't wired up yet, shown as Coming soon with
 // their real options visible but disabled so the design has room for them. A coming-soon model
 // never reaches startGenerate (its id starts with "soon.", and the tab can't run it).
@@ -50,30 +51,12 @@ const WIRED: Record<string, { name: Partial<Record<GenType, string>>; lab: strin
 const SOON: Record<GenType, ReadonlyArray<Omit<Model, "soon">>> = {
   image: [],
   video: [],
-  audio: [
-    {
-      id: "soon.music",
-      name: "Music",
-      lab: "ElevenLabs",
-      brand: "elevenlabs",
-      options: [
-        { kind: "chips", label: "Length", values: ["30 s", "1 min", "2 min", "3 min"] },
-        { kind: "toggle", label: "Instrumental only" },
-      ],
-    },
-    {
-      id: "soon.voice",
-      name: "Voiceover",
-      lab: "ElevenLabs",
-      brand: "elevenlabs",
-      options: [
-        { kind: "chips", label: "Model", values: ["Eleven v3", "Multilingual v2", "Flash v2.5"] },
-        { kind: "chips", label: "Voice", values: ["Choose a voice"] },
-        { kind: "chips", label: "Speed", values: ["0.8×", "1×", "1.2×"] },
-      ],
-    },
-  ],
+  // #107, #108: Music and Voiceover are the ElevenLabs plugin's now (it ships with Uncut).
+  audio: [],
 };
+
+/** A plugin generator's lab and mark, by whose key it uses. */
+const PROVIDER_LOOK: Record<string, { lab: string; brand: Brand }> = { openai: { lab: "OpenAI", brand: "openai" }, google: { lab: "Google", brand: "google" }, elevenlabs: { lab: "ElevenLabs", brand: "elevenlabs" } };
 
 /** The models for a type: the ones that work (the key-free one first, then the keyed ones), then Coming soon. */
 export function modelsFor(generators: ReadonlyArray<GeneratorInfo>, type: GenType): Array<Model> {
@@ -83,7 +66,8 @@ export function modelsFor(generators: ReadonlyArray<GeneratorInfo>, type: GenTyp
     .map((g): Model => {
       // D268 (#97): no separate title card row; titles are text items the agent makes.
       const look = WIRED[g.id];
-      return { id: g.id, generator: g.id, name: look?.name[type] ?? g.name, lab: look?.lab ?? g.provider ?? "Plugin", ...(look?.credit ? { credit: look.credit } : {}), brand: look?.brand ?? "other", info: g, soon: false };
+      const byKey = g.provider ? PROVIDER_LOOK[g.provider] : undefined;
+      return { id: g.id, generator: g.id, name: look?.name[type] ?? g.name, lab: look?.lab ?? byKey?.lab ?? g.plugin?.name ?? "Plugin", ...(look?.credit ? { credit: look.credit } : {}), brand: look?.brand ?? byKey?.brand ?? "other", info: g, soon: false };
     });
   return [...wired, ...SOON[type].map((m) => ({ ...m, soon: true }))];
 }

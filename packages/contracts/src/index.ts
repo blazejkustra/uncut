@@ -4,7 +4,7 @@ export { THUMB_PATH, RECENT_THUMB_PATH, MediaRecentEntry, MEDIA_FILE_PATH, PROXY
 export type { Waveform, FilmstripLayout } from "./media.ts";
 export { PluginInfo, PluginContributions, CatalogEntry, PluginError } from "./plugins.ts";
 export { CaptureDevice, CaptureState, TakeKind, takeUploadName, TAKE_UPLOAD_NAME, MultiLayout, MultiPart, CaptureOrientation, CaptureOptions, CaptureError } from "./capture.ts";
-export { GenerateKind, KeyProvider, KeyInfo, GeneratorInfo, GenerateRequest, GenerateJob, GenerateError } from "./generate.ts";
+export { GenerateKind, KeyProvider, KeyInfo, GeneratorChoice, GeneratorOption, GeneratorPrice, GenerateOptions, GeneratorInfo, GenerateRequest, GenerateJob, GenerateError } from "./generate.ts";
 export { BrandColor, BrandFont, BrandStyle, BrandScope, BrandKit, BrandSkill, BrandActive, BrandState, BrandError, BrandImported } from "./brand.ts";
 export { Brief, StoryboardBeat, Storyboard, REVIEW_SCORES, ReviewScores, Review, IntendedFinding, AgentPlan, AgentQuestion, AgentAnswer, AgentCard, AGENT_BRIDGE_PATH, AGENT_TOKEN_HEADER, AgentItem, AGENT_PROVIDERS, AgentProvider, AGENT_MODELS, AGENT_EFFORTS, AgentEffort, AGENT_ACCESS, AgentAccess, AGENT_IMAGE_TYPES, AGENT_IMAGE_MAX, AGENT_IMAGES_MAX, AgentImage, AgentEdit, AgentTurnStatus, AgentMentionKind, AgentMention, AgentUndo, AgentFolder, AgentTurn, AGENT_UI_PANELS, AgentUiPanel, AgentUi, AgentApproval, AgentContext, AgentState, AgentError } from "./agent.ts";
 export { ExportQuality, ExportLoudness, ExportRange, ExportCodec, ExportEncoder, ExportVideo, ExportJob, ExportSubtitles, ExportError } from "./export.ts";

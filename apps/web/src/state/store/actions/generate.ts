@@ -1,4 +1,4 @@
-import { type KeyProvider } from "@uncut/contracts";
+import { type GeneratorChoice, type KeyProvider } from "@uncut/contracts";
 import { bridge } from "../../bridge.ts";
 import { set } from "../core.ts";
 import { call, plainError } from "../server.ts";
@@ -15,13 +15,18 @@ export const generateActions = {
   },
   async startGenerate(draft: GenerateDraft) {
     set({ generateError: undefined });
-    const result = await call((c) => c["generate.start"]({ generator: draft.generator, prompt: draft.prompt, ...(draft.kind ? { kind: draft.kind } : {}), ...(draft.size ? { size: draft.size } : {}), ...(draft.seconds !== undefined ? { seconds: draft.seconds } : {}) }));
+    const result = await call((c) => c["generate.start"]({ generator: draft.generator, prompt: draft.prompt, ...(draft.kind ? { kind: draft.kind } : {}), ...(draft.size ? { size: draft.size } : {}), ...(draft.seconds !== undefined ? { seconds: draft.seconds } : {}), ...(draft.options && Object.keys(draft.options).length ? { options: draft.options } : {}) }));
     if (!result.ok) {
       set({ generateError: plainError(result.error) });
       void actions.listGenerators();
     }
   },
   cancelGenerate: (jobId: string) => call((c) => c["generate.cancel"]({ jobId })),
+  /** A plugin generator's choices for an option, from the plugin (#108: the account's voices); an error in words. */
+  async generatorChoices(generator: string, option: string): Promise<{ readonly choices: ReadonlyArray<GeneratorChoice> } | { readonly error: string }> {
+    const result = await call((c) => c["generate.choices"]({ generator, option }));
+    return result.ok ? { choices: result.value } : { error: plainError(result.error) };
+  },
   /** "Edit prompt" on a generated result: the Generate tab with its generator, prompt and settings. */
   editPrompt(draft: GenerateDraft) {
     set({ generateDraft: { ...draft, seq: ++draftSeq }, generateError: undefined });

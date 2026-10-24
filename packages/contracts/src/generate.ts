@@ -24,6 +24,45 @@ export const KeyInfo = Schema.Struct({
 });
 export type KeyInfo = typeof KeyInfo.Type;
 
+/** One choice of a generator option: the value sent, and how it's shown. */
+export const GeneratorChoice = Schema.Struct({
+  value: Schema.String,
+  label: Schema.String,
+});
+export type GeneratorChoice = typeof GeneratorChoice.Type;
+
+/**
+ * An option a plugin's generator takes (#107, #108), from its manifest: a choice (a select) or a
+ * toggle (a switch). A choice with `dynamic` gets its values from the plugin (generate.choices, e.g.
+ * the voices of the user's ElevenLabs account); its `choices` are then only a fallback.
+ */
+export const GeneratorOption = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  type: Schema.Literals(["choice", "toggle"]),
+  choices: Schema.optional(Schema.Array(GeneratorChoice)),
+  dynamic: Schema.optional(Schema.Boolean),
+  default: Schema.optional(Schema.Union([Schema.String, Schema.Boolean])),
+  // A line for the agent and the tooltip: "Speech speed, 1 is normal".
+  description: Schema.optional(Schema.String),
+});
+export type GeneratorOption = typeof GeneratorOption.Type;
+
+/**
+ * How a plugin's generator is priced, in US dollars per unit: per character of the prompt or per
+ * second (its `seconds`); `by` gives another price per value of one option (the model).
+ */
+export const GeneratorPrice = Schema.Struct({
+  unit: Schema.Literals(["character", "second"]),
+  usd: Schema.Number,
+  by: Schema.optional(Schema.Struct({ option: Schema.String, usd: Schema.Record(Schema.String, Schema.Number) })),
+});
+export type GeneratorPrice = typeof GeneratorPrice.Type;
+
+/** A generator's option values, by option id. */
+export const GenerateOptions = Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Boolean]));
+export type GenerateOptions = typeof GenerateOptions.Type;
+
 /** A generator the Generate tab and generate_media offer, and whether it can run now. */
 export const GeneratorInfo = Schema.Struct({
   id: Schema.String,
@@ -40,6 +79,15 @@ export const GeneratorInfo = Schema.Struct({
   seconds: Schema.optional(Schema.Array(Schema.Number)),
   // How it's paid for, in a few words.
   billing: Schema.String,
+  // A plugin's generator (#107, #108): the plugin's id and name, its options, price and prompt box.
+  plugin: Schema.optional(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  options: Schema.optional(Schema.Array(GeneratorOption)),
+  price: Schema.optional(GeneratorPrice),
+  // What the prompt box is ("Script") and its example text.
+  promptLabel: Schema.optional(Schema.String),
+  placeholder: Schema.optional(Schema.String),
+  // The longest prompt it takes, in characters (default 4000).
+  maxPrompt: Schema.optional(Schema.Number),
 });
 export type GeneratorInfo = typeof GeneratorInfo.Type;
 
@@ -50,6 +98,7 @@ export const GenerateRequest = Schema.Struct({
   size: Schema.optional(Schema.String),
   seconds: Schema.optional(Schema.Number),
   name: Schema.optional(Schema.String),
+  options: Schema.optional(GenerateOptions),
 });
 export type GenerateRequest = typeof GenerateRequest.Type;
 
@@ -62,6 +111,7 @@ export const GenerateJob = Schema.Struct({
   prompt: Schema.String,
   size: Schema.optional(Schema.String),
   seconds: Schema.optional(Schema.Number),
+  options: Schema.optional(GenerateOptions),
   phase: Schema.Literals(["running", "importing", "done", "failed", "cancelled"]),
   // What it's doing, in words ("Waiting for Veo…").
   status: Schema.optional(Schema.String),

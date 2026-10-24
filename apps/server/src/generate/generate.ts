@@ -2,14 +2,16 @@
 // and the agent's generate_media. A generator (providers.ts: GPT Image, Veo, Sound effects with the
 // user's keys; svg.ts: the key-free SVG/HTML one) writes its file into the project's
 // media/generated/ folder; Uncut imports it like a capture (D98: the import job, quiet, a relative
-// path) with source {module, prompt, model, kind, size?, seconds?}. From the Generate tab that's one
+// path) with source {module, prompt, model, kind, size?, seconds?, options?}. A generator plugin's
+// generators (#107, #108: pluginGenerators.ts) run the same way, the plugin making the request
+// through Uncut with the key. From the Generate tab that's one
 // user edit (one ⌘Z); from the agent it's an edit of its turn (Undo turn removes it). Undo leaves
 // the file in media/generated, like captures and music copies.
 import { mkdir, readdir, realpath, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { GenerateError, type GenerateJob, type GenerateKind, type GenerateRequest, type GeneratorInfo, type KeyProvider } from "@uncut/contracts";
+import { GenerateError, type GenerateJob, type GenerateKind, type GenerateOptions, type GenerateRequest, type GeneratorChoice, type GeneratorInfo, type KeyProvider } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,9 +19,11 @@ import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { MediaLibrary, type AgentImport, type MediaEntry } from "../media/media.ts";
+import { Plugins } from "../plugins/plugins.ts";
 import { Projects } from "../project/projects.ts";
 import { Keys, providerName } from "./keys.ts";
 import { allowBaseOverrides, isTestRun, KEYED, type KeyedGenerator } from "./providers.ts";
+import { checkOptions, checkSeconds, choicesOf, estimateOf, openGrant, pluginGeneratorsOf, servePluginRequest, type PluginGenerator } from "./pluginGenerators.ts";
 import { ServerConfig } from "../app/config.ts";
 import { askClaude, renderMarkup, SVG_GENERATOR, SVG_MAX_SECONDS, SVG_SECONDS, SVG_SIZES, svgPixels } from "./svg.ts";
 
@@ -30,6 +34,10 @@ export const CONFIRM_OVER = 1;
 export const TURN_CAP = 10;
 const MAX_PROMPT = 4000;
 const MAX_JOBS_KEPT = 10;
+/** A plugin's generation may take this long (music: a few minutes of audio). */
+const PLUGIN_TIMEOUT_MS = 15 * 60 * 1000;
+/** A plugin's choices (the voices) come back within this. */
+const CHOICES_TIMEOUT_MS = 20_000;
 
 export interface GenerateSpec {
   readonly generator: string;
@@ -38,6 +46,8 @@ export interface GenerateSpec {
   readonly size?: string | undefined;
   readonly seconds?: number | undefined;
   readonly name?: string | undefined;
+  /** A plugin's generator: its option values, checked and with their defaults. */
+  readonly options?: GenerateOptions | undefined;
   /** generate.svg: the markup the agent wrote (else Claude is asked for it). */
   readonly content?: string | undefined;
 }
@@ -54,6 +64,8 @@ export interface GeneratorShape {
   readonly start: (request: GenerateRequest) => Effect.Effect<{ jobId: string }, GenerateError>;
   readonly jobs: Stream.Stream<ReadonlyArray<GenerateJob>>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
+  /** A plugin generator's choices for one of its options (#108: the voices of the user's account). */
+  readonly choices: (generator: string, option: string) => Effect.Effect<ReadonlyArray<GeneratorChoice>, GenerateError>;
   /** A request checked and completed (kind defaulted), or why not; `estimate` in US dollars. */
   readonly plan: (raw: Record<string, unknown>) => Effect.Effect<{ readonly spec: GenerateSpec; readonly estimate: number; readonly provider?: KeyProvider | undefined } | GenerateError>;
   /** Makes it and imports it into the opening `openId` (the agent's edit with `turnId`). */
@@ -124,6 +136,16 @@ export const layer = Layer.effect(
     const reserved = new Set<string>();
     const projects = yield* Projects;
     const media = yield* MediaLibrary;
+    const plugins = yield* Plugins;
+    // A generator plugin's requests (uncut/fetch) are answered here, with the key its call was granted.
+    plugins.host.serveRequests(servePluginRequest);
+    const reportedSkips = new Set<string>();
+    /** The allowed generator plugins' generators, now. */
+    const pluginGens = Effect.map(plugins.generatorPlugins, (found) => {
+      const { generators, skipped } = pluginGeneratorsOf(found, new Set(GENERATOR_IDS));
+      for (const line of skipped) if (!reportedSkips.has(line)) (reportedSkips.add(line), console.error(`[uncut] ${line}`));
+      return generators;
+    });
     const scope = yield* Effect.scope;
     const jobsRef = yield* SubscriptionRef.make<ReadonlyArray<GenerateJob>>([]);
     const controllers = new Map<string, AbortController>();
@@ -143,9 +165,28 @@ export const layer = Layer.effect(
       ...(g.seconds ? { seconds: [...g.seconds] } : {}),
       billing: g.billing,
     });
+    const pluginInfo = (g: PluginGenerator, has: boolean): GeneratorInfo => ({
+      id: g.id,
+      name: g.name,
+      kinds: [g.media],
+      provider: g.provider,
+      ...(g.model ? { model: g.model } : {}),
+      ready: has,
+      ...(has ? {} : { needs: needsKeyLine(g.provider) }),
+      sizes: [],
+      ...(g.seconds ? { seconds: [...g.seconds] } : {}),
+      billing: g.billing,
+      plugin: g.plugin,
+      options: [...g.options],
+      price: g.price,
+      ...(g.promptLabel ? { promptLabel: g.promptLabel } : {}),
+      ...(g.placeholder ? { placeholder: g.placeholder } : {}),
+      maxPrompt: g.maxPrompt,
+    });
     const list = Effect.gen(function* () {
       const out: Array<GeneratorInfo> = [{ id: SVG_GENERATOR, name: "SVG and HTML", kinds: ["image", "video"], ready: true, sizes: [...SVG_SIZES], seconds: [...SVG_SECONDS], billing: "Uses your Claude Code, no key needed" }];
       for (const g of KEYED) out.push(info(g, yield* keys.has(g.provider)));
+      for (const g of yield* pluginGens) out.push(pluginInfo(g, yield* keys.has(g.provider)));
       return out;
     });
 
@@ -153,18 +194,23 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const bad = (message: string) => new GenerateError({ reason: "bad-request", message });
         const id = raw.generator;
-        if (typeof id !== "string" || !GENERATOR_IDS.includes(id)) return new GenerateError({ reason: "unknown-generator", message: `generator must be one of ${GENERATOR_IDS.join(", ")}.` });
+        const fromPlugins = yield* pluginGens;
+        const plugged = typeof id === "string" ? fromPlugins.find((g) => g.id === id) : undefined;
+        const ids = [...GENERATOR_IDS, ...fromPlugins.map((g) => g.id)];
+        if (typeof id !== "string" || !ids.includes(id)) return new GenerateError({ reason: "unknown-generator", message: `generator must be one of ${ids.join(", ")}.` });
         const prompt = typeof raw.prompt === "string" ? raw.prompt.trim() : "";
         if (!prompt) return bad("Write a prompt first: what should it make?");
-        if (prompt.length > MAX_PROMPT) return bad(`The prompt is over ${MAX_PROMPT} characters.`);
+        const maxPrompt = plugged?.maxPrompt ?? MAX_PROMPT;
+        if (prompt.length > maxPrompt) return bad(`The ${plugged?.promptLabel?.toLowerCase() ?? "prompt"} is over ${maxPrompt} characters.`);
         if (raw.size !== undefined && typeof raw.size !== "string") return bad("size must be a string, e.g. 1536x1024 or 16:9.");
         if (raw.seconds !== undefined && (typeof raw.seconds !== "number" || !Number.isFinite(raw.seconds) || raw.seconds <= 0)) return bad("seconds must be a positive number.");
         if (raw.name !== undefined && typeof raw.name !== "string") return bad("name must be a string.");
         if (raw.content !== undefined && typeof raw.content !== "string") return bad("content must be the SVG or HTML as a string.");
+        if (raw.options !== undefined && !plugged) return bad(`options are only for a plugin's generators; ${id} takes size and seconds.`);
         const keyed = keyedOf(id);
-        const kinds: ReadonlyArray<GenerateKind> = keyed ? keyed.kinds : ["image", "video"];
+        const kinds: ReadonlyArray<GenerateKind> = plugged ? [plugged.media] : keyed ? keyed.kinds : ["image", "video"];
         const words: Record<string, string> = { image: "pictures", video: "video", audio: "sound" };
-        if (raw.kind !== undefined && !kinds.includes(raw.kind as GenerateKind)) return bad(`${keyed?.name ?? "The SVG generator"} makes ${kinds.map((k) => words[k]).join(" or ")}, not ${words[String(raw.kind)] ?? String(raw.kind)} (kind ${kinds.join(" or ")}).`);
+        if (raw.kind !== undefined && !kinds.includes(raw.kind as GenerateKind)) return bad(`${plugged?.name ?? keyed?.name ?? "The SVG generator"} makes ${kinds.map((k) => words[k]).join(" or ")}, not ${words[String(raw.kind)] ?? String(raw.kind)} (kind ${kinds.join(" or ")}).`);
         const kind = (raw.kind as GenerateKind | undefined) ?? kinds[0]!;
         const spec: GenerateSpec = {
           generator: id,
@@ -175,6 +221,16 @@ export const layer = Layer.effect(
           ...(typeof raw.name === "string" && raw.name.trim() ? { name: raw.name.trim() } : {}),
           ...(typeof raw.content === "string" && raw.content.trim() ? { content: raw.content } : {}),
         };
+        if (plugged) {
+          if (spec.content) return bad(`content is only for ${SVG_GENERATOR}.`);
+          if (spec.size !== undefined) return bad(`${plugged.name} takes no size.`);
+          const problem = checkSeconds(plugged, spec.seconds);
+          if (problem) return bad(problem);
+          const options = checkOptions(plugged, raw.options);
+          if (typeof options === "string") return bad(options);
+          const full = { ...spec, ...(spec.seconds === undefined && plugged.seconds ? { seconds: plugged.seconds[0]! } : {}), options };
+          return { spec: full, estimate: estimateOf(plugged, full), provider: plugged.provider };
+        }
         if (keyed) {
           if (spec.content) return bad(`content is only for ${SVG_GENERATOR}.`);
           const problem = keyed.check(spec);
@@ -191,10 +247,13 @@ export const layer = Layer.effect(
         const status = target.status ?? (() => {});
         const failed = (message: string) => new GenerateError({ reason: "failed", message });
         const keyed = keyedOf(spec.generator);
+        const plugged = keyed || spec.generator === SVG_GENERATOR ? undefined : (yield* pluginGens).find((g) => g.id === spec.generator);
+        if (!keyed && !plugged && spec.generator !== SVG_GENERATOR) return yield* new GenerateError({ reason: "unknown-generator", message: `${spec.generator} isn't available any more (its plugin was turned off or removed).` });
+        const provider = keyed?.provider ?? plugged?.provider;
         let key: string | undefined;
-        if (keyed) {
-          key = yield* keys.get(keyed.provider);
-          if (!key) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(keyed.provider)}. Add it in Settings › Keys.` });
+        if (provider) {
+          key = yield* keys.get(provider);
+          if (!key) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(provider)}. Add it in Settings › Keys.` });
         }
         // The folder, inside the project by realpath (a symlinked media/ pointing out is refused).
         const folder = yield* Effect.tryPromise({
@@ -216,10 +275,42 @@ export const layer = Layer.effect(
         for (let n = 2; taken.has(basename(outBase)) || reserved.has(outBase); n++) outBase = join(folder, `${stem} ${n}`);
         if (dirname(outBase) !== folder) return yield* failed("That name can't be used for a file.");
         reserved.add(outBase);
-        return yield* produceInto(spec, target, key, keyed, outBase).pipe(Effect.ensuring(Effect.sync(() => reserved.delete(outBase))));
+        return yield* produceInto(spec, target, key, keyed, plugged, outBase).pipe(Effect.ensuring(Effect.sync(() => reserved.delete(outBase))));
       });
 
-    const produceInto = (spec: GenerateSpec, target: Parameters<GeneratorShape["produce"]>[1], key: string | undefined, keyed: KeyedGenerator | undefined, outBase: string) =>
+    /**
+     * A plugin's generation: its tool called with a grant for this generation's key and file
+     * (pluginGenerators.ts); the result is the file Uncut saved for it, nothing else. A failure or
+     * a cancel removes that file.
+     */
+    const runPlugin = async (g: PluginGenerator, spec: GenerateSpec, key: string, outBase: string, target: Parameters<GeneratorShape["produce"]>[1], status: (text: string) => void) => {
+      const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider, key, signal: target.signal, outBase, sent: target.sent });
+      try {
+        status(`Asking ${g.plugin.name}…`);
+        const args = { generator: g.local, prompt: spec.prompt, ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), options: spec.options ?? {} };
+        const r = await Effect.runPromise(
+          plugins.callPlugin(g.plugin.id, g.tool, args, {
+            signal: target.signal,
+            timeoutMs: PLUGIN_TIMEOUT_MS,
+            meta: { "uncut/grant": grant.token },
+            onProgress: (_p, _t, message) => message && status(message),
+          }),
+        );
+        const saved = grant.saved();
+        if (r.isError || !saved) {
+          if (saved) await rm(saved, { force: true });
+          const said = r.content.flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : [])).join(" ").trim();
+          throw new Error(r.isError ? said || `${g.plugin.name} stopped before it finished.` : `${g.plugin.name} finished without making a file.`);
+        }
+        const out = (r.structured ?? {}) as { model?: unknown };
+        const model = typeof out.model === "string" && /^[\w.:-]{1,80}$/.test(out.model) ? out.model : (g.model ?? g.local);
+        return { path: saved, model, cost: estimateOf(g, spec) };
+      } finally {
+        grant.end();
+      }
+    };
+
+    const produceInto = (spec: GenerateSpec, target: Parameters<GeneratorShape["produce"]>[1], key: string | undefined, keyed: KeyedGenerator | undefined, plugged: PluginGenerator | undefined, outBase: string) =>
       Effect.gen(function* () {
         const status = target.status ?? (() => {});
         const failed = (message: string) => new GenerateError({ reason: "failed", message });
@@ -227,6 +318,7 @@ export const layer = Layer.effect(
         const made = yield* Effect.tryPromise({
           try: async () => {
             if (keyed) return keyed.generate(spec, { key: key!, outBase, signal: target.signal, status, sent: target.sent });
+            if (plugged) return runPlugin(plugged, spec, key!, outBase, target, status);
             const open = Effect.runSync(projects.view);
             const canvas = open && open.openId === target.openId ? open.session.project.canvas : { width: 1920, height: 1080 };
             const size = svgPixels(spec.size, canvas)!;
@@ -246,7 +338,7 @@ export const layer = Layer.effect(
           return yield* failed("Cancelled.");
         }
         status("Adding it to Media…");
-        const source = { module: spec.generator, prompt: spec.prompt, model: made.model, kind: spec.kind, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}) };
+        const source = { module: spec.generator, prompt: spec.prompt, model: made.model, kind: spec.kind, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}) };
         const open = Effect.runSync(projects.view);
         const names = new Set(open && open.openId === target.openId ? open.session.project.media.map((m) => m.name) : []);
         const result = yield* media.importCapture({ openId: target.openId, dir: target.dir, path: made.path, name: displayNameOf(spec, names), source, turnId: target.turnId }).pipe(Effect.mapError((e) => failed(`It was made but couldn't be added: ${e.message}`)));
@@ -267,7 +359,7 @@ export const layer = Layer.effect(
         if (planned.provider && !(yield* keys.has(planned.provider))) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(planned.provider)}. Add it in Settings › Keys.` });
         const id = randomUUID();
         const { spec } = planned;
-        const job: GenerateJob = { id, projectDir: open.dir, generator: spec.generator, kind: spec.kind, prompt: spec.prompt, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), phase: "running", status: "Starting…", startedAt: new Date().toISOString(), estimate: planned.estimate };
+        const job: GenerateJob = { id, projectDir: open.dir, generator: spec.generator, kind: spec.kind, prompt: spec.prompt, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}), phase: "running", status: "Starting…", startedAt: new Date().toISOString(), estimate: planned.estimate };
         yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase === "running" || j.phase === "importing"), ...jobs.filter((j) => j.phase !== "running" && j.phase !== "importing").slice(-MAX_JOBS_KEPT), job]);
         const controller = new AbortController();
         controllers.set(id, controller);
@@ -284,9 +376,30 @@ export const layer = Layer.effect(
         return { jobId: id };
       });
 
+    const choices: GeneratorShape["choices"] = (id, option) =>
+      Effect.gen(function* () {
+        const g = (yield* pluginGens).find((x) => x.id === id);
+        if (!g) return yield* new GenerateError({ reason: "unknown-generator", message: `There's no plugin generator ${id}.` });
+        const o = g.options.find((x) => x.id === option);
+        if (!o || o.type !== "choice") return yield* new GenerateError({ reason: "bad-request", message: `${g.name} has no choice ${option}.` });
+        if (!o.dynamic) return o.choices ?? [];
+        const key = yield* keys.get(g.provider);
+        if (!key) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(g.provider)}. Add it in Settings › Keys.` });
+        // A read-only grant: GET requests only, nothing saved, nothing billed.
+        const signal = AbortSignal.timeout(CHOICES_TIMEOUT_MS);
+        const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider, key, signal });
+        const r = yield* plugins.callPlugin(g.plugin.id, "choices", { generator: g.local, option }, { signal, timeoutMs: CHOICES_TIMEOUT_MS, meta: { "uncut/grant": grant.token } }).pipe(Effect.ensuring(Effect.sync(grant.end)));
+        const said = r.content.flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : [])).join(" ").trim();
+        if (r.isError) return yield* new GenerateError({ reason: "failed", message: said || `${g.plugin.name} couldn't list the ${o.label.toLowerCase()} choices.` });
+        const list = choicesOf(r.structured);
+        if (!list) return yield* new GenerateError({ reason: "failed", message: `${g.plugin.name} answered without a list of choices.` });
+        return list;
+      });
+
     return Generator.of({
       list,
       start,
+      choices,
       jobs: SubscriptionRef.changes(jobsRef),
       cancel: (jobId) => Effect.sync(() => controllers.get(jobId)?.abort()),
       plan,

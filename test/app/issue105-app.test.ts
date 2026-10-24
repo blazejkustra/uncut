@@ -76,7 +76,7 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
     // The Speech model row (when whisper.cpp is found) keeps its waveform.
     if (await page.$("[data-testid=whisper-model]")) assert.ok(await page.$("[data-testid=whisper-model] .wiz-row > svg.lucide-audio-lines"), "the Speech model keeps its waveform icon");
 
-    for (const id of ["argent.capture", "uncut.skills", "whisper.transcribe"]) {
+    for (const id of ["argent.capture", "uncut.elevenlabs", "uncut.skills", "whisper.transcribe"]) {
       await waitFor(page, `[data-testid='plugin-${id}'] [data-testid='plugin-mark-${id}']`);
       const m = await markOf(page, `[data-testid='plugin-mark-${id}']`);
       assert.match(m.mask, /url\("?data:image\/svg\+xml;base64,/, `${id}'s icon is its own svg`);

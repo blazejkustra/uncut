@@ -28,11 +28,11 @@ const plugin = (dir: string, id: string, files: Record<string, string> = {}) => 
   for (const [f, body] of Object.entries(files)) writeFileSync(join(dir, f), body);
 };
 
-test("the repo's bundled.json: today's behaviour (Argent, Uncut's skills, Whisper), every id has a folder", () => {
-  assert.deepEqual([...readBundledList(REPO_PLUGINS)!].sort(), ["argent.capture", "uncut.skills", "whisper.transcribe"]);
+test("the repo's bundled.json: today's behaviour (Argent, ElevenLabs, Uncut's skills, Whisper), every id has a folder", () => {
+  assert.deepEqual([...readBundledList(REPO_PLUGINS)!].sort(), ["argent.capture", "uncut.elevenlabs", "uncut.skills", "whisper.transcribe"]);
   const layout = pluginLayout(REPO_PLUGINS)!;
   assert.deepEqual(layout.problems, []);
-  assert.deepEqual(layout.bundled.map((d) => basename(d)).sort(), ["argent-capture", "uncut-skills", "whisper-transcribe"]);
+  assert.deepEqual(layout.bundled.map((d) => basename(d)).sort(), ["argent-capture", "uncut-elevenlabs", "uncut-skills", "whisper-transcribe"]);
   const catalog = layout.catalog.map((d) => basename(d));
   assert.ok(catalog.includes("uncut-example-kit") && catalog.includes("taste-extra"), "the catalog has the example and taste-extra");
   assert.ok(!catalog.some((n) => n.startsWith("_")), "templates are never plugins");

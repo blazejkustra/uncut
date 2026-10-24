@@ -52,8 +52,9 @@ export function modulesIndex(listed: ReadonlyArray<Record<string, unknown>>) {
   for (const m of listed) {
     if (m.plugin === true || m.skipped) {
       // A plugin as the index shows it: what it is and whether it may run; its contributions (skills
-      // are in the system prompt, looks and components under their kind) come with kind or ids.
-      const { contributes: _c, capabilities: _cap, version: _v, description, ...rest } = m;
+      // are in the system prompt, looks and components under their kind; a generator plugin's
+      // generators, #107) come with kind or ids.
+      const { contributes: _c, capabilities: _cap, version: _v, generators: _g, description, ...rest } = m;
       plugins.push({ ...rest, ...(typeof description === "string" && description ? { description: purpose(description) } : {}) });
       continue;
     }

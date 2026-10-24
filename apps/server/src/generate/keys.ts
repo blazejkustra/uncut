@@ -25,7 +25,8 @@ import { ServerConfig } from "../app/config.ts";
 export const PROVIDERS: ReadonlyArray<{ readonly id: KeyProvider; readonly name: string; readonly usedBy: ReadonlyArray<string>; readonly note?: string }> = [
   { id: "openai", name: "OpenAI", usedBy: ["GPT Image"] },
   { id: "google", name: "Google", usedBy: ["Veo"] },
-  { id: "elevenlabs", name: "ElevenLabs", usedBy: ["Sound effects"] },
+  // #107, #108: Voiceover and Music are the ElevenLabs plugin's (it ships with Uncut).
+  { id: "elevenlabs", name: "ElevenLabs", usedBy: ["Sound effects", "Voiceover", "Music"] },
   // D134: the sound library's second source, with the user's own API key (a shipped key would break
   // Freesound's non-commercial API terms).
   { id: "freesound", name: "Freesound", usedBy: ["Music and sound effects search"], note: "Freesound's API is free for non-commercial use only" },

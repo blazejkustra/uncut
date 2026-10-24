@@ -1,4 +1,4 @@
 {
   "$comment": "D258: the plugins that ship inside Uncut, installed and allowed from the start, by id. Every other plugin under plugins/ and plugins/catalog/ is install-only: it's in Settings, Plugins (the marketplace), off until the user installs and allows it. Moving a plugin between the two is editing this list; its folder stays where it is.",
-  "bundled": ["argent.capture", "uncut.skills", "whisper.transcribe"]
+  "bundled": ["argent.capture", "uncut.elevenlabs", "uncut.skills", "whisper.transcribe"]
 }

@@ -6,7 +6,7 @@ import { Empty } from "./rpcs.ts";
 import { Analyzer, AnalysisError, AnalysisJob, TranscriptionState, TranscriptionError } from "../analysis.ts";
 import { PluginInfo, PluginError, PluginContributions, CatalogEntry } from "../plugins.ts";
 import { CaptureState, CaptureError, CaptureOptions, CaptureOrientation, TakeKind, MultiPart, MultiLayout } from "../capture.ts";
-import { GeneratorInfo, GenerateRequest, GenerateError, GenerateJob, KeyInfo, KeyProvider } from "../generate.ts";
+import { GeneratorChoice, GeneratorInfo, GenerateRequest, GenerateError, GenerateJob, KeyInfo, KeyProvider } from "../generate.ts";
 
 // D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
 // like takeUploadName("screen", ...)) with the source's name, or what went wrong.
@@ -176,6 +176,8 @@ export const GenerateListRpc = Rpc.make(RPC_METHODS.generateList, { payload: Emp
 export const GenerateStartRpc = Rpc.make(RPC_METHODS.generateStart, { payload: GenerateRequest, success: Schema.Struct({ jobId: Schema.String }), error: GenerateError });
 export const GenerateJobsRpc = Rpc.make(RPC_METHODS.generateJobs, { payload: Empty, success: Schema.Array(GenerateJob), stream: true });
 export const GenerateCancelRpc = Rpc.make(RPC_METHODS.generateCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
+// A plugin generator's choices for one option, from the plugin (#108: the voices of the user's account).
+export const GenerateChoicesRpc = Rpc.make(RPC_METHODS.generateChoices, { payload: Schema.Struct({ generator: Schema.String, option: Schema.String }), success: Schema.Array(GeneratorChoice), error: GenerateError });
 // Settings › Keys (D99): which providers have a key; store or remove one. A key goes in, never out.
 export const KeysListRpc = Rpc.make(RPC_METHODS.keysList, { payload: Empty, success: Schema.Array(KeyInfo) });
 export const KeysSetRpc = Rpc.make(RPC_METHODS.keysSet, { payload: Schema.Struct({ provider: KeyProvider, key: Schema.String }), success: Schema.Array(KeyInfo), error: GenerateError });
