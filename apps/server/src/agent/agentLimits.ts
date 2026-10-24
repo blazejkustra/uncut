@@ -200,3 +200,49 @@ export const resultError = (msg: Record<string, any>, limits: TurnLimits, nowMs:
  */
 export const resultFailed = (msg: Record<string, any>): boolean =>
   msg.api_error_status === 429 || msg.api_error_status === 529 || (typeof msg.terminal_reason === "string" && Object.hasOwn(TERMINAL, msg.terminal_reason));
+
+// ---- Codex (issue #106) ----
+
+/** Codex's codexErrorInfo values that need the user, in words. */
+const CODEX_ERRORS: Record<string, string> = {
+  contextWindowExceeded: "Codex stopped: the conversation is longer than the model's context window. Start a new chat.",
+  sessionBudgetExceeded: "Codex stopped: this session's budget is spent.",
+  serverOverloaded: "OpenAI's servers are overloaded. Try again shortly.",
+  internalServerError: "OpenAI's servers had an error. Try again shortly.",
+  sandboxError: "Codex's sandbox refused to run a command.",
+  tooManyDenials: "Codex stopped after too many refused steps.",
+};
+
+/**
+ * Why a Codex turn failed, from its TurnError (message, codexErrorInfo) and the limits it reported
+ * on the way (account/rateLimits/updated, codexLimitNotice), or undefined for Codex's own words.
+ */
+export const codexTurnError = (error: { readonly message?: unknown; readonly codexErrorInfo?: unknown } | null | undefined, resetsAt: number | undefined, nowMs: number): string | undefined => {
+  const info = error?.codexErrorInfo;
+  const kind = typeof info === "string" ? info : info && typeof info === "object" ? Object.keys(info)[0] : undefined;
+  const said = typeof error?.message === "string" ? error.message : "";
+  if (kind === "unauthorized" || SIGNED_OUT.test(said) || /401|unauthori[sz]ed|refresh token|sign in again|log ?in/i.test(said)) {
+    return "Codex isn't signed in, or its sign-in expired. Run `codex login` in Terminal (your ChatGPT plan, or `codex login --with-api-key` for an OpenAI API key), then send the message again.";
+  }
+  if (kind === "usageLimitExceeded") {
+    const wait = waitFor(resetsAt, nowMs);
+    return `Codex usage limit reached. Send the message again once the limit resets${wait ? ` (in ${wait})` : ""}, or switch to an API key with \`codex login --with-api-key\`.`;
+  }
+  if (kind === "rateLimitExceeded") return "OpenAI's rate limit reached. Try again later.";
+  if (kind && Object.hasOwn(CODEX_ERRORS, kind)) return CODEX_ERRORS[kind];
+  return undefined;
+};
+
+/**
+ * Codex's account/rateLimits/updated snapshot: a window it reports as reached pauses the turn, so
+ * this is the notice to show (and when it resets, epoch seconds), or nothing.
+ */
+export const codexLimitNotice = (snapshot: Record<string, any> | null | undefined, nowMs: number): { readonly notice?: string; readonly resetsAt?: number } => {
+  if (!snapshot || typeof snapshot !== "object") return {};
+  const windows = [snapshot.primary, snapshot.secondary].filter((w): w is Record<string, any> => !!w && typeof w === "object");
+  const full = windows.filter((w) => typeof w.usedPercent === "number" && w.usedPercent >= 100);
+  if (!snapshot.rateLimitReachedType && !full.length) return {};
+  const resetsAt = (full.length ? full : windows).map((w) => seconds(w.resetsAt)).filter((x): x is number => x !== undefined).sort((a, b) => b - a)[0];
+  const wait = waitFor(resetsAt, nowMs);
+  return { notice: `Codex usage limit reached${wait ? `; it resets in ${wait}` : ""}. Wait, or press Stop and send it again later.`, ...(resetsAt ? { resetsAt } : {}) };
+};

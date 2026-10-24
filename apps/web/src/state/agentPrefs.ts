@@ -1,11 +1,13 @@
-// The composer's choices per project (U4, D184): model, effort and access, remembered on this Mac
+// The composer's choices per project (U4, D184): provider (issue #106), model, effort and access, remembered on this Mac
 // by project folder (localStorage uncut.agent.prefs, the newest 50), and the favourite models
 // (uncut.agent.favourites). Changing one fires "uncut:agent-prefs" so every composer follows.
-import { AGENT_ACCESS, AGENT_EFFORTS, AGENT_MODELS, type AgentAccess, type AgentEffort } from "@uncut/contracts";
+import { AGENT_ACCESS, AGENT_EFFORTS, AGENT_MODELS, AGENT_PROVIDERS, type AgentAccess, type AgentEffort, type AgentProvider } from "@uncut/contracts";
 import { useEffect, useState } from "react";
 
 export interface AgentPrefs {
-  // A model id from AGENT_MODELS; undefined = Claude Code's default.
+  // Issue #106: the agent CLI the turns run in.
+  readonly provider: AgentProvider;
+  // A model id from AGENT_MODELS of that provider; undefined = the CLI's default.
   readonly model?: string | undefined;
   // undefined = Claude Code's default effort.
   readonly effort?: AgentEffort | undefined;
@@ -13,7 +15,7 @@ export interface AgentPrefs {
 }
 
 // D214: Auto (Claude Code's own auto mode) for every project never set.
-export const DEFAULT_AGENT_PREFS: AgentPrefs = { access: "auto" };
+export const DEFAULT_AGENT_PREFS: AgentPrefs = { provider: "claude", access: "auto" };
 const PREFS_KEY = "uncut.agent.prefs";
 const FAVOURITES_KEY = "uncut.agent.favourites";
 const EVENT = "uncut:agent-prefs";
@@ -28,8 +30,11 @@ const readJson = (key: string): unknown => {
 
 const clean = (raw: unknown): AgentPrefs => {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const provider: AgentProvider = typeof p.provider === "string" && (AGENT_PROVIDERS as ReadonlyArray<string>).includes(p.provider) ? (p.provider as AgentProvider) : "claude";
   return {
-    ...(typeof p.model === "string" && AGENT_MODELS.some((m) => m.id === p.model) ? { model: p.model } : {}),
+    provider,
+    // A model of another provider (the provider was switched) is that CLI's default.
+    ...(typeof p.model === "string" && AGENT_MODELS.some((m) => m.id === p.model && m.provider === provider) ? { model: p.model } : {}),
     ...(typeof p.effort === "string" && (AGENT_EFFORTS as ReadonlyArray<string>).includes(p.effort) ? { effort: p.effort as AgentEffort } : {}),
     // D214: "edit" (Edit freely, before Auto) and anything unknown become Auto.
     access: typeof p.access === "string" && (AGENT_ACCESS as ReadonlyArray<string>).includes(p.access) ? (p.access as AgentAccess) : "auto",

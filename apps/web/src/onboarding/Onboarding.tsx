@@ -67,7 +67,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     body = (
       <>
         <h1>Connect your agents</h1>
-        <p className="wiz-lead">Uncut's agent runs your installed Claude Code, with whatever sign-in it uses. Codex support is coming later.</p>
+        <p className="wiz-lead">Uncut's agent runs your installed Claude Code or Codex, with whatever sign-in each uses. Pick one in the composer.</p>
         <div className="wiz-list">
           {row("claude")}
           {row("codex")}
@@ -76,7 +76,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
           <EnvironmentSettings />
         </div>
         <div className="wiz-foot">
-          <p>Claude Code is all the agent needs. Change any of this later in Settings.</p>
+          <p>Either agent is all Uncut needs. Change any of this later in Settings.</p>
           <div className="wiz-btns">
             {recheck}
             <button className="btn primary" data-testid="wizard-continue" onClick={() => go(1)}>

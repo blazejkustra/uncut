@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import type { AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
+import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
 import type { Access } from "../agentPermissions.ts";
 import type { TurnLimits } from "../agentLimits.ts";
 
@@ -61,6 +61,9 @@ export interface Loaded {
  * dies (the next message starts another with --resume).
  */
 export interface ClaudeSession {
+  // Issue #106: the CLI it runs: claude (stream-json), or Codex's app-server (JSON-RPC, `codex`).
+  readonly provider: AgentProvider;
+  readonly codex?: CodexLink | undefined;
   readonly owner: Loaded;
   readonly openId: number;
   readonly dir: string;
@@ -109,6 +112,19 @@ export interface ClaudeSession {
   apiKeySource?: string | undefined;
   readonly systemChars: number;
   toolsChars: number | undefined;
+}
+
+/**
+ * Issue #106: a Codex app-server's side of a session: its JSON-RPC requests waiting for an answer,
+ * the thread (Codex's conversation) and the Codex turn running, and the items it started (a file
+ * change's paths, for its approval request).
+ */
+export interface CodexLink {
+  nextId: number;
+  readonly calls: Map<number, (reply: { readonly result?: any; readonly error?: { readonly message?: string } }) => void>;
+  threadId: string | undefined;
+  turnId: string | undefined;
+  readonly items: Map<string, Record<string, any>>;
 }
 
 /** D203: an edit of the turn, tied to the step (the running Uncut tool call) that made it, so the thread shows it there. */

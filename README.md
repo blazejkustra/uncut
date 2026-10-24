@@ -25,7 +25,7 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 
 ## What it does
 
-- **An agent that plans before it cuts.** It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
+- **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
 - **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
@@ -38,7 +38,7 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 - **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles.
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
-Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including [Codex as a second agent](https://github.com/blazejkustra/uncut/issues/106) and generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).
+Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).
 
 ## Development
 
