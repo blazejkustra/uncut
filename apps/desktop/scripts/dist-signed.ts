@@ -36,8 +36,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { channelOf, feedFileFor, productNameFor } from "../src/channel.ts";
 import {
   BUILT_DMG_NAME,
+  builderConfigFor,
   dmgBuilderArgs,
   dmgSignArgs,
   isMachO,
@@ -69,7 +71,12 @@ import {
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(desktop, "../..");
 const signedDir = resolve(root, "dist/signed");
-const appPath = join(signedDir, "mac-arm64", "Uncut.app");
+// A nightly version (scripts/nightly-version.ts, on CI) makes Uncut Nightly from electron-builder.nightly.yml.
+const version = (JSON.parse(readFileSync(join(desktop, "package.json"), "utf8")) as { version: string }).version;
+const channel = channelOf(version);
+const builderConfig = builderConfigFor(channel);
+const appName = `${productNameFor(channel)}.app`;
+const appPath = join(signedDir, "mac-arm64", appName);
 
 const fail = (message: string): never => {
   console.error(`\n✗ ${message}`);
@@ -107,7 +114,9 @@ if (!developerId) console.warn(`\n⚠ ${(picked as { warning: string }).warning}
 const shareable = developerId && !signOnly;
 if (developerId && signOnly) console.warn("\n⚠ --sign-only: signed and checked, NOT notarized (nothing is sent to Apple); not copied to release/.");
 const teamId = /\(([A-Z0-9]{10})\)$/.exec(identity.name)?.[1];
-console.log(`Signing with ${identity.name} (${identity.hash}), hardened runtime, secure timestamp${shareable ? ", notarized" : ", NOT notarized"}.`);
+console.log(
+  `${appName} ${version}: signing with ${identity.name} (${identity.hash}), hardened runtime, secure timestamp${shareable ? ", notarized" : ", NOT notarized"}.`,
+);
 
 if (dmgOnly) {
   if (!existsSync(appPath)) fail(`--dmg-only: no signed app at ${relative(root, appPath)}; run pnpm dist:signed --sign-only first.`);
@@ -154,7 +163,7 @@ if (skipBuild) {
 }
 step("Building the signed app (electron-builder)");
 rmSync(join(signedDir, "mac-arm64"), { recursive: true, force: true });
-run(join(desktop, "node_modules", ".bin", "electron-builder"), signedBuilderArgs(identity.hash), "electron-builder", desktop);
+run(join(desktop, "node_modules", ".bin", "electron-builder"), signedBuilderArgs(identity.hash, builderConfig), "electron-builder", desktop);
 verifyApp(appPath);
 
 if (!shareable) {
@@ -185,7 +194,6 @@ try {
   checkAppInsideDmg(dmg);
 
   // 5. Output.
-  const version = (JSON.parse(readFileSync(join(desktop, "package.json"), "utf8")) as { version: string }).version;
   const out = join(root, "release", releaseDmgName(version, new Date()));
   mkdirSync(dirname(out), { recursive: true });
   copyFileSync(dmg, out);
@@ -202,11 +210,11 @@ try {
 
 /**
  * #102 (D276): the auto-update feed next to the DMG in release/: the zip of the stapled app, a
- * blockmap for it and for the DMG (gzip, electron-builder's own code), and latest-mac.yml. Returns
- * the files made.
+ * blockmap for it and for the DMG (gzip, electron-builder's own code), and latest-mac.yml (a
+ * nightly's: nightly-mac.yml, the file its updater asks for). Returns the files made.
  */
 async function updateFeed(version: string, dmg: string): Promise<Array<string>> {
-  step("Making the auto-update feed (zip, blockmaps, latest-mac.yml)");
+  step(`Making the auto-update feed (zip, blockmaps, ${feedFileFor(channel)})`);
   const dir = dirname(dmg);
   const zip = join(dir, updateZipName(version));
   rmSync(zip, { force: true });
@@ -216,7 +224,7 @@ async function updateFeed(version: string, dmg: string): Promise<Array<string>> 
     const info = await buildBlockMap(file, "gzip", `${file}.blockmap`);
     return { url: file.slice(dir.length + 1), sha512: info.sha512, size: info.size };
   };
-  const yml = join(dir, "latest-mac.yml");
+  const yml = join(dir, feedFileFor(channel));
   writeFileSync(yml, latestMacYaml({ version, zip: await entry(zip), dmg: await entry(dmg), releaseDate: new Date() }));
   return [dmg, `${dmg}.blockmap`, zip, `${zip}.blockmap`, yml];
 }
@@ -261,7 +269,7 @@ function makeDmg(app: string, dmg: string) {
   step("Making the DMG (electron-builder's dmg target on the signed app)");
   const out = mkdtempSync(join(tmpdir(), "uncut-dmg-"));
   try {
-    run(join(desktop, "node_modules", ".bin", "electron-builder"), dmgBuilderArgs(app, out), "electron-builder (dmg)", desktop);
+    run(join(desktop, "node_modules", ".bin", "electron-builder"), dmgBuilderArgs(app, out, builderConfig), "electron-builder (dmg)", desktop);
     rmSync(dmg, { force: true });
     copyFileSync(join(out, BUILT_DMG_NAME), dmg); // the temp folder may be on another volume
   } finally {
@@ -313,7 +321,7 @@ function checkAppInsideDmg(dmg: string) {
   const mount = mkdtempSync(join(tmpdir(), "uncut-mnt-"));
   run("hdiutil", ["attach", dmg, "-nobrowse", "-readonly", "-mountpoint", mount, "-quiet"], "hdiutil attach");
   try {
-    const app = join(mount, "Uncut.app");
+    const app = join(mount, appName);
     run("xcrun", ["stapler", "validate", app], "stapler validate (app in the DMG)");
     run("codesign", ["--verify", "--deep", "--strict", app], "codesign --verify (app in the DMG)");
   } finally {

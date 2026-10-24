@@ -1,0 +1,22 @@
+# The nightly build (.github/workflows/nightly.yml, src/channel.ts): electron-builder.yml with its own
+# name, bundle id and icon, so Uncut Nightly installs next to Uncut, keeps its own data
+# (~/Library/Application Support/Uncut Nightly), privacy grants and update cache, and is told apart
+# in the Dock. dist-signed.ts picks this file when apps/desktop/package.json's version is a nightly one.
+extends: [./electron-builder.yml, ./electron-builder.nightly-reset.yml]
+appId: com.blazejkustra.uncut.nightly
+productName: Uncut Nightly
+dmg:
+  title: Uncut Nightly
+mac:
+  icon: build/icon-nightly.icns
+  extendInfo:
+    # The same .uncut document type (the release's list is cleared by the reset file), but as an
+    # Alternate handler: double-clicking a project still opens Uncut when both are installed
+    # (Open With › Uncut Nightly for the other).
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Uncut Project
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Alternate
+        LSTypeIsPackage: true
+        LSItemContentTypes: [com.blazejkustra.uncut.project]
+        CFBundleTypeIconFile: project.icns

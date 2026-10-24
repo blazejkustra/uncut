@@ -11,9 +11,9 @@ import * as path from "node:path";
 import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
+import { bundleIdFor, channelOf } from "../channel.ts";
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
 import {
-  BUNDLE_ID,
   bundleVersion,
   canInstallNow,
   INSTALL_NOTICE_MS,
@@ -67,16 +67,18 @@ function readSignature(): Promise<BundleSignature | undefined> {
  */
 export function checkPendingInstall(dataDir: string): PendingInstall["action"] {
   let decision: PendingInstall = { action: "none" };
+  // ShipIt is named after the bundle id: Uncut Nightly's never waits on the release's, nor the other way.
+  const bundleId = bundleIdFor(channelOf(app.getVersion()));
   try {
     let state: unknown;
     try {
-      state = JSON.parse(readFileSync(path.join(homedir(), "Library", "Caches", `${BUNDLE_ID}.ShipIt`, "ShipItState.plist"), "utf8"));
+      state = JSON.parse(readFileSync(path.join(homedir(), "Library", "Caches", `${bundleId}.ShipIt`, "ShipItState.plist"), "utf8"));
     } catch {
       return "none"; // no install request (or not one we can read): nothing pending
     }
     let pgrep = "";
     try {
-      pgrep = execFileSync("/usr/bin/pgrep", ["-fl", `${BUNDLE_ID}.ShipIt`], { encoding: "utf8", timeout: 3000 });
+      pgrep = execFileSync("/usr/bin/pgrep", ["-fl", `${bundleId}.ShipIt`], { encoding: "utf8", timeout: 3000 });
     } catch {
       return "none"; // pgrep exits 1 when nothing matches
     }
@@ -86,7 +88,7 @@ export function checkPendingInstall(dataDir: string): PendingInstall["action"] {
       stepAsides = parseStepAsides(JSON.parse(readFileSync(recordPath, "utf8")));
     } catch {}
     const now = Date.now();
-    decision = pendingInstall({ state, bundlePath: bundlePath(), shipItPid: shipItPid(pgrep), stepAsides, now });
+    decision = pendingInstall({ state, bundlePath: bundlePath(), shipItPid: shipItPid(pgrep, bundleId), stepAsides, now });
     if (decision.action === "step-aside") {
       mkdirSync(path.dirname(recordPath), { recursive: true });
       writeFileSync(recordPath, JSON.stringify([...stepAsides.filter((s) => now - s.t < 24 * 60 * 60 * 1000), { t: now, pid: decision.shipItPid }]));
@@ -149,7 +151,7 @@ export async function startUpdater(options: {
   const configDir = path.join(options.dataDir, "updater");
   mkdirSync(configDir, { recursive: true });
   const configPath = path.join(configDir, "app-update.yml");
-  writeFileSync(configPath, updaterConfigYaml(policy.feed));
+  writeFileSync(configPath, updaterConfigYaml(policy.feed, channelOf(app.getVersion())));
 
   // electron-updater's own app adapter (a custom one leaves it without its HTTP client). Its
   // app-update.yml is the one written above (a release has none in Resources: electron-builder's
@@ -161,7 +163,10 @@ export async function startUpdater(options: {
   updater.setFeedURL(policy.feed);
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
-  updater.allowPrerelease = false;
+  // A nightly (src/channel.ts) follows the nightly prereleases: electron-updater takes the newest
+  // release whose tag is v*-nightly.* and reads its nightly-mac.yml. A release never sees them
+  // (GitHub's latest release is never a prerelease).
+  updater.allowPrerelease = channelOf(app.getVersion()) === "nightly";
   updater.allowDowngrade = false;
   // No per-install id with the checks (see NO_STAGING_ID); the field is electron-updater's own.
   Object.assign(updater, { stagingUserIdPromise: { value: Promise.resolve(NO_STAGING_ID) } });

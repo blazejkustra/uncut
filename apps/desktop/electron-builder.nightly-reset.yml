@@ -1,0 +1,6 @@
+# Only for electron-builder.nightly.yml's extends: electron-builder concatenates arrays when one config
+# extends another, so the release's CFBundleDocumentTypes is cleared here (null replaces) before the
+# nightly's own list. Not a config on its own.
+mac:
+  extendInfo:
+    CFBundleDocumentTypes: null

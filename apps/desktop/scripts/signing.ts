@@ -8,10 +8,15 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
+import { channelOf, type Channel } from "../src/channel.ts";
+
 /** Where the signed build goes, relative to apps/desktop (electron-builder's project dir). */
 export const SIGNED_OUTPUT = "../../dist/signed";
 export const SIGNED_ENTITLEMENTS = "build/signed.entitlements.plist";
 export const DEFAULT_NOTARY_PROFILE = "uncut-notary";
+
+/** The electron-builder config of a channel (src/channel.ts): the nightly's extends the release's. */
+export const builderConfigFor = (channel: Channel) => (channel === "nightly" ? "electron-builder.nightly.yml" : "electron-builder.yml");
 
 type Identity = { readonly hash: string; readonly name: string };
 
@@ -69,10 +74,10 @@ export function pickIdentity(identities: ReadonlyArray<Identity>, wanted?: strin
  * hardened runtime and, since no `timestamp` is set, Apple's secure timestamp. notarize=false:
  * this script notarizes, electron-builder must not try on its own when APPLE_* variables are set.
  */
-export function signedBuilderArgs(identityHash: string): Array<string> {
+export function signedBuilderArgs(identityHash: string, config: string = builderConfigFor("stable")): Array<string> {
   return [
     "--config",
-    "electron-builder.yml",
+    config,
     "--mac",
     "dir",
     "--arm64",
@@ -186,8 +191,12 @@ export function isMachO(head: Uint8Array): boolean {
 
 // ---------- output ----------
 
-/** release/Uncut-<version>-<YYYYMMDD>-arm64.dmg, the date in UTC. */
+/**
+ * release/Uncut-<version>-<YYYYMMDD>-arm64.dmg, the date in UTC; a nightly's version has its date
+ * already: release/Uncut-Nightly-<version>-arm64.dmg.
+ */
 export function releaseDmgName(version: string, date: Date): string {
+  if (channelOf(version) === "nightly") return `Uncut-Nightly-${version}-arm64.dmg`;
   const ymd = date.toISOString().slice(0, 10).replace(/-/g, "");
   return `Uncut-${version}-${ymd}-arm64.dmg`;
 }
@@ -203,10 +212,10 @@ export const BUILT_DMG_NAME = "Uncut.dmg";
  * (stapling changes the bytes, the feed makes its own from the final file); not signed here, the
  * script signs it with dmgSignArgs. Into its own folder, so `pnpm dist`'s dist/ is never touched.
  */
-export function dmgBuilderArgs(app: string, outDir: string): Array<string> {
+export function dmgBuilderArgs(app: string, outDir: string, config: string = builderConfigFor("stable")): Array<string> {
   return [
     "--config",
-    "electron-builder.yml",
+    config,
     "--mac",
     "dmg",
     "--arm64",
