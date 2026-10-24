@@ -254,6 +254,18 @@ export const agentEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   return out;
 };
 
+/**
+ * Issue #106: every `codex` Uncut starts (the agent session, the setup probe) gets agentEnv (no
+ * generator keys or other secrets) plus what Codex signs in and finds its config with. Its ChatGPT
+ * or API-key login lives in CODEX_HOME (auth.json), not in the environment.
+ */
+export const codexEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
+  const out = agentEnv(env);
+  for (const k of ["CODEX_HOME", "CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL"]) if (env[k]) out[k] = env[k]!;
+  delete out.NODE_OPTIONS;
+  return out;
+};
+
 declare const __UNCUT_SERVER_VERSION__: string | undefined;
 
 /**

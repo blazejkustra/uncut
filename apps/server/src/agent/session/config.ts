@@ -1,4 +1,4 @@
-import { AGENT_IMAGE_TYPES, AGENT_MODELS } from "@uncut/contracts";
+import { AGENT_IMAGE_TYPES, AGENT_MODELS, type AgentProvider } from "@uncut/contracts";
 import { type Access, claudeConfigDirs, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
 import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import type { PluginSkill } from "@uncut/core";
@@ -100,5 +100,9 @@ export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
 });
 
-/** The composer's model choice as claude takes it: one of AGENT_MODELS, else Claude Code's default (or UNCUT_AGENT_MODEL). */
-export const modelFor = (asked: string | undefined) => (asked && AGENT_MODELS.some((m) => m.id === asked) ? asked : process.env.UNCUT_AGENT_MODEL || undefined);
+/**
+ * The composer's model choice as the CLI takes it: one of AGENT_MODELS for that provider, else the
+ * CLI's default (claude: or UNCUT_AGENT_MODEL; Codex: its config.toml's model, issue #106).
+ */
+export const modelFor = (asked: string | undefined, provider: AgentProvider = "claude") =>
+  asked && AGENT_MODELS.some((m) => m.id === asked && m.provider === provider) ? asked : provider === "claude" ? process.env.UNCUT_AGENT_MODEL || undefined : undefined;

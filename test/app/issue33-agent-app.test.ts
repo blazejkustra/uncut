@@ -78,7 +78,7 @@ test("issue 33: built-in tools in the work log with their results, permission ca
     const options = await page.$$eval("[data-testid=agent-access-option]", (els) => els.map((el) => [(el as HTMLElement).dataset.access, (el as HTMLElement).innerText.trim().split("\n")[0], (el as HTMLElement).getAttribute("aria-selected")]));
     assert.deepEqual(options, [["look", "Look only", "false"], ["ask", "Ask first", "false"], ["auto", "Auto", "true"]]);
     const menu = await text(page, "[data-testid=agent-access-menu]");
-    assert.match(menu, /Claude Code approves routine work itself/);
+    assert.match(menu, /The agent approves routine work itself/);
     assert.doesNotMatch(menu, /[·*•]|Edit freely/);
     await page.screenshot({ path: resolve("test-output", "auto-mode-menu.png") });
     await page.click("[data-testid=agent-access-option][data-access=ask]");

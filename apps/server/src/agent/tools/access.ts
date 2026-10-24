@@ -31,9 +31,10 @@ export function bigChange(tool: string, input: Record<string, unknown>, project:
   return { text: `Apply "${summary.slice(0, 120)}" (${ops.length === 1 ? "1 change" : `${ops.length} changes`})`, lines };
 }
 
-/** D184, D194: the access line of the message's <editor-context>. */
-export function accessLine(access: "look" | "ask" | "auto"): string {
+/** D184, D194: the access line of the message's <editor-context> (issue #106: Auto in Codex's words for Codex). */
+export function accessLine(access: "look" | "ask" | "auto", provider: "claude" | "codex" = "claude"): string {
   if (access === "look") return "Access: Look only. You may read files, search and read the web, use subagents, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose) and ask for a review (review_submit), but don't run commands, write files or change the timeline, the media, the brand kit or graphics; say what you would do.";
   if (access === "ask") return `Access: Ask first. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
+  if (provider === "codex") return "Access: Auto. Commands and file writes inside the project run in Codex's sandbox without asking; anything beyond it (the network, files outside the project, Uncut's own files) asks the user first or is refused.";
   return "Access: Auto. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first.";
 }
