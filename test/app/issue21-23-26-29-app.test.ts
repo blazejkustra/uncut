@@ -229,7 +229,8 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     // The timeline's horizontal bar.
     await page.click("[data-testid=timeline]");
     for (let i = 0; i < 6; i++) await page.keyboard.press("=");
-    const tl = await box("[data-testid=timeline]");
+    // The middle of the part that shows: zoomed in, the timeline itself is far wider than the window.
+    const tl = await box(".bottom-body");
     await page.mouse.move(tl.x + tl.width / 2, tl.y + tl.height / 2);
     await page.mouse.wheel({ deltaX: 200 });
     await page.waitForSelector("[data-testid=scrollbar][data-axis=x][data-visible=true]", { timeout: 5000 });
