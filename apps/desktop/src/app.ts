@@ -61,6 +61,7 @@ import {
   UPDATE_STATUS_CHANNEL,
   type UpdateStatus,
 } from "./ipc.ts";
+import { channelOf, productNameFor } from "./channel.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
 import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
 import { setAppMenu, setUpdateMenu } from "./menu.ts";
@@ -85,6 +86,14 @@ import { mediaAccess, isMediaKind, askMediaAccess, captureSources } from "./app/
 
 // Lets tests drive the window with puppeteer (same switch as the phase 2 spike).
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
+
+// The nightly (src/channel.ts) is Uncut Nightly: its own name in the menu and its own profile
+// (~/Library/Application Support/Uncut Nightly), so it never reads or writes the release's data.
+// The packaged package.json still says productName Uncut, so the name is set here, before ready.
+if (channelOf(app.getVersion()) === "nightly") {
+  app.setName(productNameFor("nightly"));
+  app.setPath("userData", path.join(app.getPath("appData"), productNameFor("nightly")));
+}
 
 // With UNCUT_DATA_DIR (tests, side-by-side runs) Electron's own profile lives there too, so a
 // test never touches the real ~/Library/Application Support/Uncut. Must happen before ready.
@@ -256,7 +265,7 @@ function createWindow() {
       // macOS runners have a 1280×800-ish display, which clamped the editor and pushed the timeline's
       // lower tracks off the window). A release user's window stays within the screen.
       enableLargerThanScreen: Boolean(process.env.UNCUT_CDP),
-      title: "Uncut",
+      title: app.name,
       titleBarStyle: "hiddenInset",
       backgroundColor: "#0a0a0a",
       show: false,

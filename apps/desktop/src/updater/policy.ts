@@ -12,6 +12,8 @@
 //     an export, a recording or an agent turn runs waits until it's over. Installing (Restart to
 //     update) is refused while one runs; otherwise the update installs when the app quits.
 
+import type { Channel } from "../channel.ts";
+
 export const UPDATE_OWNER = "blazejkustra";
 export const UPDATE_REPO = "uncut";
 /** The first check, after launch (the window, server and project come first). */
@@ -100,11 +102,14 @@ export function disabledLabel(policy: UpdatePolicy): string | undefined {
   return "Only in signed releases";
 }
 
+/** The download cache folder of a channel (src/channel.ts): the nightly's never mixes with the release's. */
+export const updaterCacheDirFor = (channel: Channel) => (channel === "nightly" ? "uncut-nightly-updater" : UPDATER_CACHE_DIR);
+
 /** The app-update.yml electron-updater reads (it needs one for its cache folder name; the feed is the same). */
-export function updaterConfigYaml(feed: Feed): string {
+export function updaterConfigYaml(feed: Feed, channel: Channel = "stable"): string {
   const lines =
     feed.provider === "github" ? ["provider: github", `owner: ${feed.owner}`, `repo: ${feed.repo}`] : ["provider: generic", `url: ${JSON.stringify(feed.url)}`];
-  return [...lines, `updaterCacheDirName: ${UPDATER_CACHE_DIR}`, ""].join("\n");
+  return [...lines, `updaterCacheDirName: ${updaterCacheDirFor(channel)}`, ""].join("\n");
 }
 
 /**

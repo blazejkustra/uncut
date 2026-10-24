@@ -63,6 +63,8 @@ pnpm site:build     # its static export in site/out, ready for Cloudflare Pages 
 
 **Releases.** Bump the version in `apps/desktop/package.json`, then push a signed tag that matches it (`git tag -s v0.0.2 && git push origin v0.0.2`). CI builds, signs and notarizes the dmg with the auto-update feed and drafts a GitHub release. Publish the draft and installed apps pick up the update; publishing also pushes the Homebrew cask to `blazejkustra/homebrew-tap` (with the `HOMEBREW_TAP_TOKEN` secret; without it the job only leaves a notice). To render the cask by hand: `node scripts/homebrew-cask.ts --version v0.0.4 --zip Uncut-0.0.4-arm64-mac.zip`.
 
+**Nightly.** Every night with new commits on `main`, CI publishes a signed, notarized Uncut Nightly as a GitHub prerelease (`v0.0.5-nightly.<date>.<run>`): download its dmg from [Releases](https://github.com/blazejkustra/uncut/releases) to try a version before it ships, on any Mac, without a checkout. It's a separate app (own name, icon, bundle id and data folder) that installs next to Uncut and updates itself to newer nightlies; releases never see it. To build any branch the same way, run Actions › Nightly › Run workflow on it.
+
 ## Privacy
 
 Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: kustrablazej@gmail.com.

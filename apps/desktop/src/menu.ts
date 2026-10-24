@@ -164,7 +164,7 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
     },
   ];
   app.setAboutPanelOptions({
-    applicationName: "Uncut",
+    applicationName: app.name, // Uncut, or Uncut Nightly (src/channel.ts)
     applicationVersion: app.getVersion(),
     copyright: "Copyright 2026 Błażej Kustra and Uncut contributors. MIT licence.",
     credits: "github.com/blazejkustra/uncut",

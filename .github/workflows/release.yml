@@ -16,7 +16,8 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    # Not the nightlies' tags (v0.0.5-nightly.20261024.12, nightly.yml publishes those itself).
+    tags: ["v*", "!v*-nightly.*"]
   # A draft published by hand: the cask follows (never on the draft, whose files brew can't download).
   release:
     types: [published]

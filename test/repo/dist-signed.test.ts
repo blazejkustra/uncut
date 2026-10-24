@@ -226,7 +226,7 @@ test("the DMG's installer window: background pair, icon layout, volume name, no 
   for (const t of [DMG_HEADING, DMG_FOOTER, ">Uncut</text>", "data:font/woff2;base64,AAAA", `width="${DMG_WINDOW.width}" height="${DMG_WINDOW.height}"`])
     assert.ok(svg.includes(t), t);
   const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
-  assert.match(script, /dmgBuilderArgs\(app, out\)/, "makeDmg lays out the DMG with electron-builder");
+  assert.match(script, /dmgBuilderArgs\(app, out, builderConfig\)/, "makeDmg lays out the DMG with electron-builder");
   assert.doesNotMatch(script, /osascript|"Finder"|hdiutil", \["create"/, "no Finder scripting (hangs on CI) and no plain hdiutil DMG");
   assert.match(script, /makeDmg\(appPath, dmg\);\s*await notarize\(dmg, "the DMG", auth\);/, "the DMG notarized is the one laid out");
 });
