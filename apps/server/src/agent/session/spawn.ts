@@ -16,6 +16,7 @@ import { sessionEnv, initMs, sessionArgs } from "./config.ts";
 import { forgetSentBlocks } from "./send.ts";
 import { asksNoQuestions, reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
+import { CODEX_SESSION, makeCodex } from "./codex.ts";
 
 /**
  * D181: thinking summaries need `--thinking-display summarized` in print mode (claude 2.1.299 reads
@@ -223,7 +224,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
     }
     const cfg = join(dir, "mcp.json");
     const token = randomBytes(24).toString("base64url");
-    const resumed = resume ? owner.sessionId : undefined;
+    // Issue #106: a Codex thread id isn't claude's to resume.
+    const resumed = resume && !owner.sessionId?.startsWith(CODEX_SESSION) ? owner.sessionId : undefined;
     const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
     const thinking = thinkingDisplay();
     const addDirs = [...owner.dirs].sort();
@@ -244,7 +246,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     }
     const args = sessionArgs({ cfg, settings, model: choice.model, effort: choice.effort, resume: resumed, thinking, promptSnapshot: snapshotOff ? "off" : undefined, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
     const initId = `init-${randomBytes(4).toString("hex")}`;
-    const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, snapshotOff, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
+    const s: ClaudeSession = { provider: "claude", owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, snapshotOff, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
     try {
       writeFileSync(
         cfg,
@@ -352,4 +354,4 @@ export const makeSpawn = (ctx: StreamCtx) => {
   return { spawnSession, writeTurn };
 };
 
-export type SpawnCtx = StreamCtx & ReturnType<typeof makeSpawn>;
+export type SpawnCtx = StreamCtx & ReturnType<typeof makeSpawn> & ReturnType<typeof makeCodex>;

@@ -3,6 +3,7 @@
 // (D68).
 // Every probe is local, read-only, time-boxed and output-capped, and each one is isolated:
 // whatever a tool does, it costs its own row an "error", never the whole check.
+import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "./config.ts";
 import { runProbe, type ProbeResult } from "../media/probe.ts";
-import { apiKeySource, claudeEnv, withoutApiKey } from "./shellEnv.ts";
+import { apiKeySource, claudeEnv, codexEnv, withoutApiKey } from "./shellEnv.ts";
 
 // Generous: a cold CLI start (first run after an update, a busy machine, macOS scanning a new
 // binary) can take seconds; a hung one still gives up quickly enough to show an error.
@@ -63,6 +64,61 @@ const problem = (path: string, result: ProbeResult): string =>
 
 type Base = Pick<SetupCheck, "id" | "name" | "optional">;
 const errorRow = (base: Base, detail: string, path?: string): SetupCheck => ({ ...base, status: "error", ...(path ? { path } : {}), detail });
+
+/**
+ * Issue #106: Codex's sign-in, from its app-server (initialize, then account/read): signed in with
+ * ChatGPT (and the plan) or an API key, needing no OpenAI sign-in (a local or custom provider in
+ * its config.toml), or signed out. Time-boxed; the app-server is killed either way.
+ */
+export const codexAccount = (bin: string, timeoutMs = AUTH_TIMEOUT_MS * 2) =>
+  new Promise<{ kind: "chatgpt"; plan?: string } | { kind: "apiKey" | "other" | "signed-out" } | { kind: "failed"; message: string }>((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(bin, ["app-server"], { env: codexEnv(process.env), stdio: ["pipe", "pipe", "ignore"] });
+    } catch (error) {
+      return resolve({ kind: "failed", message: (error as Error).message });
+    }
+    let done = false;
+    const end = (answer: Parameters<typeof resolve>[0]) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      resolve(answer);
+    };
+    const timer = setTimeout(() => end({ kind: "failed", message: `no answer within ${timeoutMs / 1000} s` }), timeoutMs);
+    child.once("error", (error) => end({ kind: "failed", message: error.message }));
+    child.once("close", () => end({ kind: "failed", message: "it exited" }));
+    let buffer = "";
+    child.stdout!.setEncoding("utf8");
+    child.stdout!.on("data", (chunk: string) => {
+      buffer = (buffer + chunk).slice(-200_000);
+      let i: number;
+      while ((i = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, i);
+        buffer = buffer.slice(i + 1);
+        let msg: Record<string, any>;
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (msg.id === 1 && msg.error) return end({ kind: "failed", message: String(msg.error.message ?? "initialize failed").slice(0, 200) });
+        if (msg.id !== 2) continue;
+        const result = msg.result as { account?: { type?: string; planType?: unknown } | null; requiresOpenaiAuth?: boolean } | undefined;
+        if (!result) return end({ kind: "failed", message: String(msg.error?.message ?? "account/read failed").slice(0, 200) });
+        const type = result.account?.type;
+        if (type === "chatgpt") return end({ kind: "chatgpt", ...(typeof result.account?.planType === "string" ? { plan: result.account.planType } : {}) });
+        if (type === "apiKey") return end({ kind: "apiKey" });
+        if (type || result.requiresOpenaiAuth === false) return end({ kind: "other" });
+        return end({ kind: "signed-out" });
+      }
+    });
+    child.stdin!.on("error", () => {});
+    child.stdin!.write(`${JSON.stringify({ id: 1, method: "initialize", params: { clientInfo: { name: "uncut", version: "0" } } })}\n`);
+    child.stdin!.write(`${JSON.stringify({ method: "initialized" })}\n`);
+    child.stdin!.write(`${JSON.stringify({ id: 2, method: "account/read", params: {} })}\n`);
+  });
 
 /** Runs one probe so that nothing it does (a typed failure or a defect) reaches the others. */
 const isolated = (base: Base, probe: () => Promise<SetupCheck>) =>
@@ -153,15 +209,21 @@ export const layer = Layer.effect(
         return {
           ...base,
           status: "missing",
-          detail: "Not installed. Optional: a second agent, on your ChatGPT plan.",
+          detail: "Not installed. Optional: a second agent, with your ChatGPT plan or an OpenAI API key.",
           fix: { text: "Install with npm (or: brew install --cask codex):", command: "npm install -g @openai/codex" },
         };
       }
       const versionRun = await run(bin, ["--version"]);
       if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(bin, versionRun), bin);
       const version = versionToken(versionRun.stdout);
-      // No way to check Codex's sign-in was verified on this machine, so say so instead of guessing.
-      return { ...base, status: "warning", path: bin, ...(version ? { version } : {}), detail: "Found. Sign-in not checked; run codex once to make sure." };
+      const found = { ...base, path: bin, ...(version ? { version } : {}) };
+      // Issue #106: its app-server says whether it's signed in (a ChatGPT plan, an API key) or needs no sign-in (a local or custom provider).
+      const account = await codexAccount(bin);
+      if (account.kind === "failed") return { ...found, status: "warning", detail: `Found, but it couldn't report its sign-in (${account.message}). Run codex once to make sure.` };
+      if (account.kind === "signed-out") {
+        return { ...found, status: "needs-login", detail: "Installed, but not signed in.", fix: { text: "Sign in with your ChatGPT plan (or `codex login --with-api-key` for an OpenAI API key):", command: "codex login" } };
+      }
+      return { ...found, status: "ready", detail: account.kind === "chatgpt" ? `Signed in with ChatGPT${account.plan ? ` (${capitalize(account.plan)})` : ""}.` : account.kind === "apiKey" ? "Signed in with an OpenAI API key; usage is billed to that API account." : "Ready: its config.toml uses a provider that needs no OpenAI sign-in." };
     });
 
     const argent = isolated({ id: "argent", name: "Argent", optional: true }, async () => {

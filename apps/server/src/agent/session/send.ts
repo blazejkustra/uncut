@@ -16,6 +16,7 @@ import { turnLimits } from "../agentLimits.ts";
 import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
 import { capNote, joinNotes, noteFor } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
+import { findCodex } from "./codex.ts";
 import { shellAuthReady } from "../../app/shellEnv.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
@@ -59,13 +60,13 @@ export function leanPlanBlock(full: string, last: SentBlocks | undefined): { tex
 }
 
 export const makeSend = (ctx: SpawnCtx) => {
-  const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, persist, publishNow, writeTurn } = ctx;
+  const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, spawnCodex, persist, publishNow, writeTurn, writeCodexTurn } = ctx;
 
   /** The plugins' tool names now (D97): a session started with other ones is started again. */
   // D232: and the installed skills' names (the system prompt lists them), so installing one starts a new session.
   const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => `${extra.map((t) => t.name).sort().join(",")}|skills:${plugins.skillsNow().map((x) => x.name).sort().join(",")}`));
 
-  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "auto", images = [], skipStoryboard = false, ranges }) =>
+  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, provider = "claude", model: askedModel, effort, access = "auto", images = [], skipStoryboard = false, ranges }) =>
     Effect.gen(function* () {
       const owner = yield* ensureLoaded;
       if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -84,9 +85,10 @@ export const makeSend = (ctx: SpawnCtx) => {
       if (tooBig) return yield* new AgentError({ reason: "failed", message: `${tooBig.name.slice(0, 80)} is ${tooBig.bytes.length ? "over 5 MB" : "empty"}; attach a smaller image.` });
       // Wait for the login shell's PATH, or a Finder launch would miss ~/.local/bin.
       yield* Effect.promise(() => config.shellReady);
-      const bin = yield* Effect.promise(() => findClaude());
+      // Issue #106: the CLI the composer chose.
+      const bin = yield* Effect.promise(() => (provider === "codex" ? findCodex() : findClaude()));
       if (!bin) {
-        return yield* new AgentError({ reason: "not-installed", message: "Claude Code isn't installed. Install it, sign in once with `claude`, then try again." });
+        return yield* new AgentError({ reason: "not-installed", message: provider === "codex" ? "Codex isn't installed. Install it (`npm install -g @openai/codex`), sign in once with `codex login`, then try again." : "Claude Code isn't installed. Install it, sign in once with `claude`, then try again." });
       }
       const toolsKey = yield* toolsKeyNow;
       if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
@@ -102,7 +104,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
       // Issue #118: the sections the user locked and flagged "not OK", with every message.
       const sections = sectionsNote(project);
-      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "", accessLine(access), capNote(note)].filter(Boolean);
+      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "", accessLine(access, provider), capNote(note)].filter(Boolean);
       // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
       // D198: and each one is listed in the message (names only), so the agent can't miss one.
       const named = namedFolders(text, v.dir, (p) => {
@@ -164,16 +166,16 @@ export const makeSend = (ctx: SpawnCtx) => {
       });
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
-      const model = modelFor(askedModel);
+      const model = modelFor(askedModel, provider);
       let s = st.session;
-      if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.access !== access || !s.child || s.child.exitCode !== null)) {
+      if (s && (s.closed || s.provider !== provider || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.access !== access || !s.child || s.child.exitCode !== null)) {
         closeSession(s, "graceful");
         s = undefined;
       }
       if (!s) {
         // D277 review: a claude started right after launch waits (bounded) for the login shell's sign-in variables.
         yield* Effect.promise(() => shellAuthReady());
-        const started = spawnSession(owner, bin, toolsKey, true, { model, effort, access });
+        const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access });
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
         s = st.session = started;
       }
@@ -263,7 +265,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       st.running = r;
       persist(owner);
       publishNow();
-      writeTurn(s, r);
+      (s.provider === "codex" ? writeCodexTurn : writeTurn)(s, r);
       return { turnId: turn.id };
     });
 

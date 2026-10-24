@@ -146,6 +146,19 @@ Conversation:
 - Speak in names, never ids: "DJI_0005" or "the Kraków title", not m-dji-0005 or title-1.
 - One conversation per project: earlier messages are yours to build on. A message may carry <skill> (the user called a skill with /name: follow it), <context> (what the user's @labels point at, with ids), <folders>, <brand> and <plan> (the kit, the skills the project uses, the brief, storyboard and last review; sent again only when they change, otherwise one line says they're unchanged) and <editor-context> (the playhead, the selection, the access and the user's manual edits).`;
 
+/**
+ * Issue #106: the system prompt as Codex gets it (developer instructions): Codex names Uncut's tools
+ * by the MCP server and the tool, and has its own built-in tools (a shell and apply_patch), not
+ * Claude Code's.
+ */
+export const CODEX_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
+  /^- Uncut's tools are mcp__uncut__<name>:[^\n]*$/m,
+  "- Uncut's tools come from its MCP server \"uncut\" (project_read, timeline_edit, ...). All are available directly. Descriptions carry the details; modules_list lists the installed modules, and with a kind gives their params.",
+).replace(
+  /^- You also have Claude Code's own tools: [^.]*\. /m,
+  "- You also have Codex's own tools: the shell (files on this Mac, scripts) and apply_patch (file edits). ",
+);
+
 
 /**
  * The editor-context line for the playhead. At the project's end (after its last frame, where

@@ -13,6 +13,7 @@ import { turnRecord, loadAgentHistory } from "../turns/history.ts";
 import { PROVIDER, GRACEFUL_MS, KILL_AFTER_MS, interruptMs } from "./config.ts";
 import type { McpResult } from "../agent.ts";
 import type { AgentServices } from "./context.ts";
+import { codexInterrupt } from "./codex.ts";
 
 export const makeCore = (ctx: AgentServices) => {
   const { st, view, format, screenWaits, stateRef, loadLock, projects, sessions } = ctx;
@@ -106,6 +107,14 @@ export const makeCore = (ctx: AgentServices) => {
     r.abort.abort();
     const s = r.session;
     if (hard || !s.child || !s.child.stdin?.writable) return closeSession(s, "kill");
+    // Issue #106: Codex's turn/interrupt (before its turn started there's nothing to interrupt: the session goes).
+    if (s.provider === "codex" && !codexInterrupt(s)) return closeSession(s, "kill");
+    if (s.provider === "codex") {
+      r.interruptTimer = setTimeout(() => {
+        if (r.turn.status === "running") closeSession(s, "kill");
+      }, interruptMs());
+      return;
+    }
     try {
       s.child.stdin.write(`${JSON.stringify({ type: "control_request", request_id: `stop-${randomBytes(4).toString("hex")}`, request: { subtype: "interrupt" } })}\n`);
     } catch {
