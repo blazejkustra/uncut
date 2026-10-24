@@ -83,7 +83,12 @@ if (resume && process.env.FAKE_RESUME_GONE === resume) {
 }
 
 const sessionId = resume ?? "fake-session";
-const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as { command: string; args: Array<string>; env: Record<string, string>; alwaysLoad?: boolean };
+const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as {
+  command: string;
+  args: Array<string>;
+  env: Record<string, string>;
+  alwaysLoad?: boolean;
+};
 const server = spawn(cfg.command, cfg.args, { env: { ...process.env, ...cfg.env }, stdio: ["pipe", "pipe", "inherit"] });
 const waiting = new Map<number, (m: RpcReply) => void>();
 let rpcId = 0;
@@ -147,14 +152,33 @@ let msgCount = 0;
 async function assistant(block: { type: "text"; text: string } | { type: "thinking"; thinking: string }, slow = 0) {
   const id = `msg_${process.pid}_${++msgCount}`;
   if (partial) {
-    out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, parent_tool_use_id: null, session_id: sessionId });
-    out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: block.type === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "" } }, parent_tool_use_id: null, session_id: sessionId });
+    out({
+      type: "stream_event",
+      event: { type: "message_start", message: { id, role: "assistant", content: [] } },
+      parent_tool_use_id: null,
+      session_id: sessionId,
+    });
+    out({
+      type: "stream_event",
+      event: { type: "content_block_start", index: 0, content_block: block.type === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "" } },
+      parent_tool_use_id: null,
+      session_id: sessionId,
+    });
     const words = block.type === "text" ? block.text : block.thinking;
     const pieces = Math.min(4, Math.max(1, Math.ceil(words.length / 12)));
     const size = Math.ceil(words.length / pieces);
     for (let k = 0; k < words.length; k += size) {
       const piece = words.slice(k, k + size);
-      out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: block.type === "text" ? { type: "text_delta", text: piece } : { type: "thinking_delta", thinking: piece } }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: block.type === "text" ? { type: "text_delta", text: piece } : { type: "thinking_delta", thinking: piece },
+        },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       if (slow) await pause(slow);
     }
     out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null, session_id: sessionId });
@@ -178,7 +202,19 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
         message: messages,
         env: Object.keys(process.env),
         // D181: the values that matter for isolation and tool loading.
-        envValues: Object.fromEntries(["ENABLE_TOOL_SEARCH", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "CLAUDE_AGENT_SDK_CLIENT_APP", "CLAUDE_AGENT_SDK_VERSION", "CLAUDE_CODE_ENTRYPOINT", "NODE_OPTIONS"].map((k) => [k, process.env[k] ?? null])),
+        envValues: Object.fromEntries(
+          [
+            "ENABLE_TOOL_SEARCH",
+            "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CONFIG_DIR",
+            "CLAUDE_AGENT_SDK_CLIENT_APP",
+            "CLAUDE_AGENT_SDK_VERSION",
+            "CLAUDE_CODE_ENTRYPOINT",
+            "NODE_OPTIONS",
+          ].map((k) => [k, process.env[k] ?? null]),
+        ),
         argv,
         alwaysLoad: cfg.alwaysLoad ?? null,
         images,
@@ -195,7 +231,15 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
   }
   continued = sessionId;
   if (process.env.FAKE_REQUIRE_INIT && !initialized) {
-    out({ type: "result", subtype: "error_during_execution", is_error: true, result: "initialize first: no initialize control_request before the message", duration_ms: 1, num_turns: 0, session_id: sessionId });
+    out({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      result: "initialize first: no initialize control_request before the message",
+      duration_ms: 1,
+      num_turns: 0,
+      session_id: sessionId,
+    });
     return;
   }
   let rev = 0;
@@ -212,7 +256,13 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
       try {
         more = existsSync(step.await) ? JSON.parse(readFileSync(step.await, "utf8")) : undefined;
       } catch {}
-      plan.splice(k + 1, 0, ...(Array.isArray(more) ? (more as Array<Step>) : [{ fail: existsSync(step.await) ? `${step.await} isn't a list of steps` : `no steps at ${step.await} within 5 minutes` }]));
+      plan.splice(
+        k + 1,
+        0,
+        ...(Array.isArray(more)
+          ? (more as Array<Step>)
+          : [{ fail: existsSync(step.await) ? `${step.await} isn't a list of steps` : `no steps at ${step.await} within 5 minutes` }]),
+      );
       continue;
     }
     if ("sleep" in step) {
@@ -241,12 +291,19 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     }
     if ("think" in step) {
       const id = await assistant({ type: "thinking", thinking: step.think });
-      out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "thinking", thinking: step.think, signature: "fake" }] }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "assistant",
+        message: { id, role: "assistant", content: [{ type: "thinking", thinking: step.think, signature: "fake" }] },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       continue;
     }
     if ("text" in step) {
       const id = await assistant({ type: "text", text: step.text }, step.slow ?? 0);
-      const line = Buffer.from(`${JSON.stringify({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: step.text }] }, parent_tool_use_id: null, session_id: sessionId })}\n`);
+      const line = Buffer.from(
+        `${JSON.stringify({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: step.text }] }, parent_tool_use_id: null, session_id: sessionId })}\n`,
+      );
       // split: write the line in two pieces cut inside its first multi-byte character, as a pipe can.
       const at = step.split ? line.findIndex((b) => b >= 0x80) + 1 : 0;
       if (at > 0) {
@@ -257,7 +314,15 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
       continue;
     }
     if ("fail" in step) {
-      out({ type: "result", subtype: "error_during_execution", is_error: true, result: step.fail, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId });
+      out({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        result: step.fail,
+        duration_ms: Date.now() - started,
+        num_turns: steps,
+        session_id: sessionId,
+      });
       return;
     }
     if ("builtin" in step) {
@@ -266,30 +331,84 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
       const id = `msg_${process.pid}_${++msgCount}`;
       const input = step.args ?? {};
       if (partial) {
-        out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, parent_tool_use_id: null, session_id: sessionId });
-        out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: step.builtin, input: {} } }, parent_tool_use_id: null, session_id: sessionId });
-        out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } }, parent_tool_use_id: null, session_id: sessionId });
+        out({
+          type: "stream_event",
+          event: { type: "message_start", message: { id, role: "assistant", content: [] } },
+          parent_tool_use_id: null,
+          session_id: sessionId,
+        });
+        out({
+          type: "stream_event",
+          event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: step.builtin, input: {} } },
+          parent_tool_use_id: null,
+          session_id: sessionId,
+        });
+        out({
+          type: "stream_event",
+          event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } },
+          parent_tool_use_id: null,
+          session_id: sessionId,
+        });
         out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null, session_id: sessionId });
       }
-      out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.builtin, input }] }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "assistant",
+        message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.builtin, input }] },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       let decision: Record<string, any> = { behavior: "allow" };
       if (step.prompt !== false) {
         const requestId = `perm-${process.pid}-${++permissionId}`;
         const answered = new Promise<Record<string, any>>((resolve) => permissionWaits.set(requestId, resolve));
-        out({ type: "control_request", request_id: requestId, request: { subtype: "can_use_tool", tool_name: step.builtin, input, tool_use_id: useId, permission_suggestions: [] } });
+        out({
+          type: "control_request",
+          request_id: requestId,
+          request: { subtype: "can_use_tool", tool_name: step.builtin, input, tool_use_id: useId, permission_suggestions: [] },
+        });
         decision = await orStop(answered);
       }
       if (process.env.FAKE_RESULT_LOG) appendFileSync(process.env.FAKE_RESULT_LOG, `${JSON.stringify({ builtin: step.builtin, decision })}\n`);
       const allowed = decision.behavior === "allow";
-      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: !allowed, content: allowed ? (step.result ?? "ok") : String(decision.message ?? "denied") }] }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: useId, is_error: !allowed, content: allowed ? (step.result ?? "ok") : String(decision.message ?? "denied") },
+          ],
+        },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       continue;
     }
     if ("missing" in step) {
       steps++;
       const useId = `toolu_${process.pid}_${messages}_${steps}`;
       const id = `msg_${process.pid}_${++msgCount}`;
-      out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.missing, input: step.args ?? {} }] }, parent_tool_use_id: null, session_id: sessionId });
-      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: true, content: `<tool_use_error>Error: No such tool available: ${step.missing}</tool_use_error>` }] }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "assistant",
+        message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.missing, input: step.args ?? {} }] },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
+      out({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: useId,
+              is_error: true,
+              content: `<tool_use_error>Error: No such tool available: ${step.missing}</tool_use_error>`,
+            },
+          ],
+        },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       continue;
     }
     steps++;
@@ -297,32 +416,80 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     const useId = `toolu_${process.pid}_${messages}_${steps}`;
     const id = `msg_${process.pid}_${++msgCount}`;
     if (partial) {
-      out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, parent_tool_use_id: null, session_id: sessionId });
-      out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: {} } }, parent_tool_use_id: null, session_id: sessionId });
+      out({
+        type: "stream_event",
+        event: { type: "message_start", message: { id, role: "assistant", content: [] } },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
+      out({
+        type: "stream_event",
+        event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: {} } },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
       const json = JSON.stringify(args);
       if ("slowInput" in step && step.slowInput) {
         // In 4 pieces, ms apart: a test can look at the now line while the input streams.
         const size = Math.ceil(json.length / 4);
         for (let k = 0; k < json.length; k += size) {
-          out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(k, k + size) } }, parent_tool_use_id: null, session_id: sessionId });
+          out({
+            type: "stream_event",
+            event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(k, k + size) } },
+            parent_tool_use_id: null,
+            session_id: sessionId,
+          });
           await pause(step.slowInput);
         }
-      } else out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json } }, parent_tool_use_id: null, session_id: sessionId });
+      } else
+        out({
+          type: "stream_event",
+          event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json } },
+          parent_tool_use_id: null,
+          session_id: sessionId,
+        });
       out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null, session_id: sessionId });
     }
-    out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: args }] }, parent_tool_use_id: null, session_id: sessionId });
-    const r = (await orStop(rpc("tools/call", { name: step.tool, arguments: args }))).result as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    out({
+      type: "assistant",
+      message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: args }] },
+      parent_tool_use_id: null,
+      session_id: sessionId,
+    });
+    const r = (await orStop(rpc("tools/call", { name: step.tool, arguments: args }))).result as {
+      isError?: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
     if (process.env.FAKE_RESULT_LOG) appendFileSync(process.env.FAKE_RESULT_LOG, `${JSON.stringify({ tool: step.tool, result: r })}\n`);
     if (step.tool === "project_read" && !r.isError) rev = JSON.parse(r.content[0]!.text).revision;
-    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: !!r.isError, content: r.content }] }, parent_tool_use_id: null, session_id: sessionId });
+    out({
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: !!r.isError, content: r.content }] },
+      parent_tool_use_id: null,
+      session_id: sessionId,
+    });
   }
   const said = `Done: ${steps} step${steps === 1 ? "" : "s"}.`;
   const id = await assistant({ type: "text", text: said });
   const model = usage?.model ?? "fake";
-  out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: said }], ...(usage ? { model, usage: usage.usage } : {}) }, parent_tool_use_id: null, session_id: sessionId });
+  out({
+    type: "assistant",
+    message: { id, role: "assistant", content: [{ type: "text", text: said }], ...(usage ? { model, usage: usage.usage } : {}) },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+  });
   // D269: FAKE_RESULT_DELAY ms between the closing assistant message and the result (claude's gap).
   if (process.env.FAKE_RESULT_DELAY) await pause(Number(process.env.FAKE_RESULT_DELAY));
-  out({ type: "result", subtype: "success", is_error: false, result: said, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId, ...(usage?.contextWindow ? { modelUsage: { [model]: { inputTokens: 1, contextWindow: usage.contextWindow } } } : {}) });
+  out({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: said,
+    duration_ms: Date.now() - started,
+    num_turns: steps,
+    session_id: sessionId,
+    ...(usage?.contextWindow ? { modelUsage: { [model]: { inputTokens: 1, contextWindow: usage.contextWindow } } } : {}),
+  });
   if (exitAfter) await new Promise<void>((r) => process.stdout.write("", () => r())).then(() => quit(0));
 }
 
@@ -339,7 +506,15 @@ const pump = async () => {
       await playTurn(next.prompt, next.images);
     } catch (error) {
       if (!(error instanceof Interrupted)) throw error;
-      out({ type: "result", subtype: "error_during_execution", is_error: true, result: "Interrupted by the user", duration_ms: 1, num_turns: 0, session_id: sessionId });
+      out({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        result: "Interrupted by the user",
+        duration_ms: 1,
+        num_turns: 0,
+        session_id: sessionId,
+      });
     }
     abort = undefined;
   }
@@ -366,7 +541,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (msg.type === "control_request" && msg.request?.subtype === "initialize") {
     if (process.env.FAKE_IGNORE_INIT) return;
     initialized = true;
-    out({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: { commands: [], models: [], account: {}, output_style: "default" } } });
+    out({
+      type: "control_response",
+      response: { subtype: "success", request_id: msg.request_id, response: { commands: [], models: [], account: {}, output_style: "default" } },
+    });
     return;
   }
   if (msg.type === "control_request") {
@@ -384,8 +562,20 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
   if (msg.type === "user") {
     const content = msg.message?.content;
-    const prompt = typeof content === "string" ? content : Array.isArray(content) ? content.filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n") : "";
-    const images = Array.isArray(content) ? content.filter((c: any) => c.type === "image").map((c: any) => ({ media_type: c.source?.media_type, bytes: Buffer.from(String(c.source?.data ?? ""), "base64").length })) : [];
+    const prompt =
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content
+              .filter((c: any) => c.type === "text")
+              .map((c: any) => c.text)
+              .join("\n")
+          : "";
+    const images = Array.isArray(content)
+      ? content
+          .filter((c: any) => c.type === "image")
+          .map((c: any) => ({ media_type: c.source?.media_type, bytes: Buffer.from(String(c.source?.data ?? ""), "base64").length }))
+      : [];
     queue.push({ prompt, images });
     void pump();
   }

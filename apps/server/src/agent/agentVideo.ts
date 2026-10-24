@@ -63,7 +63,14 @@ function measures(result: VideoResult) {
 }
 
 /** media_analyze's answer for the video analyzer. */
-export function videoOut(result: VideoResult, cached: boolean, toFrames: ToFrames, range: { start: number; end: number } | undefined, fps: number, bestSeconds = DEFAULT_BEST_SECONDS) {
+export function videoOut(
+  result: VideoResult,
+  cached: boolean,
+  toFrames: ToFrames,
+  range: { start: number; end: number } | undefined,
+  fps: number,
+  bestSeconds = DEFAULT_BEST_SECONDS,
+) {
   if (!result.hasVideo) return { state: "done", cached, hasVideo: false, note: "This media has no picture, so there's nothing to measure." };
   const windows = result.windows ?? [];
   const overlaps = (start: number, end: number) => !range || (start * fps < range.end && end * fps > range.start);
@@ -87,7 +94,14 @@ export function videoOut(result: VideoResult, cached: boolean, toFrames: ToFrame
     if (i < shown.length && shown[i]!.start === shown[i - 1]!.start + 1 && band(scores[i]!.cleanScore) === band(scores[runStart]!.cleanScore)) continue;
     const part = shown.slice(runStart, i);
     const s = meanScores(part);
-    stretches.push({ start: toFrames(part[0]!.start, Math.ceil), end: toFrames(part.at(-1)!.end, Math.floor), startSeconds: part[0]!.start, endSeconds: part.at(-1)!.end, quality: band(scores[runStart]!.cleanScore), cleanScore: s.cleanScore });
+    stretches.push({
+      start: toFrames(part[0]!.start, Math.ceil),
+      end: toFrames(part.at(-1)!.end, Math.floor),
+      startSeconds: part[0]!.start,
+      endSeconds: part.at(-1)!.end,
+      quality: band(scores[runStart]!.cleanScore),
+      cleanScore: s.cleanScore,
+    });
     runStart = i;
   }
   const cuts = (result.cuts ?? []).filter((c) => !range || (c.time * fps >= range.start && c.time * fps < range.end));
@@ -129,7 +143,13 @@ export const VIDEO_NOTE =
   "Scores are 0–1, higher is better. stability: no camera shake (shake left after removing smooth pans; shakePercent is its RMS size in % of the frame width). sharpness: in focus, not blurred (from the edge width, blur). exposure: neither too dark nor too bright, little clipping. frozen: share of it where the picture doesn't change. cleanScore combines them (sharpness weighs most, since blur can't be fixed; shake can be stabilised). Cuts are where a new shot starts: frame is its first project frame of the media (use it as in). drops are gaps in the recording (dropped frames; the picture jumps at frame), not cuts: avoid a clip across one. best is the cleanest stretch inside one shot, crossing no drop. stretches group seconds into good (≥ 0.7), fair and poor; perSecond lists each second from firstSecond (null: no frames in that second). Frames are project frames of the media; seconds are media time.";
 
 /** A media_rank entry (rank filled in by the caller after sorting). */
-export function rankEntry(media: { readonly id: string; readonly name: string }, result: VideoResult, cached: boolean, toFrames: ToFrames, bestSeconds: number) {
+export function rankEntry(
+  media: { readonly id: string; readonly name: string },
+  result: VideoResult,
+  cached: boolean,
+  toFrames: ToFrames,
+  bestSeconds: number,
+) {
   const scores = meanScores(result.windows ?? []);
   const best = bestStretch(result, bestSeconds);
   return {

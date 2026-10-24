@@ -15,7 +15,14 @@ import { join, resolve } from "node:path";
 import * as Effect from "../../apps/server/node_modules/effect/dist/Effect.js";
 
 import { LOOK_TOOLS, mcpTools, stepLabel, doingLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
-import { exportFileName, exportFolderProblem, freeOutput, makeExportVideo, messageNamesFolder, resolveExportFolder } from "../../apps/server/src/agent/tools/exportVideo.ts";
+import {
+  exportFileName,
+  exportFolderProblem,
+  freeOutput,
+  makeExportVideo,
+  messageNamesFolder,
+  resolveExportFolder,
+} from "../../apps/server/src/agent/tools/exportVideo.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const which = (name: string) => {
@@ -29,11 +36,17 @@ const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
-const skip = !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) ? "server bundle or media core not built (run pnpm build)" : !FFMPEG || !FFPROBE ? "ffmpeg isn't installed" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA)
+    ? "server bundle or media core not built (run pnpm build)"
+    : !FFMPEG || !FFPROBE
+      ? "ffmpeg isn't installed"
+      : false;
 
 // ---- a home of our own (Desktop, Movies, Downloads, Library), a project and Uncut's data ----
 const home = realpathSync(mkdtempSync(join(tmpdir(), "uncut-agent-export-home-")));
-for (const d of ["Desktop", "Movies", "Downloads", "Library/Caches", ".secret", "data", "Projects/Clip/media", "Projects/Clip/exports"]) mkdirSync(join(home, d), { recursive: true });
+for (const d of ["Desktop", "Movies", "Downloads", "Library/Caches", ".secret", "data", "Projects/Clip/media", "Projects/Clip/exports"])
+  mkdirSync(join(home, d), { recursive: true });
 const project = join(home, "Projects", "Clip");
 const dataDir = join(home, "data");
 const savedHome = process.env.HOME;
@@ -91,7 +104,12 @@ test("export_video's tricks: symlinked and case-varied folders, `..`, odd file n
   // A folder that is a symlink into ~/Library or Uncut's data is that folder.
   symlinkSync(join(home, "Library", "Caches"), join(home, "Desktop", "innocent"));
   symlinkSync(dataDir, join(home, "Desktop", "data-link"));
-  for (const [folder, re] of [["~/Desktop/innocent", /~\/Library/], ["~/Desktop/data-link/", /Uncut's own data/], ["~/Desktop/../Library/Caches", /~\/Library/], [`${home}/Desktop/../.secret`, /hidden/]] as const) {
+  for (const [folder, re] of [
+    ["~/Desktop/innocent", /~\/Library/],
+    ["~/Desktop/data-link/", /Uncut's own data/],
+    ["~/Desktop/../Library/Caches", /~\/Library/],
+    [`${home}/Desktop/../.secret`, /hidden/],
+  ] as const) {
     const out = resolveExportFolder(folder, o);
     assert.ok("problem" in out && re.test(out.problem), folder);
   }
@@ -111,7 +129,11 @@ test("export_video's tricks: symlinked and case-varied folders, `..`, odd file n
   // A dangling symlink at the target counts as taken: the export never goes through it.
   const desktop = join(home, "Desktop");
   symlinkSync(join(home, "Library", "Caches", "nothing.mp4"), join(desktop, "Clip.mp4"));
-  assert.equal(freeOutput(desktop, "Clip.mp4", (p) => existsSync(p)), join(desktop, "Clip.mp4"), "existsSync misses it");
+  assert.equal(
+    freeOutput(desktop, "Clip.mp4", (p) => existsSync(p)),
+    join(desktop, "Clip.mp4"),
+    "existsSync misses it",
+  );
   rmSync(join(desktop, "Clip.mp4"));
   // A folder word is a place, not any use of the word.
   assert.equal(messageNamesFolder("make a promo for our desktop app and export it", desktop, project, home), false);
@@ -120,13 +142,39 @@ test("export_video's tricks: symlinked and case-varied folders, `..`, odd file n
 });
 
 // ---- the tool with a stand-in exporter and card ----
-type Job = { id: string; output: string; phase: string; progress: number; seconds: number; width: number; height: number; fps: number; quality: string; elapsedSeconds?: number; error?: string; warnings?: Array<string> };
-function harness(opts: { access?: "auto" | "ask" | "look"; prompt?: string; answer?: "allow" | "deny"; jobs?: Array<Job>; busy?: boolean; fail?: string; ranges?: unknown } = {}) {
+type Job = {
+  id: string;
+  output: string;
+  phase: string;
+  progress: number;
+  seconds: number;
+  width: number;
+  height: number;
+  fps: number;
+  quality: string;
+  elapsedSeconds?: number;
+  error?: string;
+  warnings?: Array<string>;
+};
+function harness(
+  opts: {
+    access?: "auto" | "ask" | "look";
+    prompt?: string;
+    answer?: "allow" | "deny";
+    jobs?: Array<Job>;
+    busy?: boolean;
+    fail?: string;
+    ranges?: unknown;
+  } = {},
+) {
   const started: Array<Record<string, any>> = [];
   const cards: Array<{ text: string; permission: any }> = [];
   const jobs: Array<Job> = [...(opts.jobs ?? [])];
   const ctx = {
-    textResult: (value: unknown, isError = false) => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], ...(isError ? { isError: true } : {}) }),
+    textResult: (value: unknown, isError = false) => ({
+      content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
+      ...(isError ? { isError: true } : {}),
+    }),
     config: { dataDir },
     askUser: (_r: unknown, text: string, _e: number, _s: unknown, _a: unknown, _ed: unknown, more: any) => {
       cards.push({ text, permission: more?.permission });
@@ -141,14 +189,34 @@ function harness(opts: { access?: "auto" | "ask" | "look"; prompt?: string; answ
           started.push(input);
           const failed = opts.fail !== undefined;
           if (!failed) writeFileSync(input.output, Buffer.alloc(2_500_000));
-          jobs.push({ id: `j${started.length}`, output: input.output, phase: failed ? "failed" : "done", progress: 1, seconds: 6, width: 1280, height: 720, fps: 30, quality: input.quality, elapsedSeconds: 2, ...(failed ? { error: opts.fail } : { warnings: ["A graphic was drawn without blur."] }) });
+          jobs.push({
+            id: `j${started.length}`,
+            output: input.output,
+            phase: failed ? "failed" : "done",
+            progress: 1,
+            seconds: 6,
+            width: 1280,
+            height: 720,
+            fps: 30,
+            quality: input.quality,
+            elapsedSeconds: 2,
+            ...(failed ? { error: opts.fail } : { warnings: ["A graphic was drawn without blur."] }),
+          });
           return { jobId: `j${started.length}` };
         }),
     },
   };
   const run = makeExportVideo(ctx as any);
-  const r = { access: opts.access ?? "auto", turn: { prompt: opts.prompt ?? "" }, abort: new AbortController(), ...(opts.ranges ? { ranges: opts.ranges } : {}) };
-  const v = { dir: project, session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } } };
+  const r = {
+    access: opts.access ?? "auto",
+    turn: { prompt: opts.prompt ?? "" },
+    abort: new AbortController(),
+    ...(opts.ranges ? { ranges: opts.ranges } : {}),
+  };
+  const v = {
+    dir: project,
+    session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } },
+  };
   const call = async (args: Record<string, unknown>) => {
     const out = (await Effect.runPromise(run(r as any, v as any, args))) as unknown as { isError?: boolean; content: Array<{ text: string }> };
     const text = out.content[0]!.text;
@@ -167,7 +235,11 @@ test("export_video: Auto and a folder the message named runs at once, with the d
   const out = await h.call({ folder: "Desktop" });
   assert.equal(out.isError, false, out.text);
   assert.equal(h.cards.length, 0, "no card");
-  assert.deepEqual(h.started[0], { output: join(home, "Desktop", "Clip.mp4"), quality: "standard", loudness: "quiet", agent: true }, "the project's −16 LUFS is Quiet");
+  assert.deepEqual(
+    h.started[0],
+    { output: join(home, "Desktop", "Clip.mp4"), quality: "standard", loudness: "quiet", agent: true },
+    "the project's −16 LUFS is Quiet",
+  );
   assert.equal(out.json.saved, join(home, "Desktop", "Clip.mp4"));
   assert.equal(out.json.size, "2.5 MB");
   assert.equal(out.json.seconds, 6);
@@ -177,7 +249,14 @@ test("export_video: Auto and a folder the message named runs at once, with the d
   const again = await h.call({ folder: "Desktop", preset: "high", motionBlur: false, fps: 25, shortSide: 720, loudness: "off" });
   assert.equal(again.json.saved, join(home, "Desktop", "Clip 2.mp4"));
   assert.match(again.json.note, /Clip\.mp4 was already there, so it's saved as Clip 2\.mp4/);
-  assert.deepEqual(h.started[1], { output: join(home, "Desktop", "Clip 2.mp4"), quality: "high", loudness: "off", video: { fps: 25, shortSide: 720 }, motionBlur: false, agent: true });
+  assert.deepEqual(h.started[1], {
+    output: join(home, "Desktop", "Clip 2.mp4"),
+    quality: "high",
+    loudness: "off",
+    video: { fps: 25, shortSide: 720 },
+    motionBlur: false,
+    agent: true,
+  });
   rmSync(join(home, "Desktop", "Clip.mp4"));
   rmSync(join(home, "Desktop", "Clip 2.mp4"));
 });
@@ -189,9 +268,23 @@ test("export_video: a folder the message didn't name, the default folder and Ask
   assert.equal(out.isError, true);
   assert.match(out.text, /Not exported: the user said no/);
   assert.equal(unnamed.started.length, 0);
-  assert.deepEqual(unnamed.cards, [{ text: "Export the video", permission: { tool: "export", target: join(home, "Downloads", "Clip.mp4"), why: "You didn't name this folder in your message, so Uncut asks before writing there.", always: false } }]);
+  assert.deepEqual(unnamed.cards, [
+    {
+      text: "Export the video",
+      permission: {
+        tool: "export",
+        target: join(home, "Downloads", "Clip.mp4"),
+        why: "You didn't name this folder in your message, so Uncut asks before writing there.",
+        always: false,
+      },
+    },
+  ]);
   // No folder: the dialog's (the last export's folder, else ~/Movies), still asked.
-  const last = harness({ prompt: "export it", answer: "allow", jobs: [{ id: "old", output: join(home, "Downloads", "Old.mp4"), phase: "done", progress: 1, seconds: 1, width: 1, height: 1, fps: 30, quality: "draft" }] });
+  const last = harness({
+    prompt: "export it",
+    answer: "allow",
+    jobs: [{ id: "old", output: join(home, "Downloads", "Old.mp4"), phase: "done", progress: 1, seconds: 1, width: 1, height: 1, fps: 30, quality: "draft" }],
+  });
   assert.equal((await last.call({})).json.saved, join(home, "Downloads", "Clip.mp4"));
   assert.equal(last.cards[0]!.permission.target, join(home, "Downloads", "Clip.mp4"));
   rmSync(join(home, "Downloads", "Clip.mp4"));
@@ -217,7 +310,10 @@ test("export_video: refusals (forbidden folders, busy, bad args, no marks), the 
     assert.ok(out.json.refused, folder);
     assert.equal(h.cards.length + h.started.length, 0, `${folder}: no card, no export`);
   }
-  const busy = harness({ prompt: "export to desktop", jobs: [{ id: "x", output: "/Users/x/Movies/Other.mp4", phase: "rendering", progress: 0.42, seconds: 1, width: 1, height: 1, fps: 30, quality: "high" }] });
+  const busy = harness({
+    prompt: "export to desktop",
+    jobs: [{ id: "x", output: "/Users/x/Movies/Other.mp4", phase: "rendering", progress: 0.42, seconds: 1, width: 1, height: 1, fps: 30, quality: "high" }],
+  });
   const refused = await busy.call({ folder: "Desktop" });
   assert.match(refused.json.refused, /An export is already running \(Other\.mp4, 42%\): one at a time/);
   assert.equal(busy.started.length, 0);
@@ -238,7 +334,7 @@ test("export_video: refusals (forbidden folders, busy, bad args, no marks), the 
   assert.equal(failed.json.failed, "The disk is full. Free some space or choose another disk, then export again.");
 });
 
-test("export_video: a dangling link at the target gets \" 2\", at most a few exports a turn, and a stopped turn cancels the job", async () => {
+test('export_video: a dangling link at the target gets " 2", at most a few exports a turn, and a stopped turn cancels the job', async () => {
   process.env.HOME = home;
   const desktop = join(home, "Desktop");
   symlinkSync(join(home, "Library", "Caches", "nothing.mp4"), join(desktop, "Clip.mp4"));
@@ -257,7 +353,10 @@ test("export_video: a dangling link at the target gets \" 2\", at most a few exp
   const jobs: Array<Job> = [];
   const r = { access: "auto", turn: { prompt: "export to desktop" }, abort: new AbortController() };
   const run = makeExportVideo({
-    textResult: (value: unknown, isError = false) => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], ...(isError ? { isError: true } : {}) }),
+    textResult: (value: unknown, isError = false) => ({
+      content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
+      ...(isError ? { isError: true } : {}),
+    }),
     config: { dataDir },
     askUser: () => Effect.succeed("allow"),
     exporter: {
@@ -272,7 +371,10 @@ test("export_video: a dangling link at the target gets \" 2\", at most a few exp
         }),
     },
   } as any);
-  const v = { dir: project, session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } } };
+  const v = {
+    dir: project,
+    session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } },
+  };
   const out = (await Effect.runPromise(run(r as any, v as any, { folder: "Desktop" }))) as any;
   assert.equal(out.isError, true);
   assert.match(out.content[0].text, /stopped, so the export was cancelled/);
@@ -282,7 +384,16 @@ test("export_video: a dangling link at the target gets \" 2\", at most a few exp
 test("export_video: the tool, its labels and the prompt line", () => {
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("export_video"));
   const tool = mcpTools().find((t) => t.name === "export_video")!;
-  assert.deepEqual(Object.keys((tool.inputSchema as any).properties).sort(), ["folder", "fps", "loudness", "motionBlur", "name", "preset", "range", "shortSide"]);
+  assert.deepEqual(Object.keys((tool.inputSchema as any).properties).sort(), [
+    "folder",
+    "fps",
+    "loudness",
+    "motionBlur",
+    "name",
+    "preset",
+    "range",
+    "shortSide",
+  ]);
   assert.match(tool.description, /only when the user asks/);
   assert.equal(stepLabel("export_video", { folder: "Desktop" }), "Exported the video to Desktop");
   assert.equal(doingLabel("export_video", {}), "Exporting the video");
@@ -309,7 +420,12 @@ async function send(prompt: string, steps: Array<unknown>, access: "auto" | "ask
 async function finish(turnId: string, before: number) {
   await agent.until((s) => s?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 180000);
   const turn = agent.values.at(-1).turns.find((t: any) => t.id === turnId);
-  const results = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).slice(before).map((l) => JSON.parse(l).result as { isError?: boolean; content: Array<{ text?: string }> });
+  const results = readFileSync(resultLog(), "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .slice(before)
+    .map((l) => JSON.parse(l).result as { isError?: boolean; content: Array<{ text?: string }> });
   return { turn, results };
 }
 const logged = () => readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
@@ -318,14 +434,46 @@ before(async () => {
   if (skip) return;
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-agent-export-")));
   for (const d of ["projects", "Footage", "Desktop", "Downloads", "bin"]) mkdirSync(join(root, d));
-  execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "Footage", "Talk.mp4")]);
+  execFileSync(FFMPEG!, [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=300:sample_rate=48000",
+    "-t",
+    "3",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "Footage", "Talk.mp4"),
+  ]);
   symlinkSync(FFMPEG!, join(root, "bin", "ffmpeg"));
   symlinkSync(FFPROBE!, join(root, "bin", "ffprobe"));
   symlinkSync(process.execPath, join(root, "bin", "node"));
   writeFileSync(join(root, "prompts.jsonl"), "");
   writeFileSync(resultLog(), "");
   // The server's home is the test's: "Desktop" is root/Desktop.
-  server = await startServer({ env: { HOME: root, PATH: `${join(root, "bin")}:/usr/bin:/bin`, UNCUT_DATA_DIR: join(root, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, "plan.json"), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: resultLog() } });
+  server = await startServer({
+    env: {
+      HOME: root,
+      PATH: `${join(root, "bin")}:/usr/bin:/bin`,
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: join(root, "plan.json"),
+      FAKE_PROMPT_LOG: join(root, "prompts.jsonl"),
+      FAKE_RESULT_LOG: resultLog(),
+    },
+  });
   client = await connect(server.ready.port, server.ready.token);
   agent = client.subscribe("agent.subscribe");
   exportJobs = client.subscribe("export.jobs");
@@ -336,7 +484,14 @@ before(async () => {
   const id = await send("put the talk on the timeline", [
     { tool: "media_import", args: { path: join(root, "Footage", "Talk.mp4") } },
     { tool: "project_read", args: {} },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add the talk", ops: [{ op: "insert_item", track: "main", item: { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 90 } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Add the talk",
+        ops: [{ op: "insert_item", track: "main", item: { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 90 } }],
+      },
+    },
   ]);
   const { turn } = await finish(id, before);
   assert.equal(turn.status, "done", turn.error);
@@ -348,41 +503,52 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("export_video on the server: the Desktop the user named, a playable file, an agent job, \" 2\", and a card for another folder", { skip, timeout: 300000 }, async () => {
-  const before = logged();
-  const id = await send("lets export to desktop", [
-    { tool: "export_video", args: { folder: "Desktop", preset: "draft" } },
-    { tool: "export_video", args: { folder: "Desktop", preset: "draft" } },
-    { tool: "export_video", args: { folder: "Downloads", preset: "draft" } },
-    { text: "Saved on your Desktop." },
-  ]);
-  // The third call asks: a folder the message didn't name. Say no.
-  const fits = (s: any) => s?.approval?.turnId === id && s.approval.permission?.tool === "export";
-  await agent.until(fits, 180000);
-  const card = agent.values.findLast(fits).approval;
-  assert.equal(card.permission.target, join(root, "Downloads", "Launch.mp4"));
-  await client.ok("agent.approve", { id: card.id, allow: false });
-  const { turn, results } = await finish(id, before);
-  assert.equal(turn.status, "done", turn.error);
-  assert.deepEqual(turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text), ["Exported the video to Desktop", "Exported the video to Desktop", "Exported the video to Downloads"]);
-  const first = JSON.parse(results[0]!.content[0]!.text!);
-  assert.equal(results[0]!.isError, undefined, results[0]!.content[0]!.text);
-  assert.equal(first.saved, join(root, "Desktop", "Launch.mp4"));
-  assert.equal(first.preset, "draft");
-  assert.ok(first.seconds > 2.9 && first.seconds < 3.1, String(first.seconds));
-  assert.match(first.size, /MB$/);
-  assert.equal(JSON.parse(results[1]!.content[0]!.text!).saved, join(root, "Desktop", "Launch 2.mp4"));
-  assert.equal(results[2]!.isError, true);
-  assert.match(results[2]!.content[0]!.text!, /the user said no/);
-  assert.ok(!existsSync(join(root, "Downloads", "Launch.mp4")));
-  // A playable file.
-  const probe = JSON.parse(execFileSync(FFPROBE!, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name", "-of", "json", first.saved], { encoding: "utf8" }));
-  assert.deepEqual(probe.streams.map((s: any) => s.codec_type).sort(), ["audio", "video"]);
-  assert.ok(Math.abs(Number(probe.format.duration) - 3) < 0.2, probe.format.duration);
-  // The job is the dialog's own, marked agent, so the editor shows it as its export.
-  const jobs = exportJobs.values.at(-1) as Array<any>;
-  const job = jobs.find((j) => j.output === first.saved);
-  assert.equal(job.agent, true);
-  assert.equal(job.phase, "done");
-  assert.equal(job.projectDir, dir);
-});
+test(
+  'export_video on the server: the Desktop the user named, a playable file, an agent job, " 2", and a card for another folder',
+  { skip, timeout: 300000 },
+  async () => {
+    const before = logged();
+    const id = await send("lets export to desktop", [
+      { tool: "export_video", args: { folder: "Desktop", preset: "draft" } },
+      { tool: "export_video", args: { folder: "Desktop", preset: "draft" } },
+      { tool: "export_video", args: { folder: "Downloads", preset: "draft" } },
+      { text: "Saved on your Desktop." },
+    ]);
+    // The third call asks: a folder the message didn't name. Say no.
+    const fits = (s: any) => s?.approval?.turnId === id && s.approval.permission?.tool === "export";
+    await agent.until(fits, 180000);
+    const card = agent.values.findLast(fits).approval;
+    assert.equal(card.permission.target, join(root, "Downloads", "Launch.mp4"));
+    await client.ok("agent.approve", { id: card.id, allow: false });
+    const { turn, results } = await finish(id, before);
+    assert.equal(turn.status, "done", turn.error);
+    assert.deepEqual(
+      turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
+      ["Exported the video to Desktop", "Exported the video to Desktop", "Exported the video to Downloads"],
+    );
+    const first = JSON.parse(results[0]!.content[0]!.text!);
+    assert.equal(results[0]!.isError, undefined, results[0]!.content[0]!.text);
+    assert.equal(first.saved, join(root, "Desktop", "Launch.mp4"));
+    assert.equal(first.preset, "draft");
+    assert.ok(first.seconds > 2.9 && first.seconds < 3.1, String(first.seconds));
+    assert.match(first.size, /MB$/);
+    assert.equal(JSON.parse(results[1]!.content[0]!.text!).saved, join(root, "Desktop", "Launch 2.mp4"));
+    assert.equal(results[2]!.isError, true);
+    assert.match(results[2]!.content[0]!.text!, /the user said no/);
+    assert.ok(!existsSync(join(root, "Downloads", "Launch.mp4")));
+    // A playable file.
+    const probe = JSON.parse(
+      execFileSync(FFPROBE!, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name", "-of", "json", first.saved], {
+        encoding: "utf8",
+      }),
+    );
+    assert.deepEqual(probe.streams.map((s: any) => s.codec_type).sort(), ["audio", "video"]);
+    assert.ok(Math.abs(Number(probe.format.duration) - 3) < 0.2, probe.format.duration);
+    // The job is the dialog's own, marked agent, so the editor shows it as its export.
+    const jobs = exportJobs.values.at(-1) as Array<any>;
+    const job = jobs.find((j) => j.output === first.saved);
+    assert.equal(job.agent, true);
+    assert.equal(job.phase, "done");
+    assert.equal(job.projectDir, dir);
+  },
+);

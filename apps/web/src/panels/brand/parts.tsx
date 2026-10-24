@@ -15,12 +15,30 @@ export function Swatches({ hexes }: { hexes: ReadonlyArray<string> }) {
   );
 }
 
-export function ScopeChoice({ value, onChange, hasProject, testId }: { value: BrandScope; onChange: (scope: BrandScope) => void; hasProject: boolean; testId: string }) {
+export function ScopeChoice({
+  value,
+  onChange,
+  hasProject,
+  testId,
+}: {
+  value: BrandScope;
+  onChange: (scope: BrandScope) => void;
+  hasProject: boolean;
+  testId: string;
+}) {
   return (
     // A segmented choice, not chips (D263).
     <div className="seg brand-scope" role="radiogroup" aria-label="Where it's kept">
       {(["global", "project"] as const).map((s) => (
-        <button key={s} className={value === s ? "active" : ""} role="radio" aria-checked={value === s} data-testid={`${testId}-${s}`} disabled={s === "project" && !hasProject} onClick={() => onChange(s)}>
+        <button
+          key={s}
+          className={value === s ? "active" : ""}
+          role="radio"
+          aria-checked={value === s}
+          data-testid={`${testId}-${s}`}
+          disabled={s === "project" && !hasProject}
+          onClick={() => onChange(s)}
+        >
           {SCOPE_CHOICE[s]}
         </button>
       ))}
@@ -29,7 +47,25 @@ export function ScopeChoice({ value, onChange, hasProject, testId }: { value: Br
 }
 
 /** The editor's frame: back, the body, Save, Cancel and Delete; Esc drops the draft. */
-export function EditorFrame({ title, testId, children, onClose, onSave, onDelete, saveDisabled, problem }: { title: string; testId: string; children: React.ReactNode; onClose: () => void; onSave: () => void; onDelete?: (() => void) | undefined; saveDisabled: boolean; problem?: string | undefined }) {
+export function EditorFrame({
+  title,
+  testId,
+  children,
+  onClose,
+  onSave,
+  onDelete,
+  saveDisabled,
+  problem,
+}: {
+  title: string;
+  testId: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  onSave: () => void;
+  onDelete?: (() => void) | undefined;
+  saveDisabled: boolean;
+  problem?: string | undefined;
+}) {
   const [confirm, setConfirm] = useState(false);
   return (
     <div
@@ -52,7 +88,11 @@ export function EditorFrame({ title, testId, children, onClose, onSave, onDelete
       </div>
       <div className="brand-body">{children}</div>
       <div className="brand-foot">
-        {problem && <div className="brand-problem small" data-testid="brand-problem">{problem}</div>}
+        {problem && (
+          <div className="brand-problem small" data-testid="brand-problem">
+            {problem}
+          </div>
+        )}
         {onDelete && (
           <button className="btn ghost" data-testid="brand-delete" onClick={() => setConfirm(true)}>
             <Trash2 />

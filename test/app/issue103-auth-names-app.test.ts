@@ -29,7 +29,17 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue103-")));
   const dir = join(root, "Issue103.uncut");
   mkdirSync(dir);
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Issue103", canvas: { width: 1920, height: 1080, fps: 30 }, textLooks: 1, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Issue103",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      textLooks: 1,
+      media: [],
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }],
+    }),
+  );
 });
 after(async () => {
   await app?.close();
@@ -51,7 +61,15 @@ test("issue #103: the setup wizard takes Claude Code's API key sign-in and shows
     command: APP,
     cleanEnv: true,
     firstLaunch: true,
-    env: { HOME: homedir(), USER: process.env.USER, TMPDIR: process.env.TMPDIR, PATH: `${stubs}:/usr/bin:/bin`, UNCUT_SHELL_ENV: "off", ANTHROPIC_API_KEY: KEY, UNCUT_DATA_DIR: join(root, "data-wizard") },
+    env: {
+      HOME: homedir(),
+      USER: process.env.USER,
+      TMPDIR: process.env.TMPDIR,
+      PATH: `${stubs}:/usr/bin:/bin`,
+      UNCUT_SHELL_ENV: "off",
+      ANTHROPIC_API_KEY: KEY,
+      UNCUT_DATA_DIR: join(root, "data-wizard"),
+    },
   });
   const { page } = app;
   await page.waitForSelector("[data-testid=check-claude][data-status=ready]", { timeout: 30000 });
@@ -62,7 +80,8 @@ test("issue #103: the setup wizard takes Claude Code's API key sign-in and shows
   assert.ok(!wizard.includes(KEY) && !wizard.includes("sk-ant"), "the key is never shown");
   assert.equal(await page.$("[data-testid=api-key-warning]"), null);
   // The marks: Claude Code, Codex (OpenAI's), and the OpenAI, Google and ElevenLabs keys; Freesound has none.
-  for (const id of ["claude", "codex", "openai", "google", "elevenlabs"]) assert.ok(await page.$(`svg[data-testid=row-mark-${id}]`), `${id} row shows its mark`);
+  for (const id of ["claude", "codex", "openai", "google", "elevenlabs"])
+    assert.ok(await page.$(`svg[data-testid=row-mark-${id}]`), `${id} row shows its mark`);
   assert.ok(await page.$("[data-testid=check-claude] svg[data-testid=row-mark-claude]"));
   assert.ok(await page.$("[data-testid=key-openai] svg[data-testid=row-mark-openai]"));
   assert.equal(await page.$("[data-testid=key-freesound] [data-testid^=row-mark]"), null);
@@ -78,62 +97,81 @@ test("issue #103: the setup wizard takes Claude Code's API key sign-in and shows
   app = undefined;
 });
 
-test("issue #103: Generate names no Claude feature and lists no brand-named coming-soon model; Audio has no Epidemic Sound", { skip, timeout: 120000 }, async () => {
-  app = await launchApp({
-    command: APP,
-    env: {
-      UNCUT_DATA_DIR: join(root, "data"),
-      UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"),
-      UNCUT_TEST_DIALOG: JSON.stringify([join(root, "Issue103.uncut")]),
-      UNCUT_CLAUDE: FAKE,
-      UNCUT_OPENAI_BASE: "http://127.0.0.1:9",
-      UNCUT_GOOGLE_BASE: "http://127.0.0.1:9",
-      UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9",
-    },
-  });
-  const { page } = app;
-  await waitForWelcome(page);
-  await page.click("[data-testid=open-project]");
-  await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
-  await page.click("[data-testid=rail-generate]");
-  await page.waitForSelector("[data-testid=generator][data-id='generate.gpt-image']", { timeout: 15000 });
-  const models = () => page.$$eval("[data-testid=generator]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id!, text: (e as HTMLElement).innerText, title: e.getAttribute("title") ?? "" })));
-  const panel = () => page.$eval("[data-testid=generate-library]", (el) => (el as HTMLElement).innerText);
-  const BRANDS = /Nano Banana|Imagen|Grok|Seedream|Seedance|Higgsfield|Sora|Lyria/;
+test(
+  "issue #103: Generate names no Claude feature and lists no brand-named coming-soon model; Audio has no Epidemic Sound",
+  { skip, timeout: 120000 },
+  async () => {
+    app = await launchApp({
+      command: APP,
+      env: {
+        UNCUT_DATA_DIR: join(root, "data"),
+        UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"),
+        UNCUT_TEST_DIALOG: JSON.stringify([join(root, "Issue103.uncut")]),
+        UNCUT_CLAUDE: FAKE,
+        UNCUT_OPENAI_BASE: "http://127.0.0.1:9",
+        UNCUT_GOOGLE_BASE: "http://127.0.0.1:9",
+        UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9",
+      },
+    });
+    const { page } = app;
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
+    await page.click("[data-testid=rail-generate]");
+    await page.waitForSelector("[data-testid=generator][data-id='generate.gpt-image']", { timeout: 15000 });
+    const models = () =>
+      page.$$eval("[data-testid=generator]", (els) =>
+        els.map((e) => ({ id: (e as HTMLElement).dataset.id!, text: (e as HTMLElement).innerText, title: e.getAttribute("title") ?? "" })),
+      );
+    const panel = () => page.$eval("[data-testid=generate-library]", (el) => (el as HTMLElement).innerText);
+    const BRANDS = /Nano Banana|Imagen|Grok|Seedream|Seedance|Higgsfield|Sora|Lyria/;
 
-  let rows = await models();
-  assert.deepEqual(rows.map((r) => r.id), ["generate.svg", "generate.gpt-image"], "Picture: no coming-soon models");
-  assert.match(rows[0]!.text, /SVG drawing\s*Uses your Claude Code/);
-  assert.equal(rows[0]!.title, "SVG drawing, uses your Claude Code");
-  assert.ok(await page.$("[data-testid=generator][data-id='generate.svg'] [data-testid=generator-mark] svg"), "the marks stay (user's call)");
-  await page.click("[data-testid=generator][data-id='generate.svg']");
-  assert.equal(await page.$eval("[data-testid=generate-estimate]", (el) => (el as HTMLElement).innerText.trim()), "Uses your Claude Code");
-  let text = await panel();
-  assert.doesNotMatch(text, /by Claude|Anthropic|subscription|Coming soon/);
-  assert.doesNotMatch(text, BRANDS);
-  await page.screenshot({ path: "test-output/issue103-generate-picture.png" });
+    let rows = await models();
+    assert.deepEqual(
+      rows.map((r) => r.id),
+      ["generate.svg", "generate.gpt-image"],
+      "Picture: no coming-soon models",
+    );
+    assert.match(rows[0]!.text, /SVG drawing\s*Uses your Claude Code/);
+    assert.equal(rows[0]!.title, "SVG drawing, uses your Claude Code");
+    assert.ok(await page.$("[data-testid=generator][data-id='generate.svg'] [data-testid=generator-mark] svg"), "the marks stay (user's call)");
+    await page.click("[data-testid=generator][data-id='generate.svg']");
+    assert.equal(await page.$eval("[data-testid=generate-estimate]", (el) => (el as HTMLElement).innerText.trim()), "Uses your Claude Code");
+    let text = await panel();
+    assert.doesNotMatch(text, /by Claude|Anthropic|subscription|Coming soon/);
+    assert.doesNotMatch(text, BRANDS);
+    await page.screenshot({ path: "test-output/issue103-generate-picture.png" });
 
-  await page.click("[data-testid=generate-type-video]");
-  await page.waitForSelector("[data-testid=generator][data-id='generate.veo']");
-  rows = await models();
-  assert.deepEqual(rows.map((r) => r.id), ["generate.svg", "generate.veo"], "Video: no coming-soon models");
-  assert.match(rows[0]!.text, /Vector animation/);
-  text = await panel();
-  assert.doesNotMatch(text, /by Claude|Anthropic|Coming soon/);
-  assert.doesNotMatch(text, BRANDS);
-  await page.screenshot({ path: "test-output/issue103-generate-video.png" });
+    await page.click("[data-testid=generate-type-video]");
+    await page.waitForSelector("[data-testid=generator][data-id='generate.veo']");
+    rows = await models();
+    assert.deepEqual(
+      rows.map((r) => r.id),
+      ["generate.svg", "generate.veo"],
+      "Video: no coming-soon models",
+    );
+    assert.match(rows[0]!.text, /Vector animation/);
+    text = await panel();
+    assert.doesNotMatch(text, /by Claude|Anthropic|Coming soon/);
+    assert.doesNotMatch(text, BRANDS);
+    await page.screenshot({ path: "test-output/issue103-generate-video.png" });
 
-  await page.click("[data-testid=generate-type-audio]");
-  await page.waitForSelector("[data-testid=generator][data-id='generate.sound']");
-  assert.deepEqual((await models()).map((r) => r.id), ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"], "Sound has its generic ElevenLabs models (#107, #108: the plugin's)");
-  assert.doesNotMatch(await panel(), BRANDS);
+    await page.click("[data-testid=generate-type-audio]");
+    await page.waitForSelector("[data-testid=generator][data-id='generate.sound']");
+    assert.deepEqual(
+      (await models()).map((r) => r.id),
+      ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"],
+      "Sound has its generic ElevenLabs models (#107, #108: the plugin's)",
+    );
+    assert.doesNotMatch(await panel(), BRANDS);
 
-  await page.click("[data-testid=rail-audio]");
-  await page.waitForSelector("[data-testid=music-browser]", { timeout: 15000 });
-  const sources = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => (e as HTMLOptionElement).textContent ?? ""));
-  assert.ok(sources.length > 0 && !sources.some((s) => /Epidemic/.test(s)), sources.join(", "));
-  assert.equal(await page.$("[data-testid=epidemic-soon]"), null);
-  assert.doesNotMatch(await page.$eval("[data-testid=audio-library]", (el) => (el as HTMLElement).innerText), /Epidemic|Coming soon/);
-  await page.screenshot({ path: "test-output/issue103-audio.png" });
-  assert.deepEqual(app.errors, []);
-});
+    await page.click("[data-testid=rail-audio]");
+    await page.waitForSelector("[data-testid=music-browser]", { timeout: 15000 });
+    const sources = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => (e as HTMLOptionElement).textContent ?? ""));
+    assert.ok(sources.length > 0 && !sources.some((s) => /Epidemic/.test(s)), sources.join(", "));
+    assert.equal(await page.$("[data-testid=epidemic-soon]"), null);
+    assert.doesNotMatch(await page.$eval("[data-testid=audio-library]", (el) => (el as HTMLElement).innerText), /Epidemic|Coming soon/);
+    await page.screenshot({ path: "test-output/issue103-audio.png" });
+    assert.deepEqual(app.errors, []);
+  },
+);

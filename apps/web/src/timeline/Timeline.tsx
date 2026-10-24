@@ -178,7 +178,23 @@ function TimelineView({ project }: { project: ProjectModel }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const { onItemDown } = makeItemDrag({ project, fps, ppf, online, snapshot, starts, tracks, laneOrder, lanesRef, laneEls, laneHit, laneAt, laneIndexAt, setDrag, stopDrag });
+  const { onItemDown } = makeItemDrag({
+    project,
+    fps,
+    ppf,
+    online,
+    snapshot,
+    starts,
+    tracks,
+    laneOrder,
+    lanesRef,
+    laneEls,
+    laneHit,
+    laneAt,
+    laneIndexAt,
+    setDrag,
+    stopDrag,
+  });
 
   const { onTransitionDown } = makeTransitionDrag({ project, fps, online, snapshot, frameAt, setDrag, stopDrag });
 
@@ -193,7 +209,23 @@ function TimelineView({ project }: { project: ProjectModel }) {
     playback.hover(frame >= 0 && frame <= end ? frame : undefined);
   };
 
-  const { cutNear, overLanes, onDragOver, onDrop } = makeLaneDrop({ fps, ppf, online, cuts, lanesRef, bodyRef, frameAt, laneHit, dropCut, dropLane, dropSpan, setDropCut, setDropLane, setDropSpan, setDropping });
+  const { cutNear, overLanes, onDragOver, onDrop } = makeLaneDrop({
+    fps,
+    ppf,
+    online,
+    cuts,
+    lanesRef,
+    bodyRef,
+    frameAt,
+    laneHit,
+    dropCut,
+    dropLane,
+    dropSpan,
+    setDropCut,
+    setDropLane,
+    setDropSpan,
+    setDropping,
+  });
   // A transition tile dragged with the pointer (F16, D154): the cut under it while it's over the
   // lanes, and on release over them, the transition goes there.
   const tilePointer = useTilePointer();
@@ -238,7 +270,14 @@ function TimelineView({ project }: { project: ProjectModel }) {
             const Icon = TOOL_ICONS[t.id];
             return (
               <Tooltip key={t.id} label={t.label} shortcut={t.action}>
-                <button className={`icon-btn ${tool === t.id ? "on" : ""}`} role="radio" aria-checked={tool === t.id} aria-pressed={tool === t.id} data-testid={`tool-${t.id}`} onClick={() => setTool(t.id)}>
+                <button
+                  className={`icon-btn ${tool === t.id ? "on" : ""}`}
+                  role="radio"
+                  aria-checked={tool === t.id}
+                  aria-pressed={tool === t.id}
+                  data-testid={`tool-${t.id}`}
+                  onClick={() => setTool(t.id)}
+                >
                   <Icon />
                 </button>
               </Tooltip>
@@ -272,8 +311,19 @@ function TimelineView({ project }: { project: ProjectModel }) {
             <ScanLine />
           </button>
         </Tooltip>
-        <Tooltip label={linkOverlays ? "Linked: overlays follow the footage under them when a main clip's speed or length changes" : "Unlinked: overlays stay put when main clips change"}>
-          <button className={`icon-btn ${linkOverlays ? "on" : ""}`} data-testid="link-overlays" aria-pressed={linkOverlays} onClick={playback.toggleLinkOverlays}>
+        <Tooltip
+          label={
+            linkOverlays
+              ? "Linked: overlays follow the footage under them when a main clip's speed or length changes"
+              : "Unlinked: overlays stay put when main clips change"
+          }
+        >
+          <button
+            className={`icon-btn ${linkOverlays ? "on" : ""}`}
+            data-testid="link-overlays"
+            aria-pressed={linkOverlays}
+            onClick={playback.toggleLinkOverlays}
+          >
             <Link2 />
           </button>
         </Tooltip>
@@ -378,7 +428,14 @@ function TimelineView({ project }: { project: ProjectModel }) {
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>
-            {dropSpan && <div className="tl-drop-ghost" data-testid="timeline-drop-ghost" data-frame={dropSpan.frame} style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }} />}
+            {dropSpan && (
+              <div
+                className="tl-drop-ghost"
+                data-testid="timeline-drop-ghost"
+                data-frame={dropSpan.frame}
+                style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }}
+              />
+            )}
             {tracks.map((track) => {
               const items = (view.tracks.find((t) => t.id === track.id) ?? track).items;
               const editable = !track.locked && online;
@@ -395,7 +452,10 @@ function TimelineView({ project }: { project: ProjectModel }) {
                     const dragged = drag?.itemId === item.id || (drag?.mode === "group" && drag.group?.includes(item.id));
                     const ghost = drag?.itemId === item.id ? drag.ghost : undefined;
                     // Captions (D82) are drawn where their cards are, not over their whole window.
-                    const extent = item.type === "captions" ? (captionExtent(view, item) ?? { from: viewStarts.get(item.id) ?? 0, to: (viewStarts.get(item.id) ?? 0) + 1 }) : undefined;
+                    const extent =
+                      item.type === "captions"
+                        ? (captionExtent(view, item) ?? { from: viewStarts.get(item.id) ?? 0, to: (viewStarts.get(item.id) ?? 0) + 1 })
+                        : undefined;
                     const start = ghost?.start ?? extent?.from ?? viewStarts.get(item.id) ?? 0;
                     const duration = ghost?.duration ?? (extent ? extent.to - extent.from : item.duration);
                     const server = findItem(project, item.id);
@@ -410,7 +470,12 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         thumbIds={thumbIds}
                         beats={item.media ? beatMap.get(item.media) : undefined}
                         className={`${selection.has(item.id) ? "selected" : ""} ${flash.has(item.id) ? "agent-flash" : ""} ${dragged && (drag.mode === "move" || drag.mode === "group") ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
-                        data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
+                        data={{
+                          "data-testid": "timeline-item",
+                          "data-item": item.id,
+                          "data-start": server?.start ?? start,
+                          "data-duration": server?.item.duration ?? duration,
+                        }}
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable && item.type !== "captions"}
                         envelope={item.id === selected && !also.length && editable && !dragged ? "edit" : "show"}
@@ -449,18 +514,35 @@ function TimelineView({ project }: { project: ProjectModel }) {
                     (() => {
                       const item = findItem(project, drag.itemId)?.item;
                       return item ? (
-                        <ItemBox project={project} item={item} start={drag.float.start} duration={item.duration} ppf={ppf} thumbIds={thumbIds} className={`dragging ${drag.refused ? "refused" : ""}`} data={{ "data-testid": "drag-float" }} edges={false} />
+                        <ItemBox
+                          project={project}
+                          item={item}
+                          start={drag.float.start}
+                          duration={item.duration}
+                          ppf={ppf}
+                          thumbIds={thumbIds}
+                          className={`dragging ${drag.refused ? "refused" : ""}`}
+                          data={{ "data-testid": "drag-float" }}
+                          edges={false}
+                        />
                       ) : null;
                     })()}
                 </div>
               );
             })}
-            {newTrackY !== undefined && <div className="tl-newtrack" data-testid="new-track-line" data-side={drag?.newTrack?.side} style={{ top: newTrackY }} />}
+            {newTrackY !== undefined && (
+              <div className="tl-newtrack" data-testid="new-track-line" data-side={drag?.newTrack?.side} style={{ top: newTrackY }} />
+            )}
             {marquee && (
               <div
                 className="marquee"
                 data-testid="marquee"
-                style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }}
+                style={{
+                  left: Math.min(marquee.x0, marquee.x1),
+                  top: Math.min(marquee.y0, marquee.y1),
+                  width: Math.abs(marquee.x1 - marquee.x0),
+                  height: Math.abs(marquee.y1 - marquee.y0),
+                }}
               />
             )}
             {blade && !drag && (
@@ -478,7 +560,12 @@ function TimelineView({ project }: { project: ProjectModel }) {
             {drag?.snapAt !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={drag.snapAt} style={{ left: drag.snapAt * ppf }} />}
             {!drag && scrubSnap !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={scrubSnap} style={{ left: scrubSnap * ppf }} />}
             {drag && (
-              <div className={`drag-tip ${drag.refused ? "refused" : ""}`} data-testid="drag-tip" data-refused={drag.refused ? "true" : undefined} style={{ left: drag.tipAt * ppf }}>
+              <div
+                className={`drag-tip ${drag.refused ? "refused" : ""}`}
+                data-testid="drag-tip"
+                data-refused={drag.refused ? "true" : undefined}
+                style={{ left: drag.tipAt * ppf }}
+              >
                 {drag.tip}
               </div>
             )}

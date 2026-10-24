@@ -7,7 +7,21 @@ import assert from "node:assert/strict";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { aliasOf, expandQuery, filterFolderSounds, filterSfx, MEME_SOUNDS, rankSounds, scoreSound, SFX_CATEGORIES, SFX_SOUNDS, SOUND_ALIASES, sfxCredit, squash, type SoundFolder } from "../../packages/core/src/audio/library.ts";
+import {
+  aliasOf,
+  expandQuery,
+  filterFolderSounds,
+  filterSfx,
+  MEME_SOUNDS,
+  rankSounds,
+  scoreSound,
+  SFX_CATEGORIES,
+  SFX_SOUNDS,
+  SOUND_ALIASES,
+  sfxCredit,
+  squash,
+  type SoundFolder,
+} from "../../packages/core/src/audio/library.ts";
 
 test("meme names in any spelling find their alias; plain words don't", () => {
   for (const q of ["fahh", "Fahh", "FAAAH", "faah", "fahhhhh", "fah"]) assert.equal(aliasOf(q)?.id, "fahh", q);
@@ -77,11 +91,23 @@ test("ranking: match first, then CC0 and a sound effect's length; nothing matchi
   ];
   const ranked = rankSounds(hits, "whoosh");
   // A 1 s CC0 swish (a synonym) beats a 45 s CC BY take for a sound effect; an unrelated sound is last.
-  assert.deepEqual(ranked.map((h) => `${h.title} ${h.license}`), ["Fast whoosh cc0", "Fast whoosh by", "Swish cc0", "whoosh long take by", "Forest ambience cc0"]);
+  assert.deepEqual(
+    ranked.map((h) => `${h.title} ${h.license}`),
+    ["Fast whoosh cc0", "Fast whoosh by", "Swish cc0", "whoosh long take by", "Forest ambience cc0"],
+  );
   assert.equal(scoreSound(hits[0]!, expandQuery("whoosh")), 0);
   // Music likes length; a meme alias counts its search words.
-  assert.ok(scoreSound({ title: "Upbeat song", seconds: 150 }, expandQuery("upbeat"), "music") > scoreSound({ title: "Upbeat song", seconds: 8 }, expandQuery("upbeat"), "music"));
-  const yell = rankSounds([{ title: "Birds", tags: [] }, { title: "vocals frustrated yell", tags: ["yell"] }], "fahh");
+  assert.ok(
+    scoreSound({ title: "Upbeat song", seconds: 150 }, expandQuery("upbeat"), "music") >
+      scoreSound({ title: "Upbeat song", seconds: 8 }, expandQuery("upbeat"), "music"),
+  );
+  const yell = rankSounds(
+    [
+      { title: "Birds", tags: [] },
+      { title: "vocals frustrated yell", tags: ["yell"] },
+    ],
+    "fahh",
+  );
   assert.equal(yell[0]!.title, "vocals frustrated yell");
 });
 
@@ -118,7 +144,15 @@ test("the designed pack (D208, D250): 100 to 160 CC0 sounds, each with its sourc
     assert.equal(s.license, "CC0-1.0", s.id);
     assert.ok(s.provider === "freesound" || s.provider === "kenney" || s.provider === "uncut", s.id);
     assert.match(s.licenseChecked, /^\d{4}-\d{2}-\d{2}$/, s.id);
-    assert.match(s.licenseProof, s.provider === "kenney" ? /License\.txt: Creative Commons Zero, CC0/ : s.provider === "uncut" ? /^Synthesised by scripts\/sfx-synth\.ts .*no recording or sample/ : /Freesound page links the CC0 1\.0 deed/, s.id);
+    assert.match(
+      s.licenseProof,
+      s.provider === "kenney"
+        ? /License\.txt: Creative Commons Zero, CC0/
+        : s.provider === "uncut"
+          ? /^Synthesised by scripts\/sfx-synth\.ts .*no recording or sample/
+          : /Freesound page links the CC0 1\.0 deed/,
+      s.id,
+    );
     if (s.provider === "kenney") assert.match(s.sourceFile ?? "", /^Audio\/[A-Za-z0-9_]+\.ogg$/, s.id);
     assert.ok(categories.has(s.category), s.id);
     assert.ok(s.tags.length >= 2, s.id);
@@ -139,7 +173,19 @@ test("the designed pack (D208, D250): 100 to 160 CC0 sounds, each with its sourc
   }
   assert.ok(total < 4 * 1024 * 1024, `pack ${total} bytes`);
   // What a product video needs, several of each.
-  for (const [category, least] of [["ui", 6], ["pop", 3], ["swipe", 3], ["whoosh", 3], ["transition", 3], ["riser", 3], ["impact", 4], ["notification", 4], ["success", 4], ["glitch", 3], ["typing", 3]] as const) {
+  for (const [category, least] of [
+    ["ui", 6],
+    ["pop", 3],
+    ["swipe", 3],
+    ["whoosh", 3],
+    ["transition", 3],
+    ["riser", 3],
+    ["impact", 4],
+    ["notification", 4],
+    ["success", 4],
+    ["glitch", 3],
+    ["typing", 3],
+  ] as const) {
     assert.ok(filterSfx({ category }).length >= least, `${category}: ${filterSfx({ category }).length}`);
   }
   // Meme sounds are free recordings that sound alike, never a copyrighted clip by its name.
@@ -154,7 +200,11 @@ test("no brand or person names in sound titles, tags, aliases or their variants"
     for (const t of s.tags) assert.doesNotMatch(t, banned, `${s.id}: ${t}`);
   }
   for (const a of SOUND_ALIASES) for (const w of [a.name, a.online, ...a.variants]) assert.doesNotMatch(w, banned, `${a.id}: ${w}`);
-  assert.equal(SFX_SOUNDS.find((s) => s.id === "bass-boom"), undefined, "bass-boom is gone (derived from Apple Logic samples)");
+  assert.equal(
+    SFX_SOUNDS.find((s) => s.id === "bass-boom"),
+    undefined,
+    "bass-boom is gone (derived from Apple Logic samples)",
+  );
   const ding = SFX_SOUNDS.find((s) => s.id === "ding")!;
   assert.match(ding.source, new RegExp(`/people/${ding.author.replace(/\./g, "\\.")}/`), "the ding's page is its author's");
 });

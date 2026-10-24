@@ -57,13 +57,20 @@ test("a large Library.xml streams without blocking the event loop for long", { t
   h.enable();
   const t0 = performance.now();
   const slices: Array<number> = [];
-  const lib = await readMusicLibrary(home, "f-music", async () => ({ sounds: [], paths: new Map(), truncated: false }), (ms) => slices.push(ms));
+  const lib = await readMusicLibrary(
+    home,
+    "f-music",
+    async () => ({ sounds: [], paths: new Map(), truncated: false }),
+    (ms) => slices.push(ms),
+  );
   const took = performance.now() - t0;
   h.disable();
   clearInterval(tick);
   const maxBlockMs = h.max / 1e6;
   const worstSlice = Math.max(...slices);
-  console.log(`100k-track XML: ${took.toFixed(0)} ms in all, ${slices.length} slices, the longest ${worstSlice.toFixed(1)} ms (wall clock); worst event-loop delay ${maxBlockMs.toFixed(1)} ms, worst timer gap ${worstGap.toFixed(1)} ms`);
+  console.log(
+    `100k-track XML: ${took.toFixed(0)} ms in all, ${slices.length} slices, the longest ${worstSlice.toFixed(1)} ms (wall clock); worst event-loop delay ${maxBlockMs.toFixed(1)} ms, worst timer gap ${worstGap.toFixed(1)} ms`,
+  );
   assert.equal(lib.found, true);
   assert.equal(lib.sounds.length, 0);
   assert.equal(lib.skipped, COUNT, "every Apple Music song counted");
@@ -91,13 +98,21 @@ test("the scan stops at the song cap; deleted songs are left out and counted", {
   // 3 songs on disk, then far more than the cap whose files are gone.
   for (const n of [1, 2, 3]) writeFileSync(join(songs, `s${n}.mp3`), Buffer.alloc(1000, n));
   const total = MAX_MUSIC_SONGS * 3;
-  await writeXml(file, total, (id) => `\t\t\t<key>Track Type</key><string>File</string>\n\t\t\t<key>Location</key><string>${pathToFileURL(join(songs, `s${id}.mp3`)).href.replace("file:///", "file://localhost/")}</string>\n`);
+  await writeXml(
+    file,
+    total,
+    (id) =>
+      `\t\t\t<key>Track Type</key><string>File</string>\n\t\t\t<key>Location</key><string>${pathToFileURL(join(songs, `s${id}.mp3`)).href.replace("file:///", "file://localhost/")}</string>\n`,
+  );
   let read = 0;
   const visited = await scanLibraryXml(file, () => ++read <= 10);
   assert.equal(visited, 11, "the scan stops as soon as it is told to");
   const lib = await readMusicLibrary(home, "f-music", async () => ({ sounds: [], paths: new Map(), truncated: false }));
   assert.equal(lib.truncated, true);
-  assert.deepEqual(lib.sounds.map((s) => s.rel.split("/").at(-1)), ["s1.mp3", "s2.mp3", "s3.mp3"]);
+  assert.deepEqual(
+    lib.sounds.map((s) => s.rel.split("/").at(-1)),
+    ["s1.mp3", "s2.mp3", "s3.mp3"],
+  );
   assert.equal(lib.sounds[0]!.bytes, 1000, "the size on disk");
   assert.equal(lib.skipped, MAX_MUSIC_SONGS - 3, "the listed songs whose files are gone are counted");
 });
@@ -129,7 +144,11 @@ test("one source that fails is listed as missing and hides none of the user's fo
   await folders.add(mine);
   const listed = await folders.add(MUSIC_LIBRARY_PATH);
   assert.equal(listed.length, 2);
-  assert.deepEqual(listed.find((f) => f.path === mine)?.sounds.map((s) => s.name), ["Whoosh"], "the user's folder still listed");
+  assert.deepEqual(
+    listed.find((f) => f.path === mine)?.sounds.map((s) => s.name),
+    ["Whoosh"],
+    "the user's folder still listed",
+  );
   const music = listed.find((f) => f.system === "music")!;
   assert.equal(music.missing, true, "the failing source is listed as missing");
   assert.equal(music.name, "Music library");

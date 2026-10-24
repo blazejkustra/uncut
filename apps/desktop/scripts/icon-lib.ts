@@ -24,8 +24,13 @@ export const segment = (x: number, y: number, ax: number, ay: number, bx: number
 
 // The U on the app icon's 1024 grid: two arms and a half circle, as a centre line with a thick
 // stroke and round caps; the cut is a thin diagonal band through the left arm.
-const L = 368, R = 656, TOP = 318, BEND = 560, STROKE = 64;
-const CX = (L + R) / 2, RAD = (R - L) / 2;
+const L = 368,
+  R = 656,
+  TOP = 318,
+  BEND = 560,
+  STROKE = 64;
+const CX = (L + R) / 2,
+  RAD = (R - L) / 2;
 const cutAngle = (-28 * Math.PI) / 180;
 /** Whether (x, y), in app-icon grid units, is on the white U (not in its cut). */
 export const onU = (x: number, y: number) => {
@@ -44,12 +49,18 @@ export function rasterize(colour: (x: number, y: number) => Rgb | undefined, wid
   const px = Buffer.alloc(width * height * 4);
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
-      let r = 0, g = 0, b = 0, a = 0;
+      let r = 0,
+        g = 0,
+        b = 0,
+        a = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
           const c = colour(i + (sx + 0.5) / SS, j + (sy + 0.5) / SS);
           if (!c) continue;
-          r += c[0]; g += c[1]; b += c[2]; a += 255;
+          r += c[0];
+          g += c[1];
+          b += c[2];
+          a += 255;
         }
       }
       const n = SS * SS;
@@ -91,7 +102,12 @@ export function encodePng(px: Buffer, width = SIZE, height = SIZE): Buffer {
   const row = width * 4;
   const raw = Buffer.alloc(height * (row + 1));
   for (let j = 0; j < height; j++) px.copy(raw, j * (row + 1) + 1, j * row, (j + 1) * row);
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw, { level: 9 })), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 /** Writes <dir><name>.png and <dir><name>.icns (every size macOS asks for, made with sips + iconutil). */

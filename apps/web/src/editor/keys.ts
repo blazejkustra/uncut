@@ -21,7 +21,8 @@ export const shortcutKeys = (id: ShortcutId): ReadonlyArray<string> => keysOf(id
 export type { ShortcutId };
 
 // Keys belong to the control while typing, picking from a list or moving a slider.
-export const isEditable = (el: EventTarget | null) => isTextEntry(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === "range");
+export const isEditable = (el: EventTarget | null) =>
+  isTextEntry(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === "range");
 
 // ⌘C keeps the items here (not on the system clipboard: they're project data, not text).
 let clipboard: ReadonlyArray<Clip> = [];
@@ -188,7 +189,11 @@ export function useEditorKeys(fps: number) {
           // Selected words in the Transcript: ⌫ cuts them (D69). The Mixer (D83) shows no selection,
           // so ⌫ there deletes nothing else.
           if (!e.repeat && (words || bottom !== "mixer"))
-            void (words ? cutSelectedWords() : action === "rippleDelete" ? actions.rippleDelete(snapshot ? withGroups(projectOf(snapshot), selection()) : selection()) : deleteSelection());
+            void (words
+              ? cutSelectedWords()
+              : action === "rippleDelete"
+                ? actions.rippleDelete(snapshot ? withGroups(projectOf(snapshot), selection()) : selection())
+                : deleteSelection());
           return;
         case "duplicate":
           if (bottom !== "timeline" || words) return;

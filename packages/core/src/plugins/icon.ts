@@ -8,10 +8,40 @@ export const MAX_ICON_BYTES = 32 * 1024;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 // Plain shapes and what they're built from; no text (fonts), images, links, <use>, styles or scripts.
-const ELEMENTS: ReadonlySet<string> = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "defs", "lineargradient", "radialgradient", "stop", "mask", "clippath", "title", "desc"]);
+const ELEMENTS: ReadonlySet<string> = new Set([
+  "svg",
+  "g",
+  "path",
+  "circle",
+  "ellipse",
+  "rect",
+  "line",
+  "polyline",
+  "polygon",
+  "defs",
+  "lineargradient",
+  "radialgradient",
+  "stop",
+  "mask",
+  "clippath",
+  "title",
+  "desc",
+]);
 const TAG = /<\s*(\/?)\s*([A-Za-z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
 const ATTR = /([^\s=/"']+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g;
-const NAMED: Readonly<Record<string, string>> = { colon: ":", tab: "", newline: "", lpar: "(", rpar: ")", sol: "/", quot: '"', apos: "'", amp: "&", lt: "<", gt: ">" };
+const NAMED: Readonly<Record<string, string>> = {
+  colon: ":",
+  tab: "",
+  newline: "",
+  lpar: "(",
+  rpar: ")",
+  sol: "/",
+  quot: '"',
+  apos: "'",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+};
 const unentity = (s: string) =>
   s.replace(/&#x([0-9a-f]+);?|&#([0-9]+);?|&([a-z]+);/gi, (m, hex: string | undefined, dec: string | undefined, name: string | undefined) => {
     if (hex || dec) {

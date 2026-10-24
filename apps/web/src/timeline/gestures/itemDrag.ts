@@ -2,7 +2,23 @@
 import type React from "react";
 import { getBeats } from "../../audio/beats.ts";
 import { planFade } from "../../audio/sound.ts";
-import { draftOf, findItem, lockOf, newTrackIndexOver, withGroups, withOverlayRipple, planGroupMove, planGroupTrim, planMove, planMoveToNewTrack, planTrim, SNAP_PX, snapTargets, trimSnapTargets, type Plan } from "../edit.ts";
+import {
+  draftOf,
+  findItem,
+  lockOf,
+  newTrackIndexOver,
+  withGroups,
+  withOverlayRipple,
+  planGroupMove,
+  planGroupTrim,
+  planMove,
+  planMoveToNewTrack,
+  planTrim,
+  SNAP_PX,
+  snapTargets,
+  trimSnapTargets,
+  type Plan,
+} from "../edit.ts";
 import { frameTimecode } from "../../state/format.ts";
 import { getPlayback, playback } from "../../preview/playback.ts";
 import type { Item, Layout, ProjectModel, Track } from "../../state/project.ts";
@@ -37,7 +53,7 @@ export function makeItemDrag(ctx: ItemDragCtx) {
    * pointer move re-plans against the project as it was at the press and redraws (once per
    * animation frame); the release sends the plan as one edit, based on that revision.
    */
-  const onItemDown = (e: React.PointerEvent, item: Item, track: Track) => {
+  const onItemDown = (e: React.PointerEvent, item: Item, _track: Track) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     // ⌘-click adds or removes the item; ⌘ held while dragging only turns snapping off.
@@ -71,7 +87,8 @@ export function makeItemDrag(ctx: ItemDragCtx) {
     // Just its own group: its edges trim the whole group.
     const groupOnly = grouped && mates.length > 1 && current.length === mates.length && current.every((id) => mates.includes(id));
     if (!grouped && !toggle) playback.select(item.id);
-    else if (grouped && (!before.includes(item.id) || current.length !== before.length)) playback.selectMany([item.id, ...current.filter((id) => id !== item.id)]);
+    else if (grouped && (!before.includes(item.id) || current.length !== before.length))
+      playback.selectMany([item.id, ...current.filter((id) => id !== item.id)]);
     const found = findItem(project, item.id);
     const press = found && { ...found, base: project };
     const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
@@ -144,7 +161,9 @@ export function makeItemDrag(ctx: ItemDragCtx) {
         // The edge goes where the pointer is, also when re-planned against a newer project.
         const own = edge === "end" ? placed.start + placed.item.duration : placed.start;
         const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge, beats), threshold } : undefined;
-        const trimmed = groupOnly ? planGroupTrim(base, item.id, edge, pressEdge + delta - own, snap) : planTrim(base, item.id, edge, pressEdge + delta - own, snap);
+        const trimmed = groupOnly
+          ? planGroupTrim(base, item.id, edge, pressEdge + delta - own, snap)
+          : planTrim(base, item.id, edge, pressEdge + delta - own, snap);
         if ("problem" in trimmed) return;
         // F11 (D156): overlays over a main clip follow its footage.
         const p = placed.track.role === "main" && getPlayback().linkOverlays ? withOverlayRipple(base, trimmed) : trimmed;
@@ -174,7 +193,10 @@ export function makeItemDrag(ctx: ItemDragCtx) {
       const side = hit.side;
       const between = !side && hit.track && hit.track.id !== placed.track.id ? newTrackIndexOver(base, placed.item, hit.track) : undefined;
       const lanesTop = lanesRef.current?.getBoundingClientRect().top ?? 0;
-      const laneRect = (id: string) => laneEls().find((l) => l.dataset.track === id)?.getBoundingClientRect();
+      const laneRect = (id: string) =>
+        laneEls()
+          .find((l) => l.dataset.track === id)
+          ?.getBoundingClientRect();
       const lineY = (): number => {
         const lanes = laneEls();
         if (side === "top") return (lanes[0]?.getBoundingClientRect().top ?? lanesTop) - lanesTop;
@@ -182,7 +204,11 @@ export function makeItemDrag(ctx: ItemDragCtx) {
         const r = laneRect(hit.track!.id);
         return r ? (placed.item.type === "text" ? r.top : r.bottom) - lanesTop - 1 : 0;
       };
-      const p = side ? planMoveToNewTrack(base, item.id, side, desired, snap) : between !== undefined ? planMoveToNewTrack(base, item.id, { index: between }, desired, snap) : planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
+      const p = side
+        ? planMoveToNewTrack(base, item.id, side, desired, snap)
+        : between !== undefined
+          ? planMoveToNewTrack(base, item.id, { index: between }, desired, snap)
+          : planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
       const newTrack = side || between !== undefined ? { side: side ?? ("between" as const), y: lineY() } : undefined;
       if ("problem" in p) return setDrag({ itemId: item.id, mode: "move", view: base, refused: p.problem, tipAt: Math.max(0, desired), tip: p.problem });
       const draft = draftOf(base, p.ops);
@@ -195,7 +221,14 @@ export function makeItemDrag(ctx: ItemDragCtx) {
         ...(p.snapAt !== undefined ? { snapAt: p.snapAt } : {}),
         ...("problem" in draft ? { refused: draft.problem } : {}),
         tipAt: Math.max(0, desired),
-        tip: "problem" in draft ? draft.problem : newTrack ? `New track, ${frameTimecode(p.start ?? 0, fps)}` : p.start !== undefined ? frameTimecode(p.start, fps) : `Position ${p.index! + 1}`,
+        tip:
+          "problem" in draft
+            ? draft.problem
+            : newTrack
+              ? `New track, ${frameTimecode(p.start ?? 0, fps)}`
+              : p.start !== undefined
+                ? frameTimecode(p.start, fps)
+                : `Position ${p.index! + 1}`,
       });
     };
     const move = (ev: PointerEvent) => {

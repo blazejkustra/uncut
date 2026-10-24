@@ -6,7 +6,22 @@ import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPla
 import * as Effect from "effect/Effect";
 import { gateOf, gateRefusal, planOnly, PROPOSE_LOCK } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
-import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_EDGE, LOOK_TOOLS, MAX_FRAMES, modulesIndex, modulesList, projectSummary, docsRead } from "../agentTools.ts";
+import {
+  bigChange,
+  checksOut,
+  FONT_ERRORS,
+  expandArrangeOps,
+  expandCaptionEdits,
+  expandDeviceFrames,
+  expandTextLooks,
+  FRAME_EDGE,
+  LOOK_TOOLS,
+  MAX_FRAMES,
+  modulesIndex,
+  modulesList,
+  projectSummary,
+  docsRead,
+} from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { loadGraphicLibs } from "../../export/graphicLibs.ts";
 import { writeProjectShader } from "../agentShaders.ts";
@@ -29,7 +44,52 @@ import type { LibraryCtx } from "./library.ts";
 const DRY_LINE = 200;
 
 export const makeRunTool = (ctx: LibraryCtx) => {
-  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser, config } = ctx;
+  const {
+    view,
+    textResult,
+    shaderDefsOf,
+    format,
+    plugins,
+    exporter,
+    stampOf,
+    askUserTool,
+    briefWrite,
+    storyboardPropose,
+    reviewSubmit,
+    brandRead,
+    brandWrite,
+    skillRead,
+    referenceFrames,
+    beatGridTool,
+    mediaImport,
+    mediaDownload,
+    contactSheet,
+    uiShow,
+    brandDirs,
+    fontsRule,
+    rubricOf,
+    librarySearch,
+    libraryAdd,
+    graphicWrite,
+    generateMedia,
+    screenRecord,
+    argentBoot,
+    mediaSearch,
+    mediaAnalyze,
+    mediaRank,
+    transcriptRead,
+    transcriptEdit,
+    captionsMake,
+    subtitlesExport,
+    projects,
+    persist,
+    duckAnalysis,
+    media,
+    analysis,
+    publish,
+    askUser,
+    config,
+  } = ctx;
 
   const exportVideo = makeExportVideo(ctx);
 
@@ -44,12 +104,29 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const range = args.range as { start: number; end: number } | undefined;
           // D260 (issue #81): compact JSON; a long project's items as compact lines unless asked for.
           const items = Array.isArray(args.items) ? args.items.filter((x): x is string => typeof x === "string").slice(0, 100) : undefined;
-          return textResult(JSON.stringify(args.detail === "full" ? { revision: v.session.revision, project: v.session.project } : projectSummary(v.session.project, v.session.revision, range, { ...(args.detail === "items" ? { detail: "items" as const } : {}), ...(items ? { items } : {}) })));
+          return textResult(
+            JSON.stringify(
+              args.detail === "full"
+                ? { revision: v.session.revision, project: v.session.project }
+                : projectSummary(v.session.project, v.session.revision, range, {
+                    ...(args.detail === "items" ? { detail: "items" as const } : {}),
+                    ...(items ? { items } : {}),
+                  }),
+            ),
+          );
         }
         case "modules_list": {
           const kind = typeof args.kind === "string" ? args.kind : undefined;
           // D213: the shader effects there are (allowed plugins', the project's), each with its params.
-          const shaders = kind === undefined || kind === "effect" ? [...(yield* shaderDefsOf(v)).values()].map((d) => ({ kind: "effect", module: "effect.shader", ...shaderForAgent({ id: d.id, name: d.name, description: d.description ?? "", params: d.params }), source: d.id.startsWith("project.") ? "project" : "plugin" })) : [];
+          const shaders =
+            kind === undefined || kind === "effect"
+              ? [...(yield* shaderDefsOf(v)).values()].map((d) => ({
+                  kind: "effect",
+                  module: "effect.shader",
+                  ...shaderForAgent({ id: d.id, name: d.name, description: d.description ?? "", params: d.params }),
+                  source: d.id.startsWith("project.") ? "project" : "plugin",
+                }))
+              : [];
           // The built-in modules, then the plugins (D97) with their source, approval and warnings.
           const listed = [...modulesList(format.modules, kind), ...shaders, ...(yield* plugins.modules(kind))] as ReadonlyArray<Record<string, unknown>>;
           // D285: ids gives just those modules whole; no kind and no ids an index (id: purpose by kind), not ~70k of manifests.
@@ -57,7 +134,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           if (ids?.length) {
             const found = listed.filter((m) => ids.includes(m.id as string));
             const missing = ids.filter((id) => !found.some((m) => m.id === id));
-            return textResult(missing.length ? { modules: found, unknown: missing, note: "modules_list without arguments lists every id." } : found, !found.length);
+            return textResult(
+              missing.length ? { modules: found, unknown: missing, note: "modules_list without arguments lists every id." } : found,
+              !found.length,
+            );
           }
           return textResult(kind === undefined ? modulesIndex(listed) : listed);
         }
@@ -69,41 +149,66 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             ok: true,
             id: out.def.id,
             file: out.file,
-            ...(out.replaced ? { replaced: "It replaced the earlier file of that name; clips that have the effect keep the copy they carry until you apply it again." } : {}),
+            ...(out.replaced
+              ? { replaced: "It replaced the earlier file of that name; clips that have the effect keep the copy they carry until you apply it again." }
+              : {}),
             params: out.def.params.map((p) => p.key),
             ...(out.note ? { note: out.note } : {}),
             next: `Apply it with timeline_edit: update_item set effects [...the clip's other effects, {"module":"effect.shader","params":{"shader":"${out.def.id}","values":{}}}] (Uncut fills in the code; one shader per clip). Then look with render_frames.`,
           };
           return out.png
-            ? { content: [{ type: "text", text: JSON.stringify(answer) }, { type: "image", data: out.png.toString("base64"), mimeType: "image/png" }] }
+            ? {
+                content: [
+                  { type: "text", text: JSON.stringify(answer) },
+                  { type: "image", data: out.png.toString("base64"), mimeType: "image/png" },
+                ],
+              }
             : textResult(answer);
         }
         case "render_frames": {
           const frames = Array.isArray(args.frames) ? args.frames : [];
-          if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0)) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
+          if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0))
+            return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
           const canvas = v.session.project.canvas;
           // D189: phone true draws them 360 px wide, as in a feed on a phone.
-          const scale = args.phone === true ? Math.min(1, PHONE_WIDTH / canvas.width) : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
+          const scale =
+            args.phone === true
+              ? Math.min(1, PHONE_WIDTH / canvas.width)
+              : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1
+                ? args.scale
+                : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
           const width = Math.max(64, Math.round(canvas.width * scale));
           // The frames, then the export's graphics rehearsed on the same rasteriser (every frame in
           // order, as the export runs them): a graphic that breaks only on a long run shows here.
-          const rendered = yield* exporter.frameSession((session) => Effect.all([session.render(frames as Array<number>, width, { census: true }), session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined)))])).pipe(
-            Effect.map(([list, rehearsal]) => ({ ok: true as const, list, rehearsal })),
-            Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
-          );
+          const rendered = yield* exporter
+            .frameSession((session) =>
+              Effect.all([
+                session.render(frames as Array<number>, width, { census: true }),
+                session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined))),
+              ]),
+            )
+            .pipe(
+              Effect.map(([list, rehearsal]) => ({ ok: true as const, list, rehearsal })),
+              Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+            );
           if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
           if (width <= PHONE_WIDTH + 40) r.looked.phone = true;
           r.rendered.push({ stamp: stampOf(r, v), frames: rendered.list.map((x) => x.frame) });
           const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
           // Frames past the last one are drawn as the last one: say so, not silently.
-          const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
+          const clamped = rendered.list.flatMap((r, i) =>
+            r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : [],
+          );
           // What a frame leaves out (a graphic it couldn't read, D78), once each.
           clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
           const rehearsal = rendered.rehearsal?.failure ? ` ${rehearsalLine(rendered.rehearsal)}` : "";
           const legible = legibilityNote(rendered.list, canvas.height, canvas.fps);
           return {
             content: [
-              { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}${legible ? ` ${legible}` : ""}` },
+              {
+                type: "text",
+                text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}${legible ? ` ${legible}` : ""}`,
+              },
               ...rendered.list.map((r) => ({ type: "image" as const, data: r.jpeg.toString("base64"), mimeType: "image/jpeg" })),
             ],
           };
@@ -154,7 +259,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return uiShow(r, v, args);
         case "project_check": {
           const rules = Array.isArray(args.rules) ? args.rules.filter((x): x is string => typeof x === "string") : undefined;
-          if (args.severity !== undefined && args.severity !== "warn" && args.severity !== "info") return textResult('severity must be "warn" or "info".', true);
+          if (args.severity !== undefined && args.severity !== "warn" && args.severity !== "info")
+            return textResult('severity must be "warn" or "info".', true);
           // Its fixes are planned on this revision, so it may be passed back as baseRevision (the
           // user's edits stay news for the next note: agentSeen doesn't move).
           r.owner.seen.add(v.session.revision);
@@ -163,12 +269,27 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const asked = yield* plugins.processChecks(v.session.project, v.dir);
           // D186: with a brand kit, its colours are a rule too.
           const kit: BrandKit | undefined = (yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => undefined)))?.kit;
-          const brandRules = kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
+          const brandRules =
+            kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
           // D198: fonts that aren't there are an error, not a silent fallback.
           const fonts = yield* fontsRule(v);
           // D217: the sound rule follows the video's sound profile; what the user marked Intended stays out.
           const rubric = yield* rubricOf(v, r);
-          return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS, sound: rubric.sound, intended: r.owner.plan.intended ?? [] }));
+          return textResult(
+            checksOut(
+              v.session.project as Project,
+              v.session.revision,
+              { rules, severity: args.severity as string | undefined },
+              {
+                rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts],
+                found: asked.checks,
+                notes: asked.notes,
+                errors: FONT_ERRORS,
+                sound: rubric.sound,
+                intended: r.owner.plan.intended ?? [],
+              },
+            ),
+          );
         }
         case "library_search":
           return yield* librarySearch(args);
@@ -215,7 +336,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const gated = dryRun ? undefined : gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard, r.planned), args.ops);
           if (gated) return textResult(gated, true);
           const { baseRevision, summary } = args;
-          if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
+          if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision))
+            return textResult("Pass baseRevision: the revision from your last project_read.", true);
           if (!Array.isArray(args.ops)) return textResult("ops must be a list of edit ops.", true);
           // D285: the tool list carries the convenience ops loosely, so every op is checked here
           // (and by the expanders and core validateOps); a refusal names the shape of the ops it names.
@@ -248,7 +370,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const placements = placed.notes.length ? { placed: placed.notes } : {};
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(
-              { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },
+              {
+                refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`,
+                revision: v.session.revision,
+              },
               true,
             );
           }
@@ -261,7 +386,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             const now = view();
             const userChanges = now ? noteFor(now, baseRevision) : "";
             // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
-            const details = "details" in outcome.error && Array.isArray(outcome.error.details) ? refusalFixes(v.session.project as Project, ops, outcome.error.details as ReadonlyArray<Problem>) : [];
+            const details =
+              "details" in outcome.error && Array.isArray(outcome.error.details)
+                ? refusalFixes(v.session.project as Project, ops, outcome.error.details as ReadonlyArray<Problem>)
+                : [];
             const fixes = [...new Set(details.flatMap((d) => (d.fix ? [d.fix] : [])))];
             const shapes = shapeHint(...details.filter((d) => d.code === "schema" || d.code === "unknown-op").map((d) => d.message));
             return textResult(
@@ -316,7 +444,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           });
           pushEdit(r, { revision: snapshot.revision, summary: line, lines });
           // D206: tracks it made, for the turn-end clean-up.
-          for (const op of ops as ReadonlyArray<Op>) if (op.op === "add_track" && typeof (op.track as { id?: unknown }).id === "string") r.addedTracks.add((op.track as { id: string }).id);
+          for (const op of ops as ReadonlyArray<Op>)
+            if (op.op === "add_track" && typeof (op.track as { id?: unknown }).id === "string") r.addedTracks.add((op.track as { id: string }).id);
           persist(r.owner);
           // agentSeen doesn't move: user edits made since the agent's last read (they didn't
           // touch what this edit touched, or it would have been refused) are still news. They
@@ -327,7 +456,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const end = projectSummary(project, snapshot.revision).duration;
           // Ducking (D85) needs its key media's loudness: a mixer change starts the analysis
           // where it's missing (waits up to SILENCES_WAIT_MS, as transcript_edit) and says so.
-          const ducking = (ops as ReadonlyArray<Op>).some((op) => op.op === "update_track" && "mixer" in op.set) ? yield* Effect.promise(() => duckAnalysis(v.dir, project)) : undefined;
+          const ducking = (ops as ReadonlyArray<Op>).some((op) => op.op === "update_track" && "mixer" in op.set)
+            ? yield* Effect.promise(() => duckAnalysis(v.dir, project))
+            : undefined;
           return textResult({
             ok: true,
             revision: snapshot.revision,
@@ -380,7 +511,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         if ((LOOK_TOOLS as ReadonlyArray<string>).includes(tool)) return undefined;
         // D206: a timeline_edit dry run changes nothing.
         if (tool === "timeline_edit" && input.dryRun === true) return undefined;
-        return textResult(`Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Auto" or "Ask first" in the composer.`, true);
+        return textResult(
+          `Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Auto" or "Ask first" in the composer.`,
+          true,
+        );
       }
       const v = view();
       const big = v ? bigChange(tool, input, v.session.project as Project) : undefined;
@@ -388,7 +522,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
       const answer = yield* askUser(r, big.text, 0, undefined, undefined, { lines: big.lines.map((l) => friendlyText(v?.session.project as Project, l)) });
       if (answer === "allow") return undefined;
       return textResult(
-        answer === "stopped" ? "The turn was stopped." : `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${big.text}" (this chat asks before big changes). Don't try it again in this turn; say what you'd change and ask.`,
+        answer === "stopped"
+          ? "The turn was stopped."
+          : `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${big.text}" (this chat asks before big changes). Don't try it again in this turn; say what you'd change and ask.`,
         true,
       );
     });

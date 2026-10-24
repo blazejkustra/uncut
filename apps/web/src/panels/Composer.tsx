@@ -11,7 +11,26 @@
 // text, chips and images live in the store.
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
 import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
-import { ArrowLeftRight, ArrowUp, AtSign, Blend, BookOpen, Clock3, FileText, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Sparkles, Square, SquareDashed, X } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ArrowUp,
+  AtSign,
+  Blend,
+  BookOpen,
+  Clock3,
+  FileText,
+  Film,
+  Flag,
+  ListVideo,
+  MousePointer2,
+  Music,
+  Paperclip,
+  Rows3,
+  Sparkles,
+  Square,
+  SquareDashed,
+  X,
+} from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
@@ -56,7 +75,17 @@ export function withChips(text: string, labels: ReadonlyArray<string>, className
   return out;
 }
 
-const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, moment: Clock3, range: ArrowLeftRight, effect: Sparkles, transition: Blend, region: SquareDashed } as const;
+const KIND_ICON = {
+  media: Film,
+  item: ListVideo,
+  track: Rows3,
+  marker: Flag,
+  moment: Clock3,
+  range: ArrowLeftRight,
+  effect: Sparkles,
+  transition: Blend,
+  region: SquareDashed,
+} as const;
 
 /** An image file as an attachment (D184), or why it can't be one. */
 async function readImage(file: File): Promise<AgentImage | string> {
@@ -71,7 +100,21 @@ async function readImage(file: File): Promise<AgentImage | string> {
   return { name: file.name || "Pasted image", mimeType: file.type as AgentImage["mimeType"], data: url.slice(url.indexOf(",") + 1) };
 }
 
-export function Composer({ project, online, blocked, turns, running, provider }: { project: Project; online: boolean; blocked: boolean; turns: ReadonlyArray<AgentTurn>; running: string | null; provider: string }) {
+export function Composer({
+  project,
+  online,
+  blocked,
+  turns,
+  running,
+  provider,
+}: {
+  project: Project;
+  online: boolean;
+  blocked: boolean;
+  turns: ReadonlyArray<AgentTurn>;
+  running: string | null;
+  provider: string;
+}) {
   const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot, brand, templates } = useApp();
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [dropping, setDropping] = useState(false);
@@ -146,7 +189,8 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     const q = query[1]!.toLowerCase();
     // D183: a typed time (@0:12, @12s, @1:02.5) offers that moment first.
     const frame = parseMoment(q, fps);
-    const moment = frame !== undefined ? [{ kind: "moment" as const, id: `frame:${frame}`, label: momentLabel(frame, fps), frame, detail: `Moment, frame ${frame}` }] : [];
+    const moment =
+      frame !== undefined ? [{ kind: "moment" as const, id: `frame:${frame}`, label: momentLabel(frame, fps), frame, detail: `Moment, frame ${frame}` }] : [];
     return [...moment, ...candidates.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 8 - moment.length)];
   }, [candidates, query?.[1], fps]);
   const pickerOpen = !!query && dismissed !== at && matches.length > 0 && !blocked;
@@ -194,7 +238,11 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     setAttachError(undefined);
     if (running) {
       // One message waits for the turn to end; a second one joins it.
-      actions.agentQueue({ prompt: queued ? `${queued.prompt}\n\n${text}` : text, mentions: [...(queued?.mentions ?? []), ...mentions], images: [...(queued?.images ?? []), ...attached].slice(0, AGENT_IMAGES_MAX) });
+      actions.agentQueue({
+        prompt: queued ? `${queued.prompt}\n\n${text}` : text,
+        mentions: [...(queued?.mentions ?? []), ...mentions],
+        images: [...(queued?.images ?? []), ...attached].slice(0, AGENT_IMAGES_MAX),
+      });
       setDraft("", []);
       actions.setAgentImages([]);
       return;
@@ -351,7 +399,13 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           value={draft}
           spellCheck={false}
           disabled={!online || blocked}
-          placeholder={blocked ? "Set up Claude Code to use the agent" : running ? "Write the next message; it's sent when this turn ends" : "Ask for an edit; @ to point at media or a clip, / for a skill or a template"}
+          placeholder={
+            blocked
+              ? "Set up Claude Code to use the agent"
+              : running
+                ? "Write the next message; it's sent when this turn ends"
+                : "Ask for an edit; @ to point at media or a clip, / for a skill or a template"
+          }
           onChange={(e) => {
             history.current.at = -1;
             setCaret(e.target.selectionStart);
@@ -416,7 +470,14 @@ export function Composer({ project, online, blocked, turns, running, provider }:
               }
             }
             // ↑ in an empty box (or at its start) brings back the last prompt; ↓ goes forward again.
-            if (e.key === "ArrowUp" && !e.shiftKey && prompts.length && el.selectionStart === 0 && el.selectionEnd === 0 && (draft === "" || history.current.at >= 0)) {
+            if (
+              e.key === "ArrowUp" &&
+              !e.shiftKey &&
+              prompts.length &&
+              el.selectionStart === 0 &&
+              el.selectionEnd === 0 &&
+              (draft === "" || history.current.at >= 0)
+            ) {
               e.preventDefault();
               recall(Math.min(prompts.length - 1, history.current.at + 1));
               return;

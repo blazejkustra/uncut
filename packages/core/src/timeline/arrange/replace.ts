@@ -23,7 +23,10 @@ export interface ReplaceRange {
  * media and in point, keeping the item's look (box, effects, volume, keys). The piece is exactly as
  * long as before, so on Main every later clip, and every other track, stays in sync with the song.
  */
-export function planReplaceRange(project: Project, r: ReplaceRange): { readonly ops: ReadonlyArray<Op>; readonly piece: Id; readonly summary: string } | { readonly problem: string } {
+export function planReplaceRange(
+  project: Project,
+  r: ReplaceRange,
+): { readonly ops: ReadonlyArray<Op>; readonly piece: Id; readonly summary: string } | { readonly problem: string } {
   const found = locate(project, r.item);
   if (!found) return { problem: `There's no item "${r.item}".` };
   const { track, item } = found;
@@ -42,7 +45,10 @@ export function planReplaceRange(project: Project, r: ReplaceRange): { readonly 
   if (!Number.isInteger(from) || from < 0) return { problem: "in is a whole frame of the media, from 0." };
   const length = r.to - r.from;
   const frames = media.probe?.frames;
-  if (media.kind !== "image" && frames && from + length > frames) return { problem: `${media.name} is ${frames} frames long: from frame ${from} it can't fill ${length} frames. Start it at frame ${Math.max(0, frames - length)} or earlier.` };
+  if (media.kind !== "image" && frames && from + length > frames)
+    return {
+      problem: `${media.name} is ${frames} frames long: from frame ${from} it can't fill ${length} frames. Start it at frame ${Math.max(0, frames - length)} or earlier.`,
+    };
   const taken = takenIds(project);
   if (r.id !== undefined && taken.has(r.id)) return { problem: `The id ${r.id} is taken.` };
   const ops: Array<Op> = [];
@@ -52,7 +58,11 @@ export function planReplaceRange(project: Project, r: ReplaceRange): { readonly 
     ops.push({ op: "split_item", item: item.id, at: r.from - start, newId: piece });
   }
   if (r.to < end) ops.push({ op: "split_item", item: piece, at: length, newId: uniqueIn(item.id, taken) });
-  ops.push({ op: "update_item", item: piece, set: { media: media.id, in: media.kind === "image" ? null : from, speed: null, keepPitch: null, loop: null, hold: null, name: null } });
+  ops.push({
+    op: "update_item",
+    item: piece,
+    set: { media: media.id, in: media.kind === "image" ? null : from, speed: null, keepPitch: null, loop: null, hold: null, name: null },
+  });
   const tried = tryOps(project, ops);
   if ("problem" in tried) return tried;
   return { ops, piece, summary: `Replaced ${(length / project.canvas.fps).toFixed(1)} s with ${media.name}` };

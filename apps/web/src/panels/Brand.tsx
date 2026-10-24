@@ -35,7 +35,11 @@ export function BrandLibrary() {
     if (!newKit || !brand) return;
     const name = newKit.name.trim();
     if (!name) return;
-    const id = freeId(name, brand.kits.map((k) => k.id), "kit");
+    const id = freeId(
+      name,
+      brand.kits.map((k) => k.id),
+      "kit",
+    );
     if (!(await actions.brandSaveKit(emptyKit(id, name, newKit.scope)))) return;
     setNewKit(undefined);
     const made = getState().brand?.kits.find((k) => k.id === id && k.scope === newKit.scope);
@@ -75,12 +79,17 @@ export function BrandLibrary() {
           <div className="lib-section">
             <div className="brand-hero" data-testid="brand-hero">
               <span className="brand-hero-title">Make a kit from a reference</span>
-              <span className="brand-desc">Give the agent your site's link, or drop your logos and pictures in the chat. It asks a few questions, then builds the kit: logos, colours, fonts and tone. You can change anything here after.</span>
+              <span className="brand-desc">
+                Give the agent your site's link, or drop your logos and pictures in the chat. It asks a few questions, then builds the kit: logos, colours,
+                fonts and tone. You can change anything here after.
+              </span>
               <button
                 className="btn primary"
                 data-testid="brand-make-from-reference"
                 disabled={!online || !hasProject || !kitSkill}
-                title={!hasProject ? "Open a project to use the agent" : !kitSkill ? "The make-brand-kit skill isn't installed (Uncut skills plugin)" : undefined}
+                title={
+                  !hasProject ? "Open a project to use the agent" : !kitSkill ? "The make-brand-kit skill isn't installed (Uncut skills plugin)" : undefined
+                }
                 onClick={() => actions.composeSkill(BUILTIN_IDS.brandKit)}
               >
                 <Sparkles />
@@ -93,7 +102,12 @@ export function BrandLibrary() {
           <div className="lib-section">
             <div className="brand-head">
               <span className="lib-label">Kits</span>
-              <button className="btn ghost brand-small-btn" data-testid="brand-new-kit" disabled={!online} onClick={() => setNewKit({ name: "", scope: "global" })}>
+              <button
+                className="btn ghost brand-small-btn"
+                data-testid="brand-new-kit"
+                disabled={!online}
+                onClick={() => setNewKit({ name: "", scope: "global" })}
+              >
                 <Plus />
                 New kit
               </button>

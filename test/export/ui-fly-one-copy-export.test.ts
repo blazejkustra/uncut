@@ -90,7 +90,16 @@ after(async () => {
 
 async function copiesAt(f: number): Promise<number> {
   const out = join(root, `f-${f}.png`);
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: f / canvas.fps, info: graphicInfo({ duration: 90, props: {} }, canvas, f), out, name: "graphics/fly.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: f / canvas.fps,
+    info: graphicInfo({ duration: 90, props: {} }, canvas, f),
+    out,
+    name: "graphics/fly.html",
+  });
   const px = rgbaOf(out);
   const i = (2 * W + 2) * 4;
   return Math.round(px[i]! / 60);
@@ -105,7 +114,7 @@ test("uncutUI.fly: the prompt is on screen exactly once before, all through and 
   const bad: string[] = [];
   for (const f of frames) {
     const n = await copiesAt(f);
-    if (n > 1 || (n !== 1 && !handover(f))) bad.push(`frame ${f} (${((f / canvas.fps) - 1.2).toFixed(2)} s from Send): ${n} copies`);
+    if (n > 1 || (n !== 1 && !handover(f))) bad.push(`frame ${f} (${(f / canvas.fps - 1.2).toFixed(2)} s from Send): ${n} copies`);
   }
   assert.deepEqual(bad, [], `the prompt shown other than once (UNCUT_KEEP_OUTPUT=1 keeps ${root})`);
 });

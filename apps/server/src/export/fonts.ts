@@ -72,7 +72,17 @@ export async function kitFontSources(kit: BrandKit | undefined, files: Readonly<
 
 /** A project's own fonts folder (media_download puts font files there): <project>/fonts. */
 export const projectFontsDir = (projectDir: string) => join(projectDir, "fonts");
-const WEIGHTS: ReadonlyArray<[RegExp, string]> = [[/thin|hairline/i, "100"], [/extra-?light|ultra-?light/i, "200"], [/light/i, "300"], [/medium/i, "500"], [/semi-?bold|demi-?bold/i, "600"], [/extra-?bold|ultra-?bold/i, "800"], [/black|heavy/i, "900"], [/bold/i, "700"], [/regular|normal|book/i, "400"]];
+const WEIGHTS: ReadonlyArray<[RegExp, string]> = [
+  [/thin|hairline/i, "100"],
+  [/extra-?light|ultra-?light/i, "200"],
+  [/light/i, "300"],
+  [/medium/i, "500"],
+  [/semi-?bold|demi-?bold/i, "600"],
+  [/extra-?bold|ultra-?bold/i, "800"],
+  [/black|heavy/i, "900"],
+  [/bold/i, "700"],
+  [/regular|normal|book/i, "400"],
+];
 
 /**
  * The faces in a project's fonts folder: a TrueType or OpenType file by its own family name, any
@@ -102,9 +112,19 @@ export async function projectFontSources(projectDir: string | undefined): Promis
   return out;
 }
 
-const LOGO_MIME: Readonly<Record<string, string>> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
+const LOGO_MIME: Readonly<Record<string, string>> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
 /** The kit's logos as data: URLs by slot (for uncut:brand/logo-… in graphics). */
-export async function kitLogoUrls(kit: BrandKit | undefined, files: Readonly<Record<string, string>>): Promise<Partial<Record<"light" | "dark" | "mark", string>>> {
+export async function kitLogoUrls(
+  kit: BrandKit | undefined,
+  files: Readonly<Record<string, string>>,
+): Promise<Partial<Record<"light" | "dark" | "mark", string>>> {
   const out: Partial<Record<"light" | "dark" | "mark", string>> = {};
   for (const slot of ["light", "dark", "mark"] as const) {
     const name = kit?.logos[slot];
@@ -121,7 +141,9 @@ export async function kitLogoUrls(kit: BrandKit | undefined, files: Readonly<Rec
 
 /** Where macOS keeps fonts (UNCUT_FONT_DIRS, colon separated, replaces them; empty: none). */
 export const fontDirs = (env: NodeJS.ProcessEnv = process.env) =>
-  env.UNCUT_FONT_DIRS !== undefined ? env.UNCUT_FONT_DIRS.split(":").filter(Boolean) : ["/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/Library/Fonts", join(homedir(), "Library/Fonts")];
+  env.UNCUT_FONT_DIRS !== undefined
+    ? env.UNCUT_FONT_DIRS.split(":").filter(Boolean)
+    : ["/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/Library/Fonts", join(homedir(), "Library/Fonts")];
 
 async function readAt(handle: Awaited<ReturnType<typeof open>>, offset: number, length: number): Promise<Buffer> {
   const buf = Buffer.alloc(length);
@@ -227,10 +249,22 @@ export interface ProjectFonts {
  */
 export async function projectFonts(fontsDir: string, dirs: BrandDirs, installed = false): Promise<ProjectFonts> {
   const brand = await activeBrand(dirs).catch(() => ({ files: {} as Record<string, string> }) as { kit?: BrandKit; files: Record<string, string> });
-  const [base, kitFaces, own, logos, system] = await Promise.all([bundledFontSources(fontsDir), kitFontSources(brand.kit, brand.files), projectFontSources(dirs.projectDir), kitLogoUrls(brand.kit, brand.files), installed ? installedFamilies() : Promise.resolve(new Set<string>())]);
+  const [base, kitFaces, own, logos, system] = await Promise.all([
+    bundledFontSources(fontsDir),
+    kitFontSources(brand.kit, brand.files),
+    projectFontSources(dirs.projectDir),
+    kitLogoUrls(brand.kit, brand.files),
+    installed ? installedFamilies() : Promise.resolve(new Set<string>()),
+  ]);
   // The project's own fonts folder (media_download of a font file) counts like the kit's files.
   const kit = [...kitFaces, ...own];
   const have = new Set([...base, ...kit].map((s) => familyKey(s.family)));
   const available = (family: string) => have.has(familyKey(family)) || system.has(familyKey(family));
-  return { sources: [...base, ...kit], kitCss: fontFaceRules(kit), logos, available, kitMissing: (brand.kit?.fonts ?? []).map((f) => f.family).filter((f) => !available(f)) };
+  return {
+    sources: [...base, ...kit],
+    kitCss: fontFaceRules(kit),
+    logos,
+    available,
+    kitMissing: (brand.kit?.fonts ?? []).map((f) => f.family).filter((f) => !available(f)),
+  };
 }

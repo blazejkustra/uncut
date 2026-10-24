@@ -129,7 +129,13 @@ export function NewProject() {
         <div className="custom-fields" data-testid="custom-fields">
           <label className="wiz-mini">
             <span>Width</span>
-            <input data-testid="custom-width" inputMode="numeric" value={width} onChange={(e) => typed("w", e.target.value)} onBlur={() => sideOf(width) && setWidth(String(sideOf(width)))} />
+            <input
+              data-testid="custom-width"
+              inputMode="numeric"
+              value={width}
+              onChange={(e) => typed("w", e.target.value)}
+              onBlur={() => sideOf(width) && setWidth(String(sideOf(width)))}
+            />
           </label>
           <Tooltip label={lock ? "The height follows the width" : "Width and height are free"}>
             <button type="button" className={`icon-btn aspect-lock ${lock ? "on" : ""}`} data-testid="custom-lock" aria-pressed={lock} onClick={toggleLock}>
@@ -138,7 +144,13 @@ export function NewProject() {
           </Tooltip>
           <label className="wiz-mini">
             <span>Height</span>
-            <input data-testid="custom-height" inputMode="numeric" value={height} onChange={(e) => typed("h", e.target.value)} onBlur={() => sideOf(height) && setHeight(String(sideOf(height)))} />
+            <input
+              data-testid="custom-height"
+              inputMode="numeric"
+              value={height}
+              onChange={(e) => typed("h", e.target.value)}
+              onBlur={() => sideOf(height) && setHeight(String(sideOf(height)))}
+            />
           </label>
           <label className="wiz-mini colour">
             <span>Background</span>

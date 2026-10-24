@@ -42,7 +42,21 @@ const b64 = (a: Float32Array) => {
     node.getFrequencyResponse(f, mag, new Float32Array(f.length));
     return [...mag].map((m) => 20 * Math.log10(m));
   },
-  offlineTone: async ({ stages = [], ceilingDb, amp, freq = 1000, seconds = 2, sampleRate = 48000 }: { stages?: ReadonlyArray<Stage>; ceilingDb?: number; amp: number; freq?: number; seconds?: number; sampleRate?: number }) => {
+  offlineTone: async ({
+    stages = [],
+    ceilingDb,
+    amp,
+    freq = 1000,
+    seconds = 2,
+    sampleRate = 48000,
+  }: {
+    stages?: ReadonlyArray<Stage>;
+    ceilingDb?: number;
+    amp: number;
+    freq?: number;
+    seconds?: number;
+    sampleRate?: number;
+  }) => {
     const ctx = new OfflineAudioContext(2, Math.round(seconds * sampleRate), sampleRate);
     await loadDenoise(ctx);
     const osc = ctx.createOscillator();

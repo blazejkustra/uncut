@@ -18,7 +18,12 @@ export const SKILL_CHARS = 20000;
  * whole instructions of each (the user asked for it, so it comes with the message, not a skill_read).
  */
 export function skillBlocks(skills: ReadonlyArray<Pick<BrandSkill, "id" | "name" | "body">>): string {
-  return skills.map((s) => `<skill name="${s.id}" title="${s.name.replace(/"/g, "'")}">\nThe user called the skill ${s.id} (/${s.id}) for this message: follow its instructions.\n${s.body.slice(0, SKILL_CHARS)}\n</skill>`).join("\n\n");
+  return skills
+    .map(
+      (s) =>
+        `<skill name="${s.id}" title="${s.name.replace(/"/g, "'")}">\nThe user called the skill ${s.id} (/${s.id}) for this message: follow its instructions.\n${s.body.slice(0, SKILL_CHARS)}\n</skill>`,
+    )
+    .join("\n\n");
 }
 
 /** A /name in a message: after a space, a ( or the start, not part of a path (/tmp/x) or a file name. */
@@ -36,7 +41,8 @@ export function calledSkills(text: string, names: ReadonlyArray<string>): Array<
  * D232: the message as claude gets it: each called /name as words ("(skill launch-promo)"), so a
  * message that starts with one is never read as one of Claude Code's own slash commands.
  */
-export const skillCallsAsWords = (text: string, called: ReadonlyArray<string>) => (called.length ? text.replace(SKILL_CALL, (m, name: string) => (called.includes(name) ? `(skill ${name})` : m)) : text);
+export const skillCallsAsWords = (text: string, called: ReadonlyArray<string>) =>
+  called.length ? text.replace(SKILL_CALL, (m, name: string) => (called.includes(name) ? `(skill ${name})` : m)) : text;
 
 /**
  * D232, D236 (#60 review M2): the user's text as claude gets it. Called skills become words; any
@@ -62,8 +68,14 @@ export function kitLines(kit: BrandKit, files: Readonly<Record<string, string>>)
   return [
     `Kit "${kit.name}" (${kit.id}, ${kit.scope === "global" ? "the user's" : "this project's"})`,
     line("What it is", kit.about ?? ""),
-    line("Colours", kit.colors.map((c) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`)),
-    line("Fonts", kit.fonts.map((f) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}${f.file ? ` (file ${f.file}, loaded everywhere)` : ""}`)),
+    line(
+      "Colours",
+      kit.colors.map((c) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`),
+    ),
+    line(
+      "Fonts",
+      kit.fonts.map((f) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}${f.file ? ` (file ${f.file}, loaded everywhere)` : ""}`),
+    ),
     logo("light", "Logo on light backgrounds"),
     logo("dark", "Logo on dark backgrounds"),
     logo("mark", "Logo mark"),
@@ -80,7 +92,10 @@ export function kitLines(kit: BrandKit, files: Readonly<Record<string, string>>)
 export const styleLine = (s: BrandStyle) =>
   [
     `Style guide${s.source ? ` (from ${s.source})` : ""}:`,
-    line(" palette", s.palette.map((p) => `${p.hex}${p.role ? ` ${p.role}` : ""}`)),
+    line(
+      " palette",
+      s.palette.map((p) => `${p.hex}${p.role ? ` ${p.role}` : ""}`),
+    ),
     line(" type", s.type),
     line(" shot lengths", s.shotLengths),
     line(" transitions", s.transitions),
@@ -129,12 +144,17 @@ export function gateRefusal(plan: AgentPlan, gate: BuildGate, ops?: unknown): st
     const n = insertCount(ops);
     if (n <= SMALL_EDIT_INSERTS) return undefined;
     const sb = plan.storyboard;
-    const why = !sb ? "this video has a brief but no storyboard yet" : sb.status === "declined" ? `the user sent the storyboard back${sb.note ? ` ("${sb.note}")` : ""}` : "the storyboard is still waiting for the user's approval";
+    const why = !sb
+      ? "this video has a brief but no storyboard yet"
+      : sb.status === "declined"
+        ? `the user sent the storyboard back${sb.note ? ` ("${sb.note}")` : ""}`
+        : "the storyboard is still waiting for the user's approval";
     return `Not done: ${why}, and this edit adds ${n} items, which is building the planned video. While the storyboard isn't approved only small edits go ahead (at most ${SMALL_EDIT_INSERTS} new items per edit). Ask the user (ask_user) whether to build without it, or change the storyboard and propose it again with storyboard_propose.`;
   }
   const sb = plan.storyboard;
   if (!sb) return "Not done: this video has a brief but no storyboard yet. Propose the shot list with storyboard_propose and build once the user approves it.";
-  if (sb.status === "declined") return `Not done: the user asked for changes to the storyboard${sb.note ? ` ("${sb.note}")` : ""}. Change it and propose it again with storyboard_propose; build once it's approved.`;
+  if (sb.status === "declined")
+    return `Not done: the user asked for changes to the storyboard${sb.note ? ` ("${sb.note}")` : ""}. Change it and propose it again with storyboard_propose; build once it's approved.`;
   return "Not done: the storyboard is waiting for the user's approval. Call storyboard_propose again (or ask them to approve it on the Plan card) and build once it's approved.";
 }
 
@@ -142,13 +162,23 @@ export function gateRefusal(plan: AgentPlan, gate: BuildGate, ops?: unknown): st
  * D296: the refusal of timeline_edit, graphic_write and shader_write while a storyboard this turn
  * proposed waits for the user: its stills are what they approve, so nothing changes under them.
  */
-export const PROPOSE_LOCK = "Not done: the storyboard you proposed is waiting for the user's answer, and its stills show the edit as it is now, so nothing changes until they approve it or ask for changes. Don't edit; end your turn saying the storyboard waits on the Plan card. Once approved, build to match the stills; to change what they show (copy, logo, end card), propose again.";
+export const PROPOSE_LOCK =
+  "Not done: the storyboard you proposed is waiting for the user's answer, and its stills show the edit as it is now, so nothing changes until they approve it or ask for changes. Don't edit; end your turn saying the storyboard waits on the Plan card. Once approved, build to match the stills; to change what they show (copy, logo, end card), propose again.";
 
 /**
  * The <brand> and <plan> blocks of a message: the project's kit and skills (or that there is none
  * and the user's kits by name), the brief, the storyboard and the last review.
  */
-export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<Pick<BrandSkill, "id" | "name">>; others: ReadonlyArray<{ id: string; name: string }> }, plan: AgentPlan, gate: BuildGate): string {
+export function planContext(
+  brand: {
+    kit?: BrandKit | undefined;
+    files: Readonly<Record<string, string>>;
+    skills: ReadonlyArray<Pick<BrandSkill, "id" | "name">>;
+    others: ReadonlyArray<{ id: string; name: string }>;
+  },
+  plan: AgentPlan,
+  gate: BuildGate,
+): string {
   const parts: Array<string> = [];
   const b: Array<string> = [];
   if (brand.kit) {
@@ -156,11 +186,16 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
     // D296: the other kits too, so a product the request names finds its kit (not a disk or web search).
     const others = brand.others.filter((k) => k.id !== brand.kit!.id);
     if (others.length) b.push(`Other kits: ${others.map((k) => `"${k.name}" (${k.id})`).join(", ")}; brand_read one when the request names its product.`);
-  }
-  else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}. A product the request names: its kit (brand_read) if one matches; else ask_user once, don't search the disk or the web for it.` : " The user has no kits yet."}`);
+  } else
+    b.push(
+      `No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}. A product the request names: its kit (brand_read) if one matches; else ask_user once, don't search the disk or the web for it.` : " The user has no kits yet."}`,
+    );
   // D232: the skills this project uses (read with skill_read or called with /name) by name; the system
   // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
-  if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow their rules where the user's own direction doesn't decide (skill_read gives one's instructions again); the critic checks their review checklists.`);
+  if (brand.skills.length)
+    b.push(
+      `Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow their rules where the user's own direction doesn't decide (skill_read gives one's instructions again); the critic checks their review checklists.`,
+    );
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
   const block = planOnly(plan, gate);
   if (block) parts.push(block);
@@ -173,23 +208,54 @@ export function planOnly(plan: AgentPlan, gate: BuildGate): string {
   if (plan.brief) {
     const br = plan.brief;
     p.push(
-      [`Brief${br.by === "user" ? " (edited by the user)" : ""}:`, line(" film", br.film), line(" type", br.type), line(" audience", br.audience), line(" duration", br.duration), line(" formats", br.formats), line(" assets", br.assets), line(" visual", br.visual), line(" hard lines", br.hardLines), line(" deliverables", br.deliverables), line(" notes", br.notes)]
+      [
+        `Brief${br.by === "user" ? " (edited by the user)" : ""}:`,
+        line(" film", br.film),
+        line(" type", br.type),
+        line(" audience", br.audience),
+        line(" duration", br.duration),
+        line(" formats", br.formats),
+        line(" assets", br.assets),
+        line(" visual", br.visual),
+        line(" hard lines", br.hardLines),
+        line(" deliverables", br.deliverables),
+        line(" notes", br.notes),
+      ]
         .filter(Boolean)
         .join("\n"),
     );
   }
   const sb = plan.storyboard;
   if (sb) {
-    const beats = sb.beats.map((x, i) => `${i + 1}. ${x.start}–${x.end} s ${x.title}: ${x.entry} → ${x.exit} (${x.purpose})${x.assets.length ? ` [${x.assets.join(", ")}]` : ""}${x.sound ? ` on ${x.sound}` : ""}`);
-    p.push(`Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : sb.status === "approved" && sb.approvedBy === "agent" ? " by you: the user couldn't answer" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
+    const beats = sb.beats.map(
+      (x, i) =>
+        `${i + 1}. ${x.start}–${x.end} s ${x.title}: ${x.entry} → ${x.exit} (${x.purpose})${x.assets.length ? ` [${x.assets.join(", ")}]` : ""}${x.sound ? ` on ${x.sound}` : ""}`,
+    );
+    p.push(
+      `Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : sb.status === "approved" && sb.approvedBy === "agent" ? " by you: the user couldn't answer" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`,
+    );
   }
   if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
-  else if (gate.waiting) p.push(`${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead (at most ${SMALL_EDIT_INSERTS} new items per timeline_edit); building the planned video waits for an approved storyboard (storyboard_propose).`);
+  else if (gate.waiting)
+    p.push(
+      `${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead (at most ${SMALL_EDIT_INSERTS} new items per timeline_edit); building the planned video waits for an approved storyboard (storyboard_propose).`,
+    );
   const last = plan.reviews.at(-1);
   if (last) {
     // D195: the critic's findings by id, so the next round's fix claims can name them.
-    const open = [...(last.blockers ?? []).map((b) => `${b.id ?? "?"} blocker ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`), ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`)];
-    p.push(`Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter((k) => last.scores[k] !== undefined).map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`);
+    const open = [
+      ...(last.blockers ?? []).map((b) => `${b.id ?? "?"} blocker ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`),
+      ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`),
+    ];
+    p.push(
+      `Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter(
+        (k) => last.scores[k] !== undefined,
+      )
+        .map((k) => `${k} ${last.scores[k]}`)
+        .join(
+          ", ",
+        )}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`,
+    );
   }
   // Nothing planned yet: no block (a small edit needs none).
   return p.length ? `<plan>\n${p.join("\n")}\n</plan>` : "";
@@ -214,7 +280,11 @@ export function questionOf(args: Record<string, unknown>): AgentQuestion | { pro
 export function answerOut(q: AgentQuestion, outcome: "answered" | "skipped" | "timeout" | "stopped", answer?: AgentAnswer) {
   if (outcome === "stopped") return { answered: false, message: "The turn was stopped." };
   if (outcome !== "answered" || !answer) {
-    return { answered: false, message: outcome === "timeout" ? "Nobody answered the question in 15 minutes." : "The user skipped the question.", next: "Don't invent what was asked about: go on with what you know, say in one line what you assumed, or stop and ask in your reply." };
+    return {
+      answered: false,
+      message: outcome === "timeout" ? "Nobody answered the question in 15 minutes." : "The user skipped the question.",
+      next: "Don't invent what was asked about: go on with what you know, say in one line what you assumed, or stop and ask in your reply.",
+    };
   }
   const choices = answer.choices.filter((c) => q.options.some((o) => o.label === c));
   const text = answer.text?.trim();
@@ -229,7 +299,15 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
     const colors = args.colors.flatMap((c) => {
       const o = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
       const hex = typeof o.hex === "string" ? normHex(o.hex) : undefined;
-      return hex ? [{ hex, role: typeof o.role === "string" && o.role.trim() ? o.role.trim().slice(0, 60) : "accent", ...(typeof o.name === "string" && o.name.trim() ? { name: o.name.trim().slice(0, 60) } : {}) }] : [];
+      return hex
+        ? [
+            {
+              hex,
+              role: typeof o.role === "string" && o.role.trim() ? o.role.trim().slice(0, 60) : "accent",
+              ...(typeof o.name === "string" && o.name.trim() ? { name: o.name.trim().slice(0, 60) } : {}),
+            },
+          ]
+        : [];
     });
     if (args.colors.length && !colors.length) return { problem: "colors need hex values like #0b1d3a." };
     out.colors = colors;
@@ -241,8 +319,13 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
       const family = String(o.family).trim().slice(0, 80);
       if (!family) return [];
       // D198: `file` is a kit file, a path or an address (brand_write brings it in); a family that had a file keeps it.
-      const file = typeof o.file === "string" && o.file.trim() ? o.file.trim().slice(0, 2000) : base.fonts.find((x) => x.family.toLowerCase() === family.toLowerCase() && x.file)?.file;
-      return [{ family, role: String(o.role ?? "body").slice(0, 40), ...(typeof o.weight === "number" ? { weight: o.weight } : {}), ...(file ? { file } : {}) }];
+      const file =
+        typeof o.file === "string" && o.file.trim()
+          ? o.file.trim().slice(0, 2000)
+          : base.fonts.find((x) => x.family.toLowerCase() === family.toLowerCase() && x.file)?.file;
+      return [
+        { family, role: String(o.role ?? "body").slice(0, 40), ...(typeof o.weight === "number" ? { weight: o.weight } : {}), ...(file ? { file } : {}) },
+      ];
     });
   }
   if (typeof args.tone === "string") out.tone = args.tone.slice(0, 4000);
@@ -251,7 +334,8 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
     if (about) out.about = about;
     else delete out.about;
   }
-  for (const k of ["taglines", "urls", "dos", "donts"] as const) if (Array.isArray(args[k])) out[k] = (args[k] as Array<unknown>).filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 40);
+  for (const k of ["taglines", "urls", "dos", "donts"] as const)
+    if (Array.isArray(args[k])) out[k] = (args[k] as Array<unknown>).filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 40);
   if (args.style !== undefined) {
     const style = normStyle(args.style);
     if (!style) return { problem: "style is { palette, type, shotLengths, transitions, camera, grain, notes? }." };
@@ -271,8 +355,10 @@ export function kitChanges(before: BrandKit, after: BrandKit): Array<{ field: st
   const colour = (c: BrandKit["colors"][number]) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`;
   const font = (f: BrandKit["fonts"][number]) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}`;
   const differ = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) => a.length !== b.length || a.some((x, i) => x.toLowerCase() !== b[i]!.toLowerCase());
-  if (before.colors.length && differ(before.colors.map(colour), after.colors.map(colour))) out.push({ field: "Colours", before: before.colors.map(colour), after: after.colors.map(colour) });
-  if (before.fonts.length && differ(before.fonts.map(font), after.fonts.map(font))) out.push({ field: "Fonts", before: before.fonts.map(font), after: after.fonts.map(font) });
+  if (before.colors.length && differ(before.colors.map(colour), after.colors.map(colour)))
+    out.push({ field: "Colours", before: before.colors.map(colour), after: after.colors.map(colour) });
+  if (before.fonts.length && differ(before.fonts.map(font), after.fonts.map(font)))
+    out.push({ field: "Fonts", before: before.fonts.map(font), after: after.fonts.map(font) });
   return out;
 }
 
@@ -304,7 +390,12 @@ const meanOf = (xs: ReadonlyArray<number>) => (xs.length ? xs.reduce((a, b) => a
  * the next 2 bars carry the most onset strength vs the 2 bars before, at least 1.5 times. An even
  * build gets undefined either way. Seconds of the media.
  */
-export function dropOf(beats: ReadonlyArray<number>, phase: number, onsets: ReadonlyArray<{ t: number; strength: number }>, levels?: ReadonlyArray<number>): { seconds: number; rise: number; beat: number } | undefined {
+export function dropOf(
+  beats: ReadonlyArray<number>,
+  phase: number,
+  onsets: ReadonlyArray<{ t: number; strength: number }>,
+  levels?: ReadonlyArray<number>,
+): { seconds: number; rise: number; beat: number } | undefined {
   if (beats.length < 16) return undefined;
   if (levels && levels.length === beats.length) {
     const n = levels.length;
@@ -316,7 +407,8 @@ export function dropOf(beats: ReadonlyArray<number>, phase: number, onsets: Read
       const after = meanOf(levels.slice(i, Math.min(n, i + 8)));
       const rise = after / Math.max(before, 0.01);
       const step = levels[i]! / Math.max(meanOf(levels.slice(i - 2, i)), 0.01);
-      if (rise >= DROP_LEVEL_RISE && step >= DROP_STEP && bars[i]! >= DROP_LOUD * loudest && (!best || rise > best.rise)) best = { seconds: beats[i]!, rise: Math.round(rise * 10) / 10, beat: i };
+      if (rise >= DROP_LEVEL_RISE && step >= DROP_STEP && bars[i]! >= DROP_LOUD * loudest && (!best || rise > best.rise))
+        best = { seconds: beats[i]!, rise: Math.round(rise * 10) / 10, beat: i };
     }
     return best;
   }
@@ -376,7 +468,8 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
     .sort((a, b) => a.frame - b.frame);
   // The drop counts anywhere in the item, a range or not.
   const inClip = (seconds: number) => toTl(seconds) >= item.start && toTl(seconds) < end;
-  const nearest = (list: ReadonlyArray<number>, f: number) => list.reduce<number | undefined>((acc, x) => (acc === undefined || Math.abs(x - f) < Math.abs(acc - f) ? x : acc), undefined);
+  const nearest = (list: ReadonlyArray<number>, f: number) =>
+    list.reduce<number | undefined>((acc, x) => (acc === undefined || Math.abs(x - f) < Math.abs(acc - f) ? x : acc), undefined);
   const snaps = (snap ?? []).map((f) => {
     const beat = nearest(beats, f);
     const down = nearest(downbeats, f);
@@ -422,16 +515,34 @@ const NO_QUESTIONS = [
   /\bdecide\s+(?:it\s+|everything\s+|that\s+)?(?:yourself|for yourself|on your own)\b/i,
   /\bunattended\b/i,
 ];
-export const asksNoQuestions = (...texts: ReadonlyArray<string | undefined>) => texts.some((t) => !!t && NO_QUESTIONS.some((re) => re.test(t.replace(/[\u2018\u2019]/g, "'"))));
+export const asksNoQuestions = (...texts: ReadonlyArray<string | undefined>) =>
+  texts.some((t) => !!t && NO_QUESTIONS.some((re) => re.test(t.replace(/[\u2018\u2019]/g, "'"))));
 
-export function reviewNudge(t: { readonly access: string; readonly unattended?: boolean | undefined; readonly reviewRounds: number; readonly graphicWrites: number; readonly edits: number; readonly planned: boolean; readonly proposing?: boolean | undefined; readonly nudged?: boolean | undefined; readonly cancelled?: boolean | undefined; readonly storyboard?: string | undefined }): string | undefined {
+export function reviewNudge(t: {
+  readonly access: string;
+  readonly unattended?: boolean | undefined;
+  readonly reviewRounds: number;
+  readonly graphicWrites: number;
+  readonly edits: number;
+  readonly planned: boolean;
+  readonly proposing?: boolean | undefined;
+  readonly nudged?: boolean | undefined;
+  readonly cancelled?: boolean | undefined;
+  readonly storyboard?: string | undefined;
+}): string | undefined {
   if (t.nudged || t.cancelled || t.proposing || t.access === "look" || t.reviewRounds > 0) return undefined;
   // A storyboard proposed or sent back: the build waits for the user, there's nothing to review yet.
   if (t.storyboard !== undefined && t.storyboard !== "approved") return undefined;
   // A planned video: its storyboard approved and built on (two or more edits or graphics); a brief
   // and a sound added aren't a build.
-  const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard === "approved" && t.graphicWrites + t.edits >= 2);
+  const built =
+    t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard === "approved" && t.graphicWrites + t.edits >= 2);
   if (!built) return undefined;
-  const what = [t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "", t.edits ? `${t.edits} timeline edit${t.edits === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+  const what = [
+    t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "",
+    t.edits ? `${t.edits} timeline edit${t.edits === 1 ? "" : "s"}` : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
   return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user${t.unattended ? ', so a run where nobody can answer still goes through it (with no one to approve the storyboard, approve it yourself with storyboard_propose approve "self" and say so)' : ""}. Only if this was a small, specific request, say that in one line and end.`;
 }

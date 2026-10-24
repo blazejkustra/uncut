@@ -11,7 +11,10 @@ interface TimedItem {
  * The stretch an agent ui_show points at, in frames: the selected item's span; else the items that
  * start at its frame (a scene, D185), to the latest end among them; else just the frame.
  */
-export function changeRange(tracks: ReadonlyArray<{ readonly items: ReadonlyArray<TimedItem> }>, ui: { readonly frame?: number | undefined; readonly select?: string | undefined }): { from: number; to: number } | undefined {
+export function changeRange(
+  tracks: ReadonlyArray<{ readonly items: ReadonlyArray<TimedItem> }>,
+  ui: { readonly frame?: number | undefined; readonly select?: string | undefined },
+): { from: number; to: number } | undefined {
   const items = tracks.flatMap((t) => t.items);
   const picked = ui.select !== undefined ? items.find((i) => i.id === ui.select) : undefined;
   if (picked) return { from: ui.frame ?? picked.start, to: Math.max(picked.start + picked.duration, ui.frame ?? 0) };

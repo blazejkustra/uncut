@@ -201,30 +201,60 @@ export function censusOf(v: unknown): Census | undefined {
   const c = v as { small?: unknown; measured?: unknown; unseen?: unknown } | null;
   if (!c || typeof c !== "object" || !Array.isArray(c.small) || typeof c.measured !== "number") return undefined;
   const small = c.small
-    .filter((x): x is CensusRun => !!x && typeof (x as CensusRun).text === "string" && typeof (x as CensusRun).share === "number" && Number.isFinite((x as CensusRun).share))
+    .filter(
+      (x): x is CensusRun =>
+        !!x && typeof (x as CensusRun).text === "string" && typeof (x as CensusRun).share === "number" && Number.isFinite((x as CensusRun).share),
+    )
     .slice(0, 40)
     .map((x) => ({ text: x.text.slice(0, 60), share: x.share }));
   const str = (v: unknown, n = 60) => (typeof v === "string" && v ? v.slice(0, n) : undefined);
   const fin = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
-  const soft = (Array.isArray((c as { soft?: unknown }).soft) ? ((c as { soft: Array<unknown> }).soft) : [])
-    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && typeof (x as CensusRun).text === "string" && fin((x as CensusRun).share) !== undefined)
+  const soft = (Array.isArray((c as { soft?: unknown }).soft) ? (c as { soft: Array<unknown> }).soft : [])
+    .filter(
+      (x): x is Record<string, unknown> =>
+        !!x && typeof x === "object" && typeof (x as CensusRun).text === "string" && fin((x as CensusRun).share) !== undefined,
+    )
     .slice(0, 8)
     .map((x): SoftRun => {
       const by = x.by === "stage" || x.by === "swap" || x.by === "graphic" ? x.by : undefined;
       const prop = x.prop === "blur" || x.prop === "opacity" || x.prop === "brightness" ? x.prop : undefined;
-      const o: Record<string, unknown> = { text: (x.text as string).slice(0, 60), share: x.share as number, blur: fin(x.blur) ?? 0, alpha: fin(x.alpha) ?? 1, bright: fin(x.bright) ?? 1, by, prop, part: str(x.part, 40), piece: str(x.piece, 60), at: fin(x.at), dur: fin(x.dur), side: str(x.side, 4), el: str(x.el, 80) };
+      const o: Record<string, unknown> = {
+        text: (x.text as string).slice(0, 60),
+        share: x.share as number,
+        blur: fin(x.blur) ?? 0,
+        alpha: fin(x.alpha) ?? 1,
+        bright: fin(x.bright) ?? 1,
+        by,
+        prop,
+        part: str(x.part, 40),
+        piece: str(x.piece, 60),
+        at: fin(x.at),
+        dur: fin(x.dur),
+        side: str(x.side, 4),
+        el: str(x.el, 80),
+      };
       for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
       return o as unknown as SoftRun;
     });
   const empty = fin((c as { emptyPreview?: unknown }).emptyPreview);
-  return { small, measured: c.measured, ...(typeof c.unseen === "number" && c.unseen > 0 ? { unseen: c.unseen } : {}), ...(soft.length ? { soft } : {}), ...(empty !== undefined && empty > 0 ? { emptyPreview: Math.min(100, Math.round(empty)) } : {}) };
+  return {
+    small,
+    measured: c.measured,
+    ...(typeof c.unseen === "number" && c.unseen > 0 ? { unseen: c.unseen } : {}),
+    ...(soft.length ? { soft } : {}),
+    ...(empty !== undefined && empty > 0 ? { emptyPreview: Math.min(100, Math.round(empty)) } : {}),
+  };
 }
 
 const secs = (v: number) => `${Math.round(v * 100) / 100} s`;
 
 /** How a softened word looks: "blurred 6 px, at 40 % opacity". */
 function softLook(r: SoftRun): string {
-  const parts = [...(r.blur > 1 ? [`blurred ${r.blur} px`] : []), ...(r.alpha < 0.999 ? [`at ${Math.round(r.alpha * 100)} % opacity`] : []), ...(r.bright < 0.999 ? [`darkened to ${Math.round(r.bright * 100)} %`] : [])];
+  const parts = [
+    ...(r.blur > 1 ? [`blurred ${r.blur} px`] : []),
+    ...(r.alpha < 0.999 ? [`at ${Math.round(r.alpha * 100)} % opacity`] : []),
+    ...(r.bright < 0.999 ? [`darkened to ${Math.round(r.bright * 100)} %`] : []),
+  ];
   return parts.join(", ") || "softened";
 }
 
@@ -240,7 +270,8 @@ export function softCause(r: SoftRun): string {
     const props = [...(r.blur > 1 ? ["blur"] : []), ...(r.bright < 0.999 ? ["dim"] : [])];
     return `uncutUI.mount("${r.part}")'s ${props.join(" and ") || "blur/dim"} prop${props.length > 1 ? "s" : ""}: the stage behind a hero is meant to be soft; a word the moment is about must not sit in the stage while it is blurred or dimmed: set it as its own piece (uncutUI.sequence or uncutUI.piece) on a layer above the stage, or bring blur and dim to 0 while the stage is the subject`;
   }
-  if (r.by === "graphic" && r.el) return `the graphic's own ${r.prop === "blur" ? "filter: blur" : r.prop === "brightness" ? "filter: brightness" : "opacity"} on ${r.el}: raise it (opacity 1, no blur, brightness 1) for the frames the word must read`;
+  if (r.by === "graphic" && r.el)
+    return `the graphic's own ${r.prop === "blur" ? "filter: blur" : r.prop === "brightness" ? "filter: brightness" : "opacity"} on ${r.el}: raise it (opacity 1, no blur, brightness 1) for the frames the word must read`;
   return "a blur, opacity or brightness on the way to it";
 }
 

@@ -27,13 +27,19 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `issue78-${name}.png`);
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const rect = (selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as DOMRect);
-const mainCount = () => (JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as { tracks: Array<{ role?: string; items: Array<unknown> }> }).tracks.find((t) => t.role === "main")!.items.length;
+const mainCount = () =>
+  (JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as { tracks: Array<{ role?: string; items: Array<unknown> }> }).tracks.find(
+    (t) => t.role === "main",
+  )!.items.length;
 const waitMain = (n: number) =>
-  page.waitForFunction((count) => document.querySelectorAll("[data-testid=timeline-item]").length === count, { timeout: 10000 }, n).then(async () => {
-    for (let i = 0; i < 40 && mainCount() !== n; i++) await sleep(100);
-    assert.equal(mainCount(), n, "items on disk");
-  });
-const rowKeys = (action: string) => page.$$eval(`[data-testid=shortcut-row][data-action=${action}] [data-testid=shortcut-key]`, (els) => els.map((e) => e.textContent ?? ""));
+  page
+    .waitForFunction((count) => document.querySelectorAll("[data-testid=timeline-item]").length === count, { timeout: 10000 }, n)
+    .then(async () => {
+      for (let i = 0; i < 40 && mainCount() !== n; i++) await sleep(100);
+      assert.equal(mainCount(), n, "items on disk");
+    });
+const rowKeys = (action: string) =>
+  page.$$eval(`[data-testid=shortcut-row][data-action=${action}] [data-testid=shortcut-key]`, (els) => els.map((e) => e.textContent ?? ""));
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0]) => {
   await page.keyboard.down("Meta");
   await page.keyboard.press(key);
@@ -50,7 +56,11 @@ async function seek(frame: number) {
   const lanes = await rect("[data-testid=lanes]");
   const ppf = await page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
   await page.mouse.click(lanes.left + frame * ppf, ruler.top + ruler.height - 6);
-  await page.waitForFunction((f) => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) - f) < 3, { timeout: 5000 }, frame);
+  await page.waitForFunction(
+    (f) => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) - f) < 3,
+    { timeout: 5000 },
+    frame,
+  );
 }
 async function openShortcuts() {
   await meta(",");
@@ -68,7 +78,22 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue78-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-t", "10", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "Shot.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=640x360:rate=30",
+    "-t",
+    "10",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "Shot.mp4"),
+  ]);
   dir = join(root, "Keys.uncut");
   mkdirSync(dir);
   writeFileSync(
@@ -77,7 +102,15 @@ before(async () => {
       format: "uncut/0",
       name: "Keys",
       canvas: { width: 1920, height: 1080, fps: 30 },
-      media: [{ id: "m-shot", kind: "video", name: "Shot.mp4", path: join(root, "Shot.mp4"), probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false } }],
+      media: [
+        {
+          id: "m-shot",
+          kind: "video",
+          name: "Shot.mp4",
+          path: join(root, "Shot.mp4"),
+          probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false },
+        },
+      ],
       tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "a", type: "clip", media: "m-shot", in: 0, duration: 300 }] }],
     }),
   );
@@ -149,7 +182,10 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   // D273: the user's own change would go, so the preset asks first; Esc keeps everything (and Settings).
   await page.select("[data-testid=shortcut-preset]", "premiere");
   await waitFor("[data-testid=shortcut-preset-confirm] [role=alertdialog]", 3000);
-  assert.match(await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""), /Switch to Premiere Pro\?.*replace the 1 shortcut you changed/);
+  assert.match(
+    await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""),
+    /Switch to Premiere Pro\?.*replace the 1 shortcut you changed/,
+  );
   await page.screenshot({ path: out("preset-confirm") });
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => !document.querySelector("[data-testid=shortcut-preset-confirm]"), { timeout: 3000 });
@@ -159,7 +195,9 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   await page.select("[data-testid=shortcut-preset]", "premiere");
   await waitFor("[data-testid=shortcut-preset-ok]", 3000);
   await page.click("[data-testid=shortcut-preset-ok]");
-  await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "⌘K", { timeout: 3000 });
+  await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "⌘K", {
+    timeout: 3000,
+  });
   assert.deepEqual(await rowKeys("split"), ["⌘K"]);
   assert.deepEqual(await rowKeys("fit"), ["\\"]);
   assert.deepEqual(await rowKeys("toolBlade"), ["C"]);
@@ -189,11 +227,15 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   await page.mouse.move(5, 300);
   await page.keyboard.press("?");
   await waitFor("[data-testid=shortcuts-sheet]");
-  const sheetSplit = await page.$$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row][data-action=split] kbd", (els) => els.map((e) => e.textContent ?? ""));
+  const sheetSplit = await page.$$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row][data-action=split] kbd", (els) =>
+    els.map((e) => e.textContent ?? ""),
+  );
   assert.deepEqual(sheetSplit, ["⌘K"]);
   // D256: the View menu's layout keys are on the sheet too, fixed.
   const viewKeys = await page.$$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row]", (rows) =>
-    rows.filter((r) => ["toggleLeft", "toggleRight", "toggleTimeline", "focusMode"].includes(r.getAttribute("data-action") ?? "")).map((r) => [...r.querySelectorAll("kbd")].map((k) => k.textContent).join(" ")),
+    rows
+      .filter((r) => ["toggleLeft", "toggleRight", "toggleTimeline", "focusMode"].includes(r.getAttribute("data-action") ?? ""))
+      .map((r) => [...r.querySelectorAll("kbd")].map((k) => k.textContent).join(" ")),
   );
   assert.deepEqual(viewKeys, ["⇧⌘L", "⇧⌘I", "⇧⌘T", "⇧⌘F"]);
   await page.$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row][data-action=focusMode]", (el) => el.scrollIntoView({ block: "center" }));
@@ -213,7 +255,9 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
 
   // D273: with no changes of the user's, a preset applies at once (nothing to lose, no dialog).
   await page.select("[data-testid=shortcut-preset]", "uncut");
-  await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "S", { timeout: 3000 });
+  await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "S", {
+    timeout: 3000,
+  });
   assert.equal(await page.$("[data-testid=shortcut-preset-confirm]"), null, "no dialog without changes");
   assert.deepEqual(await rowKeys("split"), ["S", "⌘B"]);
   // Reset all asks too; Reset all in the dialog drops the change.
@@ -221,7 +265,10 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   assert.deepEqual(await rowKeys("split"), ["⌘B"]);
   await press("[data-testid=shortcuts-reset-all]");
   await waitFor("[data-testid=shortcut-preset-confirm]", 3000);
-  assert.match(await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""), /Reset all shortcuts\?.*Uncut's keys replace the 1 shortcut you changed/);
+  assert.match(
+    await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""),
+    /Reset all shortcuts\?.*Uncut's keys replace the 1 shortcut you changed/,
+  );
   await page.screenshot({ path: out("reset-all-confirm") });
   await page.click("[data-testid=shortcut-preset-ok]");
   await page.waitForFunction(() => !document.querySelector("[data-testid=shortcut-preset-confirm]"), { timeout: 3000 });

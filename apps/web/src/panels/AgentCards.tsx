@@ -20,7 +20,8 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
   const [picked, setPicked] = useState<ReadonlyArray<string>>([]);
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
-  const toggle = (label: string) => setPicked((now) => (question.multi ? (now.includes(label) ? now.filter((x) => x !== label) : [...now, label]) : now[0] === label ? [] : [label]));
+  const toggle = (label: string) =>
+    setPicked((now) => (question.multi ? (now.includes(label) ? now.filter((x) => x !== label) : [...now, label]) : now[0] === label ? [] : [label]));
   const ready = picked.length > 0 || text.trim() !== "";
   const send = (allow: boolean) => {
     setSent(true);
@@ -35,7 +36,14 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
       {question.options.length > 0 && (
         <div className="question-options" role={question.multi ? "group" : "radiogroup"}>
           {question.options.map((o) => (
-            <button key={o.label} className={`question-option ${picked.includes(o.label) ? "on" : ""}`} data-testid="agent-question-option" aria-pressed={picked.includes(o.label)} disabled={sent} onClick={() => toggle(o.label)}>
+            <button
+              key={o.label}
+              className={`question-option ${picked.includes(o.label) ? "on" : ""}`}
+              data-testid="agent-question-option"
+              aria-pressed={picked.includes(o.label)}
+              disabled={sent}
+              onClick={() => toggle(o.label)}
+            >
               <span className="question-mark">{picked.includes(o.label) ? <Check /> : null}</span>
               <span className="question-label">
                 {o.label}
@@ -71,10 +79,18 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
   );
 }
 
-const OUTCOME: Readonly<Record<string, string>> = { approved: "Approved", declined: "Changes asked", auto: "Approved by the setting", self: "Approved by the agent", skipped: "No answer", answered: "Answered" };
+const OUTCOME: Readonly<Record<string, string>> = {
+  approved: "Approved",
+  declined: "Changes asked",
+  auto: "Approved by the setting",
+  self: "Approved by the agent",
+  skipped: "No answer",
+  answered: "Answered",
+};
 
 /** The review's chip: passed, its blockers, or under the bar. */
-const reviewOutcome = (r: Review) => (r.passed ? "Passed" : r.blockers?.length ? (r.blockers.length === 1 ? "1 blocker" : `${r.blockers.length} blockers`) : "Below 8");
+const reviewOutcome = (r: Review) =>
+  r.passed ? "Passed" : r.blockers?.length ? (r.blockers.length === 1 ? "1 blocker" : `${r.blockers.length} blockers`) : "Below 8";
 
 /** The Plan chip's jump: the event a card listens for to open itself. */
 const OPEN_CARD = "uncut-open-card";
@@ -132,7 +148,11 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       <>
         <Clapperboard />
         <span className="grow ellipsis">Storyboard, {card.storyboard?.beats.length ?? 0} beats</span>
-        {sb && sb.status === "approved" && card.outcome !== "approved" && card.outcome !== "auto" && card.outcome !== "self" ? <span className="card-outcome approved">Approved</span> : card.outcome && <span className={`card-outcome ${card.outcome}`}>{OUTCOME[card.outcome] ?? card.outcome}</span>}
+        {sb && sb.status === "approved" && card.outcome !== "approved" && card.outcome !== "auto" && card.outcome !== "self" ? (
+          <span className="card-outcome approved">Approved</span>
+        ) : (
+          card.outcome && <span className={`card-outcome ${card.outcome}`}>{OUTCOME[card.outcome] ?? card.outcome}</span>
+        )}
       </>
     ) : (
       <>
@@ -142,12 +162,23 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       </>
     );
   return (
-    <div ref={ref} className={`card-item ${open ? "open" : ""}`} data-testid="agent-card" data-type={card.type} data-outcome={card.outcome} data-latest={live ? "true" : undefined} data-passed={card.review ? String(card.review.passed) : undefined}>
+    <div
+      ref={ref}
+      className={`card-item ${open ? "open" : ""}`}
+      data-testid="agent-card"
+      data-type={card.type}
+      data-outcome={card.outcome}
+      data-latest={live ? "true" : undefined}
+      data-passed={card.review ? String(card.review.passed) : undefined}
+    >
       <button className="card-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         {head}
         {open ? <ChevronDown /> : <ChevronRight />}
       </button>
-      {open && brief && card.type === "brief" && (editing && live ? <BriefForm brief={brief} onDone={() => setEditing(false)} /> : <BriefBody brief={brief} live={live} />)}
+      {open &&
+        brief &&
+        card.type === "brief" &&
+        (editing && live ? <BriefForm brief={brief} onDone={() => setEditing(false)} /> : <BriefBody brief={brief} live={live} />)}
       {open && brief && card.type === "brief" && live && !editing && (
         <div className="approval-btns card-btns">
           <button className="btn ghost" data-testid="plan-brief-edit" disabled={!live.online} onClick={() => setEditing(true)}>
@@ -166,7 +197,13 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       {open && sb && sb.status !== "approved" && !live?.waiting && (
         <div className="approval-btns card-btns">
           {sb.note && <span className="small muted grow">You asked: {sb.note}</span>}
-          <button className="btn primary" data-testid="plan-storyboard-approve" disabled={!live?.online || live.busy} title={live?.busy ? "The agent is working" : undefined} onClick={() => void actions.agentPlanSave({ storyboard: { ...sb, status: "approved" } })}>
+          <button
+            className="btn primary"
+            data-testid="plan-storyboard-approve"
+            disabled={!live?.online || live.busy}
+            title={live?.busy ? "The agent is working" : undefined}
+            onClick={() => void actions.agentPlanSave({ storyboard: { ...sb, status: "approved" } })}
+          >
             Approve
           </button>
         </div>
@@ -210,7 +247,12 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
   const state = (cls: string, text: string) => <span className={`plan-state ${cls}`}>{text}</span>;
   return (
     <div className="plan-chip-wrap" data-testid="agent-plan">
-      <button className={`plan-chip-btn ${open ? "on" : ""}`} data-testid="plan-chip" aria-expanded={open} onClick={() => (setOpen(!open), setShown(undefined))}>
+      <button
+        className={`plan-chip-btn ${open ? "on" : ""}`}
+        data-testid="plan-chip"
+        aria-expanded={open}
+        onClick={() => (setOpen(!open), setShown(undefined))}
+      >
         <ClipboardList />
         Plan
         {last && state(last.passed ? "passed" : "low", reviewOutcome(last))}

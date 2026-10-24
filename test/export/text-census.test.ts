@@ -121,7 +121,11 @@ test("the census lists T3's thread words under 3 % and not the steps set as thei
 test("SVG text is sized through its viewBox, and a canvas on screen is reported as unseen, never as no small text", { skip, timeout: 120000 }, async (t) => {
   const c = await census(57);
   t.diagnostic(JSON.stringify(c));
-  assert.equal(c.small.find((x) => x.text === "Big svg words"), undefined, "80 px in frame px: not small");
+  assert.equal(
+    c.small.find((x) => x.text === "Big svg words"),
+    undefined,
+    "80 px in frame px: not small",
+  );
   const tiny = c.small.find((x) => x.text === "Tiny svg words");
   assert.ok(tiny && tiny.share > 1.4 && tiny.share < 1.8, `the viewBox's 10x counted: ${tiny?.share}`);
   assert.equal(c.unseen, 1, "the canvas");
@@ -130,28 +134,45 @@ test("SVG text is sized through its viewBox, and a canvas on screen is reported 
   assert.match(note ?? "", /frame 57, text drawn on a canvas.*isn't measured/);
 });
 
-test("a word blurred mid-swap, in a blurred and dimmed stage, or faded by the graphic is listed with exactly what softens it", { skip, timeout: 120000 }, async (t) => {
-  // f 32 at 30 fps: a third into the 0.2 s swap into export.high at 1.0 s, as T4's f 1356 was (0.4 in).
-  const mid = await census(32, "graphics/soft.html");
-  t.diagnostic(JSON.stringify(mid));
-  const high = mid.soft?.find((x) => x.text === "High");
-  assert.ok(high && high.by === "swap" && high.piece === "export.high" && high.side === "in" && high.at === 1 && high.dur === 0.2, JSON.stringify(high));
-  assert.equal(mid.soft?.some((x) => x.by === "stage"), false, "the stage isn't blurred yet");
-  const rest = await census(40, "graphics/soft.html");
-  assert.equal(rest.soft?.find((x) => x.text === "High"), undefined, "at rest the card reads");
-  assert.ok(rest.measured > 0);
-  const hint = censusNear([{ frame: 32, measured: mid.measured, small: mid.small, ...(mid.soft ? { soft: mid.soft } : {}) }], 32 / canvas.fps, canvas.fps) ?? "";
-  assert.match(hint, /softened at f 32: "High" .*uncutUI\.sequence's swap into "export\.high" \(its key at 1 s, dur 0\.2 s\).*at rest at 1\.2 s/, hint);
-  // The stage's own props and the graphic's own opacity, each named.
-  const late = await census(50, "graphics/soft.html");
-  t.diagnostic(JSON.stringify(late.soft));
-  const stage = late.soft?.find((x) => x.by === "stage");
-  assert.equal(late.soft?.some((x) => x.by === "stage" && x.share < SMALL_TEXT * 100), false, "a stage's small chrome isn't listed");
-  assert.ok(stage && stage.part === "composer" && stage.blur > 1 && stage.bright < 0.7, JSON.stringify(stage));
-  assert.equal(late.soft?.find((x) => x.text === "High")?.by, undefined, "the hero piece over the stage isn't softened by it");
-  const cap = late.soft?.find((x) => x.text === "Ship it today");
-  assert.ok(cap && cap.by === "graphic" && cap.prop === "opacity" && cap.el === "div#cap", JSON.stringify(cap));
-  const note = legibilityNote([{ frame: 50, measured: late.measured, small: late.small, ...(late.soft ? { soft: late.soft } : {}) }], H) ?? "";
-  assert.match(note, /"Big stage words.*blurred 8 px, darkened to 65 %: uncutUI\.mount\("composer"\)'s blur and dim props/);
-  assert.match(note, /"Ship it today" 4\.3 % \(at 20 % opacity: the graphic's own opacity on div#cap/);
-});
+test(
+  "a word blurred mid-swap, in a blurred and dimmed stage, or faded by the graphic is listed with exactly what softens it",
+  { skip, timeout: 120000 },
+  async (t) => {
+    // f 32 at 30 fps: a third into the 0.2 s swap into export.high at 1.0 s, as T4's f 1356 was (0.4 in).
+    const mid = await census(32, "graphics/soft.html");
+    t.diagnostic(JSON.stringify(mid));
+    const high = mid.soft?.find((x) => x.text === "High");
+    assert.ok(high && high.by === "swap" && high.piece === "export.high" && high.side === "in" && high.at === 1 && high.dur === 0.2, JSON.stringify(high));
+    assert.equal(
+      mid.soft?.some((x) => x.by === "stage"),
+      false,
+      "the stage isn't blurred yet",
+    );
+    const rest = await census(40, "graphics/soft.html");
+    assert.equal(
+      rest.soft?.find((x) => x.text === "High"),
+      undefined,
+      "at rest the card reads",
+    );
+    assert.ok(rest.measured > 0);
+    const hint =
+      censusNear([{ frame: 32, measured: mid.measured, small: mid.small, ...(mid.soft ? { soft: mid.soft } : {}) }], 32 / canvas.fps, canvas.fps) ?? "";
+    assert.match(hint, /softened at f 32: "High" .*uncutUI\.sequence's swap into "export\.high" \(its key at 1 s, dur 0\.2 s\).*at rest at 1\.2 s/, hint);
+    // The stage's own props and the graphic's own opacity, each named.
+    const late = await census(50, "graphics/soft.html");
+    t.diagnostic(JSON.stringify(late.soft));
+    const stage = late.soft?.find((x) => x.by === "stage");
+    assert.equal(
+      late.soft?.some((x) => x.by === "stage" && x.share < SMALL_TEXT * 100),
+      false,
+      "a stage's small chrome isn't listed",
+    );
+    assert.ok(stage && stage.part === "composer" && stage.blur > 1 && stage.bright < 0.7, JSON.stringify(stage));
+    assert.equal(late.soft?.find((x) => x.text === "High")?.by, undefined, "the hero piece over the stage isn't softened by it");
+    const cap = late.soft?.find((x) => x.text === "Ship it today");
+    assert.ok(cap && cap.by === "graphic" && cap.prop === "opacity" && cap.el === "div#cap", JSON.stringify(cap));
+    const note = legibilityNote([{ frame: 50, measured: late.measured, small: late.small, ...(late.soft ? { soft: late.soft } : {}) }], H) ?? "";
+    assert.match(note, /"Big stage words.*blurred 8 px, darkened to 65 %: uncutUI\.mount\("composer"\)'s blur and dim props/);
+    assert.match(note, /"Ship it today" 4\.3 % \(at 20 % opacity: the graphic's own opacity on div#cap/);
+  },
+);

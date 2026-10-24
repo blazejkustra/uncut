@@ -7,4 +7,3 @@ import { createHmac } from "node:crypto";
  * its URL, so the server token must never be in it.
  */
 export const graphicToken = (token: string) => createHmac("sha256", token).update("uncut-graphic-documents").digest("base64url");
-

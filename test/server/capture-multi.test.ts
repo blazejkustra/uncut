@@ -20,7 +20,12 @@ const has = (name: string) => {
     return false;
   }
 };
-const skip = !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server bundle or media core not built (run pnpm build)" : !has("ffmpeg") || !has("ffprobe") ? "needs ffmpeg and ffprobe" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MEDIA)
+    ? "server bundle or media core not built (run pnpm build)"
+    : !has("ffmpeg") || !has("ffprobe")
+      ? "needs ffmpeg and ffprobe"
+      : false;
 const T = { skip, timeout: 120000 };
 
 // The same moment, 1.0 s after the first recorder started, in each file: a recorder that started
@@ -34,9 +39,31 @@ before(() => {
   if (skip) return;
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-multi-")));
   const flash = (name: string, at: number) =>
-    ff("-f", "lavfi", "-i", `color=c=black:size=640x360:rate=30:duration=3,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(t,${at},${at + 0.3})'`, "-c:v", "libvpx", "-b:v", "1M", "-f", "webm", join(root, name));
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=black:size=640x360:rate=30:duration=3,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(t,${at},${at + 0.3})'`,
+      "-c:v",
+      "libvpx",
+      "-b:v",
+      "1M",
+      "-f",
+      "webm",
+      join(root, name),
+    );
   const beep = (name: string, at: number) =>
-    ff("-f", "lavfi", "-i", `sine=frequency=1000:sample_rate=48000:duration=3,volume=enable='not(between(t,${at},${at + 0.3}))':volume=0`, "-c:a", "libopus", "-f", "webm", join(root, name));
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=1000:sample_rate=48000:duration=3,volume=enable='not(between(t,${at},${at + 0.3}))':volume=0`,
+      "-c:a",
+      "libopus",
+      "-f",
+      "webm",
+      join(root, name),
+    );
   flash("screen.webm", EVENT - OFFSETS.screen / 1000);
   flash("camera.webm", EVENT - OFFSETS.camera / 1000);
   beep("mic.webm", EVENT - OFFSETS.voiceover / 1000);
@@ -49,12 +76,22 @@ after(() => {
 });
 
 const upload = (port: number, token: string, name: string, file: string) =>
-  fetch(`http://127.0.0.1:${port}/api/upload?name=${encodeURIComponent(name)}`, { method: "POST", body: readFileSync(file), headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" } }).then(async (r) => {
+  fetch(`http://127.0.0.1:${port}/api/upload?name=${encodeURIComponent(name)}`, {
+    method: "POST",
+    body: readFileSync(file),
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" },
+  }).then(async (r) => {
     assert.equal(r.status, 200, await r.clone().text());
     return ((await r.json()) as { path: string }).path;
   });
 const codecs = (file: string) =>
-  (JSON.parse(execFileSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", file], { encoding: "utf8" })) as { streams: Array<{ codec_type: string; codec_name: string }> }).streams.map((x) => `${x.codec_type}:${x.codec_name}`).sort();
+  (
+    JSON.parse(execFileSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", file], { encoding: "utf8" })) as {
+      streams: Array<{ codec_type: string; codec_name: string }>;
+    }
+  ).streams
+    .map((x) => `${x.codec_type}:${x.codec_name}`)
+    .sort();
 
 /** When the flash (the first non-black picture) or the beep (the first sound) is in a converted file, seconds. */
 function eventIn(file: string, kind: "video" | "audio"): number {
@@ -103,9 +140,24 @@ test("a multi-source take: four files in one folder, one edit, grouped, the came
   const before = (await client.ok("project.get", {})).revision;
 
   const parts = [
-    { path: await upload(port, token, "uncut-take-screen-00000000000a.webm", join(root, "screen.webm")), kind: "screen", device: "Test window", offsetMs: OFFSETS.screen },
-    { path: await upload(port, token, "uncut-take-camera-00000000000b.webm", join(root, "camera.webm")), kind: "camera", device: "FaceTime HD Camera", offsetMs: OFFSETS.camera },
-    { path: await upload(port, token, "uncut-take-voiceover-00000000000c.webm", join(root, "mic.webm")), kind: "voiceover", device: "Studio Mic", offsetMs: OFFSETS.voiceover },
+    {
+      path: await upload(port, token, "uncut-take-screen-00000000000a.webm", join(root, "screen.webm")),
+      kind: "screen",
+      device: "Test window",
+      offsetMs: OFFSETS.screen,
+    },
+    {
+      path: await upload(port, token, "uncut-take-camera-00000000000b.webm", join(root, "camera.webm")),
+      kind: "camera",
+      device: "FaceTime HD Camera",
+      offsetMs: OFFSETS.camera,
+    },
+    {
+      path: await upload(port, token, "uncut-take-voiceover-00000000000c.webm", join(root, "mic.webm")),
+      kind: "voiceover",
+      device: "Studio Mic",
+      offsetMs: OFFSETS.voiceover,
+    },
     { path: await upload(port, token, "uncut-take-system-00000000000d.webm", join(root, "system.webm")), kind: "system", offsetMs: OFFSETS.system },
   ];
 
@@ -125,13 +177,16 @@ test("a multi-source take: four files in one folder, one edit, grouped, the came
 
   const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
   assert.equal(project.media.length, 4);
-  const sourceOf = (kind: string) => project.media.find((m: { id: string }) => m.id === saved.media.find((x: { kind: string }) => x.kind === kind).mediaId).source;
+  const sourceOf = (kind: string) =>
+    project.media.find((m: { id: string }) => m.id === saved.media.find((x: { kind: string }) => x.kind === kind).mediaId).source;
   assert.deepEqual(sourceOf("screen"), { module: "capture.screen", device: "Test window", take: saved.name });
   assert.deepEqual(sourceOf("system"), { module: "capture.system", take: saved.name });
   assert.deepEqual(sourceOf("voiceover"), { module: "capture.microphone", device: "Studio Mic", take: saved.name });
 
   // Tracks and positions.
-  const all = project.tracks.flatMap((t: { id: string; name: string; items: Array<Record<string, unknown>> }) => t.items.map((i) => ({ ...i, trackName: t.name, trackId: t.id })));
+  const all = project.tracks.flatMap((t: { id: string; name: string; items: Array<Record<string, unknown>> }) =>
+    t.items.map((i) => ({ ...i, trackName: t.name, trackId: t.id })),
+  );
   const item = (kind: string) => all.find((i: { id: string }) => i.id === saved.items.find((x: { kind: string }) => x.kind === kind).itemId);
   const screen = item("screen");
   const camera = item("camera");
@@ -154,8 +209,14 @@ test("a multi-source take: four files in one folder, one edit, grouped, the came
   assert.deepEqual(camera.transform, { x: width - margin - size, y: height - margin - size, w: size, h: size, fit: "cover", radius: size / 2 });
 
   // Aligned: the moment in each file, on the timeline: start + (event in the file - in), in frames.
-  const onTimeline = (i: { start: number; in: number }, file: string, kind: "video" | "audio") => i.start + eventIn(join(dir, saved.folder, file), kind) * fps - i.in;
-  const at = [onTimeline(screen, "screen.mp4", "video"), onTimeline(camera, "camera.mp4", "video"), onTimeline(mic, "mic.m4a", "audio"), onTimeline(sys, "system.m4a", "audio")];
+  const onTimeline = (i: { start: number; in: number }, file: string, kind: "video" | "audio") =>
+    i.start + eventIn(join(dir, saved.folder, file), kind) * fps - i.in;
+  const at = [
+    onTimeline(screen, "screen.mp4", "video"),
+    onTimeline(camera, "camera.mp4", "video"),
+    onTimeline(mic, "mic.m4a", "audio"),
+    onTimeline(sys, "system.m4a", "audio"),
+  ];
   const spread = Math.max(...at) - Math.min(...at);
   assert.ok(spread <= 1, `the same moment lands within a frame on every track: ${at.map((x) => x.toFixed(2)).join(", ")}`);
   // Without the correction the screen and this Mac's sound would be 200 ms (6 frames) apart.
@@ -164,7 +225,10 @@ test("a multi-source take: four files in one folder, one edit, grouped, the came
   // One ⌘Z takes the four media, the items and the new tracks out; redo puts them back.
   const undone = await client.ok("project.undo", {});
   assert.equal(undone.project.media.length, 0);
-  assert.deepEqual(undone.project.tracks.map((t: { name: string }) => t.name), snap.project.tracks.map((t: { name: string }) => t.name));
+  assert.deepEqual(
+    undone.project.tracks.map((t: { name: string }) => t.name),
+    snap.project.tracks.map((t: { name: string }) => t.name),
+  );
   assert.equal(undone.revision > before, true);
   const redone = await client.ok("project.redo", {});
   assert.equal(redone.project.media.length, 4);

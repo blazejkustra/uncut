@@ -53,7 +53,12 @@ export const SPRING_DOC =
 const params = (p: SpringName | SpringParams): Required<SpringParams> => {
   const s = typeof p === "string" ? SPRING_PRESETS[p] : p;
   const pos = (n: unknown, d: number) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : d);
-  return { stiffness: pos(s.stiffness, 170), damping: typeof s.damping === "number" && Number.isFinite(s.damping) && s.damping >= 0 ? s.damping : 20, mass: pos(s.mass, 1), velocity: typeof s.velocity === "number" && Number.isFinite(s.velocity) ? s.velocity : 0 };
+  return {
+    stiffness: pos(s.stiffness, 170),
+    damping: typeof s.damping === "number" && Number.isFinite(s.damping) && s.damping >= 0 ? s.damping : 20,
+    mass: pos(s.mass, 1),
+    velocity: typeof s.velocity === "number" && Number.isFinite(s.velocity) ? s.velocity : 0,
+  };
 };
 
 /** Position and velocity of the spring at `t` seconds (0 → 1; t ≤ 0 is the start). */

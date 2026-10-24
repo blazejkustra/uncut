@@ -40,7 +40,11 @@ export function serverLog(dataDir: string, maxBytes = LOG_MAX_BYTES): (text: str
         size = 0;
       }
       const at = new Date().toISOString();
-      const lines = text.replace(/\n$/, "").split("\n").map((line) => `${at} ${line}\n`).join("");
+      const lines = text
+        .replace(/\n$/, "")
+        .split("\n")
+        .map((line) => `${at} ${line}\n`)
+        .join("");
       appendFileSync(file, lines, { mode: 0o600 });
       size += Buffer.byteLength(lines);
     } catch {}

@@ -44,7 +44,10 @@ async function transcribe(args: Json, { signal, progress }: ToolContext) {
       },
     },
   );
-  return text(`${speech.words.length} words in ${speech.segments.length} segments${speech.language ? ` (${speech.language})` : ""}.`, speech as unknown as Json);
+  return text(
+    `${speech.words.length} words in ${speech.segments.length} segments${speech.language ? ` (${speech.language})` : ""}.`,
+    speech as unknown as Json,
+  );
 }
 
 // notifications/cancelled aborts the call's signal, which kills whisper-cli; the call gets no

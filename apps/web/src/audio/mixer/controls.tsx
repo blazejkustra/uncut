@@ -32,7 +32,19 @@ export function preview(project: ProjectModel, plan: Plan | Problem): PreviewDra
  * A relative drag (no jump on press): the value moves by the pointer's travel, `toValue` maps a
  * start value and the travel in pixels to the new value. Commits on release only if it changed.
  */
-function useDrag<T>({ value, toValue, onPreview, onCommit, disabled }: { value: T; toValue: (start: T, dx: number, dy: number) => T; onPreview: (v: T) => void; onCommit: (v: T) => void; disabled: boolean }) {
+function useDrag<T>({
+  value,
+  toValue,
+  onPreview,
+  onCommit,
+  disabled,
+}: {
+  value: T;
+  toValue: (start: T, dx: number, dy: number) => T;
+  onPreview: (v: T) => void;
+  onCommit: (v: T) => void;
+  disabled: boolean;
+}) {
   const [local, setLocal] = useState<T | undefined>(undefined);
   const onPointerDown = (e: React.PointerEvent) => {
     if (disabled || e.button !== 0) return;
@@ -64,7 +76,21 @@ function useDrag<T>({ value, toValue, onPreview, onCommit, disabled }: { value: 
 }
 
 /** A vertical fader in dB on the shared level scale (levelY): drag the thumb, double-click for 0 dB. */
-export function Fader({ value, onPreview, onCommit, disabled, testId, label }: { value: number; onPreview: (db: number) => void; onCommit: (db: number) => void; disabled: boolean; testId: string; label: string }) {
+export function Fader({
+  value,
+  onPreview,
+  onCommit,
+  disabled,
+  testId,
+  label,
+}: {
+  value: number;
+  onPreview: (db: number) => void;
+  onCommit: (db: number) => void;
+  disabled: boolean;
+  testId: string;
+  label: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const { shown, onPointerDown } = useDrag({
     value,
@@ -100,7 +126,19 @@ export function Fader({ value, onPreview, onCommit, disabled, testId, label }: {
 }
 
 /** A horizontal pan slider, −1 (left) … 1 (right): drag, double-click to centre. */
-export function PanSlider({ value, onPreview, onCommit, disabled, name }: { value: number; onPreview: (p: number) => void; onCommit: (p: number) => void; disabled: boolean; name: string }) {
+export function PanSlider({
+  value,
+  onPreview,
+  onCommit,
+  disabled,
+  name,
+}: {
+  value: number;
+  onPreview: (p: number) => void;
+  onCommit: (p: number) => void;
+  disabled: boolean;
+  name: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const { shown, onPointerDown } = useDrag({
     value,
@@ -144,7 +182,15 @@ export function PanSlider({ value, onPreview, onCommit, disabled, name }: { valu
 /** A stereo meter: RMS as the bar, peak as a line, on the faders' scale. The panel's loop writes into it. */
 export function Meter({ id }: { id: string }) {
   return (
-    <div className="meter" data-testid="mixer-meter" data-meter={id} data-peak="-Infinity" data-rms="-Infinity" data-over="false" title="Level after the fader and pan: RMS bar, peak line; the top lights red when the peak reaches full scale">
+    <div
+      className="meter"
+      data-testid="mixer-meter"
+      data-meter={id}
+      data-peak="-Infinity"
+      data-rms="-Infinity"
+      data-over="false"
+      title="Level after the fader and pan: RMS bar, peak line; the top lights red when the peak reaches full scale"
+    >
       {(["l", "r"] as const).map((c) => (
         <div key={c} className="meter-ch">
           <div className="meter-rms" data-ch={c} />
@@ -190,7 +236,6 @@ export function drawMeter(m: MeterEl, level: StereoLevel, now: number): boolean 
 }
 const FLOOR_KEY = "1.000,1.000;1.000,1.000";
 
-
 // ---- effects, ducking, the limiter and the loudness target (D84–D88) ----
 
 /** Fill a gain-reduction light from a reading (dB ≤ 0): its bar grows down from the top over 0…−12 dB. Returns whether it shows anything. */
@@ -206,7 +251,19 @@ export function drawReduction(el: HTMLElement, gr: number): boolean {
 }
 
 /** A small popover over the panel, opened from an anchor (fixed, so the panel's scroll doesn't clip it). Escape or a click outside closes it. */
-export function Popover({ anchor, onClose, children, testId, wide = false }: { anchor: HTMLElement; onClose: () => void; children: React.ReactNode; testId: string; wide?: boolean }) {
+export function Popover({
+  anchor,
+  onClose,
+  children,
+  testId,
+  wide = false,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  children: React.ReactNode;
+  testId: string;
+  wide?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const r = anchor.getBoundingClientRect();
   const left = Math.max(8, Math.min(window.innerWidth - (wide ? 318 : 268), r.left));
@@ -227,7 +284,13 @@ export function Popover({ anchor, onClose, children, testId, wide = false }: { a
     };
   }, [anchor, onClose]);
   return (
-    <div className={`fx-popover ${wide ? "wide" : ""}`} data-testid={testId} ref={ref} style={{ left, bottom: Math.max(8, window.innerHeight - r.top + 6) }} onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      className={`fx-popover ${wide ? "wide" : ""}`}
+      data-testid={testId}
+      ref={ref}
+      style={{ left, bottom: Math.max(8, window.innerHeight - r.top + 6) }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {children}
     </div>
   );

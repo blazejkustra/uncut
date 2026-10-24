@@ -23,7 +23,8 @@ export interface ClipFx {
   readonly letterbox?: { readonly ratio: number };
 }
 
-const live = (item: Pick<Item, "effects">): ReadonlyArray<ModuleUse> => (Array.isArray(item.effects) ? item.effects.filter((e) => e && typeof e.module === "string" && !e.bypass) : []);
+const live = (item: Pick<Item, "effects">): ReadonlyArray<ModuleUse> =>
+  Array.isArray(item.effects) ? item.effects.filter((e) => e && typeof e.module === "string" && !e.bypass) : [];
 
 /** A look entry's definition: a built-in one, or the custom look it carries (a plugin's, D136). */
 export function lookDefOf(params: unknown): LookDef | undefined {
@@ -33,7 +34,8 @@ export function lookDefOf(params: unknown): LookDef | undefined {
 }
 
 /** Media looks and effects aren't drawn on (D138): SVG stills, which Chromium draws at their box's size in the export. */
-export const fxSkips = (media: { readonly kind: string; readonly path?: string } | undefined) => !!media && media.kind === "image" && /\.svg$/i.test(media.path ?? "");
+export const fxSkips = (media: { readonly kind: string; readonly path?: string } | undefined) =>
+  !!media && media.kind === "image" && /\.svg$/i.test(media.path ?? "");
 
 /** A clip's effects compiled to what the preview and export draw; undefined when nothing is drawn. */
 export function clipFx(item: Pick<Item, "type" | "effects">): ClipFx | undefined {
@@ -104,7 +106,8 @@ export function clipFx(item: Pick<Item, "type" | "effects">): ClipFx | undefined
 }
 
 /** Whether the effects change the picture itself (the WebGL pass / the export's filters), not only overlays or the box. */
-export const needsPicturePass = (fx: ClipFx | undefined) => !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow);
+export const needsPicturePass = (fx: ClipFx | undefined) =>
+  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow);
 /** Whether anything is drawn over the picture (vignette, grain, letterbox). */
 export const hasOverlay = (fx: ClipFx | undefined) => !!fx && !!(fx.vignette || fx.grain || fx.letterbox);
 
@@ -112,7 +115,10 @@ export const hasOverlay = (fx: ClipFx | undefined) => !!fx && !!(fx.vignette || 
  * The size (canvas px, whole) the effects work at: the picture at its fit in the box, before any
  * zoom (scale, keys, a pulse or a transition zoom it afterwards, effects and all).
  */
-export function fxPictureSize(box: Pick<ClipBox, "x" | "y" | "w" | "h" | "fit">, media?: { width?: number | undefined; height?: number | undefined }): { w: number; h: number } {
+export function fxPictureSize(
+  box: Pick<ClipBox, "x" | "y" | "w" | "h" | "fit">,
+  media?: { width?: number | undefined; height?: number | undefined },
+): { w: number; h: number } {
   const r = fitRect(box, box.fit, media?.width && media?.height ? { width: media.width, height: media.height } : undefined);
   return { w: Math.max(1, Math.round(r.w)), h: Math.max(1, Math.round(r.h)) };
 }
@@ -211,7 +217,10 @@ export function fxOverlayInner(fx: ClipFx, rect: Rect, local: number): string {
   }
   if (fx.letterbox) {
     const bar = Math.max(0, (rect.h - rect.w / fx.letterbox.ratio) / 2);
-    if (bar > 0) layers.push(`<div style="position:absolute;left:0;right:0;top:0;height:${css(bar)}px;background:#000"></div><div style="position:absolute;left:0;right:0;bottom:0;height:${css(bar)}px;background:#000"></div>`);
+    if (bar > 0)
+      layers.push(
+        `<div style="position:absolute;left:0;right:0;top:0;height:${css(bar)}px;background:#000"></div><div style="position:absolute;left:0;right:0;bottom:0;height:${css(bar)}px;background:#000"></div>`,
+      );
   }
   if (!layers.length) return "";
   return `<div class="pv-fx" style="position:absolute;left:${css(rect.x)}px;top:${css(rect.y)}px;width:${css(rect.w)}px;height:${css(rect.h)}px;overflow:hidden;pointer-events:none">${layers.join("")}</div>`;

@@ -56,7 +56,13 @@ let root = "";
 let app: LaunchedApp | undefined;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The footage folder's listing (names, sizes, times), to prove the run wrote nothing there. */
-const listing = () => (FOOTAGE ? readdirSync(FOOTAGE).filter((n) => n !== ".DS_Store").map((n) => `${n} ${statSync(join(FOOTAGE, n)).size} ${statSync(join(FOOTAGE, n)).mtimeMs}`).join("\n") : "");
+const listing = () =>
+  FOOTAGE
+    ? readdirSync(FOOTAGE)
+        .filter((n) => n !== ".DS_Store")
+        .map((n) => `${n} ${statSync(join(FOOTAGE, n)).size} ${statSync(join(FOOTAGE, n)).mtimeMs}`)
+        .join("\n")
+    : "";
 let before0 = "";
 
 /** "<MUSIC>.m4a": a soft synthesised bed (a slow D major pad, a gentle pentatonic pluck every 0.75 s), faded in and out. */
@@ -67,7 +73,22 @@ function makeMusic(dir: string, seconds = TOTAL / fps) {
   const note = `(587.33*eq(${step},0)+659.25*eq(${step},1)+880*eq(${step},2)+739.99*eq(${step},3)+659.25*eq(${step},4)+493.88*eq(${step},5))`;
   const pluck = `0.11*exp(-mod(t,0.75)*5)*sin(2*PI*${note}*t)`;
   const fade = `min(1,t/2)*min(1,(${seconds}-t)/2.5)`;
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `aevalsrc='(${pad}+${pluck})*${fade}':s=48000:d=${seconds}`, "-af", "aecho=0.8:0.7:240:0.3", "-c:a", "aac", "-b:a", "160k", join(dir, `${MUSIC}.m4a`)]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `aevalsrc='(${pad}+${pluck})*${fade}':s=48000:d=${seconds}`,
+    "-af",
+    "aecho=0.8:0.7:240:0.3",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    join(dir, `${MUSIC}.m4a`),
+  ]);
 }
 
 before(async () => {
@@ -88,22 +109,97 @@ after(async () => {
 /** The media id an import gives a file: "DJI_…_0055_D.MP4" is named "DJI 0055" (m-dji-0055), anything else by its stem. */
 const id = (file: string) => {
   const dji = /^DJI_\d+_(\d{4})_D\./.exec(file);
-  return dji ? `m-dji-${dji[1]}` : `m-${file.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  return dji
+    ? `m-dji-${dji[1]}`
+    : `m-${file
+        .replace(/\.[^.]+$/, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")}`;
 };
 
 /** The one agent turn the fake claude plays: what a real travel-edit turn does, in order. */
 function plan() {
   const T = 16;
   const transitions = [undefined, "transition.crossfade", "transition.crossfade", "transition.push-left", "transition.crossfade", "transition.dip-to-black"];
-  const main = SHOTS.map((s, i) => ({ op: "insert_item", track: "main", item: { id: `shot-${i + 1}`, type: "clip", media: id(s.file), in: s.from * fps, duration: SHOT, ...(transitions[i] ? { transitionIn: { module: transitions[i], duration: T } } : {}) } }));
+  const main = SHOTS.map((s, i) => ({
+    op: "insert_item",
+    track: "main",
+    item: {
+      id: `shot-${i + 1}`,
+      type: "clip",
+      media: id(s.file),
+      in: s.from * fps,
+      duration: SHOT,
+      ...(transitions[i] ? { transitionIn: { module: transitions[i], duration: T } } : {}),
+    },
+  }));
   const centred = (w: number) => (1920 - w) / 2;
   const shadow = { color: "#06141c", opacity: 0.55 };
   const texts = [
-    { id: "kicker", start: 4, duration: 96, text: "Croatia", transform: { x: centred(1000), y: 214, w: 1000 }, style: { preset: "text.kicker", font: "DM Sans", size: 40, weight: 700, tracking: 0.42, uppercase: true, color: "#ffe2c2", align: "center", shadow: { y: 2, blur: 18, ...shadow } }, animation: { in: { module: "move.rise", duration: 16 } } },
-    { id: "title", start: 0, duration: 100, text: "Day four", transform: { x: centred(1600), y: 262, w: 1600 }, style: { preset: "text.title", font: "DM Sans", size: 240, weight: 800, tracking: -0.035, color: "#ffffff", align: "center", shadow: { y: 10, blur: 48, ...shadow } }, animation: { in: { module: "move.rise", duration: 18 }, out: { module: "move.fade", duration: 10 } } },
-    { id: "line-2", start: 120, duration: 85, text: "Golden hour on the coast", transform: { x: 140, y: 800, w: 1300 }, style: { preset: "text.title", font: "DM Sans", size: 84, weight: 700, color: "#ffffff", align: "left", shadow: { y: 4, blur: 24, ...shadow } }, animation: { in: { module: "move.slide-left", duration: 14 } } },
-    { id: "line-3", start: 330, duration: 85, text: "The lighthouse at dusk", transform: { x: centred(1400), y: 140, w: 1400 }, style: { preset: "text.title", font: "DM Sans", size: 84, weight: 700, color: "#ffffff", align: "center", shadow: { y: 4, blur: 24, ...shadow } }, animation: { in: { module: "move.rise", duration: 14 } } },
-    { id: "end", start: TOTAL - 95, duration: 95, text: "Until tomorrow", transform: { x: centred(1200), y: 300, w: 1200 }, style: { preset: "text.title", font: "DM Mono", size: 80, weight: 500, color: "#ffffff", align: "center" }, animation: { in: { module: "move.typewriter", duration: 30 } } },
+    {
+      id: "kicker",
+      start: 4,
+      duration: 96,
+      text: "Croatia",
+      transform: { x: centred(1000), y: 214, w: 1000 },
+      style: {
+        preset: "text.kicker",
+        font: "DM Sans",
+        size: 40,
+        weight: 700,
+        tracking: 0.42,
+        uppercase: true,
+        color: "#ffe2c2",
+        align: "center",
+        shadow: { y: 2, blur: 18, ...shadow },
+      },
+      animation: { in: { module: "move.rise", duration: 16 } },
+    },
+    {
+      id: "title",
+      start: 0,
+      duration: 100,
+      text: "Day four",
+      transform: { x: centred(1600), y: 262, w: 1600 },
+      style: {
+        preset: "text.title",
+        font: "DM Sans",
+        size: 240,
+        weight: 800,
+        tracking: -0.035,
+        color: "#ffffff",
+        align: "center",
+        shadow: { y: 10, blur: 48, ...shadow },
+      },
+      animation: { in: { module: "move.rise", duration: 18 }, out: { module: "move.fade", duration: 10 } },
+    },
+    {
+      id: "line-2",
+      start: 120,
+      duration: 85,
+      text: "Golden hour on the coast",
+      transform: { x: 140, y: 800, w: 1300 },
+      style: { preset: "text.title", font: "DM Sans", size: 84, weight: 700, color: "#ffffff", align: "left", shadow: { y: 4, blur: 24, ...shadow } },
+      animation: { in: { module: "move.slide-left", duration: 14 } },
+    },
+    {
+      id: "line-3",
+      start: 330,
+      duration: 85,
+      text: "The lighthouse at dusk",
+      transform: { x: centred(1400), y: 140, w: 1400 },
+      style: { preset: "text.title", font: "DM Sans", size: 84, weight: 700, color: "#ffffff", align: "center", shadow: { y: 4, blur: 24, ...shadow } },
+      animation: { in: { module: "move.rise", duration: 14 } },
+    },
+    {
+      id: "end",
+      start: TOTAL - 95,
+      duration: 95,
+      text: "Until tomorrow",
+      transform: { x: centred(1200), y: 300, w: 1200 },
+      style: { preset: "text.title", font: "DM Mono", size: 80, weight: 500, color: "#ffffff", align: "center" },
+      animation: { in: { module: "move.typewriter", duration: 30 } },
+    },
   ];
   const textOps = texts.map((t) => ({ op: "insert_item", track: t.id === "kicker" ? "titles" : "text", item: { type: "text", ...t } }));
   // A short warm rule under the title that draws itself in.
@@ -122,12 +218,55 @@ window.render = (t, info) => {
 };
 </script>`;
   const names = SHOTS.map((s) => s.name);
-  const brief = { film: "A 21 s travel film of day four in Croatia: a quiet title, six drone shots from golden hour to blue hour, soft music under it", audience: "Friends and family, and the trip's group chat", duration: "21 s", formats: ["16:9 1920x1080"], assets: names, visual: "Natural grade, white DM Sans titles, warm accent", hardLines: ["Only the day's drone footage", "No faces"], deliverables: ["croatia-day-4.mp4"] };
+  const brief = {
+    film: "A 21 s travel film of day four in Croatia: a quiet title, six drone shots from golden hour to blue hour, soft music under it",
+    audience: "Friends and family, and the trip's group chat",
+    duration: "21 s",
+    formats: ["16:9 1920x1080"],
+    assets: names,
+    visual: "Natural grade, white DM Sans titles, warm accent",
+    hardLines: ["Only the day's drone footage", "No faces"],
+    deliverables: ["croatia-day-4.mp4"],
+  };
   const beats = [
-    { start: 0, end: 3.5, title: "Day four", entry: "The title rises over the coast road", exit: "Accent rule drawn", purpose: "Set the place in one beat", assets: ["The coast road"], sound: "music fades in" },
-    { start: 3.5, end: 10.5, title: "Golden hour", entry: "Crossfade to the bay", exit: "Straight down on the shore", purpose: "Warm light, then the water", assets: ["Sun over the bay", "Shoreline from above"] },
-    { start: 10.5, end: 17.5, title: "The lighthouse", entry: "Push to the lighthouse", exit: "Sun on the horizon", purpose: "The evening's walk", assets: ["The lighthouse", "Sunset at sea"] },
-    { start: 17.5, end: 21, title: "Blue hour", entry: "Dip to the last light", exit: "Until tomorrow types in", purpose: "A soft end", assets: ["Blue hour"], sound: "music fades out" },
+    {
+      start: 0,
+      end: 3.5,
+      title: "Day four",
+      entry: "The title rises over the coast road",
+      exit: "Accent rule drawn",
+      purpose: "Set the place in one beat",
+      assets: ["The coast road"],
+      sound: "music fades in",
+    },
+    {
+      start: 3.5,
+      end: 10.5,
+      title: "Golden hour",
+      entry: "Crossfade to the bay",
+      exit: "Straight down on the shore",
+      purpose: "Warm light, then the water",
+      assets: ["Sun over the bay", "Shoreline from above"],
+    },
+    {
+      start: 10.5,
+      end: 17.5,
+      title: "The lighthouse",
+      entry: "Push to the lighthouse",
+      exit: "Sun on the horizon",
+      purpose: "The evening's walk",
+      assets: ["The lighthouse", "Sunset at sea"],
+    },
+    {
+      start: 17.5,
+      end: 21,
+      title: "Blue hour",
+      entry: "Dip to the last light",
+      exit: "Until tomorrow types in",
+      purpose: "A soft end",
+      assets: ["Blue hour"],
+      sound: "music fades out",
+    },
   ];
   return [
     [
@@ -148,9 +287,17 @@ window.render = (t, info) => {
             { op: "add_track", track: { id: "titles", kind: "text", name: "Kicker", items: [] }, index: 0 },
             ...textOps,
             { op: "add_track", track: { id: "gfx", kind: "video", name: "Graphics", items: [] }, index: 2 },
-            { op: "insert_item", track: "gfx", item: { id: "accent", type: "graphic", name: "Title accent", src: "graphics/title-accent.html", start: 0, duration: 100 } },
+            {
+              op: "insert_item",
+              track: "gfx",
+              item: { id: "accent", type: "graphic", name: "Title accent", src: "graphics/title-accent.html", start: 0, duration: 100 },
+            },
             { op: "update_track", track: "audio", set: { name: "Music" } },
-            { op: "insert_item", track: "audio", item: { id: "music-1", type: "audio", media: id(`${MUSIC}.m4a`), in: 0, start: 0, duration: TOTAL, fadeIn: fps, fadeOut: 2 * fps, gainDb: -4 } },
+            {
+              op: "insert_item",
+              track: "audio",
+              item: { id: "music-1", type: "audio", media: id(`${MUSIC}.m4a`), in: 0, start: 0, duration: TOTAL, fadeIn: fps, fadeOut: 2 * fps, gainDb: -4 },
+            },
           ],
         },
       },
@@ -171,7 +318,14 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
     critic,
     JSON.stringify([
       {
-        scores: { hook: ev(9, "f 0: the title rises over the coast road on the first beat"), readability: ev(9, "f 45: Day four reads at phone size over the sea"), motion: ev(8, "f 0 to f 24: the rise settles, the drone keeps drifting"), variety: ev(9, "f 45, f 160, f 360: road, shore, lighthouse"), sound: ev(8, "f 0 to f 30: the music fades in under the title"), brand: ev(9, "f 45, f 160: white titles, warm accent, natural grade") },
+        scores: {
+          hook: ev(9, "f 0: the title rises over the coast road on the first beat"),
+          readability: ev(9, "f 45: Day four reads at phone size over the sea"),
+          motion: ev(8, "f 0 to f 24: the rise settles, the drone keeps drifting"),
+          variety: ev(9, "f 45, f 160, f 360: road, shore, lighthouse"),
+          sound: ev(8, "f 0 to f 30: the music fades in under the title"),
+          brand: ev(9, "f 45, f 160: white titles, warm accent, natural grade"),
+        },
         blockers: [],
         defects: [],
         summary: "A calm open, readable titles, the light carries the cut from gold to blue.",
@@ -179,7 +333,18 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
     ]),
   );
 
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "Projects")]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: planFile, FAKE_CRITIC: critic, FAKE_RESULT_LOG: resolve("test-output/readme-hero-results.jsonl"), UNCUT_APPROVAL_MS: "120000" } });
+  app = await launchApp({
+    command: APP,
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([join(root, "Projects")]),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: planFile,
+      FAKE_CRITIC: critic,
+      FAKE_RESULT_LOG: resolve("test-output/readme-hero-results.jsonl"),
+      UNCUT_APPROVAL_MS: "120000",
+    },
+  });
   const { page } = app;
   await page.setViewport({ width: W, height: H, deviceScaleFactor: 2 });
   const waitFor = (selector: string, timeout = 20000) => page.waitForSelector(selector, { timeout });
@@ -207,7 +372,9 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
   await page.keyboard.press("Enter");
   await waitFor("[data-testid=agent-storyboard-approve]", 90000);
   await page.click("[data-testid=agent-storyboard-approve]");
-  await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=agent-turn]")].at(-1)?.getAttribute("data-status") === "done", { timeout: 240000 });
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=agent-turn]")].at(-1)?.getAttribute("data-status") === "done", {
+    timeout: 240000,
+  });
 
   // The look: logo, pill and proxy badges hidden, Media panel, the timeline a little taller so the preview's
   // area is close to 16:9, the whole edit in view.
@@ -242,21 +409,24 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
   await page.mouse.move(W / 2, 12);
 
   // Thumbnails and waveforms in, the frame drawn, nothing still loading.
-  await page.waitForFunction(
-    () => {
-      const tiles = [...document.querySelectorAll<HTMLElement>("[data-testid=media-tile]")];
-      const imgs = tiles.flatMap((t) => [...t.querySelectorAll("img")]);
-      return tiles.length >= 6 && imgs.every((i) => i.complete && i.naturalWidth > 0) && !document.body.innerText.includes("Checking");
-    },
-    { timeout: 60000 },
-  ).catch(() => console.log("# media tiles not all loaded"));
+  await page
+    .waitForFunction(
+      () => {
+        const tiles = [...document.querySelectorAll<HTMLElement>("[data-testid=media-tile]")];
+        const imgs = tiles.flatMap((t) => [...t.querySelectorAll("img")]);
+        return tiles.length >= 6 && imgs.every((i) => i.complete && i.naturalWidth > 0) && !document.body.innerText.includes("Checking");
+      },
+      { timeout: 60000 },
+    )
+    .catch(() => console.log("# media tiles not all loaded"));
   await sleep(2500);
   console.log("# timecode", await page.$eval("[data-testid=timecode]", (el) => (el as HTMLElement).innerText));
   // The review card folded (its score sheet is long), and the fake claude's own sign-off
   // ("Done: N steps.", test plumbing) hidden, then the thread at its end.
   await page.click("[data-testid=agent-card][data-type=review] .card-head").catch(() => console.log("# no review card"));
   await page.$$eval("[data-testid=agent-thread] *", (els) => {
-    for (const el of els as Array<HTMLElement>) if (/^Done: \d+ steps?\.$/.test(el.innerText?.trim() ?? "") && !(el.parentElement?.innerText.trim() ?? "").startsWith("Done:")) el.style.display = "none";
+    for (const el of els as Array<HTMLElement>)
+      if (/^Done: \d+ steps?\.$/.test(el.innerText?.trim() ?? "") && !(el.parentElement?.innerText.trim() ?? "").startsWith("Done:")) el.style.display = "none";
   });
   await sleep(300);
   await page.$eval("[data-testid=agent-thread]", (el) => (el.scrollTop = el.scrollHeight));
@@ -267,7 +437,11 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
       return r ? [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] : undefined;
     };
     const canvas = document.querySelector<HTMLCanvasElement>("[data-testid=stage-canvas] canvas");
-    return { preview: box("[data-testid=stage]"), stageCanvas: box("[data-testid=stage-canvas]"), canvas: canvas ? [canvas.width, canvas.height, canvas.getBoundingClientRect().width] : undefined };
+    return {
+      preview: box("[data-testid=stage]"),
+      stageCanvas: box("[data-testid=stage-canvas]"),
+      canvas: canvas ? [canvas.width, canvas.height, canvas.getBoundingClientRect().width] : undefined,
+    };
   });
   console.log("# layout", JSON.stringify(layout));
 

@@ -4,7 +4,20 @@
 // ⌘Z, labelled in History and listed in the agent's next note.
 import { mainEnd as mainEndOf } from "@uncut/core/rules";
 import { STICKER_ART } from "@uncut/core/stickers";
-import { alignScreen, componentDefaults, componentInfo, defaultComponentBox, componentRest, deviceSpec, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenTransform, type Device } from "@uncut/core/components";
+import {
+  alignScreen,
+  componentDefaults,
+  componentInfo,
+  defaultComponentBox,
+  componentRest,
+  deviceSpec,
+  isDrawnComponent,
+  naturalSize,
+  planDeviceFrame,
+  screenKeys,
+  screenTransform,
+  type Device,
+} from "@uncut/core/components";
 import type { FieldSet, Item, Op } from "@uncut/core/types";
 
 import { findItem, type Plan } from "../timeline/edit.ts";
@@ -33,7 +46,17 @@ export const setDraggedText = (id: string | undefined) => void (draggedTextId = 
 export const draggedText = () => draggedTextId;
 
 /** How long a new component lasts: a countdown, lower third, quote or checklist 5 s, an end card, callout, subscribe or social button 3 s, a sticker 2 s, the rest 4 s. */
-const SECONDS: Readonly<Record<string, number>> = { "component.end-card": 3, "component.subscribe": 3, "component.social-button": 3, "component.sticker": 2, "component.callout": 3, "component.countdown": 5, "component.lower-third": 5, "component.quote": 5, "component.checklist": 5 };
+const SECONDS: Readonly<Record<string, number>> = {
+  "component.end-card": 3,
+  "component.subscribe": 3,
+  "component.social-button": 3,
+  "component.sticker": 2,
+  "component.callout": 3,
+  "component.countdown": 5,
+  "component.lower-third": 5,
+  "component.quote": 5,
+  "component.checklist": 5,
+};
 export const secondsFor = (id: string) => SECONDS[id] ?? 4;
 
 /**
@@ -44,7 +67,12 @@ export const secondsFor = (id: string) => SECONDS[id] ?? 4;
  * so it draws over the footage and backgrounds and under the text. A device frame comes alone
  * (its Inspector puts footage in it).
  */
-export function planAddComponent(project: ProjectModel, componentId: string, frame: number, { at, props }: { at?: { x: number; y: number }; props?: Record<string, unknown> } = {}): Planned {
+export function planAddComponent(
+  project: ProjectModel,
+  componentId: string,
+  frame: number,
+  { at, props }: { at?: { x: number; y: number }; props?: Record<string, unknown> } = {},
+): Planned {
   const c = componentInfo(componentId);
   if (!c) return { problem: "Uncut can't draw that component yet." };
   const fps = project.canvas.fps;
@@ -70,14 +98,24 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
   const itemId = uniqueId(project, c.id.replace(/^component\./, ""), taken);
   taken.add(itemId);
   // Dropped on the canvas: centred on the drop point; else where it goes on this canvas's aspect (F7, D152).
-  let transform: Item["transform"] = defaultComponentBox(c.id, project, { ...componentDefaults(c.id), ...(props ?? {}) });
+  let transform: Item["transform"] = defaultComponentBox(c.id, project, { ...componentDefaults(c.id), ...props });
   if (at && !c.block.fullFrame) {
-    const size = transform ? { width: transform.w!, height: transform.h! } : naturalSize({ component: c.id, props: { ...componentDefaults(c.id), ...(props ?? {}) } }, project.canvas);
+    const size = transform
+      ? { width: transform.w!, height: transform.h! }
+      : naturalSize({ component: c.id, props: { ...componentDefaults(c.id), ...props } }, project.canvas);
     transform = { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2), w: Math.round(size.width), h: Math.round(size.height) };
   }
   // A sticker from the set (D165) comes with its own props over the defaults, and its name.
   const name = typeof props?.art === "string" ? STICKER_ART[props.art]?.name : undefined;
-  const item: Item = { id: itemId, type: "component", component: c.id, duration, props: { ...componentDefaults(c.id), ...(props ?? {}) }, ...(name ? { name } : {}), ...(transform ? { transform } : {}) };
+  const item: Item = {
+    id: itemId,
+    type: "component",
+    component: c.id,
+    duration,
+    props: { ...componentDefaults(c.id), ...props },
+    ...(name ? { name } : {}),
+    ...(transform ? { transform } : {}),
+  };
   const summary = props?.emoji ? `Add sticker ${String(props.emoji)}` : name ? `Add sticker ${name.toLowerCase()}` : `Add ${c.name.toLowerCase()}`;
   const mainEnd = mainEndOf(project);
   if (c.block.fullFrame && start === mainEnd && !main.locked) return { ops: [{ op: "insert_item", track: main.id, item }], summary, itemId, start };
@@ -100,7 +138,11 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
  * (full canvas, drawn in the graphics sandbox) with the component's props, 3 s at the playhead,
  * on the first free overlay track under the text (else a new Overlay track), as components go.
  */
-export function planAddGraphic(project: ProjectModel, graphic: { readonly src: string; readonly name: string; readonly props: Record<string, unknown>; readonly idBase: string }, frame: number): Planned {
+export function planAddGraphic(
+  project: ProjectModel,
+  graphic: { readonly src: string; readonly name: string; readonly props: Record<string, unknown>; readonly idBase: string },
+  frame: number,
+): Planned {
   const mainIndex = project.tracks.findIndex((t) => t.role === "main");
   if (mainIndex < 0) return { problem: "This project has no main track." };
   const start = Math.max(0, Math.floor(frame));
@@ -117,7 +159,11 @@ export function planAddGraphic(project: ProjectModel, graphic: { readonly src: s
     const n = displayTracks(project).filter((t) => t.kind === "video" && t.role !== "main" && t.name.startsWith("Overlay")).length;
     ops.push({ op: "add_track", index: lastText + 1, track: { id: trackId, kind: "video", name: n ? `Overlay ${n + 1}` : "Overlay" } });
   }
-  ops.push({ op: "insert_item", track: trackId, item: { id: itemId, type: "graphic", src: graphic.src, name: graphic.name, start, duration, props: graphic.props } as Item });
+  ops.push({
+    op: "insert_item",
+    track: trackId,
+    item: { id: itemId, type: "graphic", src: graphic.src, name: graphic.name, start, duration, props: graphic.props } as Item,
+  });
   return { ops, summary: `Add ${graphic.name.toLowerCase()}`, itemId, start };
 }
 
@@ -154,7 +200,10 @@ export function screenClipOf(project: ProjectModel, frameId: string): { item: It
     }
   }
   const on = (i: Item) => i.transform?.x === t.x && i.transform?.y === t.y && i.transform?.w === t.w && i.transform?.h === t.h;
-  return candidates.find((c) => on(c.item)) ?? candidates.find((c) => (starts.get(c.item.id) ?? 0) === from && c.item.duration === frame.item.duration && c.item.transform?.fit === "cover");
+  return (
+    candidates.find((c) => on(c.item)) ??
+    candidates.find((c) => (starts.get(c.item.id) ?? 0) === from && c.item.duration === frame.item.duration && c.item.transform?.fit === "cover")
+  );
 }
 
 /**
@@ -183,10 +232,24 @@ export function planScreenFootage(project: ProjectModel, frameId: string, mediaI
   const clipId = uniqueId(project, "screen", taken);
   taken.add(clipId);
   const keys = screenKeys(frame.item, project.canvas);
-  const clip: Item = { id: clipId, type: "clip", media: media.id, start: frame.start, duration: frame.item.duration, ...(media.kind === "video" ? { in: 0 } : {}), ...(loop ? { loop: true } : {}), transform: t, ...(keys ? { keys } : {}) };
+  const clip: Item = {
+    id: clipId,
+    type: "clip",
+    media: media.id,
+    start: frame.start,
+    duration: frame.item.duration,
+    ...(media.kind === "video" ? { in: 0 } : {}),
+    ...(loop ? { loop: true } : {}),
+    transform: t,
+    ...(keys ? { keys } : {}),
+  };
   const index = project.tracks.indexOf(frame.track);
   const mainIndex = project.tracks.findIndex((tr) => tr.role === "main");
-  const free = (tr: Track) => tr.kind === "video" && tr.role !== "main" && !tr.locked && tr.items.every((i) => (i.start ?? 0) + i.duration <= frame.start || frame.start + frame.item.duration <= (i.start ?? 0));
+  const free = (tr: Track) =>
+    tr.kind === "video" &&
+    tr.role !== "main" &&
+    !tr.locked &&
+    tr.items.every((i) => (i.start ?? 0) + i.duration <= frame.start || frame.start + frame.item.duration <= (i.start ?? 0));
   const below = project.tracks.slice(index + 1, mainIndex === -1 ? undefined : mainIndex).find(free);
   const ops: Array<Op> = [];
   let trackId = below?.id;
@@ -215,7 +278,7 @@ export function planAlignScreen(project: ProjectModel, frameId: string): Plan | 
 export function planDevice(project: ProjectModel, frameId: string, device: Device): Plan | Problem {
   const frame = findItem(project, frameId);
   if (!frame || frame.item.component !== "component.device-frame") return { problem: "That device frame isn't in the project any more." };
-  const props: Record<string, unknown> = { ...(frame.item.props ?? {}), device };
+  const props: Record<string, unknown> = { ...frame.item.props, device };
   if (device !== "browser") delete props.url;
   const t = frame.item.transform ?? {};
   const spec = deviceSpec(device);

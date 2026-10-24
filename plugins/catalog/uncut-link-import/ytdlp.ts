@@ -50,7 +50,13 @@ export function formatArgs(kind: LinkKind, quality: LinkQuality): Array<string> 
  * only `<stem>.%(ext)s`, relative: yt-dlp runs in the project's media/links folder (runYtDlp's
  * cwd). yt-dlp expands $VARS and ~ in -o and -P, so the project's path must never be in them.
  */
-export function ytDlpArgs(o: { readonly url: string; readonly kind: LinkKind; readonly quality: LinkQuality; readonly stem: string; readonly ffmpeg?: string | undefined }): Array<string> {
+export function ytDlpArgs(o: {
+  readonly url: string;
+  readonly kind: LinkKind;
+  readonly quality: LinkQuality;
+  readonly stem: string;
+  readonly ffmpeg?: string | undefined;
+}): Array<string> {
   if (!SAFE_STEM.test(o.stem)) throw new Error(`not a safe output stem: ${o.stem}`);
   return [
     "--ignore-config",
@@ -104,14 +110,22 @@ export function plainYtDlpError(stderr: string, code: number | null): string {
   if (has(/Unsupported URL/i)) return "yt-dlp doesn't know how to import from that site.";
   if (has(/is not a valid URL|No video formats found|no suitable formats/i)) return "There's no video at that link that yt-dlp can import.";
   if (has(/Private video|members-only|This video is private/i)) return "That video is private, so it can't be imported.";
-  if (has(/Sign in to confirm|age-restricted|confirm your age|login required|requires authentication|cookies|log in|logged.in|premium members/i)) return "The site wants you to sign in for that one, so it can't be imported.";
-  if (has(/Video unavailable|has been removed|not available in your country|geo.?restrict/i)) return "That video isn't available (removed, or blocked where you are).";
+  if (has(/Sign in to confirm|age-restricted|confirm your age|login required|requires authentication|cookies|log in|logged.in|premium members/i))
+    return "The site wants you to sign in for that one, so it can't be imported.";
+  if (has(/Video unavailable|has been removed|not available in your country|geo.?restrict/i))
+    return "That video isn't available (removed, or blocked where you are).";
   if (has(/Requested format is not available/i)) return "That quality isn't available for this video. Pick another one.";
   if (has(/HTTP Error 404|404: Not Found/i)) return "Nothing was found at that link (404).";
   if (has(/HTTP Error 403|403: Forbidden/i)) return "The site refused the download (403). Updating yt-dlp often fixes this: brew upgrade yt-dlp";
   if (has(/HTTP Error 429|Too Many Requests/i)) return "The site is limiting downloads right now. Try again later.";
-  if (has(/ffmpeg (is )?not (found|installed)|ffprobe and ffmpeg not found|ffmpeg-location .* does not exist/i)) return "yt-dlp needs ffmpeg for this. Install it with: brew install ffmpeg";
-  if (has(/Unable to download webpage|getaddrinfo|Name or service not known|nodename nor servname|Failed to resolve|timed out|Connection refused|Network is unreachable|No route to host/i)) return "Couldn't reach the site. Check the link and your connection.";
+  if (has(/ffmpeg (is )?not (found|installed)|ffprobe and ffmpeg not found|ffmpeg-location .* does not exist/i))
+    return "yt-dlp needs ffmpeg for this. Install it with: brew install ffmpeg";
+  if (
+    has(
+      /Unable to download webpage|getaddrinfo|Name or service not known|nodename nor servname|Failed to resolve|timed out|Connection refused|Network is unreachable|No route to host/i,
+    )
+  )
+    return "Couldn't reach the site. Check the link and your connection.";
   if (has(/No space left on device/i)) return "The disk is full.";
   if (has(/max-filesize|File is larger than max-filesize/i)) return "The file is too big.";
   const last = s
@@ -120,7 +134,10 @@ export function plainYtDlpError(stderr: string, code: number | null): string {
     .filter((l) => l.startsWith("ERROR:"))
     .pop();
   if (last) {
-    const text = last.replace(/^ERROR:\s*/, "").replace(/^\[[^\]]+\]\s*[^:]*:\s*/, "").trim();
+    const text = last
+      .replace(/^ERROR:\s*/, "")
+      .replace(/^\[[^\]]+\]\s*[^:]*:\s*/, "")
+      .trim();
     if (text) return `yt-dlp couldn't import it: ${text.slice(0, 300)}`;
   }
   return code === null ? "yt-dlp stopped before it finished." : `yt-dlp stopped with an error (exit ${code}).`;
@@ -185,7 +202,10 @@ const signalGroup = (child: ChildProcess, s: NodeJS.Signals) => {
 const killTree = (child: ChildProcess) => {
   signalGroup(child, "SIGTERM");
   // The group, not just the leader: an ffmpeg can outlive yt-dlp (D266).
-  setTimeout(() => ((child.exitCode === null && child.signalCode === null) || (child.pid && groupAlive(child.pid))) && signalGroup(child, "SIGKILL"), 3000).unref();
+  setTimeout(
+    () => ((child.exitCode === null && child.signalCode === null) || (child.pid && groupAlive(child.pid))) && signalGroup(child, "SIGKILL"),
+    3000,
+  ).unref();
 };
 
 /** SIGKILL to every yt-dlp group still running (the plugin is exiting). */
@@ -205,7 +225,14 @@ const groupGone = async (pid: number | undefined, ms: number) => {
  * `onLine`; resolves with its exit code and the tail of stderr once its whole process group is
  * gone (D266: an ffmpeg that outlives a cancelled yt-dlp can't leave a .temp after the cleanup).
  */
-export const runYtDlp = (bin: string, args: ReadonlyArray<string>, onLine: (line: string) => void, signal: AbortSignal, cwd?: string, env: NodeJS.ProcessEnv = process.env) =>
+export const runYtDlp = (
+  bin: string,
+  args: ReadonlyArray<string>,
+  onLine: (line: string) => void,
+  signal: AbortSignal,
+  cwd?: string,
+  env: NodeJS.ProcessEnv = process.env,
+) =>
   new Promise<{ code: number | null; stderr: string; spawnError?: string }>((resolve) => {
     let child: ChildProcess;
     try {
@@ -270,7 +297,9 @@ export interface DownloadInput {
   readonly searchPath: string;
 }
 
-export type DownloadResult = { readonly ok: true; readonly file: string; readonly title?: string | undefined } | { readonly ok: false; readonly error: string; readonly cancelled?: boolean };
+export type DownloadResult =
+  | { readonly ok: true; readonly file: string; readonly title?: string | undefined }
+  | { readonly ok: false; readonly error: string; readonly cancelled?: boolean };
 
 /**
  * One download: yt-dlp with ytDlpArgs into `folder`, progress and steps to `onProgress`; the
@@ -283,7 +312,8 @@ export async function download(input: DownloadInput, signal: AbortSignal, onProg
   if (input.kind !== "video" && input.kind !== "audio") return { ok: false, error: "Pick Video or Audio only." };
   if (!QUALITIES.includes(input.quality)) return { ok: false, error: "That quality isn't one Uncut offers." };
   if (!SAFE_STEM.test(input.stem)) return { ok: false, error: "Not a safe file name." };
-  if (!isAbsolute(input.folder) || !(await stat(input.folder).catch(() => undefined))?.isDirectory()) return { ok: false, error: "The folder to import into isn't there." };
+  if (!isAbsolute(input.folder) || !(await stat(input.folder).catch(() => undefined))?.isDirectory())
+    return { ok: false, error: "The folder to import into isn't there." };
   const folder = await realpath(input.folder);
   const bin = await which("yt-dlp", input.searchPath);
   if (!bin) return { ok: false, error: "yt-dlp isn't installed. Install it with: brew install yt-dlp" };
@@ -322,7 +352,9 @@ export async function download(input: DownloadInput, signal: AbortSignal, onProg
     if (real && ours(real) && (await stat(real).catch(() => undefined))?.isFile()) made = real;
   }
   if (!made) {
-    const files = (await readdir(folder).catch(() => [] as Array<string>)).filter((f) => f.startsWith(`${input.stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f));
+    const files = (await readdir(folder).catch(() => [] as Array<string>)).filter(
+      (f) => f.startsWith(`${input.stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f),
+    );
     if (files.length === 1) made = join(folder, files[0]!);
   }
   if (!made) return fail("yt-dlp finished but no file came out.");

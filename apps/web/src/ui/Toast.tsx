@@ -10,7 +10,19 @@ import { toastMs } from "./toast.ts";
 import { Tooltip } from "./Tooltip.tsx";
 import "./toast.css";
 
-export function ErrorToast({ text, token, onClose, testId, sticky = false }: { text: string; token: unknown; onClose: () => void; testId?: string; sticky?: boolean }) {
+export function ErrorToast({
+  text,
+  token,
+  onClose,
+  testId,
+  sticky = false,
+}: {
+  text: string;
+  token: unknown;
+  onClose: () => void;
+  testId?: string;
+  sticky?: boolean;
+}) {
   const ms = toastMs(text);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);

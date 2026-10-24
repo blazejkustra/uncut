@@ -13,7 +13,14 @@ function label(project: Project, id: Id) {
     const item = t.items.find((i) => i.id === id);
     if (item) {
       const media = item.media && project.media.find((m) => m.id === item.media);
-      const name = item.name ?? (item.text ? `text "${item.text.replace(/\n/g, " ")}"` : (media || undefined)?.name ?? (item.component === "component.solid" ? "background" : (componentInfo(item.component)?.name.toLowerCase() ?? item.component)) ?? (item.type === "graphic" ? `graphic ${item.src ?? ""}`.trim() : undefined) ?? id);
+      const name =
+        item.name ??
+        (item.text
+          ? `text "${item.text.replace(/\n/g, " ")}"`
+          : ((media || undefined)?.name ??
+            (item.component === "component.solid" ? "background" : (componentInfo(item.component)?.name.toLowerCase() ?? item.component)) ??
+            (item.type === "graphic" ? `graphic ${item.src ?? ""}`.trim() : undefined) ??
+            id));
       return `${name} (${id})`;
     }
   }
@@ -29,10 +36,12 @@ export const dbWords = (db: unknown) => {
 };
 
 /** A pan in words (D83): "centre", "30 % left", "100 % right". */
-export const panWords = (pan: unknown) => (typeof pan !== "number" || pan === 0 ? "centre" : `${Math.round(Math.abs(pan) * 100)} % ${pan < 0 ? "left" : "right"}`);
+export const panWords = (pan: unknown) =>
+  typeof pan !== "number" || pan === 0 ? "centre" : `${Math.round(Math.abs(pan) * 100)} % ${pan < 0 ? "left" : "right"}`;
 
 /** A planner's summary for an effect change (D84–D87), in the past tense: "Added EQ to Music", "Ducked Music under Voice by −12 dB". */
-const EFFECT_HINT = /^(Add|Remove|Move|Bypass|Turn on|Turn off|Set (EQ|Compressor|Voice|Noise removal|the master limiter|the loudness target)|Duck|Stop ducking)\b/;
+const EFFECT_HINT =
+  /^(Add|Remove|Move|Bypass|Turn on|Turn off|Set (EQ|Compressor|Voice|Noise removal|the master limiter|the loudness target)|Duck|Stop ducking)\b/;
 const PAST: ReadonlyArray<[RegExp, string]> = [
   [/^Add\b/, "Added"],
   [/^Remove\b/, "Removed"],
@@ -45,9 +54,13 @@ const PAST: ReadonlyArray<[RegExp, string]> = [
 ];
 const past = (hint: string) => PAST.reduce((s, [re, word]) => s.replace(re, word), hint);
 /** A track's effects in words (an agent's update_track, which has no summary): "EQ (low cut 80 Hz), ducking under voice by −12 dB". */
-export function effectsWords(effects: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }>): string {
+export function effectsWords(
+  effects: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }>,
+): string {
   if (!effects.length) return "none";
-  return effects.map((fx) => (fx.module === DUCK ? `ducking ${effectSummary(fx)}` : `${effectName(fx.module)} (${effectSummary(fx)})`) + (fx.bypass ? " bypassed" : "")).join(", ");
+  return effects
+    .map((fx) => (fx.module === DUCK ? `ducking ${effectSummary(fx)}` : `${effectName(fx.module)} (${effectSummary(fx)})`) + (fx.bypass ? " bypassed" : ""))
+    .join(", ");
 }
 
 /**
@@ -63,11 +76,22 @@ function trackFlag(track: Id, set: { readonly [key: string]: unknown }, hint?: s
   if (keys[0] === "hidden") return `${on(set.hidden) ? "Hid" : "Showed"} track ${track}`;
   if (keys[0] === "locked") return `${on(set.locked) ? "Locked" : "Unlocked"} track ${track}`;
   if (keys[0] === "mixer") {
-    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown; readonly pan?: unknown; readonly solo?: unknown; readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }> };
+    const mixer = (set.mixer ?? {}) as {
+      readonly mute?: unknown;
+      readonly gainDb?: unknown;
+      readonly pan?: unknown;
+      readonly solo?: unknown;
+      readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }>;
+    };
     // Effects and ducking (D84, D85): the Mixer's summary says what changed; an agent's edit lists the chain.
     if (hint && EFFECT_HINT.test(hint)) return past(hint);
     if (!hint && Array.isArray(mixer.effects) && mixer.effects.length) {
-      const rest = [typeof mixer.gainDb === "number" ? `volume ${dbWords(mixer.gainDb)}` : "", typeof mixer.pan === "number" && mixer.pan !== 0 ? `panned ${panWords(mixer.pan)}` : "", mixer.mute === true ? "muted" : "", mixer.solo === true ? "soloed" : ""].filter(Boolean);
+      const rest = [
+        typeof mixer.gainDb === "number" ? `volume ${dbWords(mixer.gainDb)}` : "",
+        typeof mixer.pan === "number" && mixer.pan !== 0 ? `panned ${panWords(mixer.pan)}` : "",
+        mixer.mute === true ? "muted" : "",
+        mixer.solo === true ? "soloed" : "",
+      ].filter(Boolean);
       return `Set effects of track ${track}: ${effectsWords(mixer.effects)}${rest.length ? `; ${rest.join(", ")}` : ""}`;
     }
     // The Mixer's pan and solo (D83): the summary says which field the gesture changed.
@@ -75,7 +99,10 @@ function trackFlag(track: Id, set: { readonly [key: string]: unknown }, hint?: s
     if (hint && /^(un)?solo\b/i.test(hint)) return `${mixer.solo === true ? "Soloed" : "Unsoloed"} track ${track}`;
     const muteNews = hint && /^(un)?mute\b/i.test(hint) ? true : hint && /\bvolume\b/i.test(hint) ? false : !("gainDb" in mixer);
     // Without a summary that says (the agent's edits): pan and solo are listed with the rest.
-    const extra = hint && (muteNews || /\bvolume\b/i.test(hint)) ? "" : [typeof mixer.pan === "number" && mixer.pan !== 0 ? `, panned ${panWords(mixer.pan)}` : "", mixer.solo === true ? ", soloed" : ""].join("");
+    const extra =
+      hint && (muteNews || /\bvolume\b/i.test(hint))
+        ? ""
+        : [typeof mixer.pan === "number" && mixer.pan !== 0 ? `, panned ${panWords(mixer.pan)}` : "", mixer.solo === true ? ", soloed" : ""].join("");
     if (muteNews && mixer.mute === true) return `Muted track ${track}${extra}`;
     if (muteNews && mixer.mute === false) return `Unmuted track ${track}${extra}`;
     if (!muteNews) return `Set volume of track ${track} to ${dbWords(mixer.gainDb)}${mixer.mute === true ? " (muted)" : ""}${extra}`;
@@ -90,7 +117,21 @@ const quote = (text: string, max = 60) => {
   return `"${flat.length > max ? `${flat.slice(0, max - 1)}…` : flat}"`;
 };
 const round = (n: unknown) => (typeof n === "number" ? String(Math.round(n)) : String(n));
-const MOVE_NAMES: Readonly<Record<string, string>> = { "move.fade": "fade", "move.rise": "rise", "move.slide-left": "slide left", "move.wipe": "wipe", "move.word-by-word": "word by word", "move.zoom": "zoom", "move.typewriter": "typewriter", "move.bounce": "bounce", "move.blur": "blur", "move.scale": "scale", "move.pop": "pop", "move.pulse": "pulse", "move.wiggle": "wiggle" };
+const MOVE_NAMES: Readonly<Record<string, string>> = {
+  "move.fade": "fade",
+  "move.rise": "rise",
+  "move.slide-left": "slide left",
+  "move.wipe": "wipe",
+  "move.word-by-word": "word by word",
+  "move.zoom": "zoom",
+  "move.typewriter": "typewriter",
+  "move.bounce": "bounce",
+  "move.blur": "blur",
+  "move.scale": "scale",
+  "move.pop": "pop",
+  "move.pulse": "pulse",
+  "move.wiggle": "wiggle",
+};
 const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   preset: (v) => `style ${v}`,
   size: (v) => `size ${round(v)}`,
@@ -104,9 +145,19 @@ const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   case: (v) => (v === "lower" ? "lower case" : v === "title" ? "title case" : "normal case"),
   italic: (v) => (v ? "italic" : "upright"),
   // D80: outline, shadow and box in words; false = removed.
-  stroke: (v) => (v === false ? "no outline" : v && typeof v === "object" ? `outline ${round((v as { width?: unknown }).width)} px${(v as { color?: unknown }).color ? ` ${(v as { color?: unknown }).color}` : ""}` : "outline"),
+  stroke: (v) =>
+    v === false
+      ? "no outline"
+      : v && typeof v === "object"
+        ? `outline ${round((v as { width?: unknown }).width)} px${(v as { color?: unknown }).color ? ` ${(v as { color?: unknown }).color}` : ""}`
+        : "outline",
   shadow: (v) => (v === false ? "no shadow" : v && typeof v === "object" ? `shadow blur ${round((v as { blur?: unknown }).blur ?? 0)}` : "shadow"),
-  background: (v) => (v === false ? "no box" : v && typeof v === "object" ? `${(v as { wrap?: unknown }).wrap === "lines" ? "a box per line" : "a box"} ${(v as { color?: unknown }).color ?? ""}`.trim() : "box"),
+  background: (v) =>
+    v === false
+      ? "no box"
+      : v && typeof v === "object"
+        ? `${(v as { wrap?: unknown }).wrap === "lines" ? "a box per line" : "a box"} ${(v as { color?: unknown }).color ?? ""}`.trim()
+        : "box",
 };
 
 /**
@@ -117,7 +168,10 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
   const keys = Object.keys(set);
   if (keys.length === 1 && keys[0] === "text" && typeof set.text === "string") return `Changed the text of ${id} to ${quote(set.text)}`;
   // D224: the empty space before a main item.
-  if (keys.length === 1 && keys[0] === "gap") return typeof set.gap === "number" && set.gap > 0 ? `Left a ${secs(set.gap, fps)} gap before ${it(id)} on the main track` : `Closed the gap before ${it(id)} on the main track`;
+  if (keys.length === 1 && keys[0] === "gap")
+    return typeof set.gap === "number" && set.gap > 0
+      ? `Left a ${secs(set.gap, fps)} gap before ${it(id)} on the main track`
+      : `Closed the gap before ${it(id)} on the main track`;
   const sound = describeSound(id, set, it, fps);
   if (sound) return sound;
   const captions = describeCaptions(id, set, project, it, fps);
@@ -128,12 +182,21 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     const value = set[key];
     if (key === "text" && typeof value === "string") parts.push(`text ${quote(value)}`);
     else if (key === "style" && value && typeof value === "object") {
-      const words = Object.entries(value as Record<string, unknown>).filter(([k]) => STYLE_WORDS[k]).map(([k, v]) => STYLE_WORDS[k]!(v));
+      const words = Object.entries(value as Record<string, unknown>)
+        .filter(([k]) => STYLE_WORDS[k])
+        .map(([k, v]) => STYLE_WORDS[k]!(v));
       parts.push(words.length ? words.join(", ") : "style reset");
     } else if (key === "transform" && value && typeof value === "object") {
       const t = value as Record<string, unknown>;
       const pos = [t.x !== undefined ? `x ${round(t.x)}` : "", t.y !== undefined ? `y ${round(t.y)}` : ""].filter(Boolean).join(", ");
-      const size = t.w !== undefined && t.h !== undefined ? `, box ${round(t.w)}×${round(t.h)}` : t.w !== undefined ? `, box ${round(t.w)} wide` : t.h !== undefined ? `, box ${round(t.h)} high` : "";
+      const size =
+        t.w !== undefined && t.h !== undefined
+          ? `, box ${round(t.w)}×${round(t.h)}`
+          : t.w !== undefined
+            ? `, box ${round(t.w)} wide`
+            : t.h !== undefined
+              ? `, box ${round(t.h)} high`
+              : "";
       // A clip's box (D75): fit, zoom, opacity and corners.
       const extra = [
         typeof t.fit === "string" ? `fit ${t.fit}` : "",
@@ -149,7 +212,15 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
       const props = ["x", "y", "scale", "opacity"].filter((p) => keys.some((k) => typeof k[p] === "number"));
       parts.push(
         props.length
-          ? `keys ${props.map((p) => `${p} at ${keys.filter((k) => typeof k[p] === "number").map((k) => secs(Number(k.frame), fps)).join(", ")}`).join("; ")}`
+          ? `keys ${props
+              .map(
+                (p) =>
+                  `${p} at ${keys
+                    .filter((k) => typeof k[p] === "number")
+                    .map((k) => secs(Number(k.frame), fps))
+                    .join(", ")}`,
+              )
+              .join("; ")}`
           : "no keys",
       );
     } else if (key === "effects") parts.push(fxWords(value));
@@ -157,15 +228,25 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     else if (key === "hold") parts.push(value === true ? "holding its last frame" : "not holding its last frame");
     else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;
-      const one = (k: "in" | "out") => (a[k]?.module ? `${MOVE_NAMES[a[k]!.module!] ?? a[k]!.module} ${k} ${secs(a[k]!.duration ?? 0, fps)}` : `no ${k} animation`);
-      parts.push(`${one("in")}, ${one("out")}${a.loop?.module ? `, ${MOVE_NAMES[a.loop.module] ?? a.loop.module} loop every ${secs(a.loop.duration ?? 0, fps)}` : ""}`);
+      const one = (k: "in" | "out") =>
+        a[k]?.module ? `${MOVE_NAMES[a[k]!.module!] ?? a[k]!.module} ${k} ${secs(a[k]!.duration ?? 0, fps)}` : `no ${k} animation`;
+      parts.push(
+        `${one("in")}, ${one("out")}${a.loop?.module ? `, ${MOVE_NAMES[a.loop.module] ?? a.loop.module} loop every ${secs(a.loop.duration ?? 0, fps)}` : ""}`,
+      );
     } else if (key === "props" && value && typeof value === "object") {
       const p = value as Record<string, unknown>;
       const item = project.tracks.flatMap((tr) => tr.items).find((i) => i.id === id);
       if (item && componentInfo(item.component)) {
         // A component's props (D76), in words: text values quoted, the rest by name.
-        parts.push(Object.entries(p).map(([k, v]) => (typeof v === "string" ? `${k} ${quote(v, 40)}` : k)).join(", ") || "no props");
-      } else parts.push(p.to !== undefined ? `colour ${p.color} to ${p.to} (gradient)` : p.color !== undefined ? `colour ${p.color}` : `props ${Object.keys(p).join(", ")}`);
+        parts.push(
+          Object.entries(p)
+            .map(([k, v]) => (typeof v === "string" ? `${k} ${quote(v, 40)}` : k))
+            .join(", ") || "no props",
+        );
+      } else
+        parts.push(
+          p.to !== undefined ? `colour ${p.color} to ${p.to} (gradient)` : p.color !== undefined ? `colour ${p.color}` : `props ${Object.keys(p).join(", ")}`,
+        );
     } else rest.push(key);
   }
   if (!parts.length) return `Changed ${keys.join(", ")} on ${it(id)}`;
@@ -188,9 +269,17 @@ function describeCaptions(id: Id, set: { readonly [key: string]: unknown }, proj
     if (k === "edits") {
       const list = Array.isArray(v) ? (v as ReadonlyArray<{ word: number; text: string }>) : [];
       parts.push(list.length ? `corrections ${list.map((e) => `w${e.word} ${e.text === "" ? "hidden" : quote(e.text, 30)}`).join(", ")}` : "no corrections");
-    } else if (k === "breaks") parts.push(Array.isArray(v) && v.length ? `new cards at ${(v as ReadonlyArray<number>).map((w) => `w${w}`).join(", ")}` : "no forced cards");
+    } else if (k === "breaks")
+      parts.push(Array.isArray(v) && v.length ? `new cards at ${(v as ReadonlyArray<number>).map((w) => `w${w}`).join(", ")}` : "no forced cards");
     else if (k === "mode") parts.push(`mode ${String(v ?? "line")}`);
-    else if (k === "lines") parts.push(v && typeof v === "object" ? `lines ${Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ")}` : "default lines");
+    else if (k === "lines")
+      parts.push(
+        v && typeof v === "object"
+          ? `lines ${Object.entries(v)
+              .map(([a, b]) => `${a} ${b}`)
+              .join(", ")}`
+          : "default lines",
+      );
     else if (k === "hideFillers") parts.push(v === true ? "fillers hidden" : "fillers shown");
     else if (k === "words") parts.push(`${Array.isArray(v) ? v.length : 0} words from the transcript`);
     else if (k === "duration" && typeof v === "number") parts.push(`covering ${secs(v, fps)}`);
@@ -241,9 +330,11 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         const p = op.item.props ?? {};
         return `Added background ${op.item.id} (${p.to !== undefined ? `gradient ${p.color} to ${p.to}` : String(p.color ?? "default colour")}) on track ${op.track}`;
       }
-      if (op.item.type === "component" && componentInfo(op.item.component)) return `Added ${componentInfo(op.item.component)!.name.toLowerCase()} ${op.item.id} on track ${op.track}`;
+      if (op.item.type === "component" && componentInfo(op.item.component))
+        return `Added ${componentInfo(op.item.component)!.name.toLowerCase()} ${op.item.id} on track ${op.track}`;
       if (op.item.type === "graphic") return `Added graphic ${op.item.id} (${op.item.src ?? "no file"}) on track ${op.track}`;
-      if (op.item.type === "captions") return `Added captions ${op.item.id} of ${op.item.source} (${op.item.mode ?? "line"} mode, ${op.item.words?.length ?? 0} words) on track ${op.track}`;
+      if (op.item.type === "captions")
+        return `Added captions ${op.item.id} of ${op.item.source} (${op.item.mode ?? "line"} mode, ${op.item.words?.length ?? 0} words) on track ${op.track}`;
       return `Added ${op.item.type} ${op.item.id} on track ${op.track}`;
     case "set_transition":
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;
@@ -266,7 +357,11 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       // The master volume (D83); update_project replaces master whole.
       const keys = Object.keys(op.set);
       if (keys.length === 1 && keys[0] === "master") {
-        const m = (op.set.master ?? {}) as { readonly gainDb?: unknown; readonly loudness?: { readonly targetLufs?: unknown }; readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }> };
+        const m = (op.set.master ?? {}) as {
+          readonly gainDb?: unknown;
+          readonly loudness?: { readonly targetLufs?: unknown };
+          readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }>;
+        };
         // The loudness target and the limiter (D86, D87): the Mixer's summary, else what the master now says.
         if (hint && EFFECT_HINT.test(hint)) return past(hint);
         if (hint?.startsWith("Set master volume")) return `Set master volume to ${dbWords(m.gainDb)}`;
@@ -284,7 +379,9 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       if (keys.length === 1 && keys[0] === "sections") {
         if (hint) return past(hint);
         const list = (op.set.sections ?? []) as ReadonlyArray<{ readonly start: number; readonly end: number; readonly state: string }>;
-        return list.length ? `Marked sections: ${list.map((s) => `${s.state === "locked" ? "locked" : "to redo"} ${s.start}–${s.end}`).join(", ")}` : "Cleared the marked sections";
+        return list.length
+          ? `Marked sections: ${list.map((s) => `${s.state === "locked" ? "locked" : "to redo"} ${s.start}–${s.end}`).join(", ")}`
+          : "Cleared the marked sections";
       }
       // Taste checks turned off (D90): checks is replaced whole.
       if (keys.length === 1 && keys[0] === "checks") {
@@ -298,7 +395,11 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       if (keys.length === 1 && keys[0] === "motionBlur") {
         const b = op.set.motionBlur as { readonly on?: unknown; readonly samples?: unknown; readonly shutter?: unknown } | null;
         if (!b) return "Set motion blur back to its defaults";
-        const parts = [typeof b.on === "boolean" ? (b.on ? "on" : "off") : "", typeof b.samples === "number" ? `${b.samples} samples` : "", typeof b.shutter === "number" ? `${b.shutter}° shutter` : ""].filter(Boolean);
+        const parts = [
+          typeof b.on === "boolean" ? (b.on ? "on" : "off") : "",
+          typeof b.samples === "number" ? `${b.samples} samples` : "",
+          typeof b.shutter === "number" ? `${b.shutter}° shutter` : "",
+        ].filter(Boolean);
         return parts.length ? `Set motion blur: ${parts.join(", ")}` : "Changed motion blur";
       }
       return `Changed project ${keys.join(", ")}`;

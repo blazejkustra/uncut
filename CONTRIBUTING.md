@@ -39,7 +39,8 @@ The template's comments explain the manifest and the code. Plugin code may impor
 ## Code style
 
 - TypeScript only, for code, scripts and tests.
-- Match the code around you: naming, comments, error messages. There's no formatter, so read the neighbouring file first.
+- Match the code around you: naming, comments, error messages.
+- `pnpm format` formats the code (oxfmt) and `pnpm lint` lints it (oxlint); CI checks both. No source file goes over 1000 lines (`test/repo/file-size.test.ts`): split it into modules instead.
 - Comments say why, not what. Messages users see are plain sentences that say what to do next.
 - On-screen text never separates words with `·`, `•` or a lone `*`; use commas, line breaks or separate elements (`test/repo/ui-separators.test.ts` checks it).
 - Add dependencies only for a good reason, then run `node scripts/notices.ts`.

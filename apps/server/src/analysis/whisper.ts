@@ -21,7 +21,10 @@ import { NO_WHISPER, WHISPER_BIN } from "../../../../plugins/whisper-transcribe/
 export { NO_WHISPER, WHISPER_BIN };
 
 /** What a transcript needs: the binary and the model file (downloaded now if needed). */
-export type ResolveWhisper = (options: { readonly signal: AbortSignal; readonly onDownload?: (fraction: number) => void }) => Promise<{ readonly bin: string; readonly model: string; readonly modelId: string }>;
+export type ResolveWhisper = (options: {
+  readonly signal: AbortSignal;
+  readonly onDownload?: (fraction: number) => void;
+}) => Promise<{ readonly bin: string; readonly model: string; readonly modelId: string }>;
 
 export interface WhisperShape {
   readonly state: Stream.Stream<TranscriptionState>;
@@ -62,7 +65,12 @@ export const layer = Layer.effect(
 
     return Whisper.of({
       // Fresh on every subscribe: a model file removed by hand shows as not installed.
-      state: Stream.unwrap(Effect.map(Effect.promise(() => store.refresh()), () => SubscriptionRef.changes(stateRef))),
+      state: Stream.unwrap(
+        Effect.map(
+          Effect.promise(() => store.refresh()),
+          () => SubscriptionRef.changes(stateRef),
+        ),
+      ),
       download: (model) =>
         Effect.suspend(() => {
           const id = model ?? store.selectedModel();
@@ -74,12 +82,17 @@ export const layer = Layer.effect(
         }),
       cancelDownload: (model) => Effect.sync(() => store.cancel(model)),
       select: (model) =>
-        selectLock.withPermits(1)(Effect.suspend(() => {
-          if (!modelInfo(model)) return Effect.fail(unknown(model));
-          if (model === store.selectedModel()) return Effect.void;
-          // Saved before it's shown or answered, so a restart right after keeps it.
-          return Effect.andThen(settings.setWhisperModel(model), Effect.sync(() => store.select(model)));
-        })),
+        selectLock.withPermits(1)(
+          Effect.suspend(() => {
+            if (!modelInfo(model)) return Effect.fail(unknown(model));
+            if (model === store.selectedModel()) return Effect.void;
+            // Saved before it's shown or answered, so a restart right after keeps it.
+            return Effect.andThen(
+              settings.setWhisperModel(model),
+              Effect.sync(() => store.select(model)),
+            );
+          }),
+        ),
       resolve: async ({ signal, onDownload }) => {
         await config.shellReady;
         const bin = await which(WHISPER_BIN, process.env.PATH ?? "");
@@ -91,7 +104,8 @@ export const layer = Layer.effect(
         } catch (error) {
           if (signal.aborted) throw error;
           const info = modelInfo(modelId)!;
-          if (error instanceof Cancelled) throw new Error(`The speech model's download (${info.name}) was stopped before it finished. Ask again to download it.`);
+          if (error instanceof Cancelled)
+            throw new Error(`The speech model's download (${info.name}) was stopped before it finished. Ask again to download it.`);
           throw new Error(`The speech model (${info.name}, ${Math.round(info.bytes / 1e6)} MB) couldn't be downloaded: ${(error as Error).message}`);
         }
       },

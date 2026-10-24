@@ -109,7 +109,8 @@ const hasScriptUrl = (s: string) => SCRIPT_URL.test(unentity(unentity(s)).replac
 
 /** Why a component's template or CSS is refused, or undefined. */
 export function componentProblem(template: string, css: string): string | undefined {
-  if (SCRIPTY.test(template) || hasScriptUrl(template)) return "its template has a script, an event handler or an embedded page, and component templates are plain HTML";
+  if (SCRIPTY.test(template) || hasScriptUrl(template))
+    return "its template has a script, an event handler or an embedded page, and component templates are plain HTML";
   if (/</.test(css)) return "its css has a <, and component CSS is plain CSS";
   if (hasScriptUrl(css)) return "its css has a script URL, and component CSS is plain CSS";
   return undefined;
@@ -120,7 +121,15 @@ type RawContributes = {
   readonly components?: ReadonlyArray<{ id: string; name: string; description?: string; params?: Record<string, unknown>; template: string; css?: string }>;
   readonly rules?: ReadonlyArray<{ id: string; title: string; description?: string; severity?: CheckSeverity; hint?: string; rule: RuleSpec }>;
   readonly filters?: ReadonlyArray<{ id: string; name: string; description?: string; look: LookDef }>;
-  readonly shaders?: ReadonlyArray<{ id: string; name: string; description?: string; source: string; export: string; params: ReadonlyArray<ShaderParam>; wgsl: string }>;
+  readonly shaders?: ReadonlyArray<{
+    id: string;
+    name: string;
+    description?: string;
+    source: string;
+    export: string;
+    params: ReadonlyArray<ShaderParam>;
+    wgsl: string;
+  }>;
   readonly skills?: ReadonlyArray<{ name: string; title?: string; description: string; instructions: string }>;
 };
 
@@ -134,7 +143,12 @@ type RawContributes = {
  */
 export function readContributions(
   manifest: ModuleManifest,
-  options: { readonly reserved: ReadonlySet<string>; readonly moves: ReadonlySet<string>; readonly taken?: Set<string>; readonly reservedSkills?: ReadonlySet<string> },
+  options: {
+    readonly reserved: ReadonlySet<string>;
+    readonly moves: ReadonlySet<string>;
+    readonly taken?: Set<string>;
+    readonly reservedSkills?: ReadonlySet<string>;
+  },
 ): { readonly contributions: Contributions; readonly warnings: ReadonlyArray<string> } {
   const raw = (manifest.contributes ?? {}) as RawContributes;
   const from: FromPlugin = { plugin: manifest.id, pluginName: manifest.name };
@@ -143,7 +157,8 @@ export function readContributions(
   const accept = (id: string, what: string) => {
     // Owned by exactly one plugin id: the plugin's id, a dot and one name (no more dots), so a
     // plugin with a shorter id (taste) can't take a longer one's names (taste.extra.x).
-    if (!id.startsWith(`${manifest.id}.`) || id.slice(manifest.id.length + 1).includes(".")) warnings.push(`Its ${what} ${id} is left out: its id must be the plugin's id, ${manifest.id}, a dot and one name.`);
+    if (!id.startsWith(`${manifest.id}.`) || id.slice(manifest.id.length + 1).includes("."))
+      warnings.push(`Its ${what} ${id} is left out: its id must be the plugin's id, ${manifest.id}, a dot and one name.`);
     else if (options.reserved.has(id) || BUILTIN_CONTRIBUTION_IDS.has(id)) warnings.push(`Its ${what} ${id} is left out: a built-in has that id.`);
     else if (taken.has(id)) warnings.push(`Its ${what} ${id} is left out: another plugin (or entry) has that id.`);
     else {
@@ -167,7 +182,18 @@ export function readContributions(
       continue;
     }
     if (!accept(entry.id, "look")) continue;
-    looks.push({ font: "sans", tracking: 0, lineHeight: 1.1, color: "fg", text: entry.name, ...(entry.look as object), id: entry.id, name: entry.name, description: entry.description ?? "", ...from } as PluginLook);
+    looks.push({
+      font: "sans",
+      tracking: 0,
+      lineHeight: 1.1,
+      color: "fg",
+      text: entry.name,
+      ...(entry.look as object),
+      id: entry.id,
+      name: entry.name,
+      description: entry.description ?? "",
+      ...from,
+    } as PluginLook);
   }
   const components: Array<PluginComponent> = [];
   for (const entry of raw.components ?? []) {
@@ -179,8 +205,20 @@ export function readContributions(
     }
     if (!accept(entry.id, "component")) continue;
     const params = (entry.params ?? { type: "object", properties: {} }) as { properties?: Record<string, { default?: unknown }> };
-    const defaults = Object.fromEntries(Object.entries(params.properties ?? {}).flatMap(([k, v]) => (v && typeof v === "object" && v.default !== undefined ? [[k, v.default]] : [])));
-    components.push({ id: entry.id, name: entry.name, description: entry.description ?? "", params, defaults, template: entry.template, css, version: manifest.version, ...from });
+    const defaults = Object.fromEntries(
+      Object.entries(params.properties ?? {}).flatMap(([k, v]) => (v && typeof v === "object" && v.default !== undefined ? [[k, v.default]] : [])),
+    );
+    components.push({
+      id: entry.id,
+      name: entry.name,
+      description: entry.description ?? "",
+      params,
+      defaults,
+      template: entry.template,
+      css,
+      version: manifest.version,
+      ...from,
+    });
   }
   const runsProgram = (manifest.runtime as { type?: string } | undefined)?.type === "process";
   const rules: Array<PluginRule> = [];
@@ -190,7 +228,15 @@ export function readContributions(
       continue;
     }
     if (!accept(entry.id, "check")) continue;
-    rules.push({ id: entry.id, title: entry.title, description: entry.description ?? "", severity: entry.severity ?? "warn", ...(entry.hint ? { hint: entry.hint } : {}), rule: entry.rule, ...from });
+    rules.push({
+      id: entry.id,
+      title: entry.title,
+      description: entry.description ?? "",
+      severity: entry.severity ?? "warn",
+      ...(entry.hint ? { hint: entry.hint } : {}),
+      rule: entry.rule,
+      ...from,
+    });
   }
   const filters: Array<PluginFilter> = [];
   for (const entry of raw.filters ?? []) {
@@ -202,7 +248,9 @@ export function readContributions(
     // The WGSL (resolved from the plugin's TypeGPU source by plugin:check) must pass the checks both drawers rely on.
     const problems = shaderDefProblems({ params: entry.params, wgsl: entry.wgsl });
     if (problems.length) {
-      warnings.push(`Its shader effect ${entry.id} is left out: ${problems[0]!.replace(/\.$/, "")}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}.`);
+      warnings.push(
+        `Its shader effect ${entry.id} is left out: ${problems[0]!.replace(/\.$/, "")}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}.`,
+      );
       continue;
     }
     if (!accept(entry.id, "shader effect")) continue;
@@ -240,7 +288,14 @@ export function mergeSkills(list: ReadonlyArray<Pick<Contributions, "skills">>):
 export function mergeContributions(list: ReadonlyArray<Contributions>): Contributions {
   const seen = new Set<string>();
   const fresh = <T extends { readonly id: string }>(x: T) => !seen.has(x.id) && (seen.add(x.id), true);
-  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh), shaders: list.flatMap((c) => c.shaders ?? []).filter(fresh), skills: mergeSkills(list) };
+  return {
+    looks: list.flatMap((c) => c.looks).filter(fresh),
+    components: list.flatMap((c) => c.components).filter(fresh),
+    rules: list.flatMap((c) => c.rules).filter(fresh),
+    filters: list.flatMap((c) => c.filters ?? []).filter(fresh),
+    shaders: list.flatMap((c) => c.shaders ?? []).filter(fresh),
+    skills: mergeSkills(list),
+  };
 }
 
 // ---- rules ----
@@ -323,7 +378,14 @@ function compile(spec: PluginRule): CheckRule["check"] | undefined {
             }),
         );
         if (ok) return [];
-        return [{ key: spec.id, message: `The video doesn't end on an end card; ${by} asks for one over the last ${secs(need, ctx.fps)}.`, frame: Math.max(0, ctx.end - need), ...(spec.hint ? hint : { hint: "Add an end card from the Elements tab at the end." }) }];
+        return [
+          {
+            key: spec.id,
+            message: `The video doesn't end on an end card; ${by} asks for one over the last ${secs(need, ctx.fps)}.`,
+            frame: Math.max(0, ctx.end - need),
+            ...(spec.hint ? hint : { hint: "Add an end card from the Elements tab at the end." }),
+          },
+        ];
       };
     }
     default:
@@ -347,7 +409,10 @@ export function pluginRuleEntries(rules: ReadonlyArray<PluginRule>): Array<Check
 // ---- components ----
 
 /** JSON for inside a <script>: no "<" (so no </script>), no U+2028/2029. */
-const scriptJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
+const scriptJson = (v: unknown) =>
+  JSON.stringify(v)
+    .replace(/</g, "\\u003c")
+    .replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
 
 /**
  * A plugin component as a graphic file's HTML (D78's render(t, info)): the template with every
@@ -378,7 +443,13 @@ ${component.css}</style>
 })();</script>
 `;
   // The last word: the only script in it is Uncut's own (one opening, one closing tag).
-  if ((html.match(/<\s*script/gi) ?? []).length !== 1 || (html.match(/<\s*\/\s*script/gi) ?? []).length !== 1 || (html.match(/<\s*\/\s*style/gi) ?? []).length !== 1 || !/<\/style>\n<div id="uncut-component"><\/div>\n<script>/.test(html)) throw new Error(`The component ${id} can't be drawn safely.`);
+  if (
+    (html.match(/<\s*script/gi) ?? []).length !== 1 ||
+    (html.match(/<\s*\/\s*script/gi) ?? []).length !== 1 ||
+    (html.match(/<\s*\/\s*style/gi) ?? []).length !== 1 ||
+    !/<\/style>\n<div id="uncut-component"><\/div>\n<script>/.test(html)
+  )
+    throw new Error(`The component ${id} can't be drawn safely.`);
   return html;
 }
 

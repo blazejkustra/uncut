@@ -75,12 +75,12 @@ export const projectActions = {
   },
 
   // ⌘Z with nothing left says why when that's news (D71: it stops at a change made outside Uncut).
-  undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : state.snapshot?.undoStop ? set({ notice: { text: state.snapshot.undoStop } }) : undefined),
+  undo: () =>
+    state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : state.snapshot?.undoStop ? set({ notice: { text: state.snapshot.undoStop } }) : undefined,
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
 };
 export const projectFileActions = {
-  rename: (name: string) =>
-    change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),
+  rename: (name: string) => change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),
 
   async reload() {
     const result = await call((c) => c["project.reload"]({}));

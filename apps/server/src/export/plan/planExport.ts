@@ -1,4 +1,62 @@
-import { type Media, type SpeechEnvelope, type Project, layout, type Item, itemMotionBlur, subFrameTimes, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, graphicLocal, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
+import {
+  type Media,
+  type SpeechEnvelope,
+  type Project,
+  layout,
+  type Item,
+  itemMotionBlur,
+  subFrameTimes,
+  isSubtitleTrack,
+  SOLID,
+  isDrawnComponent,
+  spanOf,
+  maskOf,
+  transitionAt,
+  blurs,
+  IRIS,
+  reveals,
+  movesIncoming,
+  movesOutgoing,
+  moveBox,
+  canvasBox,
+  isSvg,
+  clipBox,
+  graphicDocument,
+  graphicLocal,
+  fxBox,
+  clipFx,
+  fxSkips,
+  clipShader,
+  needsPicturePass,
+  isPlainBox,
+  baseBox,
+  fitRect,
+  colourLut,
+  sourceAt,
+  hasOverlay,
+  fxOverlayHtml,
+  animationAt,
+  componentBox,
+  componentParts,
+  textHtml,
+  solidHtml,
+  wrapComponent,
+  dipsOf,
+  mixNote,
+  duckCurves,
+  trackAudible,
+  duckNote,
+  soundMedia,
+  trackStages,
+  panGains,
+  trackPan,
+  audioSpan,
+  duckKeysIn,
+  heldPast,
+  canvasBackground,
+  masterGain,
+  masterLimiter,
+} from "@uncut/core";
 import { type ExportPlan, mediaToken, type VisualLayer, type LayerFx, type Ramp, type AudioLayer, type GainModel } from "./types.ts";
 import { capStates, opacityRamps, splitAt, placementOf, svgClipHtml, splitLoop } from "./layers.ts";
 import { mergeableCues, captionLayers, subtitleLayers } from "./captions.ts";
@@ -25,7 +83,10 @@ export interface PlanOptions {
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
-export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false }: PlanOptions): ExportPlan | { readonly problem: string } {
+export function planExport(
+  project: Project,
+  { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false }: PlanOptions,
+): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
   if (!project.tracks.some((t) => t.items.length)) return { problem: "The timeline is empty: there's nothing to export yet." };
@@ -39,12 +100,15 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
   const aspect = project.canvas.width / project.canvas.height;
   const warnings: Array<string> = [];
   // Components' media references: a placeholder each (the exporter swaps in the file as a data: URL).
-  const target = { ...project, mediaUrl: (id: string) => {
-    const m = project.media.find((x) => x.id === id);
-    if (!m || m.kind !== "image") return undefined;
-    fileOf(m);
-    return mediaToken(id);
-  } };
+  const target = {
+    ...project,
+    mediaUrl: (id: string) => {
+      const m = project.media.find((x) => x.id === id);
+      if (!m || m.kind !== "image") return undefined;
+      fileOf(m);
+      return mediaToken(id);
+    },
+  };
   const name = (item: Item) => `"${item.name ?? item.id}"`;
   const fills = (media: Media) => !!media.probe?.width && !!media.probe?.height && Math.abs(media.probe.width / media.probe.height - aspect) < 0.002;
 
@@ -80,15 +144,31 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       // The transitions at its cuts (D79, D133): what they do at each frame, and where its layer is cut.
       const fxAt = (f: number) => transitionAt(span, f, project.canvas);
       // A blur dissolve (D133): sigma per frame in output px (core's blur is in canvas px).
-      const sigmas = blurs(span.into) || blurs(span.next) ? Array.from({ length: f1 - f0 }, (_, k) => ((fxAt(f0 + k).blur ?? 0) * height) / project.canvas.height) : undefined;
-      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: reveal } : {}), ...(span.into === IRIS ? { iris: reveal } : {}), ...(shape ? { mask: { shape, ...reveal } } : {}), ...(sigmas?.some((b) => b > 0) ? { blur: sigmas } : {}) };
+      const sigmas =
+        blurs(span.into) || blurs(span.next)
+          ? Array.from({ length: f1 - f0 }, (_, k) => ((fxAt(f0 + k).blur ?? 0) * height) / project.canvas.height)
+          : undefined;
+      const base = {
+        item,
+        track,
+        f0,
+        f1,
+        ramps,
+        ...(span.wipe ? { wipe: reveal } : {}),
+        ...(span.into === IRIS ? { iris: reveal } : {}),
+        ...(shape ? { mask: { shape, ...reveal } } : {}),
+        ...(sigmas?.some((b) => b > 0) ? { blur: sigmas } : {}),
+      };
       const inEnd = span.half > 0 ? Math.ceil(span.from + 2 * span.half) : undefined;
       const revealEnd = inEnd !== undefined && reveals(span.into!) ? inEnd : undefined;
       const moveIn = inEnd !== undefined && movesIncoming(span.into!) ? inEnd : undefined;
       const outStart = span.nextHalf > 0 ? Math.ceil(span.to - 2 * span.nextHalf) : undefined;
       const moves = [moveIn, outStart !== undefined && movesOutgoing(span.next!) ? outStart : undefined].filter((c): c is number => c !== undefined);
-      const always = [inEnd !== undefined && blurs(span.into) ? inEnd : undefined, outStart !== undefined && blurs(span.next) ? outStart : undefined].filter((c): c is number => c !== undefined);
-      const split = (layer: VisualLayer, plain?: (f: number) => boolean) => splitAt(layer, { moves, always, ...(revealEnd !== undefined ? { revealEnd } : {}), ...(plain ? { plain } : {}) }, fps);
+      const always = [inEnd !== undefined && blurs(span.into) ? inEnd : undefined, outStart !== undefined && blurs(span.next) ? outStart : undefined].filter(
+        (c): c is number => c !== undefined,
+      );
+      const split = (layer: VisualLayer, plain?: (f: number) => boolean) =>
+        splitAt(layer, { moves, always, ...(revealEnd !== undefined ? { revealEnd } : {}), ...(plain ? { plain } : {}) }, fps);
       // Text, backgrounds and graphics have no box: a push or zoom moves the canvas (core canvasBox).
       const kx = width / project.canvas.width;
       const ky = height / project.canvas.height;
@@ -96,7 +176,9 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const fx = fxAt(f0 + k);
         return fx.shift || fx.shiftY || (fx.zoom !== undefined && fx.zoom !== 1) ? moveBox(canvasBox(project.canvas), fx.shift, fx.zoom, fx.shiftY) : undefined;
       });
-      const canvasGeometry = canvasMoves.some(Boolean) ? { geometry: { frames: canvasMoves.map((b) => placementOf(b ?? canvasBox(project.canvas), kx, ky, canvasBox(project.canvas))) } } : {};
+      const canvasGeometry = canvasMoves.some(Boolean)
+        ? { geometry: { frames: canvasMoves.map((b) => placementOf(b ?? canvasBox(project.canvas), kx, ky, canvasBox(project.canvas))) } }
+        : {};
       const canvasStill = (f: number) => !canvasMoves[f - f0];
       if (isMedia && isSvg(media)) {
         // An SVG (D76): Chromium draws it in its box, one PNG per distinct box (keys).
@@ -125,7 +207,20 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const blur = itemMotionBlur(item, project, motionBlur);
         const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, local !== (item.in ?? 0) + f0 + k - start)) } : undefined;
         const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
-        visuals.push(...split({ ...base, ...canvasGeometry, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames, ...(motion ? { motion } : {}) }, canvasStill));
+        visuals.push(
+          ...split(
+            {
+              ...base,
+              ...canvasGeometry,
+              ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}),
+              kind: "graphic",
+              doc: graphicDocument(html, project.canvas),
+              frames,
+              ...(motion ? { motion } : {}),
+            },
+            canvasStill,
+          ),
+        );
         return;
       }
       if (isMedia) {
@@ -156,12 +251,25 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           const fit = fitRect(rest, boxes[0]!.fit, media.probe);
           const w = fixed ? placements[0]!.cw : Math.max(1, Math.round(fit.w * kx));
           const h = fixed ? placements[0]!.ch : Math.max(1, Math.round(fit.h * ky));
-          layerFx = { fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}) } };
+          layerFx = {
+            fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}) },
+          };
         }
         const layer: VisualLayer =
           media.kind === "image"
             ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry, ...layerFx }
-            : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry, ...layerFx, ...(item.hold && !item.loop && media.probe?.frames ? { last: (media.probe.frames - 1) / fps } : {}) };
+            : {
+                ...base,
+                ...alpha,
+                kind: "video",
+                file: path,
+                source: sourceAt(project, item, f0 - start),
+                speed: item.speed ?? 1,
+                fills: fills(media),
+                ...geometry,
+                ...layerFx,
+                ...(item.hold && !item.loop && media.probe?.frames ? { last: (media.probe.frames - 1) / fps } : {}),
+              };
         // Cut at the transitions first, then each piece into passes through its media (D79 review): a
         // long looped run keeps one looped input (the loop filter) and a transition's few frames seek.
         for (const piece of split(layer, (f) => plainAt[f - f0]!)) visuals.push(...splitLoop(piece, project, start, { width, height }));
@@ -188,7 +296,12 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           // Its box moved by a push or zoom (D79), drawn into the HTML like its keys.
           const own = componentBox(item, project.canvas, local);
           const fx = fxAt(f);
-          const parts = componentParts(item, target, local, { opacity: own?.opacity ?? 1, motion, fps, ...(own ? { box: moveBox(own, fx.shift, fx.zoom, fx.shiftY) } : {}) })!;
+          const parts = componentParts(item, target, local, {
+            opacity: own?.opacity ?? 1,
+            motion,
+            fps,
+            ...(own ? { box: moveBox(own, fx.shift, fx.zoom, fx.shiftY) } : {}),
+          })!;
           wrappers.push(parts.wrapper);
           looks.push(parts.body);
         } else looks.push(isText ? textHtml(item, project, { motion }) : solidHtml(item, project));
@@ -211,7 +324,16 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         { type: "in", st: dip.cut - dip.half, d: dip.half },
         { type: "out", st: dip.cut, d: dip.half },
       ];
-      visuals.push({ item: dip.item, track, f0, f1, ramps, kind: "raster", states: [solidHtml(dip.item, project)], frames: Array.from({ length: f1 - f0 }, () => 0) });
+      visuals.push({
+        item: dip.item,
+        track,
+        f0,
+        f1,
+        ramps,
+        kind: "raster",
+        states: [solidHtml(dip.item, project)],
+        frames: Array.from({ length: f1 - f0 }, () => 0),
+      });
     }
   }
 
@@ -253,7 +375,19 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const source = Math.max(0, sourceAt(project, item, from - start));
       const length = item.loop ? media.probe?.frames : undefined;
       const cycle = length && (item.speed ?? 1) === 1 ? { cycle: { samples: Math.round((length * 48000) / fps), offset: Math.round(source * 48000) } } : {};
-      audio.push({ item, track: track.id, file: fileOf(media), from, to: span.to, source, speed: item.speed ?? 1, loop: item.loop === true, gain, pan: panGains(trackPan(track)), ...cycle });
+      audio.push({
+        item,
+        track: track.id,
+        file: fileOf(media),
+        from,
+        to: span.to,
+        source,
+        speed: item.speed ?? 1,
+        loop: item.loop === true,
+        gain,
+        pan: panGains(trackPan(track)),
+        ...cycle,
+      });
     });
   }
 

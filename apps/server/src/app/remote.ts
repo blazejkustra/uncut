@@ -43,7 +43,10 @@ export function safeUploadName(raw: string | null | undefined): string {
   const last = basename(String(raw ?? "").replace(/\\/g, "/"));
   // Control characters and the path separators out, and no leading dots (nothing hidden, no "..").
   // eslint-disable-next-line no-control-regex
-  let name = last.replace(/[\u0000-\u001f\u007f/:]/g, "").replace(/^\.+/, "").trim();
+  let name = last
+    .replace(/[\u0000-\u001f\u007f/:]/g, "")
+    .replace(/^\.+/, "")
+    .trim();
   // At most MAX_NAME_BYTES of UTF-8 (file systems count bytes), the extension kept, no character cut in half.
   if (Buffer.byteLength(name) > MAX_NAME_BYTES) {
     const ext = extname(name).slice(0, 12);
@@ -66,7 +69,8 @@ type UploadResult = { readonly path: string } | { readonly status: number; reado
 /** Streams `req` into `<project>/media/uploads/<name>` (D108): capped, never over a file, never outside the project. */
 export async function receiveUpload(req: IncomingMessage, projectDir: string, rawName: string | null, limit: number): Promise<UploadResult> {
   const declared = Number(req.headers["content-length"]);
-  if (Number.isFinite(declared) && declared > limit) return { status: 413, message: `That file is larger than this server takes (${Math.round(limit / 1024 ** 2)} MB).` };
+  if (Number.isFinite(declared) && declared > limit)
+    return { status: 413, message: `That file is larger than this server takes (${Math.round(limit / 1024 ** 2)} MB).` };
   // media/ or uploads/ as a symlink out of the project would put the file somewhere the user
   // didn't pick: each is checked before anything is created through it.
   const outside = { status: 403, message: "The project's media folder points outside the project, so nothing was uploaded." };
@@ -115,7 +119,10 @@ export async function receiveUpload(req: IncomingMessage, projectDir: string, ra
       if (code === "EEXIST") continue;
       // A file system without hard links: a checked rename instead.
       if (code === "EPERM" || code === "ENOTSUP" || code === "EXDEV") {
-        const there = await stat(target).then(() => true, () => false);
+        const there = await stat(target).then(
+          () => true,
+          () => false,
+        );
         if (there) continue;
         await rename(part, target);
         return { path: target };
@@ -158,7 +165,10 @@ export const layer = Layer.unwrap(
           if (!open) return text(409, "Open a project first: uploads go into its media folder.");
           const source = (request as unknown as { readonly source: IncomingMessage }).source;
           const result = yield* Effect.promise(() =>
-            receiveUpload(source, open.dir, url.searchParams.get("name"), uploadLimit()).catch((error: Error): UploadResult => ({ status: 500, message: `Couldn't save the upload: ${error.message}` })),
+            receiveUpload(source, open.dir, url.searchParams.get("name"), uploadLimit()).catch((error: Error): UploadResult => ({
+              status: 500,
+              message: `Couldn't save the upload: ${error.message}`,
+            })),
           );
           return "path" in result ? json({ path: result.path }) : text(result.status, result.message);
         }),

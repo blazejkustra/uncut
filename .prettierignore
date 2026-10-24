@@ -1,0 +1,10 @@
+# oxfmt formats code only (TypeScript, JavaScript). Left alone: vendored libraries and generated data
+# (assets/), JSON the app, pnpm and scripts write themselves, YAML, Markdown and HTML pages, and
+# stylesheets, which keep their one-line rules.
+assets/
+*.json
+*.yml
+*.yaml
+*.md
+*.html
+*.css

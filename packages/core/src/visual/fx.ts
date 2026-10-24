@@ -18,10 +18,44 @@
 // sRGB-encoded 0–1 RGB, sampled into a LUT_SIZE³ table: the preview reads it with trilinear
 // interpolation in its shader, the export with lut3d interp=trilinear from a .cube of the same
 // numbers, so both draw the same colours. Browser-safe and pure.
-export { LOOK, ADJUST, STABILIZE, LUT_SIZE, ADJUST_INFO, ADJUST_KEYS, NO_ADJUST, adjustOf, isNeutral, LOOKS, lookInfo, EFFECTS, effectInfo, DRAWN_FX, effectParams } from "./fx/defs.ts";
+export {
+  LOOK,
+  ADJUST,
+  STABILIZE,
+  LUT_SIZE,
+  ADJUST_INFO,
+  ADJUST_KEYS,
+  NO_ADJUST,
+  adjustOf,
+  isNeutral,
+  LOOKS,
+  lookInfo,
+  EFFECTS,
+  effectInfo,
+  DRAWN_FX,
+  effectParams,
+} from "./fx/defs.ts";
 export type { AdjustKey, Adjust, AdjustInfo, Rgb3, Curve, LookDef, LookInfo, EffectParam, EffectGroup, EffectInfo } from "./fx/defs.ts";
 export { colourFn, colourLut, cubeText, lutAt, posterize } from "./fx/colour.ts";
 export type { ColourSpec, ColourLut } from "./fx/colour.ts";
-export { lookDefOf, fxSkips, clipFx, needsPicturePass, hasOverlay, fxPictureSize, shakeZoom, shakeAt, shakeExpr, shakeWindow, pulseZoom, fxBox, visibleRect, GRAIN_STATES, GRAIN_HOLD, fxOverlayInner, fxOverlayHtml } from "./fx/clipFx.ts";
+export {
+  lookDefOf,
+  fxSkips,
+  clipFx,
+  needsPicturePass,
+  hasOverlay,
+  fxPictureSize,
+  shakeZoom,
+  shakeAt,
+  shakeExpr,
+  shakeWindow,
+  pulseZoom,
+  fxBox,
+  visibleRect,
+  GRAIN_STATES,
+  GRAIN_HOLD,
+  fxOverlayInner,
+  fxOverlayHtml,
+} from "./fx/clipFx.ts";
 export type { ClipFx } from "./fx/clipFx.ts";
 export { planSetLook, planAdjust, adjustWord, planEffect, planRemoveEffect, planEffectBypass, fxWords } from "./fx/plans.ts";

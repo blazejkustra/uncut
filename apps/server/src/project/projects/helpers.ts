@@ -30,7 +30,8 @@ export function externalLines(before: Project, after: Project): Array<string> {
 }
 
 export const EXTERNAL_LABEL = "Changed outside Uncut";
-export const EXTERNAL_STOP = "Undo stops at the change made to project.json outside Uncut, so it isn't lost by accident. To go back further, pick an earlier version in History.";
+export const EXTERNAL_STOP =
+  "Undo stops at the change made to project.json outside Uncut, so it isn't lost by accident. To go back further, pick an earlier version in History.";
 export const COMPACTED_STOP = `Older steps aren't kept: History keeps the last ${MAX_ROWS} changes.`;
 
 export const projectError = (reason: ProjectError["reason"], message: string, dir?: string, details: ReadonlyArray<Problem> = []) =>

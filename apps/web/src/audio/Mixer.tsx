@@ -39,7 +39,10 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
   const note = mixNote(project);
   const stripKey = strips.map((t) => t.id).join(",");
   // Gain-reduction lights come and go with compressors and the limiter: the loop re-reads them.
-  const fxKey = [...strips.map((t) => (t.mixer?.effects ?? []).map((f) => `${f.module}${f.bypass ? "-" : ""}`).join("+")), masterLimiter(project) ? "lim" : ""].join(",");
+  const fxKey = [
+    ...strips.map((t) => (t.mixer?.effects ?? []).map((f) => `${f.module}${f.bypass ? "-" : ""}`).join("+")),
+    masterLimiter(project) ? "lim" : "",
+  ].join(",");
   // The meters: read the mix's levels every animation frame while something plays; once paused and
   // every meter rests at the floor, the loop idles until playback starts again.
   useEffect(() => {

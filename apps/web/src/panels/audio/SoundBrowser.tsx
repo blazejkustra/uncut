@@ -84,7 +84,9 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
     if (n !== seq.current) return;
     setBusy(false);
     if ("error" in reply) return setError(reply.error);
-    setResult((before) => (page > 1 && before && before.words === q && !reply.limit ? { ...reply, hits: [...before.hits, ...reply.hits], words: q } : { ...reply, words: q }));
+    setResult((before) =>
+      page > 1 && before && before.words === q && !reply.limit ? { ...reply, hits: [...before.hits, ...reply.hits], words: q } : { ...reply, words: q },
+    );
   };
   const pick = (s: BrowserSource) => {
     setSource(s);
@@ -102,7 +104,14 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
 
   const label = kind === "music" ? "music" : "sound effects";
   const searchId = kind === "music" ? "music-search" : "sfx-search";
-  const placeholder = source === "pack" ? "Search Uncut's sounds" : source === "folders" ? "Search your folders" : source === "music-app" ? "Search your Music library" : `Search ${label} on ${SOURCE_LABEL[source]}`;
+  const placeholder =
+    source === "pack"
+      ? "Search Uncut's sounds"
+      : source === "folders"
+        ? "Search your folders"
+        : source === "music-app"
+          ? "Search your Music library"
+          : `Search ${label} on ${SOURCE_LABEL[source]}`;
   const showMood = source === "pack" || isOnline(source);
   const hits = result?.hits ?? [];
   const limit = result?.limit;

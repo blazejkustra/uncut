@@ -44,7 +44,13 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
           applyEdit(
             p.session,
             // D123: detached sounds still linked to their clip follow what the edit does to it.
-            { actor: agent ? "agent" : "user", ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>), baseRevision, summary, ...(agent ? { turnId: agent.turnId } : {}) },
+            {
+              actor: agent ? "agent" : "user",
+              ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>),
+              baseRevision,
+              summary,
+              ...(agent ? { turnId: agent.turnId } : {}),
+            },
             format.validate,
           ),
         catch: (error) =>
@@ -67,7 +73,14 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       const problems = format.validate(written);
       if (problems.length) return yield* refused("The edit would make the project invalid", problems);
       // D206: a dry run stops here, with everything checked and nothing saved (the revision stays).
-      if (agent?.dryRun) return { dir: p.dir, project: written, revision: p.session.revision, canUndo: p.past.length > 0, canRedo: p.future.length > 0 } satisfies ProjectSnapshot;
+      if (agent?.dryRun)
+        return {
+          dir: p.dir,
+          project: written,
+          revision: p.session.revision,
+          canUndo: p.past.length > 0,
+          canRedo: p.future.length > 0,
+        } satisfies ProjectSnapshot;
       const entry = applied.log.at(-1)!;
       const typed = ops as ReadonlyArray<Op>;
       const lines = typed.map((op) => describeOp(op, written, summary));

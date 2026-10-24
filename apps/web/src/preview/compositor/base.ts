@@ -12,7 +12,23 @@ import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverl
 import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
-import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, FX_CONTEXTS, setStyle, placeContent, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes, previewStats, playSeek } from "./media.ts";
+import {
+  type MediaEl,
+  type ScrubView,
+  type PictureEl,
+  pictureReady,
+  FX_POOL,
+  FX_CONTEXTS,
+  placeContent,
+  px,
+  previewSrc,
+  wanted,
+  reachable,
+  SCRUB_SETTLE_MS,
+  renderTimes,
+  previewStats,
+  playSeek,
+} from "./media.ts";
 
 /**
  * Issue #55: a clip's effects drawn by the shared renderer (past FX_CONTEXTS), copied into its own
@@ -204,7 +220,14 @@ export abstract class CompositorBase {
    * the picture (shown, or the source of the other picture effects). Without WebGPU: a badge on the
    * clip saying it isn't drawn here and that the export will refuse.
    */
-  protected drawShader(item: Item, el: PictureEl, wrap: HTMLDivElement, use: ShaderUse | undefined, size: { w: number; h: number }, t: number): HTMLCanvasElement | undefined {
+  protected drawShader(
+    item: Item,
+    el: PictureEl,
+    wrap: HTMLDivElement,
+    use: ShaderUse | undefined,
+    size: { w: number; h: number },
+    t: number,
+  ): HTMLCanvasElement | undefined {
     if (!use) {
       if (this.shaderCanvas.has(item.id) || this.shaderBadge.has(item.id)) this.dropShader(item.id);
       return undefined;
@@ -390,7 +413,8 @@ export abstract class CompositorBase {
       const size = fxPictureSize(box, media?.probe);
       const t = (Math.floor(frame) - start) / fps;
       const key = shaded ? undefined : this.fxOf.get(item.id)?.key;
-      const ok = pictureReady(el) && (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key));
+      const ok =
+        pictureReady(el) && (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key));
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
       const drawn = ok || (r ? r.drawn && !r.lost : copy!.drawn && !this.fxShared?.lost);
       el.style.visibility = drawn || shaded ? "hidden" : "";
@@ -612,7 +636,17 @@ export abstract class CompositorBase {
    */
   protected gpuCan(v: Visual, project: ProjectModel): boolean {
     const item = v.item;
-    if (item.type === "component" && item.component === SOLID) return !v.mask && !v.blur && v.wipe === undefined && v.iris === undefined && !v.shift && !v.shiftY && v.zoom === undefined && !!plainColour(solidBackground(item, project));
+    if (item.type === "component" && item.component === SOLID)
+      return (
+        !v.mask &&
+        !v.blur &&
+        v.wipe === undefined &&
+        v.iris === undefined &&
+        !v.shift &&
+        !v.shiftY &&
+        v.zoom === undefined &&
+        !!plainColour(solidBackground(item, project))
+      );
     if (item.type !== "clip" || !v.box) return false;
     const media = project.media.find((m) => m.id === item.media);
     if (!media || media.kind === "audio" || fxSkips(media)) return false;

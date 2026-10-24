@@ -27,10 +27,22 @@ export function PluginsSettings() {
   return (
     <div data-testid="plugins-settings" className="pm">
       <div className="pm-tabs" role="tablist">
-        <button role="tab" aria-selected={view === "market"} className={view === "market" ? "active" : ""} data-testid="plugins-tab-market" onClick={() => setView("market")}>
+        <button
+          role="tab"
+          aria-selected={view === "market"}
+          className={view === "market" ? "active" : ""}
+          data-testid="plugins-tab-market"
+          onClick={() => setView("market")}
+        >
           Marketplace
         </button>
-        <button role="tab" aria-selected={view === "guide"} className={view === "guide" ? "active" : ""} data-testid="plugins-tab-guide" onClick={() => setView("guide")}>
+        <button
+          role="tab"
+          aria-selected={view === "guide"}
+          className={view === "guide" ? "active" : ""}
+          data-testid="plugins-tab-guide"
+          onClick={() => setView("guide")}
+        >
           Make a plugin
         </button>
       </div>
@@ -64,7 +76,8 @@ function kindsOf(c: PluginInfo["contributes"] | CatalogEntry["contributes"], too
 }
 
 const matches = (q: string, values: ReadonlyArray<string | undefined>) => !q || values.some((v) => v?.toLowerCase().includes(q));
-const contributionNames = (c: PluginInfo["contributes"] | CatalogEntry["contributes"]) => (c ? [...c.looks, ...c.components, ...c.rules, ...(c.filters ?? []), ...(c.shaders ?? []), ...(c.skills ?? [])] : []);
+const contributionNames = (c: PluginInfo["contributes"] | CatalogEntry["contributes"]) =>
+  c ? [...c.looks, ...c.components, ...c.rules, ...(c.filters ?? []), ...(c.shaders ?? []), ...(c.skills ?? [])] : [];
 
 function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: (q: string) => void; highlight: string | undefined }) {
   const { plugins, pluginCatalog, pluginError, pluginInstallNote, pluginInstalling, pluginDialog, connection } = useApp();
@@ -74,9 +87,15 @@ function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: 
   const q = query.trim().toLowerCase();
   const catalog = pluginCatalog?.plugins ?? [];
   const byId = useMemo(() => new Map(catalog.map((e) => [e.id, e])), [catalog]);
-  const installed = (plugins ?? []).filter((p) => matches(q, [p.id, p.name, p.description, p.author, ...kindsOf(p.contributes, p.tools.length, p.runs), ...contributionNames(p.contributes), ...p.tools]));
+  const installed = (plugins ?? []).filter((p) =>
+    matches(q, [p.id, p.name, p.description, p.author, ...kindsOf(p.contributes, p.tools.length, p.runs), ...contributionNames(p.contributes), ...p.tools]),
+  );
   // Available: catalog plugins no copy of which is in use (a same-id plugin from elsewhere counts as installed).
-  const available = catalog.filter((e) => !e.enabled && !(plugins ?? []).some((p) => p.id === e.id && p.status !== "broken")).filter((e) => matches(q, [e.id, e.name, e.description, e.author, ...kindsOf(e.contributes, e.tools.length, e.runs), ...contributionNames(e.contributes), ...e.tools]));
+  const available = catalog
+    .filter((e) => !e.enabled && !(plugins ?? []).some((p) => p.id === e.id && p.status !== "broken"))
+    .filter((e) =>
+      matches(q, [e.id, e.name, e.description, e.author, ...kindsOf(e.contributes, e.tools.length, e.runs), ...contributionNames(e.contributes), ...e.tools]),
+    );
   const dialog = pluginDialog ? plugins?.find((p) => p.id === pluginDialog && p.status !== "broken") : undefined;
   useEffect(() => {
     if (!highlight) return;
@@ -87,7 +106,13 @@ function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: 
       <div className="pm-toolbar">
         <div className="field pm-search">
           <Search />
-          <input data-testid="market-search" placeholder="Search plugins: name, author, what they add" value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false} />
+          <input
+            data-testid="market-search"
+            placeholder="Search plugins: name, author, what they add"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            spellCheck={false}
+          />
         </div>
         {!adding && (
           <button className="btn ghost" data-testid="market-add" disabled={offline} onClick={() => setAdding(true)}>
@@ -125,7 +150,9 @@ function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: 
           Available <span className="pm-count">{available.length}</span>
         </div>
         <div className="pm-lead">Plugins from Uncut's catalog. Installing one runs nothing: you see what it adds and asks for, then allow it.</div>
-        {pluginCatalog && !available.length && <div className="pm-empty">{q ? "No plugin in the catalog matches that." : "Every plugin in the catalog is installed."}</div>}
+        {pluginCatalog && !available.length && (
+          <div className="pm-empty">{q ? "No plugin in the catalog matches that." : "Every plugin in the catalog is installed."}</div>
+        )}
         <div className="pm-grid">
           {available.map((e) => (
             <AvailableCard key={e.id} entry={e} busy={busy} highlight={highlight === e.id} />
@@ -142,7 +169,27 @@ function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: 
   );
 }
 
-function CardBody({ id, icon, name, author, version, description, kinds, asks, capabilities }: { id: string; icon: string | undefined; name: string; author: string | undefined; version: string | undefined; description: string | undefined; kinds: ReadonlyArray<string>; asks: ReadonlyArray<string>; capabilities: ReadonlyArray<string> }) {
+function CardBody({
+  id,
+  icon,
+  name,
+  author,
+  version,
+  description,
+  kinds,
+  asks,
+  capabilities,
+}: {
+  id: string;
+  icon: string | undefined;
+  name: string;
+  author: string | undefined;
+  version: string | undefined;
+  description: string | undefined;
+  kinds: ReadonlyArray<string>;
+  asks: ReadonlyArray<string>;
+  capabilities: ReadonlyArray<string>;
+}) {
   return (
     <>
       <div className="pm-card-head">
@@ -182,7 +229,17 @@ function CardBody({ id, icon, name, author, version, description, kinds, asks, c
 function AvailableCard({ entry: e, busy, highlight }: { entry: CatalogEntry; busy: boolean; highlight: boolean }) {
   return (
     <div className={`pm-card${highlight ? " highlight" : ""}`} data-testid="market-card" data-id={e.id} data-state="available">
-      <CardBody id={e.id} icon={e.icon} name={e.name} author={e.author} version={e.version} description={e.description} kinds={kindsOf(e.contributes, e.tools.length, e.runs)} asks={e.asks ?? []} capabilities={e.capabilities} />
+      <CardBody
+        id={e.id}
+        icon={e.icon}
+        name={e.name}
+        author={e.author}
+        version={e.version}
+        description={e.description}
+        kinds={kindsOf(e.contributes, e.tools.length, e.runs)}
+        asks={e.asks ?? []}
+        capabilities={e.capabilities}
+      />
       <div className="pm-actions">
         <button className="btn primary" data-testid={`market-install-${e.id}`} disabled={busy} onClick={() => void actions.enablePlugin(e.id)}>
           Install…
@@ -194,10 +251,29 @@ function AvailableCard({ entry: e, busy, highlight }: { entry: CatalogEntry; bus
 
 function InstalledCard({ plugin: p, entry, busy, highlight }: { plugin: PluginInfo; entry: CatalogEntry | undefined; busy: boolean; highlight: boolean }) {
   const state = p.source === "bundled" ? "bundled" : p.status === "ready" ? "enabled" : p.status === "broken" ? "broken" : "disabled";
-  const from = p.source === "bundled" ? "Ships with Uncut" : p.origin?.kind === "catalog" ? "From Uncut's catalog" : p.origin?.kind === "git" ? `From ${p.origin.source}` : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
+  const from =
+    p.source === "bundled"
+      ? "Ships with Uncut"
+      : p.origin?.kind === "catalog"
+        ? "From Uncut's catalog"
+        : p.origin?.kind === "git"
+          ? `From ${p.origin.source}`
+          : p.origin
+            ? `Copied from ${p.origin.source}`
+            : `From ${p.dir}`;
   return (
     <div className={`pm-card${highlight ? " highlight" : ""}`} data-testid="market-card" data-id={p.id} data-state={state}>
-      <CardBody id={p.id} icon={p.status === "broken" ? undefined : p.icon} name={p.name} author={p.author ?? entry?.author} version={p.version} description={p.problem ?? p.description} kinds={kindsOf(p.contributes, p.tools.length, p.runs)} asks={p.asks} capabilities={p.capabilities} />
+      <CardBody
+        id={p.id}
+        icon={p.status === "broken" ? undefined : p.icon}
+        name={p.name}
+        author={p.author ?? entry?.author}
+        version={p.version}
+        description={p.problem ?? p.description}
+        kinds={kindsOf(p.contributes, p.tools.length, p.runs)}
+        asks={p.asks}
+        capabilities={p.capabilities}
+      />
       {p.warnings.length > 0 && (
         <div className="pm-warn" title={p.warnings.join("\n")}>
           {p.warnings[0]}
@@ -233,7 +309,12 @@ function InstalledCard({ plugin: p, entry, busy, highlight }: { plugin: PluginIn
           </button>
         )}
         {p.removable && (
-          <button className="btn ghost" data-testid={`market-remove-${p.id}`} disabled={busy} onClick={() => void actions.uninstallPlugin(p.id).then(() => actions.loadCatalog())}>
+          <button
+            className="btn ghost"
+            data-testid={`market-remove-${p.id}`}
+            disabled={busy}
+            onClick={() => void actions.uninstallPlugin(p.id).then(() => actions.loadCatalog())}
+          >
             Remove
           </button>
         )}

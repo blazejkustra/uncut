@@ -41,7 +41,19 @@ type Track = { id: string; name: string; kind: string; role?: string; items: Arr
 
 function project(dir: string, name: string) {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name, canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "text", kind: "text", name: "Text", items: [] }, { id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name,
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      media: [],
+      tracks: [
+        { id: "text", kind: "text", name: "Text", items: [] },
+        { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+      ],
+    }),
+  );
 }
 
 before(async () => {
@@ -62,7 +74,15 @@ after(async () => {
 const launch = async (dir: string, data: string, extra: Record<string, string> = {}) => {
   const app = await launchApp({
     command: APP,
-    env: { ARGENT_BIN: FAKE_ARGENT, FAKE_ARGENT_NODE: process.execPath, FAKE_ARGENT_LOG: join(root, "argent.jsonl"), UNCUT_DATA_DIR: join(root, data), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), ...extra },
+    env: {
+      ARGENT_BIN: FAKE_ARGENT,
+      FAKE_ARGENT_NODE: process.execPath,
+      FAKE_ARGENT_LOG: join(root, "argent.jsonl"),
+      UNCUT_DATA_DIR: join(root, data),
+      UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir]),
+      ...extra,
+    },
   });
   apps.add(app);
   await waitForWelcome(app.page);
@@ -79,7 +99,11 @@ async function sources(page: Page, want: ReadonlyArray<string>) {
     const on = (await page.$eval(`[data-testid=capture-src-${k}]`, (el) => (el as HTMLElement).dataset.on)) === "yes";
     if (on !== want.includes(k)) await page.click(`[data-testid=capture-src-${k}]`);
   }
-  await page.waitForFunction((w: string) => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")?.dataset.parts === w, { timeout: 5000 }, ["screen", "camera", "voiceover", "system"].filter((k) => want.includes(k)).join(","));
+  await page.waitForFunction(
+    (w: string) => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")?.dataset.parts === w,
+    { timeout: 5000 },
+    ["screen", "camera", "voiceover", "system"].filter((k) => want.includes(k)).join(","),
+  );
 }
 async function pick(page: Page, id: string) {
   await page.click("[data-testid=capture-pick-source]");
@@ -99,140 +123,167 @@ async function take(page: Page, ms: number) {
   return text(page, "[data-testid=capture-take-saved]");
 }
 
-test("issue 18 and 19: this Mac's sound alone, with the microphone and the screen; a four-source take start-aligned in one edit", { skip, timeout: 300000 }, async () => {
-  const dir = join(root, "Rec.uncut");
-  const app = await launch(dir, "data");
-  const { page } = app;
-  const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as { media: Array<{ id: string; kind: string; path: string; source?: Record<string, unknown> }>; tracks: Array<Track> };
-  const where = (itemId: string) => {
-    for (const t of onDisk().tracks) for (const i of t.items) if (i.id === itemId) return { ...i, track: t };
-    throw new Error(`no item ${itemId}`);
-  };
-  const byMedia = (mediaId: string) => onDisk().tracks.flatMap((t) => t.items.map((i) => ({ ...i, track: t }))).find((i) => i.media === mediaId)!;
-  try {
-    // #18: Mac sound alone.
-    await sources(page, ["system"]);
-    await page.waitForSelector("[data-testid=capture-card-system]", { timeout: 15000 });
-    assert.match(await text(page, "[data-testid=capture-card-system]"), /What this Mac plays/);
-    assert.match(await text(page, "[data-testid=capture-take-record]"), /Record sound/);
-    assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-this-mac]")), "no dots or stars between words");
-    await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
-    await shot(page, "issue18-sound");
-    const alone = await take(page, 1600);
-    assert.match(alone, /^Mac sound \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:00\.$/);
-    const sys1 = onDisk().media.find((m) => m.source?.module === "capture.system")!;
-    assert.equal(sys1.kind, "audio");
-    assert.match(sys1.path, /^media\/captures\/Mac sound \d{8}-\d{6}\.m4a$/);
-    assert.ok(existsSync(join(dir, sys1.path)));
-    const sysItem = byMedia(sys1.id);
-    assert.equal(sysItem.track.name, "Mac sound");
-    assert.equal(sysItem.type, "audio");
-    assert.equal(sysItem.start, 0);
+test(
+  "issue 18 and 19: this Mac's sound alone, with the microphone and the screen; a four-source take start-aligned in one edit",
+  { skip, timeout: 300000 },
+  async () => {
+    const dir = join(root, "Rec.uncut");
+    const app = await launch(dir, "data");
+    const { page } = app;
+    const onDisk = () =>
+      JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as {
+        media: Array<{ id: string; kind: string; path: string; source?: Record<string, unknown> }>;
+        tracks: Array<Track>;
+      };
+    const byMedia = (mediaId: string) =>
+      onDisk()
+        .tracks.flatMap((t) => t.items.map((i) => ({ ...i, track: t })))
+        .find((i) => i.media === mediaId)!;
+    try {
+      // #18: Mac sound alone.
+      await sources(page, ["system"]);
+      await page.waitForSelector("[data-testid=capture-card-system]", { timeout: 15000 });
+      assert.match(await text(page, "[data-testid=capture-card-system]"), /What this Mac plays/);
+      assert.match(await text(page, "[data-testid=capture-take-record]"), /Record sound/);
+      assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-this-mac]")), "no dots or stars between words");
+      await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
+      await shot(page, "issue18-sound");
+      const alone = await take(page, 1600);
+      assert.match(alone, /^Mac sound \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:00\.$/);
+      const sys1 = onDisk().media.find((m) => m.source?.module === "capture.system")!;
+      assert.equal(sys1.kind, "audio");
+      assert.match(sys1.path, /^media\/captures\/Mac sound \d{8}-\d{6}\.m4a$/);
+      assert.ok(existsSync(join(dir, sys1.path)));
+      const sysItem = byMedia(sys1.id);
+      assert.equal(sysItem.track.name, "Mac sound");
+      assert.equal(sysItem.type, "audio");
+      assert.equal(sysItem.start, 0);
 
-    // #18: with the microphone: two files, two tracks, grouped, together.
-    await sources(page, ["voiceover", "system"]);
-    await page.click("[data-testid=capture-play-timeline]");
-    assert.match(await text(page, "[data-testid=capture-where]"), /Each source is its own file and track/);
-    await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
-    await shot(page, "issue18-mic-and-sound");
-    const both = await take(page, 1600);
-    assert.match(both, /^Take \d{8}-\d{6} \(\d+\.\d s, 2 files\) is in Media and on the timeline at 0:00\.$/);
-    const takeName = both.split(" (")[0]!;
-    assert.deepEqual(readdirSync(join(dir, "media", "captures", takeName)).sort(), ["mic.m4a", "system.m4a"]);
-    const micMedia = onDisk().media.find((m) => m.source?.module === "capture.microphone" && m.source.take === takeName)!;
-    const sysMedia = onDisk().media.find((m) => m.source?.module === "capture.system" && m.source.take === takeName)!;
-    const micItem = byMedia(micMedia.id);
-    const sysItem2 = byMedia(sysMedia.id);
-    assert.equal(micItem.track.name, "Voiceover");
-    assert.equal(sysItem2.track.name, "Mac sound 2", "the first take is in the way there");
-    assert.equal(micItem.start, sysItem2.start);
-    assert.ok(micItem.group && micItem.group === sysItem2.group, "linked: one group");
-    assert.notEqual(sysItem2.track.id, sysItem.track.id, "the first Mac sound take is in the way: a second Mac sound track");
+      // #18: with the microphone: two files, two tracks, grouped, together.
+      await sources(page, ["voiceover", "system"]);
+      await page.click("[data-testid=capture-play-timeline]");
+      assert.match(await text(page, "[data-testid=capture-where]"), /Each source is its own file and track/);
+      await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
+      await shot(page, "issue18-mic-and-sound");
+      const both = await take(page, 1600);
+      assert.match(both, /^Take \d{8}-\d{6} \(\d+\.\d s, 2 files\) is in Media and on the timeline at 0:00\.$/);
+      const takeName = both.split(" (")[0]!;
+      assert.deepEqual(readdirSync(join(dir, "media", "captures", takeName)).sort(), ["mic.m4a", "system.m4a"]);
+      const micMedia = onDisk().media.find((m) => m.source?.module === "capture.microphone" && m.source.take === takeName)!;
+      const sysMedia = onDisk().media.find((m) => m.source?.module === "capture.system" && m.source.take === takeName)!;
+      const micItem = byMedia(micMedia.id);
+      const sysItem2 = byMedia(sysMedia.id);
+      assert.equal(micItem.track.name, "Voiceover");
+      assert.equal(sysItem2.track.name, "Mac sound 2", "the first take is in the way there");
+      assert.equal(micItem.start, sysItem2.start);
+      assert.ok(micItem.group && micItem.group === sysItem2.group, "linked: one group");
+      assert.notEqual(sysItem2.track.id, sysItem.track.id, "the first Mac sound take is in the way: a second Mac sound track");
 
-    // #18: with the screen: the take goes on the timeline.
-    await sources(page, ["screen", "system"]);
-    await pick(page, "standin:window:1");
-    assert.equal(await page.$("[data-testid=capture-place]"), null, "a take of more than one source always goes on the timeline");
-    const screenTake = await take(page, 1500);
-    assert.match(screenTake, /^Test window \d{8}-\d{6} \(\d+\.\d s, 2 files\) is in Media/);
-    const screenFolder = screenTake.split(" (")[0]!;
-    assert.deepEqual(readdirSync(join(dir, "media", "captures", screenFolder)).sort(), ["screen.mp4", "system.m4a"]);
+      // #18: with the screen: the take goes on the timeline.
+      await sources(page, ["screen", "system"]);
+      await pick(page, "standin:window:1");
+      assert.equal(await page.$("[data-testid=capture-place]"), null, "a take of more than one source always goes on the timeline");
+      const screenTake = await take(page, 1500);
+      assert.match(screenTake, /^Test window \d{8}-\d{6} \(\d+\.\d s, 2 files\) is in Media/);
+      const screenFolder = screenTake.split(" (")[0]!;
+      assert.deepEqual(readdirSync(join(dir, "media", "captures", screenFolder)).sort(), ["screen.mp4", "system.m4a"]);
 
-    // #19: all four sources, the bubble top left; a composite picture before and while recording.
-    await sources(page, ["screen", "camera", "voiceover", "system"]);
-    assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record 4 sources");
-    await pick(page, "standin:screen:1");
-    await page.click('[data-testid=capture-layout] button[data-value="tl"]');
-    await page.waitForSelector('[data-testid=capture-composite][data-layout="tl"]');
-    await page.waitForFunction(() => {
-      const v = document.querySelector<HTMLVideoElement>("[data-testid=capture-composite-camera] video");
-      return !!v && v.videoWidth > 0;
-    }, { timeout: 15000 });
-    const bubble = await page.$eval("[data-testid=capture-composite-camera]", (el) => {
-      const c = el.parentElement!.getBoundingClientRect();
-      const b = el.getBoundingClientRect();
-      return { left: (b.left - c.left) / c.width, top: (b.top - c.top) / c.height, w: b.width / c.width };
-    });
-    assert.ok(bubble.left < 0.05 && bubble.top < 0.1 && bubble.w > 0.1 && bubble.w < 0.25, `the bubble is top left: ${JSON.stringify(bubble)}`);
-    assert.ok(await page.$("[data-testid=capture-composite-screen] img"), "the screen's picture before recording");
-    await shot(page, "issue19-multi");
+      // #19: all four sources, the bubble top left; a composite picture before and while recording.
+      await sources(page, ["screen", "camera", "voiceover", "system"]);
+      assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record 4 sources");
+      await pick(page, "standin:screen:1");
+      await page.click('[data-testid=capture-layout] button[data-value="tl"]');
+      await page.waitForSelector('[data-testid=capture-composite][data-layout="tl"]');
+      await page.waitForFunction(
+        () => {
+          const v = document.querySelector<HTMLVideoElement>("[data-testid=capture-composite-camera] video");
+          return !!v && v.videoWidth > 0;
+        },
+        { timeout: 15000 },
+      );
+      const bubble = await page.$eval("[data-testid=capture-composite-camera]", (el) => {
+        const c = el.parentElement!.getBoundingClientRect();
+        const b = el.getBoundingClientRect();
+        return { left: (b.left - c.left) / c.width, top: (b.top - c.top) / c.height, w: b.width / c.width };
+      });
+      assert.ok(bubble.left < 0.05 && bubble.top < 0.1 && bubble.w > 0.1 && bubble.w < 0.25, `the bubble is top left: ${JSON.stringify(bubble)}`);
+      assert.ok(await page.$("[data-testid=capture-composite-screen] img"), "the screen's picture before recording");
+      await shot(page, "issue19-multi");
 
-    await page.click("[data-testid=capture-take-record]");
-    await page.waitForSelector("[data-testid=capture-take-timer]", { timeout: 15000 });
-    await page.waitForSelector('[data-testid=capture-composite][data-live="yes"]', { timeout: 10000 });
-    await sleep(1200);
-    await shot(page, "issue19-recording");
-    await sleep(1000);
-    await page.click("[data-testid=capture-take-stop]");
-    await page.waitForSelector("[data-testid=capture-take-saved], [data-testid=capture-take-error]", { timeout: 90000 });
-    assert.equal(await page.$("[data-testid=capture-take-error]"), null, (await page.$("[data-testid=capture-take-error]")) ? await text(page, "[data-testid=capture-take-error]") : "");
-    const multi = await text(page, "[data-testid=capture-take-saved]");
-    assert.match(multi, /^Test screen \d{8}-\d{6} \(\d+\.\d s, 4 files\) is in Media and on the timeline at 0:00\.$/);
-    const folder = multi.split(" (")[0]!;
-    assert.deepEqual(readdirSync(join(dir, "media", "captures", folder)).sort(), ["camera.mp4", "mic.m4a", "screen.mp4", "system.m4a"]);
-    const offsets = JSON.parse((await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.offsets)) ?? "{}") as Record<string, number>;
-    assert.deepEqual(Object.keys(offsets).sort(), ["camera", "screen", "system", "voiceover"]);
-    assert.equal(Math.min(...Object.values(offsets)), 0, `the first recorder starts the take: ${JSON.stringify(offsets)}`);
-    check(NO_REAL_GPU, Math.max(...Object.values(offsets)) < 500, `the recorders started together: ${JSON.stringify(offsets)}`);
-    const parts = onDisk().media.filter((m) => m.source?.take === folder);
-    assert.equal(parts.length, 4);
-    const kindOf: Record<string, string> = { "capture.screen": "screen", "capture.camera": "camera", "capture.microphone": "voiceover", "capture.system": "system" };
-    const items = parts.map((m) => ({ kind: kindOf[m.source!.module as string]!, item: byMedia(m.id) }));
-    const get = (k: string) => items.find((x) => x.kind === k)!.item;
-    assert.equal(get("screen").track.name, "Screen 2", "the first Screen track is in the way");
-    assert.equal(get("camera").track.name, "Camera");
-    assert.match(get("voiceover").track.name, /^Voiceover/);
-    assert.match(get("system").track.name, /^Mac sound/);
-    const order = onDisk().tracks.map((t) => t.id);
-    const at = (id: string) => order.indexOf(id);
-    assert.ok(at(get("camera").track.id) < at(get("screen").track.id) && at(get("screen").track.id) < at("main"), onDisk().tracks.map((t) => t.name).join(", "));
-    assert.deepEqual(get("camera").transform, { x: 43, y: 43, w: 324, h: 324, fit: "cover", radius: 162 });
-    // Start-aligned: every part at the playhead, as long as the others, trimmed by its measured offset (±1 frame).
-    const last = Math.max(...Object.values(offsets));
-    for (const { kind, item } of items) {
-      assert.equal(item.start, 0, kind);
-      assert.equal(item.duration, get("screen").duration, kind);
-      assert.ok(item.group && item.group === get("screen").group, `${kind} is in the take's group`);
-      const expected = ((last - offsets[kind]!) * 30) / 1000;
-      assert.ok(Math.abs(item.in - expected) <= 1, `${kind}: in ${item.in} frames, offset says ${expected.toFixed(2)}`);
+      await page.click("[data-testid=capture-take-record]");
+      await page.waitForSelector("[data-testid=capture-take-timer]", { timeout: 15000 });
+      await page.waitForSelector('[data-testid=capture-composite][data-live="yes"]', { timeout: 10000 });
+      await sleep(1200);
+      await shot(page, "issue19-recording");
+      await sleep(1000);
+      await page.click("[data-testid=capture-take-stop]");
+      await page.waitForSelector("[data-testid=capture-take-saved], [data-testid=capture-take-error]", { timeout: 90000 });
+      assert.equal(
+        await page.$("[data-testid=capture-take-error]"),
+        null,
+        (await page.$("[data-testid=capture-take-error]")) ? await text(page, "[data-testid=capture-take-error]") : "",
+      );
+      const multi = await text(page, "[data-testid=capture-take-saved]");
+      assert.match(multi, /^Test screen \d{8}-\d{6} \(\d+\.\d s, 4 files\) is in Media and on the timeline at 0:00\.$/);
+      const folder = multi.split(" (")[0]!;
+      assert.deepEqual(readdirSync(join(dir, "media", "captures", folder)).sort(), ["camera.mp4", "mic.m4a", "screen.mp4", "system.m4a"]);
+      const offsets = JSON.parse((await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.offsets)) ?? "{}") as Record<
+        string,
+        number
+      >;
+      assert.deepEqual(Object.keys(offsets).sort(), ["camera", "screen", "system", "voiceover"]);
+      assert.equal(Math.min(...Object.values(offsets)), 0, `the first recorder starts the take: ${JSON.stringify(offsets)}`);
+      check(NO_REAL_GPU, Math.max(...Object.values(offsets)) < 500, `the recorders started together: ${JSON.stringify(offsets)}`);
+      const parts = onDisk().media.filter((m) => m.source?.take === folder);
+      assert.equal(parts.length, 4);
+      const kindOf: Record<string, string> = {
+        "capture.screen": "screen",
+        "capture.camera": "camera",
+        "capture.microphone": "voiceover",
+        "capture.system": "system",
+      };
+      const items = parts.map((m) => ({ kind: kindOf[m.source!.module as string]!, item: byMedia(m.id) }));
+      const get = (k: string) => items.find((x) => x.kind === k)!.item;
+      assert.equal(get("screen").track.name, "Screen 2", "the first Screen track is in the way");
+      assert.equal(get("camera").track.name, "Camera");
+      assert.match(get("voiceover").track.name, /^Voiceover/);
+      assert.match(get("system").track.name, /^Mac sound/);
+      const order = onDisk().tracks.map((t) => t.id);
+      const at = (id: string) => order.indexOf(id);
+      assert.ok(
+        at(get("camera").track.id) < at(get("screen").track.id) && at(get("screen").track.id) < at("main"),
+        onDisk()
+          .tracks.map((t) => t.name)
+          .join(", "),
+      );
+      assert.deepEqual(get("camera").transform, { x: 43, y: 43, w: 324, h: 324, fit: "cover", radius: 162 });
+      // Start-aligned: every part at the playhead, as long as the others, trimmed by its measured offset (±1 frame).
+      const last = Math.max(...Object.values(offsets));
+      for (const { kind, item } of items) {
+        assert.equal(item.start, 0, kind);
+        assert.equal(item.duration, get("screen").duration, kind);
+        assert.ok(item.group && item.group === get("screen").group, `${kind} is in the take's group`);
+        const expected = ((last - offsets[kind]!) * 30) / 1000;
+        assert.ok(Math.abs(item.in - expected) <= 1, `${kind}: in ${item.in} frames, offset says ${expected.toFixed(2)}`);
+      }
+      await shot(page, "issue19-timeline");
+
+      // One ⌘Z takes the whole take out (four media, four items, the new tracks).
+      const before = onDisk().media.length;
+      await page.keyboard.down("Meta");
+      await page.keyboard.press("z");
+      await page.keyboard.up("Meta");
+      await eventually(() => onDisk().media.length === before - 4);
+      assert.equal(onDisk().media.length, before - 4);
+      assert.ok(!onDisk().tracks.some((t) => t.name === "Camera"), "the Camera track went with it");
+      assert.ok(existsSync(join(dir, "media", "captures", folder, "camera.mp4")), "undo leaves the files, like captures");
+      assert.deepEqual(app.errors, []);
+    } catch (error) {
+      await shot(page, "issue18-19-failure").catch(() => {});
+      throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
     }
-    await shot(page, "issue19-timeline");
-
-    // One ⌘Z takes the whole take out (four media, four items, the new tracks).
-    const before = onDisk().media.length;
-    await page.keyboard.down("Meta");
-    await page.keyboard.press("z");
-    await page.keyboard.up("Meta");
-    await eventually(() => onDisk().media.length === before - 4);
-    assert.equal(onDisk().media.length, before - 4);
-    assert.ok(!onDisk().tracks.some((t) => t.name === "Camera"), "the Camera track went with it");
-    assert.ok(existsSync(join(dir, "media", "captures", folder, "camera.mp4")), "undo leaves the files, like captures");
-    assert.deepEqual(app.errors, []);
-  } catch (error) {
-    await shot(page, "issue18-19-failure").catch(() => {});
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
-  }
-});
+  },
+);
 
 test("issue 18 and 19: permissions: the screen permission governs this Mac's sound; an older macOS says what it needs", { skip, timeout: 180000 }, async () => {
   const dir = join(root, "Denied.uncut");
@@ -240,8 +291,13 @@ test("issue 18 and 19: permissions: the screen permission governs this Mac's sou
   const app = await launch(dir, "data-denied", { UNCUT_TEST_MEDIA_ACCESS: JSON.stringify({ screen: "denied" }) });
   try {
     await sources(app.page, ["system"]);
-    await app.page.waitForSelector('[data-testid=capture-card-system] [data-testid=capture-access][data-kind="screen"][data-state="denied"]', { timeout: 15000 });
-    assert.match(await text(app.page, "[data-testid=capture-card-system]"), /isn't allowed to record this Mac's sound: macOS lets it with screen recording\. Turn Uncut on in System Settings, Privacy & Security, Screen & System Audio Recording/);
+    await app.page.waitForSelector('[data-testid=capture-card-system] [data-testid=capture-access][data-kind="screen"][data-state="denied"]', {
+      timeout: 15000,
+    });
+    assert.match(
+      await text(app.page, "[data-testid=capture-card-system]"),
+      /isn't allowed to record this Mac's sound: macOS lets it with screen recording\. Turn Uncut on in System Settings, Privacy & Security, Screen & System Audio Recording/,
+    );
     await app.page.click("[data-testid=capture-card-system] [data-testid=capture-open-settings-screen]");
     await eventually(() => /\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/.test(app.output()));
     assert.match(app.output(), /\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/);
@@ -266,7 +322,10 @@ test("issue 18 and 19: permissions: the screen permission governs this Mac's sou
   try {
     await sources(old.page, ["screen", "system"]);
     await old.page.waitForSelector("[data-testid=capture-system-unsupported]", { timeout: 15000 });
-    assert.match(await text(old.page, "[data-testid=capture-card-system]"), /needs macOS 13 or later; this Mac has macOS 12\.7\. The microphone, camera and screen still work\./);
+    assert.match(
+      await text(old.page, "[data-testid=capture-card-system]"),
+      /needs macOS 13 or later; this Mac has macOS 12\.7\. The microphone, camera and screen still work\./,
+    );
     assert.equal(await disabled(old.page, "[data-testid=capture-take-record]"), true, "no take with Mac sound on an older macOS");
     await shot(old.page, "issue18-old-macos");
     assert.deepEqual(old.errors, []);

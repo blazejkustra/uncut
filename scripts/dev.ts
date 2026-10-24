@@ -14,7 +14,13 @@ run("node", ["apps/desktop/scripts/build.ts"]);
 const url = "http://127.0.0.1:5733/";
 const vite = spawn("pnpm", ["--filter", "@uncut/web", "exec", "vite"], { stdio: "inherit" });
 for (let i = 0; ; i++) {
-  if (await fetch(url).then((r) => r.ok, () => false)) break;
+  if (
+    await fetch(url).then(
+      (r) => r.ok,
+      () => false,
+    )
+  )
+    break;
   if (i > 100 || vite.exitCode !== null) {
     console.error("Vite dev server didn't come up");
     vite.kill();

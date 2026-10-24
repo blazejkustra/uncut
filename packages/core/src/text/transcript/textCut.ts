@@ -100,7 +100,12 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const fps = project.canvas.fps;
   // Where the words are heard (whisper's words widened to its segments' edges and the silences, D74):
   // every rule below (kept, handles, pauses) works on these.
-  const heard = speechEdges(transcript.words, { segments: transcript.segments, silences: request.silences, seconds: transcript.seconds, envelope: request.envelope });
+  const heard = speechEdges(transcript.words, {
+    segments: transcript.segments,
+    silences: request.silences,
+    seconds: transcript.seconds,
+    envelope: request.envelope,
+  });
   const { words } = heard;
   const n = words.length;
   const length = media.probe?.frames ?? ceilF((transcript.seconds ?? words.at(-1)?.end ?? 0) * fps);
@@ -110,15 +115,18 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const everywhere = new Set<number>();
   const perClipWords = new Map<string, Set<number>>();
   for (const r of request.remove ?? []) {
-    if (!Number.isInteger(r.from) || !Number.isInteger(r.to) || r.from < 0 || r.to < r.from) return { problem: `A word range must go from a word to the same or a later one (got ${r.from}–${r.to}).` };
+    if (!Number.isInteger(r.from) || !Number.isInteger(r.to) || r.from < 0 || r.to < r.from)
+      return { problem: `A word range must go from a word to the same or a later one (got ${r.from}–${r.to}).` };
     if (r.to >= n) return { problem: `The transcript has ${plural(n, "word")} (w0–w${n - 1}); there's no w${r.to}.` };
     const into = r.clip === undefined ? everywhere : (perClipWords.get(r.clip) ?? perClipWords.set(r.clip, new Set()).get(r.clip)!);
     for (let i = r.from; i <= r.to; i++) into.add(i);
   }
   const fillerWords = new Set<number>();
   if (request.fillers) {
-    if (transcript.language !== "en" && transcript.language !== "pl") notes.push(`Fillers are only recognised in English and Polish (this transcript is ${transcript.language ?? "in an unknown language"}).`);
-    for (const fl of fillersOf(words, transcript.language)) if (fl.kind === "hesitation") for (let k = 0; k < fl.n; k++) (everywhere.add(fl.i + k), fillerWords.add(fl.i + k));
+    if (transcript.language !== "en" && transcript.language !== "pl")
+      notes.push(`Fillers are only recognised in English and Polish (this transcript is ${transcript.language ?? "in an unknown language"}).`);
+    for (const fl of fillersOf(words, transcript.language))
+      if (fl.kind === "hesitation") for (let k = 0; k < fl.n; k++) (everywhere.add(fl.i + k), fillerWords.add(fl.i + k));
   }
   let pauses: Array<Pause> = [];
   if (request.pauses) {
@@ -152,7 +160,12 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       if (!at || (at.item.type !== "clip" && at.item.type !== "audio") || at.item.media !== mediaId) continue;
       // A linked item cuts its clip (it follows): they share their frames (start, length, speed).
       const link = at.item.linkedTo ? where.get(at.item.linkedTo) : undefined;
-      const linked = link && link.item.type === "clip" && (starts.get(link.item.id) ?? 0) === (starts.get(at.item.id) ?? 0) && link.item.duration === at.item.duration && (link.item.speed ?? 1) === (at.item.speed ?? 1);
+      const linked =
+        link &&
+        link.item.type === "clip" &&
+        (starts.get(link.item.id) ?? 0) === (starts.get(at.item.id) ?? 0) &&
+        link.item.duration === at.item.duration &&
+        (link.item.speed ?? 1) === (at.item.speed ?? 1);
       const target = linked ? link : at;
       // One source per target (a muted clip and its detached sound in the same scope).
       if (sources.some((s) => s.target.id === target.item.id)) continue;
@@ -161,7 +174,10 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   }
   const lockedOf = (s: Source) => s.target.locked || s.track.locked;
   const lockedClips = sources.filter(lockedOf);
-  if (lockedClips.length) notes.push(`${lockedClips.map((s) => s.target.id).join(", ")} ${lockedClips.length === 1 ? "is" : "are"} locked, so nothing was cut from ${lockedClips.length === 1 ? "it" : "them"}.`);
+  if (lockedClips.length)
+    notes.push(
+      `${lockedClips.map((s) => s.target.id).join(", ")} ${lockedClips.length === 1 ? "is" : "are"} locked, so nothing was cut from ${lockedClips.length === 1 ? "it" : "them"}.`,
+    );
   const cuttable = sources.filter((s) => !lockedOf(s));
   /** Whether a clip plays any frame word i covers. */
   const touches = (item: Item, i: number) => {
@@ -200,7 +216,9 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       const mFrom = Math.round(inF + a * speed);
       const mTo = Math.round(inF + b * speed);
       const key = sp.words.length ? `w${[...new Set(sp.words)].sort((x, y) => x - y).join(",")}` : `${sp.from}-${sp.to}`;
-      const entry = byStretch.get(key) ?? byStretch.set(key, { from: mFrom, to: mTo, words: new Set(), pauses: sp.pauses, fillers: sp.fillers, frames: 0, clips: [] }).get(key)!;
+      const entry =
+        byStretch.get(key) ??
+        byStretch.set(key, { from: mFrom, to: mTo, words: new Set(), pauses: sp.pauses, fillers: sp.fillers, frames: 0, clips: [] }).get(key)!;
       entry.from = Math.min(entry.from, mFrom);
       entry.to = Math.max(entry.to, mTo);
       for (const i of sp.words) entry.words.add(i);
@@ -219,7 +237,8 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
 
   // The timeline stretches cut, merged: free pieces after one close up by its length (D215).
   const removedSpans: Array<[number, number]> = [];
-  for (const { target } of cuttable) for (const [a, b] of perClip.get(target.id) ?? []) removedSpans.push([(starts.get(target.id) ?? 0) + a, (starts.get(target.id) ?? 0) + b]);
+  for (const { target } of cuttable)
+    for (const [a, b] of perClip.get(target.id) ?? []) removedSpans.push([(starts.get(target.id) ?? 0) + a, (starts.get(target.id) ?? 0) + b]);
   removedSpans.sort((x, y) => x[0] - y[0]);
   const union: Array<[number, number]> = [];
   for (const r of removedSpans) {
@@ -324,22 +343,35 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const asked = new Map<number, Array<Item>>();
   const srcs = cuttable.map((s) => s.src);
   for (const i of everywhere) asked.set(i, srcs);
-  for (const [clip, ids] of perClipWords) for (const i of ids) asked.set(i, [...(asked.get(i) ?? []), ...cuttable.filter((c) => c.owner === clip).map((c) => c.src)]);
+  for (const [clip, ids] of perClipWords)
+    for (const i of ids) asked.set(i, [...(asked.get(i) ?? []), ...cuttable.filter((c) => c.owner === clip).map((c) => c.src)]);
   for (const run of runsOf([...asked.keys()].filter((i) => !cutWords.has(i)))) {
     const where = `${quote(wordsText(words, run))} (${wordIds(run)})`;
-    if (!run.some((i) => asked.get(i)!.some((c) => plays(c, i)))) notes.push(`${where} isn't in the edit${lockedClips.length ? " (or only in a locked clip)" : " any more (already cut)"}, so nothing changed there.`);
+    if (!run.some((i) => asked.get(i)!.some((c) => plays(c, i))))
+      notes.push(`${where} isn't in the edit${lockedClips.length ? " (or only in a locked clip)" : " any more (already cut)"}, so nothing changed there.`);
     else if (run.some((i) => slowWords.has(i))) notes.push(`${where} is too short to cut at the clip's speed: it lasts less than a frame there.`);
     else if (run.some((i) => tight.has(i))) notes.push(`${where} runs into the words around it, so it can't be cut without clipping them.`);
   }
   if (request.pauses && ![...byStretch.values()].some((c) => c.pauses)) {
     if (!pauses.length || !cuttable.length) notes.push("There are no pauses that long in the edit.");
-    else notes.push(`The ${plural(pauses.length, "pause")} of that length ${pauses.length === 1 ? "isn't" : "aren't"} in the edit, or leave nothing to cut after keeping ${tailFrames(fps)} frames after the words and ${handleFrames(fps)} before them.`);
+    else
+      notes.push(
+        `The ${plural(pauses.length, "pause")} of that length ${pauses.length === 1 ? "isn't" : "aren't"} in the edit, or leave nothing to cut after keeping ${tailFrames(fps)} frames after the words and ${handleFrames(fps)} before them.`,
+      );
   }
-  if (!sources.length) notes.push(itemMode ? `None of those items plays ${media.name}.` : `No clip on the main track uses ${media.name}${only ? " (among the clips asked for)" : ""}.`);
+  if (!sources.length)
+    notes.push(
+      itemMode ? `None of those items plays ${media.name}.` : `No clip on the main track uses ${media.name}${only ? " (among the clips asked for)" : ""}.`,
+    );
   if (!itemMode) {
     const followed = new Set(sources.map((s) => s.src.id));
-    const elsewhere = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => i.media === mediaId && !followed.has(i.id) && !(i.linkedTo && cutIds.has(i.linkedTo))).map((i) => i.id));
-    if (elsewhere.length && perClip.size) notes.push(`${elsewhere.join(", ")} on other tracks also ${elsewhere.length === 1 ? "uses" : "use"} ${media.name} and weren't cut: cut ${elsewhere.length === 1 ? "it" : "them"} by item.`);
+    const elsewhere = project.tracks
+      .filter((t) => t.role !== "main")
+      .flatMap((t) => t.items.filter((i) => i.media === mediaId && !followed.has(i.id) && !(i.linkedTo && cutIds.has(i.linkedTo))).map((i) => i.id));
+    if (elsewhere.length && perClip.size)
+      notes.push(
+        `${elsewhere.join(", ")} on other tracks also ${elsewhere.length === 1 ? "uses" : "use"} ${media.name} and weren't cut: cut ${elsewhere.length === 1 ? "it" : "them"} by item.`,
+      );
   }
 
   let draft: Project;
@@ -369,15 +401,32 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       if (r && where.get(target.id)?.track.role === "main") firstCut = Math.min(firstCut, (starts.get(target.id) ?? 0) + r[0]![0]);
     }
     const moved = new Set([...followers.map((f) => f.item.id), ...cutIds]);
-    const shifted = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => !moved.has(i.id) && !(i.linkedTo && moved.has(i.linkedTo)) && (i.start ?? 0) + i.duration > firstCut));
-    if (shifted.length) notes.push(`Items on other tracks (${shifted.slice(0, 4).map((i) => i.id).join(", ")}${shifted.length > 4 ? ", …" : ""}) didn't move with the main track; check they still line up.`);
+    const shifted = project.tracks
+      .filter((t) => t.role !== "main")
+      .flatMap((t) => t.items.filter((i) => !moved.has(i.id) && !(i.linkedTo && moved.has(i.linkedTo)) && (i.start ?? 0) + i.duration > firstCut));
+    if (shifted.length)
+      notes.push(
+        `Items on other tracks (${shifted
+          .slice(0, 4)
+          .map((i) => i.id)
+          .join(", ")}${shifted.length > 4 ? ", …" : ""}) didn't move with the main track; check they still line up.`,
+      );
   }
 
   const cuts: Array<TextCut> = [...byStretch.values()]
     .sort((x, y) => x.from - y.from)
     .map((c) => {
       const ids = [...c.words].sort((x, y) => x - y);
-      return { from: c.from, to: c.to, ...(ids.length ? { words: [ids[0]!, ids.at(-1)!] as const } : {}), text: wordsText(words, ids), pauses: c.pauses, fillers: c.fillers, frames: c.frames, clips: c.clips };
+      return {
+        from: c.from,
+        to: c.to,
+        ...(ids.length ? { words: [ids[0]!, ids.at(-1)!] as const } : {}),
+        text: wordsText(words, ids),
+        pauses: c.pauses,
+        fillers: c.fillers,
+        frames: c.frames,
+        clips: c.clips,
+      };
     });
   const wordCount = new Set(cuts.flatMap((c) => (c.words ? Array.from({ length: c.words[1] - c.words[0] + 1 }, (_, k) => c.words![0] + k) : []))).size;
   const pauseCount = cuts.reduce((m, c) => m + c.pauses, 0);

@@ -10,10 +10,22 @@ import type { FrameSpan } from "./exportRange.ts";
  * end) and the span of the selected items (captions left out). The dialog and export_video
  * (sent with the agent's message) read the same.
  */
-export function exportSpans(project: Project, at: { readonly markIn: number | undefined; readonly markOut: number | undefined; readonly selected: string | undefined; readonly also: ReadonlyArray<string> }): { readonly marks?: FrameSpan; readonly selection?: FrameSpan } {
+export function exportSpans(
+  project: Project,
+  at: {
+    readonly markIn: number | undefined;
+    readonly markOut: number | undefined;
+    readonly selected: string | undefined;
+    readonly also: ReadonlyArray<string>;
+  },
+): { readonly marks?: FrameSpan; readonly selection?: FrameSpan } {
   const end = layoutOf(project).end;
   const marks = at.markIn !== undefined || at.markOut !== undefined ? { from: at.markIn ?? 0, to: at.markOut ?? end } : undefined;
-  const picked = (at.selected === undefined ? [] : [at.selected, ...at.also]).map((id) => findItem(project, id)).filter((p) => p !== undefined && p.item.type !== "captions");
-  const selection = picked.length ? { from: Math.min(...picked.map((p) => p!.start)), to: Math.max(...picked.map((p) => p!.start + p!.item.duration)) } : undefined;
+  const picked = (at.selected === undefined ? [] : [at.selected, ...at.also])
+    .map((id) => findItem(project, id))
+    .filter((p) => p !== undefined && p.item.type !== "captions");
+  const selection = picked.length
+    ? { from: Math.min(...picked.map((p) => p!.start)), to: Math.max(...picked.map((p) => p!.start + p!.item.duration)) }
+    : undefined;
   return { ...(marks ? { marks } : {}), ...(selection ? { selection } : {}) };
 }

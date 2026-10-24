@@ -71,7 +71,14 @@ let source: GraphicMediaSource;
 const media: Array<Media> = [];
 const project = {
   canvas,
-  tracks: [{ items: [{ type: "graphic", src: "graphics/stage.html", duration: 180 }, { type: "graphic", src: "graphics/other.html", duration: 180 }] }],
+  tracks: [
+    {
+      items: [
+        { type: "graphic", src: "graphics/stage.html", duration: 180 },
+        { type: "graphic", src: "graphics/other.html", duration: 180 },
+      ],
+    },
+  ],
 } as unknown as Project;
 
 before(async () => {
@@ -82,7 +89,27 @@ before(async () => {
   writeFileSync(join(dir, "graphics", "stage.html"), STAGE);
   writeFileSync(join(dir, "graphics", "other.html"), OTHER);
   const clip = join(root, "clip.mp4");
-  const c = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "color=c=red:size=320x180:rate=30:d=1", "-f", "lavfi", "-i", "color=c=lime:size=320x180:rate=30:d=2", "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p", clip]);
+  const c = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red:size=320x180:rate=30:d=1",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=lime:size=320x180:rate=30:d=2",
+    "-filter_complex",
+    "[0:v][1:v]concat=n=2:v=1[v]",
+    "-map",
+    "[v]",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    clip,
+  ]);
   assert.equal(c.status, 0, String(c.stderr));
   media.push({ id: "clip", kind: "video", name: "clip.mp4", path: clip } as Media);
   source = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => (m as Media & { path: string }).path });
@@ -104,7 +131,17 @@ after(async () => {
 async function frame(src: string, seconds: number, out: string) {
   const local = Math.round(seconds * canvas.fps);
   const info = graphicInfo({ duration: 180, props: {} }, canvas, local);
-  const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: docs.get(src)!, t: local / canvas.fps, info, out, name: src, census: SMALL_TEXT });
+  const reply = await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc: docs.get(src)!,
+    t: local / canvas.fps,
+    info,
+    out,
+    name: src,
+    census: SMALL_TEXT,
+  });
   return { png: out, census: reply ? censusOf(reply.census) : undefined };
 }
 
@@ -124,40 +161,44 @@ function middle(png: string): [number, number, number] {
   return sum.map((v) => Math.round(v / n)) as [number, number, number];
 }
 
-test("the editor stage's preview shows the clip under the playhead without preview.frame, the same drawn fresh, and a gap is reported", { skip, timeout: 300000 }, async () => {
-  // 1.2 s: 0.2 s into the clip, its media at 0.7 s (red); 2.2 s: its media at 1.7 s (green).
-  const red = await frame("graphics/stage.html", 1.2, join(root, "red.png"));
-  const [r1, g1, b1] = middle(red.png);
-  assert.ok(r1 > 180 && g1 < 70 && b1 < 70, `mid-cut, the preview shows the clip's frame at in + 0.2 s (red), got ${r1},${g1},${b1}`);
-  assert.equal(red.census?.emptyPreview, undefined, "a preview with footage isn't reported empty");
-  const green = await frame("graphics/stage.html", 2.2, join(root, "green.png"));
-  const [r2, g2, b2] = middle(green.png);
-  assert.ok(g2 > 180 && r2 < 70 && b2 < 70, `later, the clip's frame at 1.7 s of it (green), got ${r2},${g2},${b2}`);
-  const still = await frame("graphics/stage.html", 3.5, join(root, "blue.png"));
-  const [r3, g3, b3] = middle(still.png);
-  assert.ok(b3 > 180 && r3 < 70 && g3 < 70, `an image clip shows its image (blue), got ${r3},${g3},${b3}`);
-  // The gap: nothing invented, black, and the census says so.
-  const gap = await frame("graphics/stage.html", 5, join(root, "gap.png"));
-  const [r4, g4, b4] = middle(gap.png);
-  assert.ok(r4 < 40 && g4 < 40 && b4 < 40, `a gap stays black, got ${r4},${g4},${b4}`);
-  assert.ok((gap.census?.emptyPreview ?? 0) > 50, `the census reports the empty preview filling the frame, got ${gap.census?.emptyPreview}`);
-  // A media id that can't be read: black, reported, and quickly (no wait on it past the reply).
-  const began = Date.now();
-  const gone = await frame("graphics/stage.html", 4.2, join(root, "gone.png"));
-  assert.ok(Date.now() - began < 3000, `an unreadable media doesn't hold the frame, took ${Date.now() - began} ms`);
-  const [r5, g5, b5] = middle(gone.png);
-  assert.ok(r5 < 40 && g5 < 40 && b5 < 40, `an unreadable clip leaves the preview black, got ${r5},${g5},${b5}`);
-  assert.ok((gone.census?.emptyPreview ?? 0) > 50, `the census reports it empty, got ${gone.census?.emptyPreview}`);
-  // preview.frame: false right after a frame with footage: the footage goes.
-  await frame("graphics/stage.html", 2.2, join(root, "green2.png"));
-  const off = await frame("graphics/stage.html", 6.5, join(root, "off.png"));
-  const [r6, g6, b6] = middle(off.png);
-  assert.ok(r6 < 40 && g6 < 40 && b6 < 40, `preview.frame: false keeps the preview empty after footage, got ${r6},${g6},${b6}`);
-  // Fresh: another graphic first, so this is the stage's first frame in a new document.
-  await frame("graphics/other.html", 0, join(root, "other.png"));
-  const fresh = await frame("graphics/stage.html", 1.2, join(root, "red-fresh.png"));
-  assert.equal(pixelHash(fresh.png), pixelHash(red.png), "the preview's footage is the same drawn first in a fresh document");
-  await frame("graphics/other.html", 0, join(root, "other2.png"));
-  const freshStill = await frame("graphics/stage.html", 3.5, join(root, "blue-fresh.png"));
-  assert.deepEqual(middle(freshStill.png), middle(still.png), "an image clip's picture is there on a fresh document's first frame");
-});
+test(
+  "the editor stage's preview shows the clip under the playhead without preview.frame, the same drawn fresh, and a gap is reported",
+  { skip, timeout: 300000 },
+  async () => {
+    // 1.2 s: 0.2 s into the clip, its media at 0.7 s (red); 2.2 s: its media at 1.7 s (green).
+    const red = await frame("graphics/stage.html", 1.2, join(root, "red.png"));
+    const [r1, g1, b1] = middle(red.png);
+    assert.ok(r1 > 180 && g1 < 70 && b1 < 70, `mid-cut, the preview shows the clip's frame at in + 0.2 s (red), got ${r1},${g1},${b1}`);
+    assert.equal(red.census?.emptyPreview, undefined, "a preview with footage isn't reported empty");
+    const green = await frame("graphics/stage.html", 2.2, join(root, "green.png"));
+    const [r2, g2, b2] = middle(green.png);
+    assert.ok(g2 > 180 && r2 < 70 && b2 < 70, `later, the clip's frame at 1.7 s of it (green), got ${r2},${g2},${b2}`);
+    const still = await frame("graphics/stage.html", 3.5, join(root, "blue.png"));
+    const [r3, g3, b3] = middle(still.png);
+    assert.ok(b3 > 180 && r3 < 70 && g3 < 70, `an image clip shows its image (blue), got ${r3},${g3},${b3}`);
+    // The gap: nothing invented, black, and the census says so.
+    const gap = await frame("graphics/stage.html", 5, join(root, "gap.png"));
+    const [r4, g4, b4] = middle(gap.png);
+    assert.ok(r4 < 40 && g4 < 40 && b4 < 40, `a gap stays black, got ${r4},${g4},${b4}`);
+    assert.ok((gap.census?.emptyPreview ?? 0) > 50, `the census reports the empty preview filling the frame, got ${gap.census?.emptyPreview}`);
+    // A media id that can't be read: black, reported, and quickly (no wait on it past the reply).
+    const began = Date.now();
+    const gone = await frame("graphics/stage.html", 4.2, join(root, "gone.png"));
+    assert.ok(Date.now() - began < 3000, `an unreadable media doesn't hold the frame, took ${Date.now() - began} ms`);
+    const [r5, g5, b5] = middle(gone.png);
+    assert.ok(r5 < 40 && g5 < 40 && b5 < 40, `an unreadable clip leaves the preview black, got ${r5},${g5},${b5}`);
+    assert.ok((gone.census?.emptyPreview ?? 0) > 50, `the census reports it empty, got ${gone.census?.emptyPreview}`);
+    // preview.frame: false right after a frame with footage: the footage goes.
+    await frame("graphics/stage.html", 2.2, join(root, "green2.png"));
+    const off = await frame("graphics/stage.html", 6.5, join(root, "off.png"));
+    const [r6, g6, b6] = middle(off.png);
+    assert.ok(r6 < 40 && g6 < 40 && b6 < 40, `preview.frame: false keeps the preview empty after footage, got ${r6},${g6},${b6}`);
+    // Fresh: another graphic first, so this is the stage's first frame in a new document.
+    await frame("graphics/other.html", 0, join(root, "other.png"));
+    const fresh = await frame("graphics/stage.html", 1.2, join(root, "red-fresh.png"));
+    assert.equal(pixelHash(fresh.png), pixelHash(red.png), "the preview's footage is the same drawn first in a fresh document");
+    await frame("graphics/other.html", 0, join(root, "other2.png"));
+    const freshStill = await frame("graphics/stage.html", 3.5, join(root, "blue-fresh.png"));
+    assert.deepEqual(middle(freshStill.png), middle(still.png), "an image clip's picture is there on a fresh document's first frame");
+  },
+);

@@ -35,7 +35,22 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue53-")));
   dir = join(root, "Film.uncut");
   mkdirSync(join(dir, "media"), { recursive: true });
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=1280x720:rate=${FPS}`, "-t", String(SECONDS), "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "Long.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=1280x720:rate=${FPS}`,
+    "-t",
+    String(SECONDS),
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "Long.mp4"),
+  ]);
   writeFileSync(
     join(dir, "project.json"),
     JSON.stringify({
@@ -43,7 +58,15 @@ before(async () => {
       name: "Film",
       canvas: { width: 1280, height: 720, fps: FPS },
       textLooks: 1,
-      media: [{ id: "m-long", kind: "video", name: "Long.mp4", path: join(root, "Long.mp4"), probe: { frames: SECONDS * FPS, fps: FPS, width: 1280, height: 720, hasAudio: false } }],
+      media: [
+        {
+          id: "m-long",
+          kind: "video",
+          name: "Long.mp4",
+          path: join(root, "Long.mp4"),
+          probe: { frames: SECONDS * FPS, fps: FPS, width: 1280, height: 720, hasAudio: false },
+        },
+      ],
       tracks: [
         {
           id: "main",
@@ -82,7 +105,11 @@ test("issue #53: video clips show a filmstrip that follows the clip's time, trim
   assert.ok(t1.length >= 5, `cells drawn: ${t1.length}`);
   assert.ok(new Set(t1).size >= 5, `distinct tiles: ${t1.join(",")}`);
   assert.equal(t1[0], 0);
-  assert.deepEqual([...t1].sort((a, b) => a - b), t1, "in time order");
+  assert.deepEqual(
+    [...t1].sort((a, b) => a - b),
+    t1,
+    "in time order",
+  );
   assert.ok(t1.at(-1)! >= 30, `the last cells are near the end: ${t1.at(-1)}`);
 
   // The pictures differ, not only the numbers: the first and the last cell, as drawn.
@@ -115,7 +142,9 @@ test("issue #53: video clips show a filmstrip that follows the clip's time, trim
   await page.keyboard.down("Meta");
   for (let i = 0; i < 6; i++) await page.mouse.wheel({ deltaY: -120 });
   await page.keyboard.up("Meta");
-  await page.waitForFunction((p) => Number(document.querySelector<HTMLElement>("[data-testid=timeline]")?.dataset.ppf) > p * 1.5, { timeout: 5000 }, ppf0).catch(() => undefined);
+  await page
+    .waitForFunction((p) => Number(document.querySelector<HTMLElement>("[data-testid=timeline]")?.dataset.ppf) > p * 1.5, { timeout: 5000 }, ppf0)
+    .catch(() => undefined);
   const ppf1 = await page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
   if (ppf1 > ppf0 * 1.5) {
     await page.waitForFunction((sel) => (document.querySelector<HTMLElement>(sel)?.dataset.tiles ?? "").split(",").length > 2, { timeout: 5000 }, strip("c1"));

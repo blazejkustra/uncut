@@ -30,11 +30,21 @@ const FPS = 30;
 type Saved = { id: string; start?: number; duration: number; in?: number; [k: string]: unknown };
 type SavedTrack = { id: string; hidden?: boolean; locked?: boolean; items: Array<Saved> };
 const onDisk = (): { tracks: Array<SavedTrack> } => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const saved = (id: string) => onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === id);
-const mainIds = () => onDisk().tracks.find((t) => t.id === "main")!.items.map((i) => i.id);
+const saved = (id: string) =>
+  onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.id === id);
+const mainIds = () =>
+  onDisk()
+    .tracks.find((t) => t.id === "main")!
+    .items.map((i) => i.id);
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
 const waitRevision = (n: number) =>
-  page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const ppf = () => page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
 const frameOf = () => page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
 const itemSel = (id: string) => `[data-testid=timeline-item][data-item="${id}"]`;
@@ -43,7 +53,8 @@ const box = async (selector: string) => {
   assert.ok(b, `no box for ${selector}`);
   return b;
 };
-const shown = (id: string) => page.$eval(itemSel(id), (el) => ({ start: Number((el as HTMLElement).dataset.start), duration: Number((el as HTMLElement).dataset.duration) }));
+const shown = (id: string) =>
+  page.$eval(itemSel(id), (el) => ({ start: Number((el as HTMLElement).dataset.start), duration: Number((el as HTMLElement).dataset.duration) }));
 const notice = () => page.$eval("[data-testid=editor-error]", (el) => (el.textContent ?? "").trim()).catch(() => "");
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0], shift = false) => {
   await page.keyboard.down("Meta");
@@ -63,7 +74,11 @@ async function undo() {
  * A real mouse drag: press at `from`, move in steps to `to`, run `during` (the drag is still
  * held), release. ⌘ held (`meta`) turns snapping off, so numeric results are exact.
  */
-async function drag(from: { x: number; y: number }, to: { x: number; y: number }, { meta = false, during }: { meta?: boolean; during?: () => Promise<void> } = {}) {
+async function drag(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  { meta = false, during }: { meta?: boolean; during?: () => Promise<void> } = {},
+) {
   if (meta) await page.keyboard.down("Meta");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -104,15 +119,21 @@ async function seekTo(target: number) {
   assert.fail(`couldn't put the playhead on ${target}`);
 }
 async function settle() {
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), { timeout: 10000 });
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), {
+    timeout: 10000,
+  });
   await sleep(150);
 }
 /** `check` passes within a few seconds: what a drag shows while held renders after the pointer moves, not with them. */
 const soon = (check: () => Promise<void>, what: string) =>
-  until(async () => {
-    await check();
-    return true;
-  }, what, { timeout: 5000 }).then(() => {});
+  until(
+    async () => {
+      await check();
+      return true;
+    },
+    what,
+    { timeout: 5000 },
+  ).then(() => {});
 const visibleVideo = () =>
   page.$$eval("video[data-item]", (els) => {
     const v = (els as Array<HTMLVideoElement>).find((e) => e.style.opacity === "1" && e.style.visibility !== "hidden");
@@ -132,7 +153,13 @@ async function previewColour(name: string) {
   return settled(sample, `the preview colour (${name})`, { interval: 100, times: 2 });
 }
 const isColour = (name: "red" | "blue" | "green" | "black", [r, g, b]: Array<number>) =>
-  name === "red" ? r! > 150 && g! < 90 && b! < 90 : name === "blue" ? b! > 150 && r! < 90 && g! < 90 : name === "green" ? g! > 100 && r! < 90 && b! < 90 : r! < 30 && g! < 30 && b! < 30;
+  name === "red"
+    ? r! > 150 && g! < 90 && b! < 90
+    : name === "blue"
+      ? b! > 150 && r! < 90 && g! < 90
+      : name === "green"
+        ? g! > 100 && r! < 90 && b! < 90
+        : r! < 30 && g! < 30 && b! < 30;
 
 const plan = () => join(root, "plan.json");
 const promptLog = () => join(root, "prompts.jsonl");
@@ -144,13 +171,32 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-timeline-edit-")));
   // Two 4 s clips at 30 fps: red then blue, and green then yellow (120 frames each).
   const clip = (path: string, a: string, b: string) =>
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-filter_complex", `color=c=${a}:s=320x180:r=30:d=2[a];color=c=${b}:s=320x180:r=30:d=2[b];[a][b]concat=n=2:v=1:a=0`, "-c:v", "libx264", "-pix_fmt", "yuv420p", path]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-filter_complex",
+      `color=c=${a}:s=320x180:r=30:d=2[a];color=c=${b}:s=320x180:r=30:d=2[b];[a][b]concat=n=2:v=1:a=0`,
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      path,
+    ]);
   clip(join(root, "rb.mp4"), "red", "blue");
   clip(join(root, "gy.mp4"), "green", "yellow");
   const probe = { frames: 120, fps: 30, width: 320, height: 180, hasAudio: false };
   dir = join(root, "Edit.uncut");
   mkdirSync(dir);
-  const text = (id: string, start: number, duration: number, words: string) => ({ id, type: "text", start, duration, text: words, transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 130, weight: 700 } });
+  const text = (id: string, start: number, duration: number, words: string) => ({
+    id,
+    type: "text",
+    start,
+    duration,
+    text: words,
+    transform: { x: 154, y: 410 },
+    style: { preset: "text.title", size: 130, weight: 700 },
+  });
   writeFileSync(
     join(dir, "project.json"),
     JSON.stringify({
@@ -266,7 +312,11 @@ test("trim both edges of a clip: in and duration saved, the next clip ripples, t
   const r = await revision();
   await dragEdge("clip-1", "start", 75, {
     meta: true,
-    during: () => soon(async () => assert.equal(await page.$eval("[data-testid=drag-tip]", (e) => e.textContent), "1.50s", "the length shows while trimming"), "the trim length tip"),
+    during: () =>
+      soon(
+        async () => assert.equal(await page.$eval("[data-testid=drag-tip]", (e) => e.textContent), "1.50s", "the length shows while trimming"),
+        "the trim length tip",
+      ),
   });
   await waitRevision(r + 1);
   assert.deepEqual([saved("clip-1")!.in, saved("clip-1")!.duration], [75, 45]);
@@ -376,7 +426,10 @@ test("snapping: a moved item sticks to the playhead (with a snap line); ⌘ turn
   const offset = -4 / px;
   await dragItem("title-1", 70 + offset, {
     during: async () => {
-      await soon(async () => assert.equal(await page.$eval("[data-testid=snap-line]", (e) => Number((e as HTMLElement).dataset.frame)), 70), "the snap line at 70");
+      await soon(
+        async () => assert.equal(await page.$eval("[data-testid=snap-line]", (e) => Number((e as HTMLElement).dataset.frame)), 70),
+        "the snap line at 70",
+      );
       await page.screenshot({ path: "test-output/timeline-edit-snap.png" });
     },
   });
@@ -409,77 +462,90 @@ test("hide a track: the preview skips it; one ⌘Z shows it again", { skip, time
   assert.equal(onDisk().tracks.find((t) => t.id === "main")!.hidden, undefined);
 });
 
-test("lock a track: drags, split and delete refuse by hand, the agent is refused too, and its prompt lists the manual edits", { skip, timeout: 120000 }, async () => {
-  // Edits that stay (undone ones leave the log; the note says "Used undo" for those).
-  let r = await revision();
-  await page.keyboard.press("Escape");
-  await dragItem("title-1", 30, { meta: true });
-  await waitRevision(++r);
-  await dragEdge("clip-1", "end", -30, { meta: true });
-  await waitRevision(++r);
-  await page.keyboard.press("Escape");
-  await seekTo(150);
-  await page.keyboard.press("s");
-  await waitRevision(++r);
-  assert.deepEqual(mainIds(), ["clip-1", "clip-2", "clip-3"]);
-  await page.keyboard.press("Delete");
-  await waitRevision(++r);
-  assert.deepEqual(mainIds(), ["clip-1", "clip-2"]);
-  await page.click("[data-testid=track][data-id=audio] [data-testid=track-mute]");
-  await waitRevision(++r);
-  assert.equal((onDisk().tracks.find((t) => t.id === "audio") as { mixer?: { mute?: boolean } }).mixer?.mute, true);
+test(
+  "lock a track: drags, split and delete refuse by hand, the agent is refused too, and its prompt lists the manual edits",
+  { skip, timeout: 120000 },
+  async () => {
+    // Edits that stay (undone ones leave the log; the note says "Used undo" for those).
+    let r = await revision();
+    await page.keyboard.press("Escape");
+    await dragItem("title-1", 30, { meta: true });
+    await waitRevision(++r);
+    await dragEdge("clip-1", "end", -30, { meta: true });
+    await waitRevision(++r);
+    await page.keyboard.press("Escape");
+    await seekTo(150);
+    await page.keyboard.press("s");
+    await waitRevision(++r);
+    assert.deepEqual(mainIds(), ["clip-1", "clip-2", "clip-3"]);
+    await page.keyboard.press("Delete");
+    await waitRevision(++r);
+    assert.deepEqual(mainIds(), ["clip-1", "clip-2"]);
+    await page.click("[data-testid=track][data-id=audio] [data-testid=track-mute]");
+    await waitRevision(++r);
+    assert.equal((onDisk().tracks.find((t) => t.id === "audio") as { mixer?: { mute?: boolean } }).mixer?.mute, true);
 
-  await page.click("[data-testid=track][data-id=text] [data-testid=track-lock]");
-  await waitRevision(++r);
-  assert.equal(onDisk().tracks.find((t) => t.id === "text")!.locked, true);
-  assert.equal(await page.$(`${itemSel("title-1")} [data-edge]`), null, "no trim handles on a locked track");
-  await dragItem("title-1", 40, { meta: true });
-  await sleep(500);
-  assert.equal(await revision(), r, "the drag sent nothing");
-  assert.equal(saved("title-1")!.start, 30);
-  await seekTo(40);
-  await page.click(itemSel("title-1"));
-  await page.keyboard.press("s");
-  await page.waitForFunction(() => /locked/.test(document.querySelector("[data-testid=editor-error]")?.textContent ?? ""));
-  await page.keyboard.press("Backspace");
-  await sleep(300);
-  assert.match(await notice(), /locked/);
-  assert.equal(await revision(), r);
-  assert.equal(saved("title-1")!.duration, 60);
-  await page.screenshot({ path: "test-output/timeline-edit-locked.png" });
+    await page.click("[data-testid=track][data-id=text] [data-testid=track-lock]");
+    await waitRevision(++r);
+    assert.equal(onDisk().tracks.find((t) => t.id === "text")!.locked, true);
+    assert.equal(await page.$(`${itemSel("title-1")} [data-edge]`), null, "no trim handles on a locked track");
+    await dragItem("title-1", 40, { meta: true });
+    await sleep(500);
+    assert.equal(await revision(), r, "the drag sent nothing");
+    assert.equal(saved("title-1")!.start, 30);
+    await seekTo(40);
+    await page.click(itemSel("title-1"));
+    await page.keyboard.press("s");
+    await page.waitForFunction(() => /locked/.test(document.querySelector("[data-testid=editor-error]")?.textContent ?? ""));
+    await page.keyboard.press("Backspace");
+    await sleep(300);
+    assert.match(await notice(), /locked/);
+    assert.equal(await revision(), r);
+    assert.equal(saved("title-1")!.duration, 60);
+    await page.screenshot({ path: "test-output/timeline-edit-locked.png" });
 
-  // The agent tries to trim the title on the locked track: refused by the server.
-  writeFileSync(
-    plan(),
-    JSON.stringify([[{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Trim the title", ops: [{ op: "trim_item", item: "title-1", edge: "end", frames: 10 }] } }, { text: "The text track is locked." }]]),
-  );
-  await page.click("[data-testid=tab-agent]");
-  await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"), { timeout: 30000 });
-  await page.click("[data-testid=agent-input]");
-  await page.type("[data-testid=agent-input]", "shorten the title");
-  await page.keyboard.press("Enter");
-  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });
-  assert.deepEqual(
-    await page.$$eval("[data-testid=agent-step]", (els) => els.map((e) => (e as HTMLElement).dataset.status)),
-    ["done", "error"],
-  );
-  assert.equal(saved("title-1")!.duration, 60, "the agent couldn't edit the locked track");
+    // The agent tries to trim the title on the locked track: refused by the server.
+    writeFileSync(
+      plan(),
+      JSON.stringify([
+        [
+          { tool: "project_read" },
+          {
+            tool: "timeline_edit",
+            args: { baseRevision: "$rev", summary: "Trim the title", ops: [{ op: "trim_item", item: "title-1", edge: "end", frames: 10 }] },
+          },
+          { text: "The text track is locked." },
+        ],
+      ]),
+    );
+    await page.click("[data-testid=tab-agent]");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"), { timeout: 30000 });
+    await page.click("[data-testid=agent-input]");
+    await page.type("[data-testid=agent-input]", "shorten the title");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });
+    assert.deepEqual(await page.$$eval("[data-testid=agent-step]", (els) => els.map((e) => (e as HTMLElement).dataset.status)), ["done", "error"]);
+    assert.equal(saved("title-1")!.duration, 60, "the agent couldn't edit the locked track");
 
-  // Its prompt told it about the manual edits, in words.
-  const [first] = readFileSync(promptLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { prompt: string });
-  const prompt = first!.prompt;
-  for (const line of [
-    /by hand/,
-    /Moved text "Title" \(title-1\) to 1\.0s/,
-    /Trimmed rb\.mp4 \(clip-1\) by 1\.0s at the end/,
-    /Split gy\.mp4 \(clip-2\) at 2\.0s/,
-    /Deleted clip-3/,
-    /Muted track audio/,
-    /Locked track text/,
-    /Used undo/,
-  ]) {
-    assert.match(prompt, line);
-  }
-  await page.click("[data-testid=tab-inspector]");
-  assert.deepEqual(app!.errors, []);
-});
+    // Its prompt told it about the manual edits, in words.
+    const [first] = readFileSync(promptLog(), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { prompt: string });
+    const prompt = first!.prompt;
+    for (const line of [
+      /by hand/,
+      /Moved text "Title" \(title-1\) to 1\.0s/,
+      /Trimmed rb\.mp4 \(clip-1\) by 1\.0s at the end/,
+      /Split gy\.mp4 \(clip-2\) at 2\.0s/,
+      /Deleted clip-3/,
+      /Muted track audio/,
+      /Locked track text/,
+      /Used undo/,
+    ]) {
+      assert.match(prompt, line);
+    }
+    await page.click("[data-testid=tab-inspector]");
+    assert.deepEqual(app!.errors, []);
+  },
+);

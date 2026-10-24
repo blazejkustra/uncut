@@ -37,7 +37,9 @@ export const findCodex = async (env: NodeJS.ProcessEnv = process.env) => env.UNC
  * more than the project folder (on-request). Whatever Codex asks goes through permit.
  */
 export const codexPolicy = (access: Access) =>
-  access === "look" ? { sandbox: "read-only", approvalPolicy: "never" } : { sandbox: "workspace-write", approvalPolicy: access === "ask" ? "untrusted" : "on-request" };
+  access === "look"
+    ? { sandbox: "read-only", approvalPolicy: "never" }
+    : { sandbox: "workspace-write", approvalPolicy: access === "ask" ? "untrusted" : "on-request" };
 
 /** A Codex command for the work log: without the login shell wrapper (`/bin/zsh -lc 'ls media'` → `ls media`). */
 export const codexCommand = (command: unknown) => {
@@ -80,7 +82,7 @@ export const codexInterrupt = (s: ClaudeSession): boolean => {
 };
 
 export const makeCodex = (ctx: StreamCtx) => {
-  const { persist, closeSession, st, publishNow, publishSoon, label, doing, delivered, finish, turnCleanup, permit, config, bridgeUrl, sessions } = ctx;
+  const { persist, closeSession, st, publishNow, publishSoon, label, doing, delivered, finish, turnCleanup, permit, bridgeUrl, sessions } = ctx;
 
   /** The turn's item for a Codex item id (text, thinking or a step). */
   const itemAt = (r: Running, id: string) => {
@@ -92,7 +94,10 @@ export const makeCodex = (ctx: StreamCtx) => {
   const stepOf = (item: Record<string, any>): { tool: string; input: Record<string, unknown> } | undefined => {
     switch (item.type) {
       case "mcpToolCall":
-        return { tool: item.server === "uncut" ? String(item.tool) : `${item.server}:${item.tool}`, input: item.arguments && typeof item.arguments === "object" ? item.arguments : {} };
+        return {
+          tool: item.server === "uncut" ? String(item.tool) : `${item.server}:${item.tool}`,
+          input: item.arguments && typeof item.arguments === "object" ? item.arguments : {},
+        };
       case "commandExecution":
         return { tool: "Bash", input: { command: codexCommand(item.command) } };
       case "fileChange": {
@@ -129,7 +134,14 @@ export const makeCodex = (ctx: StreamCtx) => {
     const id = String(item.id ?? "");
     link.items.delete(id);
     if (item.type === "agentMessage" || item.type === "reasoning") {
-      const text = item.type === "agentMessage" ? (isString(item.text) ? item.text : "") : [...(Array.isArray(item.summary) ? item.summary : []), ...(item.summary?.length ? [] : Array.isArray(item.content) ? item.content : [])].filter(isString).join("\n\n");
+      const text =
+        item.type === "agentMessage"
+          ? isString(item.text)
+            ? item.text
+            : ""
+          : [...(Array.isArray(item.summary) ? item.summary : []), ...(item.summary?.length ? [] : Array.isArray(item.content) ? item.content : [])]
+              .filter(isString)
+              .join("\n\n");
       const shown = itemAt(r, id);
       if (shown) {
         if (text.trim()) shown.text = text.trim();
@@ -147,12 +159,21 @@ export const makeCodex = (ctx: StreamCtx) => {
     if (!shown) return;
     shown.text = label(step.tool, step.input);
     delete shown.doing;
-    const failed = item.status === "failed" || item.status === "declined" || (item.type === "commandExecution" && typeof item.exitCode === "number" && item.exitCode !== 0);
+    const failed =
+      item.status === "failed" || item.status === "declined" || (item.type === "commandExecution" && typeof item.exitCode === "number" && item.exitCode !== 0);
     shown.status = failed ? "error" : "done";
     const said =
-      item.type === "commandExecution" ? (isString(item.aggregatedOutput) ? item.aggregatedOutput : "") :
-      item.type === "mcpToolCall" ? (item.error?.message ? String(item.error.message) : (Array.isArray(item.result?.content) ? item.result.content : []).flatMap((c: Record<string, unknown>) => (c?.type === "text" && isString(c.text) ? [c.text] : [])).join("\n")) :
-      "";
+      item.type === "commandExecution"
+        ? isString(item.aggregatedOutput)
+          ? item.aggregatedOutput
+          : ""
+        : item.type === "mcpToolCall"
+          ? item.error?.message
+            ? String(item.error.message)
+            : (Array.isArray(item.result?.content) ? item.result.content : [])
+                .flatMap((c: Record<string, unknown>) => (c?.type === "text" && isString(c.text) ? [c.text] : []))
+                .join("\n")
+          : "";
     if (failed) shown.error = (said.length > 600 ? `${said.slice(0, 597)}...` : said).trim() || "The tool reported an error.";
     // D194: a built-in tool's answer (a command's output) opens from its row.
     else if (said.trim() && !/^[a-z]/.test(shown.tool ?? "")) shown.result = said.length > RESULT_MAX ? `${said.slice(0, RESULT_MAX - 3)}...` : said;
@@ -166,7 +187,13 @@ export const makeCodex = (ctx: StreamCtx) => {
     if (!used) return;
     const window = typeof usage.modelContextWindow === "number" && usage.modelContextWindow > 0 ? usage.modelContextWindow : undefined;
     const model = s.initModel ?? s.model;
-    r.owner.context = contextOf({ used, window, systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0), message: messageContextEstimate(r.message, r.turn.prompt), ...(model ? { model } : {}) });
+    r.owner.context = contextOf({
+      used,
+      window,
+      systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
+      message: messageContextEstimate(r.message, r.turn.prompt),
+      ...(model ? { model } : {}),
+    });
     publishSoon();
   };
 
@@ -183,7 +210,18 @@ export const makeCodex = (ctx: StreamCtx) => {
     }
     // Round 2's A2: a turn that built a video and never asked the critic is reminded once and goes on.
     const brief = r.owner.plan.brief;
-    const nudge = reviewNudge({ access: r.access, unattended: asksNoQuestions(r.turn.prompt, brief?.film, brief?.visual, brief?.notes, ...(brief?.hardLines ?? [])), reviewRounds: r.reviewRounds, graphicWrites: r.graphicWrites, edits: r.turn.edits.length, planned: r.planned, proposing: r.proposing, nudged: r.nudged, cancelled: r.cancelled, storyboard: r.owner.plan.storyboard?.status });
+    const nudge = reviewNudge({
+      access: r.access,
+      unattended: asksNoQuestions(r.turn.prompt, brief?.film, brief?.visual, brief?.notes, ...(brief?.hardLines ?? [])),
+      reviewRounds: r.reviewRounds,
+      graphicWrites: r.graphicWrites,
+      edits: r.turn.edits.length,
+      planned: r.planned,
+      proposing: r.proposing,
+      nudged: r.nudged,
+      cancelled: r.cancelled,
+      storyboard: r.owner.plan.storyboard?.status,
+    });
     if (nudge && !s.closed && s.turn === r) {
       r.nudged = true;
       return void startTurn(s, r, [{ type: "text", text: nudge, text_elements: [] }]);
@@ -205,7 +243,9 @@ export const makeCodex = (ctx: StreamCtx) => {
     switch (msg.method) {
       case "item/commandExecution/requestApproval": {
         const command = codexCommand(params.command);
-        return permit(s, key, "Bash", { command, ...(isString(params.reason) ? { description: params.reason } : {}) }, (a) => answer({ decision: a.allow ? "accept" : "decline" }));
+        return permit(s, key, "Bash", { command, ...(isString(params.reason) ? { description: params.reason } : {}) }, (a) =>
+          answer({ decision: a.allow ? "accept" : "decline" }),
+        );
       }
       case "item/fileChange/requestApproval": {
         // Every file the change touches (from its item), one decision after another: all must be allowed.
@@ -221,7 +261,11 @@ export const makeCodex = (ctx: StreamCtx) => {
       }
       case "mcpServer/elicitation/request":
         // Uncut's own tools are pre-approved and gated by Uncut; anything else isn't Uncut's to approve.
-        return answer({ action: params.serverName === "uncut" && params._meta?.codex_approval_kind === "mcp_tool_call" ? "accept" : "decline", content: params.serverName === "uncut" ? {} : null, _meta: null });
+        return answer({
+          action: params.serverName === "uncut" && params._meta?.codex_approval_kind === "mcp_tool_call" ? "accept" : "decline",
+          content: params.serverName === "uncut" ? {} : null,
+          _meta: null,
+        });
       case "item/tool/requestUserInput":
         return answer({ answers: {} });
       default:
@@ -274,7 +318,14 @@ export const makeCodex = (ctx: StreamCtx) => {
         const item = itemAt(r, String(params.itemId ?? ""));
         if (!item || !isString(params.delta)) return;
         // Summary parts are paragraphs.
-        if (msg.method === "item/reasoning/summaryTextDelta" && typeof params.summaryIndex === "number" && params.summaryIndex > 0 && !item.text.endsWith("\n\n") && (item as { part?: number }).part !== params.summaryIndex) item.text += "\n\n";
+        if (
+          msg.method === "item/reasoning/summaryTextDelta" &&
+          typeof params.summaryIndex === "number" &&
+          params.summaryIndex > 0 &&
+          !item.text.endsWith("\n\n") &&
+          (item as { part?: number }).part !== params.summaryIndex
+        )
+          item.text += "\n\n";
         (item as { part?: number }).part = params.summaryIndex;
         item.text += params.delta;
         return publishSoon();
@@ -305,12 +356,20 @@ export const makeCodex = (ctx: StreamCtx) => {
   /** turn/start with the message (or a reminder) in the session's thread. */
   const startTurn = async (s: ClaudeSession, r: Running, input: Array<Record<string, unknown>>) => {
     const link = s.codex!;
-    const got = await codexRequest(s, "turn/start", { threadId: link.threadId, input, ...(s.model ? { model: s.model } : {}), // The composer's efforts are Codex's names too (it also has xhigh).
-      ...(s.effort ? { effort: s.effort } : {}), summary: "auto" });
+    const got = await codexRequest(s, "turn/start", {
+      threadId: link.threadId,
+      input,
+      ...(s.model ? { model: s.model } : {}), // The composer's efforts are Codex's names too (it also has xhigh).
+      ...(s.effort ? { effort: s.effort } : {}),
+      summary: "auto",
+    });
     if (got.error) {
       if (r.turn.status !== "running") return;
       closeSession(s, "kill");
-      return finish(r, { status: "error", error: codexTurnError({ message: got.error.message }, undefined, Date.now()) ?? `Codex refused the message: ${got.error.message ?? "no reason"}` });
+      return finish(r, {
+        status: "error",
+        error: codexTurnError({ message: got.error.message }, undefined, Date.now()) ?? `Codex refused the message: ${got.error.message ?? "no reason"}`,
+      });
     }
     if (isString(got.result?.turn?.id)) link.turnId = got.result.turn.id;
   };
@@ -343,7 +402,9 @@ export const makeCodex = (ctx: StreamCtx) => {
         finish(r, { status: "error", error: why });
       }
     };
-    const init = await codexRequest(s, "initialize", { clientInfo: { name: "uncut", title: "Uncut", version: typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev" } });
+    const init = await codexRequest(s, "initialize", {
+      clientInfo: { name: "uncut", title: "Uncut", version: typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev" },
+    });
     if (init.error) return fail(`Codex didn't start: ${init.error.message ?? "initialize failed"}`);
     write(s, { method: "initialized" });
     let thread: Record<string, any> | undefined;
@@ -360,7 +421,10 @@ export const makeCodex = (ctx: StreamCtx) => {
     if (!thread) {
       const got = await codexRequest(s, "thread/start", threadConfig);
       thread = got.result?.thread;
-      if (!thread) return fail(codexTurnError({ message: got.error?.message }, undefined, Date.now()) ?? `Codex couldn't start a conversation: ${got.error?.message ?? "no reason"}`);
+      if (!thread)
+        return fail(
+          codexTurnError({ message: got.error?.message }, undefined, Date.now()) ?? `Codex couldn't start a conversation: ${got.error?.message ?? "no reason"}`,
+        );
     }
     s.codex!.threadId = String(thread.id);
     if (isString(thread.model)) s.initModel = thread.model;
@@ -380,7 +444,13 @@ export const makeCodex = (ctx: StreamCtx) => {
    * Start a session's Codex. Its MCP server (Uncut's, on this server's runtime as for claude) and
    * the token go in the thread's config over stdin, never on argv.
    */
-  const spawnCodex = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access }): ClaudeSession | string => {
+  const spawnCodex = (
+    owner: Loaded,
+    bin: string,
+    toolsKey: string,
+    resume: boolean,
+    choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access },
+  ): ClaudeSession | string => {
     let dir: string;
     try {
       dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
@@ -413,8 +483,35 @@ export const makeCodex = (ctx: StreamCtx) => {
     const s: ClaudeSession = {
       provider: "codex",
       codex: { nextId: 1, calls: new Map(), threadId: undefined, turnId: undefined, items: new Map() },
-      owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking: undefined, snapshotOff: false, resumed, dirsKey: [...owner.dirs].sort().join("\n"), prompts: new Map(), access,
-      initId: "", initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: instructions.length, toolsChars: undefined,
+      owner,
+      openId: owner.openId,
+      dir,
+      token,
+      toolsKey,
+      model: choice.model,
+      effort: choice.effort,
+      thinking: undefined,
+      snapshotOff: false,
+      resumed,
+      dirsKey: [...owner.dirs].sort().join("\n"),
+      prompts: new Map(),
+      access,
+      initId: "",
+      initialized: false,
+      initFailed: false,
+      initTimer: undefined,
+      waiting: undefined,
+      child: undefined,
+      turn: undefined,
+      gotInit: false,
+      closed: false,
+      stderr: "",
+      idleTimer: undefined,
+      killTimer: undefined,
+      gens: 0,
+      initModel: undefined,
+      systemChars: instructions.length,
+      toolsChars: undefined,
     };
     try {
       // Its own process group, so closing it also stops the MCP server and commands Codex started.
@@ -463,7 +560,13 @@ export const makeCodex = (ctx: StreamCtx) => {
       if (r.cancelled) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
       if (r.turn.error) return finish(r, { status: "error" });
       // It died mid-turn (a crash, a kill): the next message starts another that resumes the thread.
-      const why = s.stderr.replace(/\x1b\[[0-9;]*m/g, "").trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
+      const why =
+        s.stderr
+          .replace(/\x1b\[[0-9;]*m/g, "")
+          .trim()
+          .split("\n")
+          .slice(-3)
+          .join(" ") || `exit code ${code}`;
       return finish(r, { status: "error", error: codexTurnError({ message: why }, limits.resetsAt, Date.now()) ?? `Codex stopped: ${why}` });
     };
     child.once("error", (error) => settle(null, error));

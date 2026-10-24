@@ -68,7 +68,7 @@ ${rules.join("\n\n")}
 `;
 const long = headers.split("\n").filter((l) => l.length > 2000);
 if (long.length) throw new Error(`_headers has a line over Cloudflare's 2,000 characters: ${long[0]!.slice(0, 80)}…`);
-const ruleCount = headers.split("\n").filter((l) => /^\//.test(l)).length;
+const ruleCount = headers.split("\n").filter((l) => l.startsWith("/")).length;
 if (ruleCount > 100) throw new Error(`_headers has ${ruleCount} rules; Cloudflare allows 100`);
 writeFileSync(join(OUT, "_headers"), headers);
 
@@ -78,6 +78,8 @@ const homeJs = [...home.matchAll(/<script src="([^"]+)"(?![^>]*noModule)/g)].map
 const sizes = homeJs.map((src) => readFileSync(join(OUT, src)));
 const gpu = files.find((f) => f.endsWith(".js") && readFileSync(f, "utf8").includes("createShaderModule"));
 console.log(`site/out: ${html.length} pages, ${ruleCount} header rules`);
-console.log(`home page JS: ${homeJs.length} files, ${kb(sizes.reduce((a, b) => a + b.length, 0))}, ${kb(sizes.reduce((a, b) => a + gzipSync(b).length, 0))} gzipped`);
+console.log(
+  `home page JS: ${homeJs.length} files, ${kb(sizes.reduce((a, b) => a + b.length, 0))}, ${kb(sizes.reduce((a, b) => a + gzipSync(b).length, 0))} gzipped`,
+);
 if (!gpu || !readFileSync(gpu, "utf8").includes("@vertex")) throw new Error("the hero's WebGPU chunk or its WGSL is missing");
 console.log(`hero WebGPU chunk: ${kb(statSync(gpu).size)}, ${kb(gzipSync(readFileSync(gpu)).length)} gzipped`);

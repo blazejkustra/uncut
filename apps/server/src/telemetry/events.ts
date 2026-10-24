@@ -94,7 +94,11 @@ const clean = (validators: Readonly<Record<string, Validator>>, props: Readonly<
 };
 
 /** The event's attributes that pass the allowlist; undefined for an event that isn't in the catalog. */
-export function sanitize(name: string, props: Readonly<Record<string, unknown>> = {}, base: Readonly<Record<string, unknown>> = {}): Record<string, Value> | undefined {
+export function sanitize(
+  name: string,
+  props: Readonly<Record<string, unknown>> = {},
+  base: Readonly<Record<string, unknown>> = {},
+): Record<string, Value> | undefined {
   if (!isEventName(name)) return undefined;
   const out: Record<string, Value> = {};
   clean(BASE, base, out);

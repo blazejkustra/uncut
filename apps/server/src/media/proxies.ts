@@ -5,7 +5,7 @@
 // "Use proxies for preview" setting); export, render_frames and analysis always read the original.
 // One proxy is made at a time, in the background, never while an export is queued or running.
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
 import type { ProjectSnapshot, ProxyState } from "@uncut/contracts";
@@ -61,32 +61,82 @@ export function proxyArgs(input: string, output: string, encoder: "hardware" | "
       ? ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-profile:v", "high", "-q:v", "50"]
       : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-tune", "fastdecode"];
   return [
-    "-hide_banner", "-nostdin", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-v",
+    "error",
+    "-nostats",
+    "-progress",
+    "pipe:1",
     ...(encoder === "hardware" ? ["-hwaccel", "videotoolbox"] : []),
-    "-protocol_whitelist", "file,pipe",
-    "-i", input,
-    "-map", "0:v:0", "-map", "0:a:0?",
-    "-vf", `scale=w=${PROXY_SIZE}:h=${PROXY_SIZE}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p`,
+    "-protocol_whitelist",
+    "file,pipe",
+    "-i",
+    input,
+    "-map",
+    "0:v:0",
+    "-map",
+    "0:a:0?",
+    "-vf",
+    `scale=w=${PROXY_SIZE}:h=${PROXY_SIZE}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p`,
     ...video,
-    "-g", String(PROXY_GOP), "-bf", "0",
+    "-g",
+    String(PROXY_GOP),
+    "-bf",
+    "0",
     // The same timing as the original, frame for frame (the preview seeks it by the source's time).
-    "-fps_mode", "passthrough",
-    "-c:a", "aac", "-b:a", "160k",
-    "-tag:v", "avc1", "-movflags", "+faststart",
-    "-f", "mp4", output,
+    "-fps_mode",
+    "passthrough",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    "-tag:v",
+    "avc1",
+    "-movflags",
+    "+faststart",
+    "-f",
+    "mp4",
+    output,
   ];
 }
 
 /** What ffprobe says about a file's picture (undefined when it can't be read). */
 export async function videoFacts(ffprobe: string, path: string): Promise<(VideoFacts & { readonly seconds?: number }) | undefined> {
-  const r = await runProbe(ffprobe, ["-v", "error", "-protocol_whitelist", "file,pipe", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height:format=bit_rate,duration", "-of", "json", path], { timeoutMs: 15000, env: withoutApiKey(process.env) });
+  const r = await runProbe(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-protocol_whitelist",
+      "file,pipe",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,width,height:format=bit_rate,duration",
+      "-of",
+      "json",
+      path,
+    ],
+    { timeoutMs: 15000, env: withoutApiKey(process.env) },
+  );
   if (r.kind !== "done" || r.code !== 0) return undefined;
   try {
-    const j = JSON.parse(r.stdout) as { streams?: Array<{ codec_name?: string; width?: number; height?: number }>; format?: { bit_rate?: string; duration?: string } };
+    const j = JSON.parse(r.stdout) as {
+      streams?: Array<{ codec_name?: string; width?: number; height?: number }>;
+      format?: { bit_rate?: string; duration?: string };
+    };
     const s = j.streams?.[0];
     if (!s) return undefined;
     const seconds = Number(j.format?.duration);
-    return { codec: s.codec_name, width: s.width, height: s.height, bitrate: Number(j.format?.bit_rate) || undefined, ...(Number.isFinite(seconds) ? { seconds } : {}) };
+    return {
+      codec: s.codec_name,
+      width: s.width,
+      height: s.height,
+      bitrate: Number(j.format?.bit_rate) || undefined,
+      ...(Number.isFinite(seconds) ? { seconds } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -289,7 +339,10 @@ export class ProxyQueue {
     const attempt = (encoder: "hardware" | "software") =>
       new Promise<boolean>((resolveRun) => {
         if (run.cancelled) return resolveRun(false);
-        const child = spawn(ffmpeg, localInputs(ffmpeg, proxyArgs(task.path, part, encoder)), { stdio: ["ignore", "pipe", "pipe"], env: withoutApiKey(process.env) });
+        const child = spawn(ffmpeg, localInputs(ffmpeg, proxyArgs(task.path, part, encoder)), {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: withoutApiKey(process.env),
+        });
         run.child = child;
         let last = 0;
         child.stdout.setEncoding("utf8");
@@ -311,7 +364,12 @@ export class ProxyQueue {
     if (ok && !run.cancelled) {
       // The original may have changed while the proxy was made: then it's not this file's proxy.
       const now = await posterKey(task.path);
-      ok = now === task.key && (await rename(part, out).then(() => true, () => false));
+      ok =
+        now === task.key &&
+        (await rename(part, out).then(
+          () => true,
+          () => false,
+        ));
     }
     if (!ok) await rm(part, { force: true }).catch(() => {});
     if (run.cancelled || this.dir !== task.dir || this.states.get(task.id)?.key !== task.key) return;
@@ -365,7 +423,12 @@ export const layer = Layer.effect(
       // a stat per video, ffprobe once per file as it is.
       yield* Effect.forkScoped(
         Stream.runForEach(projects.changes, (snapshot: ProjectSnapshot | null) =>
-          Effect.promise(() => queue.sync(snapshot?.dir, ((snapshot?.project as { media?: ReadonlyArray<Media> } | undefined)?.media ?? []).filter((m) => m.kind === "video"))),
+          Effect.promise(() =>
+            queue.sync(
+              snapshot?.dir,
+              ((snapshot?.project as { media?: ReadonlyArray<Media> } | undefined)?.media ?? []).filter((m) => m.kind === "video"),
+            ),
+          ),
         ),
       );
     }

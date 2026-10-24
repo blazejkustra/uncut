@@ -40,7 +40,10 @@ test("the gate catches what a pull request must not do", async () => {
     const dir = join(root, "plugins", "catalog", "acme-bad");
     cpSync(TEMPLATE_DIR, dir, { recursive: true });
     const manifest = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
-    writeFileSync(join(dir, "uncut.module.json"), JSON.stringify({ ...manifest, id: "acme.bad", apiVersion: undefined, agentTools: [{ ...manifest.agentTools[0], name: "argent_record" }] }));
+    writeFileSync(
+      join(dir, "uncut.module.json"),
+      JSON.stringify({ ...manifest, id: "acme.bad", apiVersion: undefined, agentTools: [{ ...manifest.agentTools[0], name: "argent_record" }] }),
+    );
     writeFileSync(join(dir, "extra.ts"), 'import lodash from "lodash";\n');
     writeFileSync(join(dir, "notes.txt"), "hi");
     const ctx = await gateContext();
@@ -66,12 +69,21 @@ test("pnpm plugin:new makes a plugin that passes plugin:check and answers its to
     const manifest = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
     assert.equal(manifest.id, "acme.promo");
     assert.equal(manifest.name, "Acme promo");
-    assert.deepEqual(manifest.agentTools.map((t: { name: string }) => t.name), ["acme_promo_word_count"]);
-    assert.deepEqual(manifest.contributes.looks.map((l: { id: string }) => l.id), ["acme.promo.headline"]);
+    assert.deepEqual(
+      manifest.agentTools.map((t: { name: string }) => t.name),
+      ["acme_promo_word_count"],
+    );
+    assert.deepEqual(
+      manifest.contributes.looks.map((l: { id: string }) => l.id),
+      ["acme.promo.headline"],
+    );
     assert.ok(!readFileSync(join(dir, "server.ts"), "utf8").includes("example_template"));
     assert.match(execFileSync(process.execPath, [join(REPO, "scripts/plugin-check.ts"), dir], { encoding: "utf8" }), /acme\.promo passes/);
     // Twice: refused, the first copy kept.
-    assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "acme.promo", "--plugins", plugins], { stdio: "pipe" }), /already/);
+    assert.throws(
+      () => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "acme.promo", "--plugins", plugins], { stdio: "pipe" }),
+      /already/,
+    );
     // A bad id, and an id the repo has.
     assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "Acme", "--plugins", plugins], { stdio: "pipe" }), /lowercase/);
     assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "taste.extra", "--plugins", plugins], { stdio: "pipe" }), /taken/);
@@ -83,14 +95,29 @@ test("pnpm plugin:new makes a plugin that passes plugin:check and answers its to
     // It runs: the SDK's register hook (as Uncut starts it) answers tools/list and the tool.
     const project = join(root, "P.uncut");
     execFileSync("mkdir", ["-p", project]);
-    writeFileSync(join(project, "project.json"), JSON.stringify({ tracks: [{ items: [{ id: "t1", text: "Ship it [[today]]" }, { id: "c1", media: "m" }] }] }));
+    writeFileSync(
+      join(project, "project.json"),
+      JSON.stringify({
+        tracks: [
+          {
+            items: [
+              { id: "t1", text: "Ship it [[today]]" },
+              { id: "c1", media: "m" },
+            ],
+          },
+        ],
+      }),
+    );
     const requests = [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } },
       { jsonrpc: "2.0", id: 2, method: "tools/list" },
       { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "acme_promo_word_count", arguments: {}, _meta: { "uncut/projectDir": project } } },
     ];
     // stdin stays open until the three answers are in (a closed stdin means Uncut is done: it exits).
-    const child = spawn(process.execPath, ["--import", join(REPO, "packages/plugin-sdk/src/register.ts"), "server.ts"], { cwd: dir, stdio: ["pipe", "pipe", "inherit"] });
+    const child = spawn(process.execPath, ["--import", join(REPO, "packages/plugin-sdk/src/register.ts"), "server.ts"], {
+      cwd: dir,
+      stdio: ["pipe", "pipe", "inherit"],
+    });
     let answer = "";
     await new Promise<void>((done, fail) => {
       const timer = setTimeout(() => fail(new Error(`no answers in 10 s: ${answer}`)), 10000);
@@ -104,9 +131,15 @@ test("pnpm plugin:new makes a plugin that passes plugin:check and answers its to
       child.stdin.write(requests.map((r) => JSON.stringify(r)).join("\n") + "\n");
     });
     child.stdin.end();
-    const replies = answer.trim().split("\n").map((l) => JSON.parse(l));
+    const replies = answer
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(replies[0].result.serverInfo.name, "acme.promo");
-    assert.deepEqual(replies[1].result.tools.map((t: { name: string }) => t.name), ["acme_promo_word_count"]);
+    assert.deepEqual(
+      replies[1].result.tools.map((t: { name: string }) => t.name),
+      ["acme_promo_word_count"],
+    );
     assert.deepEqual(replies[2].result.structuredContent, { texts: 1, words: 3, perText: [{ id: "t1", words: 3 }], longest: { id: "t1", words: 3 } });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -134,18 +167,28 @@ test("D219: plugin:check's child reads only what resolving needs, and has no net
   // Not the repo (its .git/config holds the checkout's credentials), not apps/ or scripts/ as a whole.
   for (const p of readable) {
     assert.notEqual(p, repo);
-    for (const off of [join(repo, ".git", "config"), join(repo, "apps", "server", "src", "app", "pairing.ts"), join(repo, "scripts", "plugin-gate.ts")]) assert.ok(!off.startsWith(`${p}/`) && off !== p, `${p} opens ${off}`);
+    for (const off of [join(repo, ".git", "config"), join(repo, "apps", "server", "src", "app", "pairing.ts"), join(repo, "scripts", "plugin-gate.ts")])
+      assert.ok(!off.startsWith(`${p}/`) && off !== p, `${p} opens ${off}`);
   }
-  assert.ok(readable.some((p) => /node_modules\/\.pnpm\/typegpu@/.test(p)), "TypeGPU itself is readable");
+  assert.ok(
+    readable.some((p) => /node_modules\/\.pnpm\/typegpu@/.test(p)),
+    "TypeGPU itself is readable",
+  );
   // The workflow that runs plugin:check on a contributor's pull request leaves no token in .git/config.
-  assert.match(readFileSync(join(repo, ".github", "workflows", "plugins.yml"), "utf8"), /uses: actions\/checkout@v4\n\s+with:\n(?:\s+.*\n)*?\s+persist-credentials: false/);
+  assert.match(
+    readFileSync(join(repo, ".github", "workflows", "plugins.yml"), "utf8"),
+    /uses: actions\/checkout@v4\n\s+with:\n(?:\s+.*\n)*?\s+persist-credentials: false/,
+  );
   const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-shader-jail-")));
   try {
     const dir = pluginNew(["acme.jail", "--shader", "--plugins", join(root, "plugins")]).dir;
     const source = join(dir, "effect.ts");
     const original = readFileSync(source, "utf8");
     // fetch, WebSocket and EventSource are gone: the effect still resolves.
-    writeFileSync(source, `if (typeof fetch !== "undefined" || typeof WebSocket !== "undefined" || typeof EventSource !== "undefined") throw new Error("the network is reachable");\n${original}`);
+    writeFileSync(
+      source,
+      `if (typeof fetch !== "undefined" || typeof WebSocket !== "undefined" || typeof EventSource !== "undefined") throw new Error("the network is reachable");\n${original}`,
+    );
     assert.deepEqual(checkPluginShaders(dir), []);
     // No Node module past the resolve hook: process.getBuiltinModule is gone.
     writeFileSync(source, `(process as unknown as { getBuiltinModule: (m: string) => unknown }).getBuiltinModule("node:child_process");\n${original}`);
@@ -193,7 +236,10 @@ test("D213: the gate and plugin:check catch a shader plugin's mistakes; --write 
     assert.match(checkPluginFolder(dir, await gateContext()).join("\n"), /effect\.ts imports node:fs: a shader effect's source imports only typegpu/);
     assert.match(checkPluginShaders(dir).join("\n"), /importing it failed: .*(only typegpu|not node:fs)/);
     writeFileSync(join(dir, "extra.ts"), "export const y = 1;\n");
-    assert.match(checkPluginFolder(dir, await gateContext()).join("\n"), /a data plugin is its uncut\.module\.json alone, no code \(and the \.ts sources of its shader effects\)/);
+    assert.match(
+      checkPluginFolder(dir, await gateContext()).join("\n"),
+      /a data plugin is its uncut\.module\.json alone, no code \(and the \.ts sources of its shader effects\)/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

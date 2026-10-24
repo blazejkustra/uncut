@@ -46,7 +46,8 @@ function track(play: (k: number, t: number, buf: Float64Array, rnd: () => number
 
 /** Sustained bass (45 Hz) from `from` to `to` s. */
 function bass(buf: Float64Array, from: number, to: number, gain: number) {
-  for (let i = Math.round(from * SAMPLE_RATE); i < Math.min(buf.length, to * SAMPLE_RATE); i++) buf[i]! += gain * Math.sin(2 * Math.PI * 45 * (i / SAMPLE_RATE));
+  for (let i = Math.round(from * SAMPLE_RATE); i < Math.min(buf.length, to * SAMPLE_RATE); i++)
+    buf[i]! += gain * Math.sin(2 * Math.PI * 45 * (i / SAMPLE_RATE));
 }
 
 const DROP_BEAT = 24; // 12.25 s, a downbeat (beat 0 is one).
@@ -104,12 +105,40 @@ test("dropOf by level: a step, not a ramp or a quiet rise; the onsets' rule with
   const flat = beats.map(() => ({ t: 0, strength: 0 }));
   const step = beats.map((_, i) => (i < 16 ? 0.2 : 0.9));
   assert.deepEqual(dropOf(beats, 1, flat, step), { seconds: 8.2, rise: 4.5, beat: 16 });
-  assert.equal(dropOf(beats, 0, flat, beats.map((_, i) => 0.1 + (0.9 * i) / 31)), undefined, "a ramp");
-  assert.equal(dropOf(beats, 0, flat, beats.map((_, i) => (i < 8 ? 1 : i < 16 ? 0.02 : 0.1))), undefined, "a quiet rise after a loud intro");
-  assert.equal(dropOf(beats, 0, flat, beats.map((_, i) => (i === 20 ? 1 : 0.2))), undefined, "one loud beat isn't a drop");
+  assert.equal(
+    dropOf(
+      beats,
+      0,
+      flat,
+      beats.map((_, i) => 0.1 + (0.9 * i) / 31),
+    ),
+    undefined,
+    "a ramp",
+  );
+  assert.equal(
+    dropOf(
+      beats,
+      0,
+      flat,
+      beats.map((_, i) => (i < 8 ? 1 : i < 16 ? 0.02 : 0.1)),
+    ),
+    undefined,
+    "a quiet rise after a loud intro",
+  );
+  assert.equal(
+    dropOf(
+      beats,
+      0,
+      flat,
+      beats.map((_, i) => (i === 20 ? 1 : 0.2)),
+    ),
+    undefined,
+    "one loud beat isn't a drop",
+  );
 });
 
-const electro = "/private/tmp/claude-501/-Users-blazejkustra-Documents-devrel/3831cfa3-e621-4363-bd93-bfd925d590db/scratchpad/music/cuts/2-electro-dreams_arulo_mixkit-190_cut28.mp3";
+const electro =
+  "/private/tmp/claude-501/-Users-blazejkustra-Documents-devrel/3831cfa3-e621-4363-bd93-bfd925d590db/scratchpad/music/cuts/2-electro-dreams_arulo_mixkit-190_cut28.mp3";
 const ffmpeg = (() => {
   try {
     return execFileSync("sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).trim() || undefined;
@@ -118,12 +147,16 @@ const ffmpeg = (() => {
   }
 })();
 
-test("Electro Dreams (the launch film's 28 s cut): the drop at ~12.0 s", { skip: !ffmpeg ? "ffmpeg isn't installed" : !existsSync(electro) ? "the rehearsal's track isn't on this machine" : false }, () => {
-  const out = spawnSync(ffmpeg!, ["-v", "error", "-i", electro, "-ac", "1", "-ar", String(SAMPLE_RATE), "-f", "f32le", "-"], { maxBuffer: 1 << 28 });
-  const samples = new Float32Array(out.stdout.buffer, out.stdout.byteOffset, out.stdout.length / 4);
-  const { r, g } = grid(samples);
-  assert.ok(Math.abs(r.bpm! - 120) < 1, `bpm ${r.bpm}`);
-  assert.ok(g.drop, "a drop");
-  assert.ok(Math.abs(g.drop.frame / 60 - 12.0) <= 0.1, `drop at ${(g.drop.frame / 60).toFixed(2)} s`);
-  assert.ok(g.downbeats.includes(g.drop.frame));
-});
+test(
+  "Electro Dreams (the launch film's 28 s cut): the drop at ~12.0 s",
+  { skip: !ffmpeg ? "ffmpeg isn't installed" : !existsSync(electro) ? "the rehearsal's track isn't on this machine" : false },
+  () => {
+    const out = spawnSync(ffmpeg!, ["-v", "error", "-i", electro, "-ac", "1", "-ar", String(SAMPLE_RATE), "-f", "f32le", "-"], { maxBuffer: 1 << 28 });
+    const samples = new Float32Array(out.stdout.buffer, out.stdout.byteOffset, out.stdout.length / 4);
+    const { r, g } = grid(samples);
+    assert.ok(Math.abs(r.bpm! - 120) < 1, `bpm ${r.bpm}`);
+    assert.ok(g.drop, "a drop");
+    assert.ok(Math.abs(g.drop.frame / 60 - 12.0) <= 0.1, `drop at ${(g.drop.frame / 60).toFixed(2)} s`);
+    assert.ok(g.downbeats.includes(g.drop.frame));
+  },
+);

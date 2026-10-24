@@ -71,13 +71,14 @@ const fixture = makeFixture(join(out, "Footage"));
 console.log(`  Talk.mp4 (${fixture.seconds.toFixed(1)} s), Smooth.mp4, Jittered.mp4, Blurred.mp4`);
 
 // Your drone takes: referenced by path only, never opened for writing here.
-const drone = flag("--drone") && DRONE_DIR
-  ? readdirSync(DRONE_DIR)
-      .filter((n) => /\.(mp4|mov)$/i.test(n))
-      .sort()
-      .slice(0, 3)
-      .map((n) => join(DRONE_DIR, n))
-  : [];
+const drone =
+  flag("--drone") && DRONE_DIR
+    ? readdirSync(DRONE_DIR)
+        .filter((n) => /\.(mp4|mov)$/i.test(n))
+        .sort()
+        .slice(0, 3)
+        .map((n) => join(DRONE_DIR, n))
+    : [];
 const droneBefore = stamp(drone);
 if (drone.length) writeFileSync(join(out, "drone-before.json"), JSON.stringify(droneBefore, null, 2));
 
@@ -112,13 +113,15 @@ Or run it headlessly: node scripts/phase5-manual-check.ts --run${drone.length ? 
 
 // --run: the bundled server (plain node), the real claude found on PATH, a data folder of its own.
 const { BUNDLE, MEDIA, connect, startServer } = await import("../test/helpers/server.ts");
-for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), MEDIA]) if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
+for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), MEDIA])
+  if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
 const model = option("--model");
 const data = join(out, "data");
 mkdirSync(join(data, "models"), { recursive: true });
 writeFileSync(join(data, "settings.json"), JSON.stringify({ onboarded: true, ...(model ? { whisperModel: model } : {}) }));
 const cached = resolve("test-output/whisper-models");
-if (existsSync(cached)) for (const f of readdirSync(cached)) if (f.endsWith(".bin") && !existsSync(join(data, "models", f))) symlinkSync(join(cached, f), join(data, "models", f));
+if (existsSync(cached))
+  for (const f of readdirSync(cached)) if (f.endsWith(".bin") && !existsSync(join(data, "models", f))) symlinkSync(join(cached, f), join(data, "models", f));
 
 // The server gets this terminal's environment (PATH with claude, whisper-cli, ffmpeg); UNCUT_CLAUDE unset = the real claude.
 const env: NodeJS.ProcessEnv = { UNCUT_DATA_DIR: data };
@@ -173,4 +176,3 @@ try {
   client.close();
   await server.stop();
 }
-

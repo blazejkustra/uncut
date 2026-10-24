@@ -115,7 +115,10 @@ export function useDuckLoading(project: ProjectModel, dir: string) {
   }, [analysisJobs, dir, key]);
   // An export measures missing envelopes itself (D85: the analysis queue waits for exports) and caches
   // them without a loudness job: when one of this project's exports ends, read the missing ones again.
-  const exportsEnded = exportJobs.filter((j) => j.projectDir === dir && (j.phase === "done" || j.phase === "failed" || j.phase === "cancelled")).map((j) => j.id).join(",");
+  const exportsEnded = exportJobs
+    .filter((j) => j.projectDir === dir && (j.phase === "done" || j.phase === "failed" || j.phase === "cancelled"))
+    .map((j) => j.id)
+    .join(",");
   useEffect(() => {
     if (!online || state.dir !== dir || !exportsEnded) return;
     for (const id of media) if (!state.envelopes.has(id)) void load(dir, id, false);

@@ -43,7 +43,12 @@ async function music(args: Json, ctx: ToolContext) {
     method: "POST",
     url: `/v1/music?output_format=${OUTPUT}`,
     headers: { "content-type": "application/json", accept: "audio/mpeg" },
-    body: JSON.stringify({ prompt: String(args.prompt ?? ""), music_length_ms: Math.round(seconds * 1000), model_id: MUSIC_MODEL, force_instrumental: o.instrumental === true }),
+    body: JSON.stringify({
+      prompt: String(args.prompt ?? ""),
+      music_length_ms: Math.round(seconds * 1000),
+      model_id: MUSIC_MODEL,
+      force_instrumental: o.instrumental === true,
+    }),
     save: "mp3",
   });
   savedOrError(r);

@@ -32,7 +32,11 @@ export const closeMenu = () => {
   open = undefined;
   notify();
 };
-const useOpenMenu = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => open);
+const useOpenMenu = () =>
+  useSyncExternalStore(
+    (l) => (listeners.add(l), () => void listeners.delete(l)),
+    () => open,
+  );
 
 /** Mounted once (in the editor): draws the open menu, if any. */
 export function ContextMenuHost() {
@@ -56,7 +60,23 @@ export function ContextMenuHost() {
 
 const enabled = (items: MenuItems) => items.map((e, i) => (e !== "-" && !e.disabled ? i : -1)).filter((i) => i >= 0);
 
-function MenuList({ items, x, y, label, level, onClose, onBack }: { items: MenuItems; x: number; y: number; label: string; level: number; onClose: () => void; onBack?: () => void }) {
+function MenuList({
+  items,
+  x,
+  y,
+  label,
+  level,
+  onClose,
+  onBack,
+}: {
+  items: MenuItems;
+  x: number;
+  y: number;
+  label: string;
+  level: number;
+  onClose: () => void;
+  onBack?: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [active, setActiveState] = useState(level > 0 ? (enabled(items)[0] ?? -1) : -1);
@@ -73,7 +93,7 @@ function MenuList({ items, x, y, label, level, onClose, onBack }: { items: MenuI
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const nx = x + r.width > window.innerWidth - 4 ? Math.max(4, (level > 0 ? x - r.width - 180 : x - r.width)) : x;
+    const nx = x + r.width > window.innerWidth - 4 ? Math.max(4, level > 0 ? x - r.width - 180 : x - r.width) : x;
     const ny = y + r.height > window.innerHeight - 4 ? Math.max(4, window.innerHeight - r.height - 4) : y;
     setPos({ x: nx, y: ny });
     // Not scrolled to: it's drawn where it fits only after this render (U13).

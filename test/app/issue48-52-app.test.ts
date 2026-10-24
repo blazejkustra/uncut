@@ -31,10 +31,19 @@ const item = (id: string) => `[data-testid=timeline-item][data-item="${id}"]`;
 const seek = async (frame: number) => {
   const ruler = await rect("[data-testid=ruler]");
   await page.mouse.click(await xOf(frame), ruler.top + ruler.height - 6);
-  await page.waitForFunction((f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1, { timeout: 5000 }, frame);
+  await page.waitForFunction(
+    (f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1,
+    { timeout: 5000 },
+    frame,
+  );
 };
 const playing = () => page.$eval("[data-testid=play]", (el) => /Pause/.test((el as HTMLElement).getAttribute("aria-label") ?? ""));
-const waitPlaying = (on: boolean) => page.waitForFunction((want) => /Pause/.test((document.querySelector("[data-testid=play]") as HTMLElement | null)?.getAttribute("aria-label") ?? "") === want, { timeout: 5000 }, on);
+const waitPlaying = (on: boolean) =>
+  page.waitForFunction(
+    (want) => /Pause/.test((document.querySelector("[data-testid=play]") as HTMLElement | null)?.getAttribute("aria-label") ?? "") === want,
+    { timeout: 5000 },
+    on,
+  );
 const value = (selector: string) => page.$eval(selector, (el) => (el as HTMLInputElement).value);
 const focused = () => page.evaluate(() => document.activeElement?.tagName ?? "");
 /** Space plays (and nothing is left focused to type in), Space again pauses. */
@@ -47,17 +56,37 @@ const spacePlays = async (what: string) => {
   await waitPlaying(false);
 };
 const PANELS = [".rail", ".library", ".stage", ".side", ".bottom", "[data-testid=preview-frame]", "[data-testid=lanes]"];
-const panelRects = () => page.evaluate((sels) => sels.map((s) => {
-  const r = document.querySelector(s)!.getBoundingClientRect();
-  return { s, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
-}), PANELS);
+const panelRects = () =>
+  page.evaluate(
+    (sels) =>
+      sels.map((s) => {
+        const r = document.querySelector(s)!.getBoundingClientRect();
+        return { s, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      }),
+    PANELS,
+  );
 
 before(async () => {
   if (skip) return;
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue48-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-t", "10", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "Shot.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=640x360:rate=30",
+    "-t",
+    "10",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "Shot.mp4"),
+  ]);
   dir = join(root, "Issue48.uncut");
   mkdirSync(dir);
   writeFileSync(
@@ -67,10 +96,34 @@ before(async () => {
       name: "Issue48",
       canvas: { width: 1920, height: 1080, fps: 30 },
       textLooks: 1,
-      media: [{ id: "m-shot", kind: "video", name: "Shot.mp4", path: join(root, "Shot.mp4"), probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false } }],
+      media: [
+        {
+          id: "m-shot",
+          kind: "video",
+          name: "Shot.mp4",
+          path: join(root, "Shot.mp4"),
+          probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false },
+        },
+      ],
       tracks: [
         // Locked, so splitting the title is refused with a notice banner (#52).
-        { id: "text", kind: "text", name: "Text", locked: true, items: [{ id: "t1", type: "text", start: 0, duration: 120, text: "Launch day", transform: { x: 160, y: 440 }, style: { preset: "text.title", size: 140, weight: 700 } }] },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          locked: true,
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 120,
+              text: "Launch day",
+              transform: { x: 160, y: 440 },
+              style: { preset: "text.title", size: 140, weight: 700 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "a", type: "clip", media: "m-shot", in: 0, duration: 300 }] },
       ],
     }),

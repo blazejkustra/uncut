@@ -134,7 +134,10 @@ function applyOp(project: Draft, op: Op) {
         if (item.start !== undefined) item.start += op.frames;
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
         // Keys stay on their moment: they shift with the new start, and ones now before it go.
-        if (item.keys && op.frames > 0) item.keys = withCutKey(item.keys, op.frames, project.canvas.fps, item.duration + op.frames).map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        if (item.keys && op.frames > 0)
+          item.keys = withCutKey(item.keys, op.frames, project.canvas.fps, item.duration + op.frames)
+            .map((k) => ({ ...k, frame: k.frame - op.frames }))
+            .filter((k) => k.frame >= 0);
         else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames }));
         if (item.gainKeys?.length) {
           // The envelope keeps its value at the new start: a key goes there when keys were cut off.
@@ -142,7 +145,8 @@ function applyOp(project: Draft, op: Op) {
           const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
           item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
         }
-      } else if (item.keys?.some((k) => k.frame > item.duration)) item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
+      } else if (item.keys?.some((k) => k.frame > item.duration))
+        item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
       if (item.keys?.length === 0) delete item.keys;
       return;
     }
@@ -263,7 +267,7 @@ function applyOp(project: Draft, op: Op) {
       const set = structuredClone(op.set) as Record<string, unknown>;
       const blur = set.motionBlur;
       if (blur && typeof blur === "object") {
-        const next: Record<string, unknown> = { ...((project as { motionBlur?: object }).motionBlur ?? {}) };
+        const next: Record<string, unknown> = { ...(project as { motionBlur?: object }).motionBlur };
         for (const [k, v] of Object.entries(blur)) {
           if (UNSAFE_KEYS.has(k)) throw new EditError(`"${k}" can't be set`);
           if (v === null) delete next[k];
@@ -284,7 +288,11 @@ function applyOp(project: Draft, op: Op) {
  * baseRevision is the revision the actor last saw. If the agent's ops touch something the
  * user changed after that, the whole edit is refused with EditConflict.
  */
-export function applyEdit(session: Session, { actor, ops, baseRevision = session.revision, turnId, summary, at }: Edit, validate?: (project: Project) => ReadonlyArray<Problem>): Session {
+export function applyEdit(
+  session: Session,
+  { actor, ops, baseRevision = session.revision, turnId, summary, at }: Edit,
+  validate?: (project: Project) => ReadonlyArray<Problem>,
+): Session {
   if (!["user", "agent"].includes(actor)) throw new EditError(`Unknown actor "${actor}"`);
   if (baseRevision < session.revision) {
     const mine = new Set(ops.flatMap(touches));
@@ -297,7 +305,9 @@ export function applyEdit(session: Session, { actor, ops, baseRevision = session
   // Issue #118: what a locked section plays never changes (a ripple from before it included), whoever edits.
   // The agent also can't unlock one, or change its tracks, media files, canvas or master.
   const locked = session.project.sections?.length
-    ? ((actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ?? lockedSectionProblem(session.project, project as Project) ?? (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
+    ? ((actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ??
+      lockedSectionProblem(session.project, project as Project) ??
+      (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
     : undefined;
   if (locked) throw new EditError("The edit would change a locked section", [locked]);
   if (validate) {
@@ -361,7 +371,7 @@ type Keys = NonNullable<Item["keys"]>;
 function withCutKey(input: Keys, at: number, fps: number = DEFAULT_KEY_FPS, end = Infinity): Keys {
   const keys = bakeSprings(input, at, fps, end);
   const add = new Map<number, Record<string, number>>();
-  const put = (frame: number, p: string, v: number) => add.set(frame, { ...(add.get(frame) ?? {}), [p]: Math.round(v * 1e6) / 1e6 });
+  const put = (frame: number, p: string, v: number) => add.set(frame, { ...add.get(frame), [p]: Math.round(v * 1e6) / 1e6 });
   for (const p of KEY_PROPS) {
     const list = keysOf(keys, p);
     if (!list.length || list.some((k) => k.frame === at)) continue;
@@ -403,7 +413,7 @@ function bakeSprings(keys: Keys, at: number, fps: number, limit: number): Keys {
     const values: Record<string, number> = {};
     for (const p of props) values[p] = Math.round(keyAt(keys, p, f, rate)! * 1e6) / 1e6;
     const own = keys.findLast((k) => k.frame === f);
-    out.push({ ...(own ?? {}), frame: f, ...values, ease: "linear" });
+    out.push({ ...own, frame: f, ...values, ease: "linear" });
   }
   return out;
 }

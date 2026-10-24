@@ -12,5 +12,7 @@ export interface AgentVars {
   limitWarning: string | undefined;
   session: ClaudeSession | undefined;
   // The running turn's one open approval card (D99) and how to answer it.
-  approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void } | undefined;
+  approval:
+    | { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void }
+    | undefined;
 }

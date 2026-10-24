@@ -11,7 +11,23 @@ import type { Item, Op, Problem, Project, Section } from "./types.ts";
 
 // Fields that say nothing about what plays (names, ids, grouping, the item's own lock) or that the
 // content descriptor below gives in timeline frames instead (where it starts, how long, its in point).
-const NOT_CONTENT = new Set(["id", "name", "group", "linkedTo", "locked", "start", "gap", "duration", "in", "keys", "gainKeys", "fadeIn", "fadeOut", "transitionIn", "animation"]);
+const NOT_CONTENT = new Set([
+  "id",
+  "name",
+  "group",
+  "linkedTo",
+  "locked",
+  "start",
+  "gap",
+  "duration",
+  "in",
+  "keys",
+  "gainKeys",
+  "fadeIn",
+  "fadeOut",
+  "transitionIn",
+  "animation",
+]);
 // Captions: their words, corrections and card breaks are compared as the cards they make in the section.
 const NOT_CAPTION_CONTENT = new Set([...NOT_CONTENT, "words", "edits", "breaks"]);
 
@@ -33,7 +49,9 @@ function keyedValues(project: Project, item: Item, start: number, a: number, b: 
     for (let f = a; f < b; f++) values.push(round(keyAt(keys, p, f - start, fps) ?? Number.NaN));
     box[p] = values;
   }
-  const other = keys.filter((k) => Object.keys(k).some((p) => p !== "frame" && p !== "ease" && !(KEY_PROPS as ReadonlyArray<string>).includes(p))).map((k) => ({ ...k, frame: k.frame + start }));
+  const other = keys
+    .filter((k) => Object.keys(k).some((p) => p !== "frame" && p !== "ease" && !(KEY_PROPS as ReadonlyArray<string>).includes(p)))
+    .map((k) => ({ ...k, frame: k.frame + start }));
   const gain: Array<number> = [];
   if (item.gainKeys?.length) for (let f = a; f < b; f++) gain.push(round(keyDbAt(item.gainKeys, f - start)));
   return { box, other, gain };
@@ -66,7 +84,10 @@ function itemContent(project: Project, item: Item, track: string, start: number,
     animIn: item.animation?.in && start + item.animation.in.duration > from ? { ...item.animation.in, at: start } : undefined,
     animOut: item.animation?.out && start + item.duration - item.animation.out.duration < to ? { ...item.animation.out, at: start + item.duration } : undefined,
     animLoop: item.animation?.loop ? { ...item.animation.loop, at: start } : undefined,
-    transitionIn: item.transitionIn && start - item.transitionIn.duration < to && start + item.transitionIn.duration > from ? { ...item.transitionIn, at: start } : undefined,
+    transitionIn:
+      item.transitionIn && start - item.transitionIn.duration < to && start + item.transitionIn.duration > from
+        ? { ...item.transitionIn, at: start }
+        : undefined,
   };
 }
 
@@ -112,7 +133,9 @@ function sectionContext(project: Project, from: number, to: number): string {
   const tracks = new Set(items.map(({ track }) => track.id));
   const media = new Set(items.map(({ item }) => item.media).filter((m): m is string => !!m));
   return JSON.stringify({
-    tracks: project.tracks.filter((t) => tracks.has(t.id)).map((t) => ({ id: t.id, hidden: t.hidden === true, mixer: t.mixer ? { ...t.mixer, solo: undefined, linkedTo: undefined } : undefined })),
+    tracks: project.tracks
+      .filter((t) => tracks.has(t.id))
+      .map((t) => ({ id: t.id, hidden: t.hidden === true, mixer: t.mixer ? { ...t.mixer, solo: undefined, linkedTo: undefined } : undefined })),
     solo: project.tracks.filter((t) => t.mixer?.solo).map((t) => t.id),
     media: project.media.filter((m) => media.has(m.id)).map((m) => ({ id: m.id, kind: m.kind, path: m.path })),
     canvas: project.canvas,
@@ -148,7 +171,9 @@ const secs = (frame: number, fps: number) => {
 
 /** The locked sections of `before` still locked over the same frames in `after` (an edit that unlocks one may change it). */
 const stillLocked = (before: Project, after: Project) =>
-  (before.sections ?? []).filter((s) => s.state === "locked" && (after.sections ?? []).some((a) => a.id === s.id && a.state === "locked" && a.start === s.start && a.end === s.end));
+  (before.sections ?? []).filter(
+    (s) => s.state === "locked" && (after.sections ?? []).some((a) => a.id === s.id && a.state === "locked" && a.start === s.start && a.end === s.end),
+  );
 
 /**
  * The problem when going from `before` to `after` changes what a locked section plays (a clip in it
@@ -175,7 +200,11 @@ export function unlockProblem(before: Project, after: Project): Problem | undefi
   const kept = stillLocked(before, after);
   const gone = (before.sections ?? []).find((s) => s.state === "locked" && !kept.includes(s));
   if (!gone) return undefined;
-  return { code: "locked-section", path: `/sections/${gone.id}`, message: `only the user can unlock or change the locked section ${gone.id} (frames ${gone.start}–${gone.end}); ask them to` };
+  return {
+    code: "locked-section",
+    path: `/sections/${gone.id}`,
+    message: `only the user can unlock or change the locked section ${gone.id} (frames ${gone.start}–${gone.end}); ask them to`,
+  };
 }
 
 /** A new section id: "section-1", "section-2", … */
@@ -203,13 +232,21 @@ function without(project: Project, sections: ReadonlyArray<Section>, from: numbe
   return out;
 }
 
-const edit = (sections: ReadonlyArray<Section>): ReadonlyArray<Op> => [{ op: "update_project", set: { sections: sections.length ? [...sections].sort((a, b) => a.start - b.start) : null } }];
+const edit = (sections: ReadonlyArray<Section>): ReadonlyArray<Op> => [
+  { op: "update_project", set: { sections: sections.length ? [...sections].sort((a, b) => a.start - b.start) : null } },
+];
 
 /**
  * Lock frames [from, to), or flag them "not OK" for the agent to redo (`state` "redo", with a note):
  * one update_project; what it covers of other sections is taken out of them.
  */
-export function planMarkSection(project: Project, from: number, to: number, state: Section["state"], note?: string): { readonly ops: ReadonlyArray<Op>; readonly id: string; readonly summary: string } | { readonly problem: string } {
+export function planMarkSection(
+  project: Project,
+  from: number,
+  to: number,
+  state: Section["state"],
+  note?: string,
+): { readonly ops: ReadonlyArray<Op>; readonly id: string; readonly summary: string } | { readonly problem: string } {
   const a = Math.max(0, Math.round(Math.min(from, to)));
   const b = Math.round(Math.max(from, to));
   if (b <= a) return { problem: "Mark a stretch first: set In and Out (I and O) around it." };
@@ -251,6 +288,9 @@ export function sectionsNote(project: Project): string {
   const fps = project.canvas.fps;
   const lines = [...(project.sections ?? [])]
     .sort((a, b) => a.start - b.start)
-    .map((s) => `${s.id}: frames ${s.start}–${s.end} (${secs(s.start, fps)}–${secs(s.end, fps)}) ${s.state === "locked" ? "LOCKED: nothing there may move or change; edits that would are refused" : `NOT OK, redo it${s.note ? `: ${s.note}` : ""}`}`);
+    .map(
+      (s) =>
+        `${s.id}: frames ${s.start}–${s.end} (${secs(s.start, fps)}–${secs(s.end, fps)}) ${s.state === "locked" ? "LOCKED: nothing there may move or change; edits that would are refused" : `NOT OK, redo it${s.note ? `: ${s.note}` : ""}`}`,
+    );
   return lines.join("\n");
 }

@@ -19,9 +19,16 @@ export interface RequestOptions {
 
 /** A cached transcript answers a request that names no language, or one in the language it's in. */
 const fits = (analyzer: Analyzer, result: AnalysisResult, options: RequestOptions | undefined) =>
-  analyzer !== "transcript" || !options?.language || options.language === "auto" || !(result as TranscriptResult).hasAudio || (result as TranscriptResult).language === options.language;
+  analyzer !== "transcript" ||
+  !options?.language ||
+  options.language === "auto" ||
+  !(result as TranscriptResult).hasAudio ||
+  (result as TranscriptResult).language === options.language;
 
-export type Outcome = { readonly state: "done"; readonly result: AnalysisResult; readonly cached: boolean } | { readonly state: "failed"; readonly error: string } | { readonly state: "cancelled" };
+export type Outcome =
+  | { readonly state: "done"; readonly result: AnalysisResult; readonly cached: boolean }
+  | { readonly state: "failed"; readonly error: string }
+  | { readonly state: "cancelled" };
 
 /** A request's answer: the job doing it (none when the answer was there at once) and its outcome. */
 export interface Requested {
@@ -107,8 +114,10 @@ export class AnalysisQueue {
     // Nothing to measure, known from the probe: no job, no cache file.
     if (analyzer === "loudness" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_AUDIO, cached: false });
     if (analyzer === "video" && target.kind !== "video") return settled({ state: "done", result: NO_VIDEO, cached: false });
-    if (analyzer === "transcript" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_SPEECH_AUDIO, cached: false });
-    if (analyzer === "beats" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_BEATS_AUDIO, cached: false });
+    if (analyzer === "transcript" && (target.kind === "image" || target.hasAudio === false))
+      return settled({ state: "done", result: NO_SPEECH_AUDIO, cached: false });
+    if (analyzer === "beats" && (target.kind === "image" || target.hasAudio === false))
+      return settled({ state: "done", result: NO_BEATS_AUDIO, cached: false });
     const joined = this.find(target, analyzer, undefined, options);
     if (joined) return this.join(joined, target.mediaId);
     let fp: string;
@@ -116,7 +125,15 @@ export class AnalysisQueue {
       fp = await fingerprint(target.path);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      return settled({ state: "failed", error: code === "ENOENT" ? `The file isn't there any more: ${target.path}` : code === "EACCES" || code === "EPERM" ? `Uncut isn't allowed to read ${target.path}.` : (error as Error).message });
+      return settled({
+        state: "failed",
+        error:
+          code === "ENOENT"
+            ? `The file isn't there any more: ${target.path}`
+            : code === "EACCES" || code === "EPERM"
+              ? `Uncut isn't allowed to read ${target.path}.`
+              : (error as Error).message,
+      });
     }
     const cached = await readCached(target.dir, fp, analyzer);
     if (cached && fits(analyzer, cached, options)) return settled({ state: "done", result: cached, cached: true });
@@ -236,7 +253,10 @@ export class AnalysisQueue {
     let outcome: Outcome;
     try {
       const bin = await this.options.ffmpeg();
-      if (!bin) throw new Error(`ffmpeg isn't installed, and Uncut needs it to ${transcript ? "transcribe" : `analyse ${e.job.analyzer === "video" ? "video" : "sound"}`} (brew install ffmpeg).`);
+      if (!bin)
+        throw new Error(
+          `ffmpeg isn't installed, and Uncut needs it to ${transcript ? "transcribe" : `analyse ${e.job.analyzer === "video" ? "video" : "sound"}`} (brew install ffmpeg).`,
+        );
       let last = 0;
       const options = {
         signal,
@@ -265,7 +285,12 @@ export class AnalysisQueue {
         });
         if (signal.aborted) throw new Cancelled();
         if (e.job.stage) this.patch(e, { stage: undefined, progress: 0 });
-        result = await analyzeTranscript(bin, whisper, e.target.path, { ...options, transcribe: this.options.transcribe, language: e.options?.language, ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}) });
+        result = await analyzeTranscript(bin, whisper, e.target.path, {
+          ...options,
+          transcribe: this.options.transcribe,
+          language: e.options?.language,
+          ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}),
+        });
       } else if (e.job.analyzer === "video") result = await analyzeVideo(bin, e.target.path, options);
       else if (e.job.analyzer === "beats") result = await analyzeBeats(bin, e.target.path, options);
       else result = await analyzeLoudness(bin, e.target.path, options);
@@ -282,7 +307,10 @@ export class AnalysisQueue {
       }
       outcome = { state: "done", result, cached: false };
     } catch (error) {
-      outcome = error instanceof Cancelled || signal.aborted ? { state: "cancelled" } : { state: "failed", error: (error as Error).message || "The analysis stopped unexpectedly." };
+      outcome =
+        error instanceof Cancelled || signal.aborted
+          ? { state: "cancelled" }
+          : { state: "failed", error: (error as Error).message || "The analysis stopped unexpectedly." };
     } finally {
       this.running--;
       if (transcript) this.transcribing--;

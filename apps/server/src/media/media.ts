@@ -26,10 +26,48 @@ import { MATCH_FIRST_CLIP, Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { recordSubtitleSources } from "../export/subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
-import { MediaLibrary, type MediaEntry, type AgentImport, type MediaDrop, type ImportedSubtitles, type AgentImportInput, type CaptureImportInput, type MultiImportInput, type ReplaceMediaInput } from "./mediaLibrary/service.ts";
-import { IMAGE_EXT, imageInput, fromFfprobe, posterKey, thumbDir, posterName, realOr, readSubtitleFile, PROBE_ERRORS, type ProjectShape, allIds, matchPending, matchCanvas, mediaId, storedPath, probeOf } from "./mediaLibrary/helpers.ts";
+import {
+  MediaLibrary,
+  type MediaEntry,
+  type AgentImport,
+  type MediaDrop,
+  type ImportedSubtitles,
+  type AgentImportInput,
+  type CaptureImportInput,
+  type MultiImportInput,
+  type ReplaceMediaInput,
+} from "./mediaLibrary/service.ts";
+import {
+  IMAGE_EXT,
+  imageInput,
+  fromFfprobe,
+  posterKey,
+  thumbDir,
+  posterName,
+  realOr,
+  readSubtitleFile,
+  PROBE_ERRORS,
+  type ProjectShape,
+  allIds,
+  matchPending,
+  matchCanvas,
+  mediaId,
+  storedPath,
+  probeOf,
+} from "./mediaLibrary/helpers.ts";
 export { MediaLibrary } from "./mediaLibrary/service.ts";
-export type { MediaLibraryShape, MediaDrop, CaptureImportInput, MultiImportInput, ReplaceMediaInput, ReplacedMedia, AgentImportInput, AgentImport, ImportedSubtitles, MediaEntry } from "./mediaLibrary/service.ts";
+export type {
+  MediaLibraryShape,
+  MediaDrop,
+  CaptureImportInput,
+  MultiImportInput,
+  ReplaceMediaInput,
+  ReplacedMedia,
+  AgentImportInput,
+  AgentImport,
+  ImportedSubtitles,
+  MediaEntry,
+} from "./mediaLibrary/service.ts";
 export { MAX_SUBTITLE_BYTES, readSubtitleFile, thumbDir, mediaId, posterKey } from "./mediaLibrary/helpers.ts";
 
 const MAX_JOBS_KEPT = 10;
@@ -62,7 +100,12 @@ export const layer = Layer.effect(
         if (!bin) return undefined;
         const input = IMAGE_EXT.has(extname(path).toLowerCase()) ? imageInput(path) : [path];
         // D194: local files only (a downloaded "video" that is really a playlist can't make ffprobe fetch anything).
-        const r = yield* run(bin, ["-v", "error", "-protocol_whitelist", "file,pipe", "-print_format", "json", "-show_streams", "-show_format", ...input], 15000, 1024 * 1024);
+        const r = yield* run(
+          bin,
+          ["-v", "error", "-protocol_whitelist", "file,pipe", "-print_format", "json", "-show_streams", "-show_format", ...input],
+          15000,
+          1024 * 1024,
+        );
         return r.kind === "done" && r.code === 0 ? fromFfprobe(r.stdout) : undefined;
       });
 
@@ -80,12 +123,22 @@ export const layer = Layer.effect(
         const out = join(folder, posterName(entry.id, key));
         const at = entry.kind === "video" ? Math.min(1, (info.durationSeconds ?? 0) / 3) : 0;
         const input = entry.kind === "image" ? imageInput(entry.path) : ["-hwaccel", "videotoolbox", "-ss", at.toFixed(3), "-i", entry.path];
-        const r = yield* run(bin, ["-v", "error", "-y", "-protocol_whitelist", "file,pipe", ...input, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", out], 30000);
+        const r = yield* run(
+          bin,
+          ["-v", "error", "-y", "-protocol_whitelist", "file,pipe", ...input, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", out],
+          30000,
+        );
         const ok = r.kind === "done" && r.code === 0;
         // Older posters for this id (another file, or this file before it changed) go.
         yield* Effect.promise(async () => {
           const files = await readdir(folder).catch(() => [] as Array<string>);
-          await Promise.all(files.filter((f) => f.startsWith(`${entry.id}--`) && /^[0-9a-f]{12}\.jpg$/.test(f.slice(entry.id.length + 2)) && (!ok || f !== posterName(entry.id, key))).map((f) => rm(join(folder, f), { force: true })));
+          await Promise.all(
+            files
+              .filter(
+                (f) => f.startsWith(`${entry.id}--`) && /^[0-9a-f]{12}\.jpg$/.test(f.slice(entry.id.length + 2)) && (!ok || f !== posterName(entry.id, key)),
+              )
+              .map((f) => rm(join(folder, f), { force: true })),
+          );
         });
         return ok;
       });
@@ -120,7 +173,14 @@ export const layer = Layer.effect(
       /** T9 (D128): the imported files also go on the timeline (one after another), in the same edit. */
       readonly drop?: MediaDrop | undefined;
       /** D211: a multi-source take: each file's part, placed together at `frame` (when given). */
-      readonly multi?: { readonly parts: ReadonlyMap<string, { readonly kind: MultiKind; readonly offsetMs: number }>; readonly frame?: number | undefined; readonly layout?: MultiLayoutName | undefined; readonly summary: string } | undefined;
+      readonly multi?:
+        | {
+            readonly parts: ReadonlyMap<string, { readonly kind: MultiKind; readonly offsetMs: number }>;
+            readonly frame?: number | undefined;
+            readonly layout?: MultiLayoutName | undefined;
+            readonly summary: string;
+          }
+        | undefined;
     }
 
     const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
@@ -177,7 +237,11 @@ export const layer = Layer.effect(
           }
           if (!outcome.ok) {
             const known = PROBE_ERRORS[outcome.code];
-            failed.push({ path: t.path, message: known ? (outcome.code === "unreadable" ? `${known}: ${outcome.message}.` : known) : outcome.message, at: t.at });
+            failed.push({
+              path: t.path,
+              message: known ? (outcome.code === "unreadable" ? `${known}: ${outcome.message}.` : known) : outcome.message,
+              at: t.at,
+            });
             continue;
           }
           probed.push({ ...t, info: outcome.info });
@@ -190,126 +254,163 @@ export const layer = Layer.effect(
         let placed: AgentImport["placed"];
         let multiPlaced: PlacedMulti | undefined;
         let matchedDir: string | undefined;
-        const snapshot = yield* projects.editIn(openId, (raw, projectDir) =>
-          Effect.gen(function* () {
-            const project = raw as ProjectShape;
-            const known = new Set<string>();
-            // The media already there, by real path: a file dropped on the timeline again is placed, not imported twice.
-            const existing = new Map<string, (typeof project.media)[number]>();
-            for (const m of project.media) {
-              const real = yield* Effect.promise(() => realOr(isAbsolute(m.path) ? m.path : resolve(projectDir, m.path)));
-              known.add(real);
-              existing.set(real, m);
-            }
-            const taken = allIds(project);
-            // D209: "Match first clip": the first video brought into an empty project sets the canvas
-            // (size and rate) in this edit, before its length in frames is counted at that rate.
-            const matched = (yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined;
-            const fps = matched?.fps ?? project.canvas.fps;
-            entries = [];
-            const entryPaths = new Map<string, string>();
-            // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
-            const toPlace: Array<PlaceMedia> = [];
-            for (const p of probed) {
-              if (known.has(p.real)) {
-                const there = existing.get(p.real);
-                if (options.drop && there) {
-                  toPlace.push(there as unknown as PlaceMedia);
+        const snapshot = yield* projects.editIn(
+          openId,
+          (raw, projectDir) =>
+            Effect.gen(function* () {
+              const project = raw as ProjectShape;
+              const known = new Set<string>();
+              // The media already there, by real path: a file dropped on the timeline again is placed, not imported twice.
+              const existing = new Map<string, (typeof project.media)[number]>();
+              for (const m of project.media) {
+                const real = yield* Effect.promise(() => realOr(isAbsolute(m.path) ? m.path : resolve(projectDir, m.path)));
+                known.add(real);
+                existing.set(real, m);
+              }
+              const taken = allIds(project);
+              // D209: "Match first clip": the first video brought into an empty project sets the canvas
+              // (size and rate) in this edit, before its length in frames is counted at that rate.
+              const matched = (yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined;
+              const fps = matched?.fps ?? project.canvas.fps;
+              entries = [];
+              const entryPaths = new Map<string, string>();
+              // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
+              const toPlace: Array<PlaceMedia> = [];
+              for (const p of probed) {
+                if (known.has(p.real)) {
+                  const there = existing.get(p.real);
+                  if (options.drop && there) {
+                    toPlace.push(there as unknown as PlaceMedia);
+                    continue;
+                  }
+                  skipped.push({ path: p.path, reason: "Already in the project.", at: p.at });
                   continue;
                 }
-                skipped.push({ path: p.path, reason: "Already in the project.", at: p.at });
-                continue;
+                known.add(p.real);
+                const { info } = p;
+                // F13 (D150): camera-style file names get a short display name ("DJI 0042").
+                const name = options.names?.get(p.path) ?? cameraName(basename(p.path)) ?? basename(p.path);
+                const source = options.sources?.get(p.path);
+                entries.push({
+                  info,
+                  entry: {
+                    id: mediaId(name, taken),
+                    kind: info.kind,
+                    name,
+                    path: options.relativePaths ? storedPath(p.path, projectDir) : p.path,
+                    ...(source ? { source } : {}),
+                    probe: probeOf(info, fps),
+                  },
+                });
+                toPlace.push(entries.at(-1)!.entry);
+                entryPaths.set(entries.at(-1)!.entry.id, p.path);
               }
-              known.add(p.real);
-              const { info } = p;
-              // F13 (D150): camera-style file names get a short display name ("DJI 0042").
-              const name = options.names?.get(p.path) ?? cameraName(basename(p.path)) ?? basename(p.path);
-              const source = options.sources?.get(p.path);
-              entries.push({
-                info,
-                entry: {
-                  id: mediaId(name, taken),
-                  kind: info.kind,
-                  name,
-                  path: options.relativePaths ? storedPath(p.path, projectDir) : p.path,
-                  ...(source ? { source } : {}),
-                  probe: probeOf(info, fps),
-                },
-              });
-              toPlace.push(entries.at(-1)!.entry);
-              entryPaths.set(entries.at(-1)!.entry.id, p.path);
-            }
-            // Subtitles files (D105): each a new Subtitles track (core planImportSubtitles), planned on the
-            // project as it will be (the tracks planned before it count), in the same edit as the media.
-            subtitles.length = 0;
-            const subtitleOps: Array<unknown> = [];
-            let view = raw as Project;
-            for (const f of subtitleFiles) {
-              const plan = planImportSubtitles(view, f.cues, basename(f.path), taken);
-              if ("problem" in plan) {
-                if (!failed.some((x) => x.path === f.path)) failed.push({ path: f.path, message: plan.problem, at: f.at });
-                continue;
+              // Subtitles files (D105): each a new Subtitles track (core planImportSubtitles), planned on the
+              // project as it will be (the tracks planned before it count), in the same edit as the media.
+              subtitles.length = 0;
+              const subtitleOps: Array<unknown> = [];
+              let view = raw as Project;
+              for (const f of subtitleFiles) {
+                const plan = planImportSubtitles(view, f.cues, basename(f.path), taken);
+                if ("problem" in plan) {
+                  if (!failed.some((x) => x.path === f.path)) failed.push({ path: f.path, message: plan.problem, at: f.at });
+                  continue;
+                }
+                subtitleOps.push(...plan.ops);
+                subtitles.push({ path: f.path, track: plan.trackId, cues: plan.cues, at: f.at });
+                const added = plan.ops[0] as { track: Project["tracks"][number] };
+                view = { ...view, tracks: [{ ...added.track, items: [] }, ...view.tracks] };
               }
-              subtitleOps.push(...plan.ops);
-              subtitles.push({ path: f.path, track: plan.trackId, cues: plan.cues, at: f.at });
-              const added = plan.ops[0] as { track: Project["tracks"][number] };
-              view = { ...view, tracks: [{ ...added.track, items: [] }, ...view.tracks] };
-            }
-            const count = entries.length + subtitles.length;
-            if (count === 0 && !toPlace.length) return undefined;
-            const canvasOps = matched ? [{ op: "update_project", set: { canvas: matched } }] : [];
-            if (matched) {
-              matchedDir = projectDir;
-              const shaped = { ...(raw as Project), canvas: matched };
-              raw = shaped;
-            }
-            // D114: a take recorded on this Mac goes on the timeline in the same edit.
-            const placeOps: Array<unknown> = [];
-            placed = undefined;
-            const first = entries[0]?.entry;
-            if (options.place && entries.length === 1 && first?.probe.frames) {
-              const plan = planPlaceTake(raw as Project, { mediaId: first.id, frames: first.probe.frames, frame: options.place.frame, placement: options.place.placement }, taken);
-              placeOps.push(...plan.ops);
-              placed = { itemId: plan.itemId, trackId: plan.trackId, start: plan.start };
-            }
-            // D211: a multi-source take's parts, start-aligned and grouped, in this edit.
-            multiPlaced = undefined;
-            if (options.multi && options.multi.frame !== undefined && entries.length) {
-              const shaped = raw as Project;
-              const parts = entries.flatMap(({ entry }) => {
-                const path = entryPaths.get(entry.id);
-                const part = path ? options.multi!.parts.get(path) : undefined;
-                return part && entry.probe.frames ? [{ mediaId: entry.id, kind: part.kind, frames: entry.probe.frames, offsetMs: part.offsetMs }] : [];
-              });
-              multiPlaced = planPlaceMulti(shaped, { parts, frame: options.multi.frame, fps: shaped.canvas.fps, canvas: shaped.canvas, layout: options.multi.layout }, taken);
-              placeOps.push(...multiPlaced.ops);
-            }
-            // T9 (D128): files dropped on the timeline land where they were dropped, in this edit.
-            let dropped = false;
-            const placeable = toPlace.filter((m) => m.kind === "image" || m.probe?.frames);
-            if (options.drop && placeable.length) {
-              const plan = planPlaceMedia(raw as Project, placeable, options.drop, taken);
-              if (!("problem" in plan)) {
+              const count = entries.length + subtitles.length;
+              if (count === 0 && !toPlace.length) return undefined;
+              const canvasOps = matched ? [{ op: "update_project", set: { canvas: matched } }] : [];
+              if (matched) {
+                matchedDir = projectDir;
+                const shaped = { ...(raw as Project), canvas: matched };
+                raw = shaped;
+              }
+              // D114: a take recorded on this Mac goes on the timeline in the same edit.
+              const placeOps: Array<unknown> = [];
+              placed = undefined;
+              const first = entries[0]?.entry;
+              if (options.place && entries.length === 1 && first?.probe.frames) {
+                const plan = planPlaceTake(
+                  raw as Project,
+                  { mediaId: first.id, frames: first.probe.frames, frame: options.place.frame, placement: options.place.placement },
+                  taken,
+                );
                 placeOps.push(...plan.ops);
-                dropped = true;
-                const first = plan.placed[0];
-                if (first) placed = first;
+                placed = { itemId: plan.itemId, trackId: plan.trackId, start: plan.start };
               }
-            }
-            return {
-              ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
-              summary: options.multi ? options.multi.summary : dropped ? (placeable.length > 1 ? `Add ${placeable.length} files to the timeline` : `Add ${placeable[0]!.name} to the timeline`) : placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
-            };
-          }),
+              // D211: a multi-source take's parts, start-aligned and grouped, in this edit.
+              multiPlaced = undefined;
+              if (options.multi && options.multi.frame !== undefined && entries.length) {
+                const shaped = raw as Project;
+                const parts = entries.flatMap(({ entry }) => {
+                  const path = entryPaths.get(entry.id);
+                  const part = path ? options.multi!.parts.get(path) : undefined;
+                  return part && entry.probe.frames ? [{ mediaId: entry.id, kind: part.kind, frames: entry.probe.frames, offsetMs: part.offsetMs }] : [];
+                });
+                multiPlaced = planPlaceMulti(
+                  shaped,
+                  { parts, frame: options.multi.frame, fps: shaped.canvas.fps, canvas: shaped.canvas, layout: options.multi.layout },
+                  taken,
+                );
+                placeOps.push(...multiPlaced.ops);
+              }
+              // T9 (D128): files dropped on the timeline land where they were dropped, in this edit.
+              let dropped = false;
+              const placeable = toPlace.filter((m) => m.kind === "image" || m.probe?.frames);
+              if (options.drop && placeable.length) {
+                const plan = planPlaceMedia(raw as Project, placeable, options.drop, taken);
+                if (!("problem" in plan)) {
+                  placeOps.push(...plan.ops);
+                  dropped = true;
+                  const first = plan.placed[0];
+                  if (first) placed = first;
+                }
+              }
+              return {
+                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
+                summary: options.multi
+                  ? options.multi.summary
+                  : dropped
+                    ? placeable.length > 1
+                      ? `Add ${placeable.length} files to the timeline`
+                      : `Add ${placeable[0]!.name} to the timeline`
+                    : placed
+                      ? `Record ${entries[0]!.entry.name}`
+                      : count > 1
+                        ? `Import ${count} files`
+                        : entries.length === 1
+                          ? `Import ${entries[0]!.entry.name}`
+                          : `Import subtitles ${basename(subtitles[0]!.path)}`,
+              };
+            }),
           options.agent,
         );
 
         // D209: matched once; later imports leave the canvas alone.
         if (snapshot && matchedDir) yield* Effect.promise(() => rm(join(matchedDir!, ".cache", MATCH_FIRST_CLIP), { force: true }).catch(() => {}));
         // Imported subtitles files are never written over by an export (D105).
-        if (snapshot && subtitles.length) yield* Effect.promise(() => recordSubtitleSources(dir, subtitles.map((x) => x.path)).catch(() => {}));
+        if (snapshot && subtitles.length)
+          yield* Effect.promise(() =>
+            recordSubtitleSources(
+              dir,
+              subtitles.map((x) => x.path),
+            ).catch(() => {}),
+          );
         const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
-        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}), ...(snapshot && placed ? { placed } : {}), ...(snapshot && multiPlaced ? { multi: multiPlaced } : {}) });
+        if (options.added)
+          yield* Deferred.succeed(options.added, {
+            snapshot,
+            entries: entries.map((e) => e.entry),
+            skipped: inOrder(skipped),
+            failed: inOrder(failed),
+            ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}),
+            ...(snapshot && placed ? { placed } : {}),
+            ...(snapshot && multiPlaced ? { multi: multiPlaced } : {}),
+          });
 
         // Posters after the edit (tiles show an icon until theirs exists), into the folder of
         // the project they belong to.
@@ -317,10 +418,7 @@ export const layer = Layer.effect(
         let done = 0;
         yield* Effect.forEach(
           entries,
-          ({ entry, info }) =>
-            makePoster(entry, info, dir).pipe(
-              Effect.tap((made) => (made ? update(jobId, { postersDone: ++done }) : Effect.void)),
-            ),
+          ({ entry, info }) => makePoster(entry, info, dir).pipe(Effect.tap((made) => (made ? update(jobId, { postersDone: ++done }) : Effect.void))),
           { concurrency: 2, discard: true },
         );
 
@@ -343,8 +441,21 @@ export const layer = Layer.effect(
     const queueJob = (open: { readonly openId: number; readonly dir: string }, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
       Effect.gen(function* () {
         const id = randomUUID();
-        const job: ImportJob = { id, projectDir: open.dir, total: paths.length, phase: "queued", probed: 0, postersDone: 0, postersTotal: 0, ...(options.agent || options.quiet ? { agent: true } : {}) };
-        yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase !== "done" && j.phase !== "failed"), ...jobs.filter((j) => j.phase === "done" || j.phase === "failed").slice(-MAX_JOBS_KEPT), job]);
+        const job: ImportJob = {
+          id,
+          projectDir: open.dir,
+          total: paths.length,
+          phase: "queued",
+          probed: 0,
+          postersDone: 0,
+          postersTotal: 0,
+          ...(options.agent || options.quiet ? { agent: true } : {}),
+        };
+        yield* SubscriptionRef.update(jobsRef, (jobs) => [
+          ...jobs.filter((j) => j.phase !== "done" && j.phase !== "failed"),
+          ...jobs.filter((j) => j.phase === "done" || j.phase === "failed").slice(-MAX_JOBS_KEPT),
+          job,
+        ]);
         // Forked into the server's scope, not the request's: a client that goes away or times
         // out doesn't cancel the import; one job runs at a time.
         yield* Effect.forkIn(oneAtATime.withPermits(1)(runJob(id, open.openId, open.dir, paths, options)), scope);
@@ -358,7 +469,9 @@ export const layer = Layer.effect(
         // Files uploaded from another Mac (D108) live in the project's media/uploads/: stored
         // relative to it, so the project folder carries them wherever it goes.
         const uploads = join(open.dir, "media", "uploads") + "/";
-        return { jobId: yield* queueJob(open, paths, { ...(paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}), ...(drop ? { drop } : {}) }) };
+        return {
+          jobId: yield* queueJob(open, paths, { ...(paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}), ...(drop ? { drop } : {}) }),
+        };
       });
 
     const importForAgent = ({ openId, dir, turnId, paths, names, relativePaths }: AgentImportInput) =>
@@ -387,14 +500,18 @@ export const layer = Layer.effect(
     const importMulti = ({ openId, dir, parts, frame, layout, summary }: MultiImportInput) =>
       Effect.gen(function* () {
         const added = yield* Deferred.make<AgentImport, string>();
-        yield* queueJob({ openId, dir }, parts.map((p) => p.path), {
-          quiet: true,
-          relativePaths: true,
-          names: new Map(parts.map((p) => [p.path, p.name])),
-          sources: new Map(parts.map((p) => [p.path, p.source])),
-          added,
-          multi: { parts: new Map(parts.map((p) => [p.path, { kind: p.kind, offsetMs: p.offsetMs }])), frame, layout, summary },
-        });
+        yield* queueJob(
+          { openId, dir },
+          parts.map((p) => p.path),
+          {
+            quiet: true,
+            relativePaths: true,
+            names: new Map(parts.map((p) => [p.path, p.name])),
+            sources: new Map(parts.map((p) => [p.path, p.source])),
+            added,
+            multi: { parts: new Map(parts.map((p) => [p.path, { kind: p.kind, offsetMs: p.offsetMs }])), frame, layout, summary },
+          },
+        );
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
@@ -403,9 +520,18 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const problem = yield* precheck(path);
         if (problem) return { ok: false as const, message: problem };
-        const [first] = yield* mediaCore.probeMany([path], () => {}).pipe(Effect.catchTag("MediaCoreError", (e) => Effect.succeed([{ ok: false as const, code: "error", message: e.message }] as ReadonlyArray<ProbeOutcome>)));
+        const [first] = yield* mediaCore
+          .probeMany([path], () => {})
+          .pipe(
+            Effect.catchTag("MediaCoreError", (e) =>
+              Effect.succeed([{ ok: false as const, code: "error", message: e.message }] as ReadonlyArray<ProbeOutcome>),
+            ),
+          );
         let outcome = first ?? { ok: false as const, code: "error", message: "no probe" };
-        if ((!outcome.ok && outcome.code === "unsupported") || (outcome.ok && outcome.info.kind !== "image" && !(outcome.info.durationSeconds && outcome.info.durationSeconds > 0))) {
+        if (
+          (!outcome.ok && outcome.code === "unsupported") ||
+          (outcome.ok && outcome.info.kind !== "image" && !(outcome.info.durationSeconds && outcome.info.durationSeconds > 0))
+        ) {
           const viaFfprobe = yield* ffprobe(path);
           if (viaFfprobe?.durationSeconds || (viaFfprobe && !outcome.ok)) outcome = { ok: true, info: viaFfprobe };
         }
@@ -430,14 +556,25 @@ export const layer = Layer.effect(
                   const probe = probeOf(probed.info, project.canvas.fps);
                   const stored = storedPath(path, projectDir);
                   const plan = planReshoot(project, id, { path: stored, probe, ...(source ? { source } : {}) }, overrun);
-                  result = { entry: { id, kind: old.kind, name: old.name, path: stored, probe, ...(source ?? old.source ? { source: (source ?? old.source)! } : {}) }, previousPath: old.path, warnings: plan.warnings, ops: plan.ops };
+                  result = {
+                    entry: { id, kind: old.kind, name: old.name, path: stored, probe, ...((source ?? old.source) ? { source: (source ?? old.source)! } : {}) },
+                    previousPath: old.path,
+                    warnings: plan.warnings,
+                    ops: plan.ops,
+                  };
                   return { ops: plan.ops as ReadonlyArray<unknown>, summary: `Re-shoot ${old.name}` };
                 },
                 catch: (error) => new ProjectError({ reason: "io", message: error instanceof Error ? error.message : String(error), details: [] }),
               }),
             turnId ? { turnId } : undefined,
           )
-          .pipe(Effect.mapError((error) => (error instanceof ProjectError ? error : new ProjectError({ reason: "io", message: (error as { message?: string }).message ?? String(error), details: [] }))));
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof ProjectError
+                ? error
+                : new ProjectError({ reason: "io", message: (error as { message?: string }).message ?? String(error), details: [] }),
+            ),
+          );
         if (!result) return yield* new ProjectError({ reason: "io", message: "Nothing was swapped in.", details: [] });
         const done = result;
         // The new poster in the background (the old one goes: makePoster keeps only the current file's).

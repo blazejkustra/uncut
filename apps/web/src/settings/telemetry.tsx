@@ -61,7 +61,13 @@ export function UsageDataSettings() {
     <div className="group">
       <div className="group-label">Usage data</div>
       <label className="check-row">
-        <input type="checkbox" data-testid="settings-telemetry" checked={state?.enabled ?? false} disabled={!online || !state || locked || !state.configured} onChange={(e) => set(e.target.checked)} />
+        <input
+          type="checkbox"
+          data-testid="settings-telemetry"
+          checked={state?.enabled ?? false}
+          disabled={!online || !state || locked || !state.configured}
+          onChange={(e) => set(e.target.checked)}
+        />
         {USAGE_DATA_LABEL}
       </label>
       <p className="muted" data-testid="settings-telemetry-note">

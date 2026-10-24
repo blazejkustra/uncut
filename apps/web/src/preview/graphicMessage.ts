@@ -16,7 +16,10 @@ export interface MediaAsk {
 }
 
 /** The media request in a message event, when it's one from a graphic's iframe (`frames`: their windows), else undefined. */
-export function graphicMediaAsk(e: { readonly origin: string; readonly data: unknown; readonly source: unknown }, frames: Iterable<unknown>): MediaAsk | undefined {
+export function graphicMediaAsk(
+  e: { readonly origin: string; readonly data: unknown; readonly source: unknown },
+  frames: Iterable<unknown>,
+): MediaAsk | undefined {
   const d = e.data as Partial<MediaAsk> | null;
   if (!d || typeof d !== "object" || d.uncut !== "media" || typeof d.id !== "string") return undefined;
   if (e.origin !== "null" || !e.source) return undefined;

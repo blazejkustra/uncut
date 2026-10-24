@@ -65,7 +65,16 @@ after(async () => {
 async function measure(t: number) {
   const out = join(root, `steps-${t}.png`);
   const local = Math.round(t * canvas.fps);
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: local / canvas.fps, info: graphicInfo({ duration: 150, props: {} }, canvas, local), out, name: "graphics/steps.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: local / canvas.fps,
+    info: graphicInfo({ duration: 150, props: {} }, canvas, local),
+    out,
+    name: "graphics/steps.html",
+  });
   const px = rgbaOf(out);
   const lum = (x: number, y: number) => {
     const i = (y * W + x) * 4;
@@ -106,7 +115,12 @@ test("a growing list keeps one inset and radius at every row count, and grows ab
   // Top, left and the corner are the same pixels; the last baseline lands at a fractional offset
   // (lines of 16.8 px at 2.7x) and is snapped, so the bottom moves by a few pixels at most (it once
   // grew by 20 px from 1 to 4 rows; the layout's own insets are equal, 27 px every side).
-  for (const [k, tol] of [["top", 1], ["left", 1], ["corner", 1], ["bottom", 4]] as const) {
+  for (const [k, tol] of [
+    ["top", 1],
+    ["left", 1],
+    ["corner", 1],
+    ["bottom", 4],
+  ] as const) {
     const v = rest.map((r) => r[k]);
     assert.ok(Math.max(...v) - Math.min(...v) <= tol, `${k} inset the same at 1..4 rows: ${v.join(", ")}`);
   }

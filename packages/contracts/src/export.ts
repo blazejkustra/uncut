@@ -28,7 +28,13 @@ export type ExportCodec = typeof ExportCodec.Type;
 /** D212: VideoToolbox (hardware) or libx264 / libx265 (software); absent = the preset's (High software, else hardware). */
 export const ExportEncoder = Schema.Literals(["hardware", "software"]);
 export type ExportEncoder = typeof ExportEncoder.Type;
-export const ExportVideo = Schema.Struct({ codec: Schema.optional(ExportCodec), encoder: Schema.optional(ExportEncoder), bitrateMbps: Schema.optional(Schema.Number), shortSide: Schema.optional(Schema.Number), fps: Schema.optional(Schema.Number) });
+export const ExportVideo = Schema.Struct({
+  codec: Schema.optional(ExportCodec),
+  encoder: Schema.optional(ExportEncoder),
+  bitrateMbps: Schema.optional(Schema.Number),
+  shortSide: Schema.optional(Schema.Number),
+  fps: Schema.optional(Schema.Number),
+});
 export type ExportVideo = typeof ExportVideo.Type;
 
 export const ExportJob = Schema.Struct({
@@ -53,7 +59,13 @@ export const ExportJob = Schema.Struct({
    * (frame `done` of `total`, which can take minutes: a heavy graphic with motion blur), drawing the
    * shader effects (the same), or measuring the loudness. Absent before the first step.
    */
-  step: Schema.optional(Schema.Struct({ kind: Schema.Literals(["sound", "graphics", "shaders", "loudness"]), done: Schema.optional(Schema.Number), total: Schema.optional(Schema.Number) })),
+  step: Schema.optional(
+    Schema.Struct({
+      kind: Schema.Literals(["sound", "graphics", "shaders", "loudness"]),
+      done: Schema.optional(Schema.Number),
+      total: Schema.optional(Schema.Number),
+    }),
+  ),
   etaSeconds: Schema.optional(Schema.Number),
   width: Schema.Number,
   height: Schema.Number,
@@ -81,10 +93,26 @@ export const ExportJob = Schema.Struct({
 export type ExportJob = typeof ExportJob.Type;
 
 /** D105: subtitles with an export: a file next to the video, a soft track in it (with its language: en, pl, eng...). */
-export const ExportSubtitles = Schema.Struct({ file: Schema.optional(Schema.Literals(["srt", "vtt"])), track: Schema.optional(Schema.Boolean), language: Schema.optional(Schema.String) });
+export const ExportSubtitles = Schema.Struct({
+  file: Schema.optional(Schema.Literals(["srt", "vtt"])),
+  track: Schema.optional(Schema.Boolean),
+  language: Schema.optional(Schema.String),
+});
 export type ExportSubtitles = typeof ExportSubtitles.Type;
 
 export class ExportError extends Schema.TaggedError<ExportError>()("ExportError", {
-  reason: Schema.Literals(["no-project", "no-ffmpeg", "exists", "invalid-path", "empty", "missing-media", "source-media", "busy", "unknown-job", "invalid-settings", "no-codec"]),
+  reason: Schema.Literals([
+    "no-project",
+    "no-ffmpeg",
+    "exists",
+    "invalid-path",
+    "empty",
+    "missing-media",
+    "source-media",
+    "busy",
+    "unknown-job",
+    "invalid-settings",
+    "no-codec",
+  ]),
   message: Schema.String,
 }) {}

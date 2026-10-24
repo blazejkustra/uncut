@@ -24,7 +24,10 @@ export function planRippleDelete(project: ProjectModel, ids: ReadonlyArray<strin
   }
   const gone = new Set(placed.map((p) => p.item.id));
   const ops: Array<Op> = [];
-  const nextOnMain = placed.filter((p) => p.track.role === "main").map((p) => p.track.items[p.index + 1]).filter((i) => i && !gone.has(i.id));
+  const nextOnMain = placed
+    .filter((p) => p.track.role === "main")
+    .map((p) => p.track.items[p.index + 1])
+    .filter((i) => i && !gone.has(i.id));
   ops.push(...dropTransitions(nextOnMain));
   for (const p of placed) ops.push({ op: "delete_item", item: p.item.id });
   const main = project.tracks.find((t) => t.role === "main");
@@ -101,7 +104,8 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
     lo = minDuration - item.duration;
     hi = Infinity;
     // A held clip (D94) may run on past its media, unless an overlapping transition out of it needs media there.
-    if (frames && !item.loop && !(item.hold && intoHandle === 0)) hi = Math.floor((frames - (item.in ?? 0) - (media?.kind === "video" ? intoHandle : 0)) / speed - item.duration);
+    if (frames && !item.loop && !(item.hold && intoHandle === 0))
+      hi = Math.floor((frames - (item.in ?? 0) - (media?.kind === "video" ? intoHandle : 0)) / speed - item.duration);
     if (!main) hi = Math.min(hi, ...busy.filter((b) => b.start >= end).map((b) => b.start - end));
   }
   // Already outside the limits (e.g. a project edited elsewhere): don't make it worse.
@@ -154,7 +158,11 @@ function splitAt(project: ProjectModel, target: Placed, f: number, further: stri
     for (const i of t.items) {
       if (!("linkedTo" in i) || i.linkedTo !== target.item.id || (!t.locked && !i.locked)) continue;
       const what = i.type === "audio" ? "linked sound" : "linked clip";
-      return { problem: t.locked ? `Its ${what} is on the ${t.name} track, which is locked. Unlock it to cut the clip.` : `Its ${what} is locked. Unlock it to cut the clip.` };
+      return {
+        problem: t.locked
+          ? `Its ${what} is on the ${t.name} track, which is locked. Unlock it to cut the clip.`
+          : `Its ${what} is locked. Unlock it to cut the clip.`,
+      };
     }
   }
   // A transition at either cut needs the half next to it to be at least twice its length.
@@ -203,7 +211,13 @@ export function planDelete(project: ProjectModel, selected: string | undefined):
  * for one item), then every other member's same edge by the same frames, each within its own
  * limits; one edit. No ops when nothing moves.
  */
-export function planGroupTrim(project: ProjectModel, itemId: string, edge: "start" | "end", delta: number, snap?: Snap): TrimPlan | { readonly problem: string } {
+export function planGroupTrim(
+  project: ProjectModel,
+  itemId: string,
+  edge: "start" | "end",
+  delta: number,
+  snap?: Snap,
+): TrimPlan | { readonly problem: string } {
   const first = planTrim(project, itemId, edge, delta, snap);
   if ("problem" in first || !first.ops.length) return first;
   const placed = findItem(project, itemId)!;

@@ -29,7 +29,11 @@ import { FOOTAGE, skipDemo } from "../helpers/demo.ts";
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skip = !existsSync(APP) ? `packaged app not built: run pnpm dist to create ${APP}` : !hasFfmpeg ? "needs ffmpeg to make the music and check the export" : skipDemo;
+const skip = !existsSync(APP)
+  ? `packaged app not built: run pnpm dist to create ${APP}`
+  : !hasFfmpeg
+    ? "needs ffmpeg to make the music and check the export"
+    : skipDemo;
 
 const FPS = 30;
 const SEGMENT = 4 * FPS;
@@ -40,7 +44,12 @@ const out = (name: string) => resolve("test-output", `exit-${name}`);
 
 type Saved = { id: string; type: string; start?: number; duration: number; in?: number; media?: string; [k: string]: unknown };
 type SavedTrack = { id: string; kind: string; role?: string; items: Array<Saved> };
-type SavedProject = { name: string; canvas: { width: number; height: number; fps: number }; media: Array<{ id: string; path: string; probe: Record<string, unknown> }>; tracks: Array<SavedTrack> };
+type SavedProject = {
+  name: string;
+  canvas: { width: number; height: number; fps: number };
+  media: Array<{ id: string; path: string; probe: Record<string, unknown> }>;
+  tracks: Array<SavedTrack>;
+};
 
 /** The UI driver for one app window. */
 function driver(page: Page) {
@@ -49,7 +58,11 @@ function driver(page: Page) {
   /** Wait until the saved revision passes `after`; returns the new one. */
   const savedAfter = async (after: number) => {
     // The title follows the snapshot the window shows, so once it's past `after` the edit has landed.
-    await page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r, { timeout: 15000 }, after);
+    await page.waitForFunction(
+      (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r,
+      { timeout: 15000 },
+      after,
+    );
     return revision();
   };
   const frameOf = () => page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
@@ -61,7 +74,9 @@ function driver(page: Page) {
       Object.fromEntries(
         lanes.map((lane) => [
           (lane as HTMLElement).dataset.track,
-          [...lane.querySelectorAll<HTMLElement>("[data-testid=timeline-item]")].map((e) => ({ id: e.dataset.item, start: Number(e.dataset.start), duration: Number(e.dataset.duration) })).sort((a, b) => a.start - b.start),
+          [...lane.querySelectorAll<HTMLElement>("[data-testid=timeline-item]")]
+            .map((e) => ({ id: e.dataset.item, start: Number(e.dataset.start), duration: Number(e.dataset.duration) }))
+            .sort((a, b) => a.start - b.start),
         ]),
       ),
     );
@@ -89,13 +104,22 @@ function driver(page: Page) {
       await page.keyboard.up("Shift");
     }
     for (let i = 0; i < Math.abs(d) % FPS; i++) await page.keyboard.press(key);
-    await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, { timeout: 10000 }, frame);
+    await page.waitForFunction(
+      (f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f,
+      { timeout: 10000 },
+      frame,
+    );
   };
   /** Wait for the preview's videos to show the playhead's frame. */
   const settle = async () => {
     // D221: 4K footage under a scrub canvas seeks its <video> once the playhead rests; the canvas goes once it has.
-    await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), { timeout: 20000 });
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 20000 });
+    await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), {
+      timeout: 20000,
+    });
+    await page.waitForFunction(
+      () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+      { timeout: 20000 },
+    );
     // Then two animation frames, so the seeked frame has been painted.
     await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   };
@@ -122,7 +146,9 @@ function driver(page: Page) {
 /** SSIM of two images at 480×270 grey (optionally after a light blur). 1 means identical. */
 const ssim = (a: string, b: string, blur = false) => {
   const grey = `scale=480:270${blur ? ",gblur=sigma=1.5" : ""},format=gray`;
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", `[0]${grey}[a];[1]${grey}[b];[a][b]ssim`, "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", `[0]${grey}[a];[1]${grey}[b];[a][b]ssim`, "-f", "null", "-"], {
+    encoding: "utf8",
+  });
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 /** The box around the bright (text) pixels of an image, in canvas pixels (1920×1080). */
@@ -155,7 +181,22 @@ function amberIn(png: string, box: Box) {
 }
 /** SSIM (grey, after a light blur: footage shows between the letters) of two images inside a canvas box. */
 const ssimIn = (a: string, b: string, box: Box) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", `[0]${canvasCrop(box)},gblur=sigma=1.5,format=gray[a];[1]${canvasCrop(box)},gblur=sigma=1.5,format=gray[b];[a][b]ssim`, "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-i",
+      a,
+      "-i",
+      b,
+      "-lavfi",
+      `[0]${canvasCrop(box)},gblur=sigma=1.5,format=gray[a];[1]${canvasCrop(box)},gblur=sigma=1.5,format=gray[b];[a][b]ssim`,
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 /**
@@ -166,7 +207,8 @@ function titleProblems(previewPng: string, exportPng: string, box: Box, floor: n
   const [p, e] = [amberIn(previewPng, box), amberIn(exportPng, box)];
   const inBox = ssimIn(previewPng, exportPng, box);
   const problems: Array<string> = [];
-  if (e.share < 0.12 || p.share < 0.12) problems.push(`amber text covers ${(e.share * 100).toFixed(1)} % of the title box in the export, ${(p.share * 100).toFixed(1)} % in the preview`);
+  if (e.share < 0.12 || p.share < 0.12)
+    problems.push(`amber text covers ${(e.share * 100).toFixed(1)} % of the title box in the export, ${(p.share * 100).toFixed(1)} % in the preview`);
   for (const k of ["x0", "x1", "y0", "y1"] as const) if (!(Math.abs(p[k] - e[k]) <= 2)) problems.push(`title ${k}: preview ${p[k]}, export ${e[k]}`);
   if (inBox < floor) problems.push(`SSIM in the title box ${inBox}`);
   return { problems, preview: p, exported: e, inBox };
@@ -188,12 +230,25 @@ async function screenshotSpace(page: Page): Promise<"srgb" | "p3"> {
 /** A Display P3 screenshot as sRGB (what the export is), next to the original. */
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 /** RMS level (dB) of the export's sound from `start` for `duration` seconds. */
 function rmsDb(file: string, start: number, duration: number) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-map", "0:a", "-af", `atrim=start=${start}:duration=${duration},astats=measure_perchannel=none`, "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", file, "-map", "0:a", "-af", `atrim=start=${start}:duration=${duration},astats=measure_perchannel=none`, "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   const m = /Overall[\s\S]*?RMS level dB:\s*(-?[\d.]+|-inf)/.exec(r.stderr);
   assert.ok(m, `no RMS for ${start}+${duration}: ${r.stderr.slice(-800)}`);
   return m[1] === "-inf" ? -Infinity : Number(m[1]);
@@ -225,9 +280,18 @@ before(async () => {
   for (const d of ["projects", "out", "tmp", "music"]) mkdirSync(join(root, d));
   // A music bed: 20 s of an A minor chord with a slow swell, stereo AAC at 48 kHz.
   execFileSync("ffmpeg", [
-    "-v", "error", "-y", "-f", "lavfi",
-    "-i", "aevalsrc=(0.2*sin(2*PI*220*t)+0.15*sin(2*PI*261.63*t)+0.15*sin(2*PI*329.63*t))*(0.85+0.15*sin(2*PI*0.5*t))|(0.2*sin(2*PI*220*t)+0.15*sin(2*PI*261.63*t)+0.15*sin(2*PI*329.63*t))*(0.85+0.15*sin(2*PI*0.5*t+1)):s=48000:d=20",
-    "-c:a", "aac", "-b:a", "192k", join(root, "music", "Calm chords.m4a"),
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc=(0.2*sin(2*PI*220*t)+0.15*sin(2*PI*261.63*t)+0.15*sin(2*PI*329.63*t))*(0.85+0.15*sin(2*PI*0.5*t))|(0.2*sin(2*PI*220*t)+0.15*sin(2*PI*261.63*t)+0.15*sin(2*PI*329.63*t))*(0.85+0.15*sin(2*PI*0.5*t+1)):s=48000:d=20",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    join(root, "music", "Calm chords.m4a"),
   ]);
 });
 after(async () => {
@@ -253,7 +317,10 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
   };
   let dir = "";
   const onDisk = (): SavedProject => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-  const saved = (id: string) => onDisk().tracks.flatMap((tr) => tr.items).find((i) => i.id === id);
+  const saved = (id: string) =>
+    onDisk()
+      .tracks.flatMap((tr) => tr.items)
+      .find((i) => i.id === id);
   const mainOnDisk = () => onDisk().tracks.find((tr) => tr.role === "main")!.items;
   try {
     // ---- A new landscape project from the welcome form.
@@ -277,9 +344,18 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await ui.waitFor("[data-testid=media-tile]", 30000);
     await page.waitForFunction(() => !document.querySelector("[data-testid=import-progress]"), { timeout: 30000 });
     // The DJI clip: 3840×2160 at 60000/1001 fps, 5:35.6, no sound.
-    const src = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate:format=duration", "-of", "json", FOOTAGE], { encoding: "utf8" }));
+    const src = JSON.parse(
+      execFileSync(
+        "ffprobe",
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate:format=duration", "-of", "json", FOOTAGE],
+        { encoding: "utf8" },
+      ),
+    );
     const [num, den] = String(src.streams[0].r_frame_rate).split("/").map(Number);
-    assert.equal(await page.$eval("[data-testid=tile-meta]", (el) => el.textContent), `${src.streams[0].width}×${src.streams[0].height}, ${Math.round((num! / den!) * 100) / 100} fps`);
+    assert.equal(
+      await page.$eval("[data-testid=tile-meta]", (el) => el.textContent),
+      `${src.streams[0].width}×${src.streams[0].height}, ${Math.round((num! / den!) * 100) / 100} fps`,
+    );
     const media = onDisk().media[0]!;
     assert.equal(media.path, FOOTAGE, "referenced where it is, not copied");
     const clipFrames = media.probe.frames as number;
@@ -317,9 +393,15 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await ui.select(ids[0]!);
     await del();
     ids = await ui.mainIds();
-    assert.deepEqual(mainOnDisk().map((i) => [i.in, i.duration]), [[600, clipFrames - 600]]);
+    assert.deepEqual(
+      mainOnDisk().map((i) => [i.in, i.duration]),
+      [[600, clipFrames - 600]],
+    );
     // Keep 4 s, then cut away up to 1:32 (and again up to 3:02).
-    for (const [keepEnd, sourceNext] of [[SEGMENT, 92 * FPS], [2 * SEGMENT, 182 * FPS]] as const) {
+    for (const [keepEnd, sourceNext] of [
+      [SEGMENT, 92 * FPS],
+      [2 * SEGMENT, 182 * FPS],
+    ] as const) {
       await page.click("[data-testid=timeline]");
       await page.keyboard.press("Escape");
       await ui.goTo(keepEnd);
@@ -347,7 +429,14 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await ui.meta("KeyZ", true);
     rev = await ui.savedAfter(rev);
     const segments = mainOnDisk();
-    assert.deepEqual(segments.map((i) => [i.in, i.duration]), [[600, SEGMENT], [92 * FPS, SEGMENT], [182 * FPS, SEGMENT]]);
+    assert.deepEqual(
+      segments.map((i) => [i.in, i.duration]),
+      [
+        [600, SEGMENT],
+        [92 * FPS, SEGMENT],
+        [182 * FPS, SEGMENT],
+      ],
+    );
     // Zoom to fit, then trim the middle segment's end by 1 s (⌘ held: no snapping).
     await page.click("[data-testid=zoom-fit]");
     const ppf = await page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
@@ -362,7 +451,14 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.mouse.up();
     await page.keyboard.up("Meta");
     rev = await ui.savedAfter(rev);
-    assert.deepEqual(mainOnDisk().map((i) => [i.in, i.duration]), [[600, SEGMENT], [92 * FPS, SEGMENT - FPS], [182 * FPS, SEGMENT]]);
+    assert.deepEqual(
+      mainOnDisk().map((i) => [i.in, i.duration]),
+      [
+        [600, SEGMENT],
+        [92 * FPS, SEGMENT - FPS],
+        [182 * FPS, SEGMENT],
+      ],
+    );
     const videoEnd = 3 * SEGMENT - FPS; // 330: 11 s of footage
 
     // ---- The title over the opening: a Text preset, switched to the Title style, amber, rising in.
@@ -425,7 +521,11 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.click("[data-testid=bg-fill][data-value=linear]");
     rev = await ui.savedAfter(rev);
     const card = mainOnDisk().at(-1)!;
-    assert.deepEqual(card, { id: card.id, type: "component", component: "component.solid", duration: 3 * FPS, props: { color: "#0B1D3A", to: "#3B1E54", angle: 160 } }, "the card is on main, after the clips");
+    assert.deepEqual(
+      card,
+      { id: card.id, type: "component", component: "component.solid", duration: 3 * FPS, props: { color: "#0B1D3A", to: "#3B1E54", angle: 160 } },
+      "the card is on main, after the clips",
+    );
     const total = videoEnd + 3 * FPS; // 420: 14 s
 
     // ---- Music: imported from the Audio tab, added at the start, cut at the end of the video
@@ -464,7 +564,17 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     rev = await ui.savedAfter(rev);
     await ui.setField("insp-fade-out", "1.5");
     rev = await ui.savedAfter(rev);
-    assert.deepEqual(saved(bedId), { id: bedId, type: "audio", media: onDisk().media[1]!.id, in: 0, start: 0, duration: total, gainDb: -4, fadeIn: FPS, fadeOut: 45 });
+    assert.deepEqual(saved(bedId), {
+      id: bedId,
+      type: "audio",
+      media: onDisk().media[1]!.id,
+      in: 0,
+      start: 0,
+      duration: total,
+      gainDb: -4,
+      fadeIn: FPS,
+      fadeOut: 45,
+    });
     await page.click("[data-testid=timeline]");
     await page.keyboard.press("Escape");
     await page.click("[data-testid=zoom-fit]");
@@ -485,10 +595,16 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
       await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path });
       preview.set(f, space === "p3" ? toSrgb(path) : path);
       // The settled title's box, from its layout (in canvas pixels: the preview lays out at canvas size).
-      if (f === 45) titleBox = await page.$eval(`.pv-text[data-item="${titleId}"]`, (el) => { const e = el as HTMLElement; return { x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight }; });
+      if (f === 45)
+        titleBox = await page.$eval(`.pv-text[data-item="${titleId}"]`, (el) => {
+          const e = el as HTMLElement;
+          return { x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight };
+        });
       // The clip on screen is asked for its source time at this frame (D38): (in + f − start) / fps.
       if (f < videoEnd) {
-        const shown = await page.$$eval("video[data-item]", (els) => (els as Array<HTMLVideoElement>).filter((e) => e.style.opacity === "1").map((e) => ({ id: e.dataset.item!, time: e.currentTime })));
+        const shown = await page.$$eval("video[data-item]", (els) =>
+          (els as Array<HTMLVideoElement>).filter((e) => e.style.opacity === "1").map((e) => ({ id: e.dataset.item!, time: e.currentTime })),
+        );
         let start = 0;
         const clip = mainOnDisk().find((i) => (start += i.duration) > f)!;
         const source = (clip.in! + f - (start - clip.duration)) / FPS;
@@ -526,7 +642,22 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.screenshot({ path: out("export-done.png") });
 
     // ---- The file: 1920×1080 at 30 fps, exactly the timeline's 420 frames, AAC, BT.709.
-    const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer,color_range,duration:format=duration", "-of", "json", saveAs], { encoding: "utf8" })) as {
+    const probe = JSON.parse(
+      execFileSync(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-count_frames",
+          "-show_entries",
+          "stream=codec_type,codec_name,width,height,r_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer,color_range,duration:format=duration",
+          "-of",
+          "json",
+          saveAs,
+        ],
+        { encoding: "utf8" },
+      ),
+    ) as {
       streams: Array<Record<string, string>>;
       format: { duration: string };
     };
@@ -543,7 +674,8 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     // two resamplers alone cost a few points of plain SSIM. Unblurred scores are printed too.
     const extract = (f: number) => {
       const frame = out(`export-${f}.png`);
-      if (!existsSync(frame)) execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${f})`, "-frames:v", "1", "-update", "1", frame]);
+      if (!existsSync(frame))
+        execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${f})`, "-frames:v", "1", "-update", "1", frame]);
       return frame;
     };
     for (const f of frames) for (const g of [f - 1, f, f + 1]) rmSync(out(`export-${g}.png`), { force: true });
@@ -561,7 +693,11 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
       // Text and backgrounds are the same HTML laid out at canvas size in both (D56): near identical.
       const floor = f >= videoEnd ? 0.99 : 0.97;
       assert.ok(s.blurred >= floor, `frame ${f}: SSIM ${s.blurred} (blurred)`);
-      if (s.neighbours !== undefined) assert.ok(s.plain > s.neighbours + 0.1, `frame ${f}: the export's frame matches the preview (${s.plain}) clearly better than its neighbours (${s.neighbours})`);
+      if (s.neighbours !== undefined)
+        assert.ok(
+          s.plain > s.neighbours + 0.1,
+          `frame ${f}: the export's frame matches the preview (${s.plain}) clearly better than its neighbours (${s.neighbours})`,
+        );
     }
     // And they're not all alike: the three segments are different shots.
     assert.ok(ssim(extract(100), extract(280)) < 0.8, "segments 1 and 3 are different parts of the clip");
@@ -571,11 +707,17 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     const cardExport = brightBox(extract(390));
     const widthRatio = (cardPreview.x1 - cardPreview.x0) / (cardExport.x1 - cardExport.x0);
     console.log(`end card text: preview ${JSON.stringify(cardPreview)}, export ${JSON.stringify(cardExport)}, width ratio ${widthRatio.toFixed(4)}`);
-    for (const k of ["x0", "x1", "y0", "y1"] as const) assert.ok(Math.abs(cardPreview[k] - cardExport[k]) <= 2, `end card text ${k}: ${cardPreview[k]} vs ${cardExport[k]} (canvas px)`);
+    for (const k of ["x0", "x1", "y0", "y1"] as const)
+      assert.ok(Math.abs(cardPreview[k] - cardExport[k]) <= 2, `end card text ${k}: ${cardPreview[k]} vs ${cardExport[k]} (canvas px)`);
     assert.ok(Math.abs(widthRatio - 1) < 0.005, `end card text width ratio ${widthRatio}`);
     for (const corner of ["crop=96:54:0:0", "crop=96:54:iw-96:ih-54"]) {
-      const [p, e] = [preview.get(390)!, extract(390)].map((png) => [...execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", `scale=960:540,${corner},scale=1:1:flags=area,format=rgb24`, "-f", "rawvideo", "-"])]);
-      assert.ok(p!.every((c, i) => Math.abs(c - e![i]!) <= 8), `gradient corner ${corner}: preview ${p} vs export ${e}`);
+      const [p, e] = [preview.get(390)!, extract(390)].map((png) => [
+        ...execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", `scale=960:540,${corner},scale=1:1:flags=area,format=rgb24`, "-f", "rawvideo", "-"]),
+      ]);
+      assert.ok(
+        p!.every((c, i) => Math.abs(c - e![i]!) <= 8),
+        `gradient corner ${corner}: preview ${p} vs export ${e}`,
+      );
     }
 
     // The title, settled at frame 45: amber, where the preview has it, alike inside its box.
@@ -585,10 +727,15 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     assert.deepEqual(title45.problems, []);
     // The footage's colours: the frame's mean colour within a few levels (the preview applies the
     // BT.709 curve to video, D55, so mid-tones sit a little higher there).
-    const meanRgb = (png: string) => [...execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", "scale=64:36,scale=1:1:flags=area,format=rgb24", "-f", "rawvideo", "-"])];
+    const meanRgb = (png: string) => [
+      ...execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", "scale=64:36,scale=1:1:flags=area,format=rgb24", "-f", "rawvideo", "-"]),
+    ];
     const [footP, footE] = [meanRgb(preview.get(170)!), meanRgb(extract(170))];
     console.log(`footage mean colour at 170: preview ${footP}, export ${footE}`);
-    assert.ok(footP.every((c, i) => Math.abs(c - footE[i]!) <= 12), `footage colour at 170: preview ${footP}, export ${footE}`);
+    assert.ok(
+      footP.every((c, i) => Math.abs(c - footE[i]!) <= 12),
+      `footage colour at 170: preview ${footP}, export ${footE}`,
+    );
 
     // ---- The sound: normal loudness (−14 LUFS), silent at the very start and end, half way up
     // in the middle of each fade.
@@ -599,7 +746,12 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     // The sound's own length (AAC priming can make it a few ms off the picture's).
     const soundEnd = Number(a!.duration);
     assert.ok(Math.abs(soundEnd - total / FPS) < 0.05, `sound ${soundEnd} s`);
-    const levels = { start: rmsDb(saveAs, 0, 0.03) - steady, fadeInMid: rmsDb(saveAs, 0.45, 0.1) - steady, fadeOutMid: rmsDb(saveAs, soundEnd - 0.8, 0.1) - steady, end: rmsDb(saveAs, soundEnd - 0.04, 0.03) - steady };
+    const levels = {
+      start: rmsDb(saveAs, 0, 0.03) - steady,
+      fadeInMid: rmsDb(saveAs, 0.45, 0.1) - steady,
+      fadeOutMid: rmsDb(saveAs, soundEnd - 0.8, 0.1) - steady,
+      end: rmsDb(saveAs, soundEnd - 0.04, 0.03) - steady,
+    };
     assert.ok(levels.start < -25, `the first frame is near silent: ${levels.start.toFixed(1)} dB`);
     assert.ok(Math.abs(levels.fadeInMid - -6) < 2.5, `half way into the fade in ≈ −6 dB: ${levels.fadeInMid.toFixed(1)} dB`);
     assert.ok(Math.abs(levels.fadeOutMid - -6) < 2.5, `half way through the fade out ≈ −6 dB: ${levels.fadeOutMid.toFixed(1)} dB`);
@@ -608,11 +760,17 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     // ---- Nothing left behind: the footage untouched, no temp folders, no ffmpeg running.
     const footageAfter = statSync(FOOTAGE);
     assert.deepEqual([footageAfter.size, footageAfter.mtimeMs], [footageBefore.size, footageBefore.mtimeMs], "the footage wasn't touched");
-    assert.deepEqual(readdirSync(temp).filter((n) => n.startsWith("uncut-")), [], "no temp folders left");
+    assert.deepEqual(
+      readdirSync(temp).filter((n) => n.startsWith("uncut-")),
+      [],
+      "no temp folders left",
+    );
     const running = descendants(app.proc.pid!).filter((p) => /ffmpeg|ffprobe/.test(p.comm));
     assert.deepEqual(running, [], "no ffmpeg left running");
     assert.deepEqual(app.errors, []);
-    t.diagnostic(`SSIM ${JSON.stringify(scores)}; ${lufs} LUFS; levels vs steady ${JSON.stringify(Object.fromEntries(Object.entries(levels).map(([k, x]) => [k, Number(x.toFixed(1))])))}`);
+    t.diagnostic(
+      `SSIM ${JSON.stringify(scores)}; ${lufs} LUFS; levels vs steady ${JSON.stringify(Object.fromEntries(Object.entries(levels).map(([k, x]) => [k, Number(x.toFixed(1))])))}`,
+    );
     t.diagnostic(`editing ${editTime.toFixed(1)} s, export ${exportTime.toFixed(1)} s`);
     console.log(`exit check: SSIM ${JSON.stringify(scores)}; ${lufs} LUFS; editing ${editTime.toFixed(1)} s, export ${exportTime.toFixed(1)} s`);
 
@@ -644,7 +802,11 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     // End goes after the end card (D56).
     await page.click("[data-testid=timeline]");
     await page.keyboard.press("End");
-    await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, { timeout: 5000 }, total);
+    await page.waitForFunction(
+      (f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f,
+      { timeout: 5000 },
+      total,
+    );
     await page.screenshot({ path: out("reopened.png") });
     assert.deepEqual(app.errors, []);
     t.diagnostic(`total ${((Date.now() - t0) / 1000).toFixed(1)} s`);

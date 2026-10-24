@@ -39,7 +39,10 @@ export function projectAfter(project: Project, ops: ReadonlyArray<unknown>): Pro
 export function freeFrom(track: Track, start: number, duration: number, exclude?: string): { start: number; after?: string } {
   let at = Math.max(0, start);
   let after: string | undefined;
-  const spans = track.items.filter((i) => i.id !== exclude).map((i) => ({ id: i.id, start: i.start ?? 0, end: (i.start ?? 0) + i.duration })).sort((a, b) => a.start - b.start);
+  const spans = track.items
+    .filter((i) => i.id !== exclude)
+    .map((i) => ({ id: i.id, start: i.start ?? 0, end: (i.start ?? 0) + i.duration }))
+    .sort((a, b) => a.start - b.start);
   for (const b of spans) {
     if (at + duration <= b.start) break;
     if (at < b.end) {
@@ -132,13 +135,20 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
       const speed = h.item.speed ?? 1;
       const trimIn = h.missingIn ? Math.ceil(h.missingIn / speed) : 0;
       const trimOut = h.missingOut;
-      const trims = [trimIn ? `${trimIn} frame${trimIn === 1 ? "" : "s"} off the start of "${h.item.id}"` : "", trimOut ? `${trimOut} off the end of "${h.prev.id}"` : ""].filter(Boolean).join(" and ");
+      const trims = [
+        trimIn ? `${trimIn} frame${trimIn === 1 ? "" : "s"} off the start of "${h.item.id}"` : "",
+        trimOut ? `${trimOut} off the end of "${h.prev.id}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" and ");
       if (allowTrim !== true)
         return {
           problem: `${where}: a ${tr.duration}-frame overlapping transition needs ${h.half} frames of spare media on each side of the cut; ${what.join(" and ")}. Fix: pass allowTrim: true on this set_transition to trim ${trims}${h.fits > 0 ? `, or use duration ${h.fits} or less` : ""}, or use transition.dip-to-black (it needs no spare media).`,
         };
       if (h.item.duration - trimIn < 2 * tr.duration || h.prev.duration - trimOut < 2 * tr.duration)
-        return { problem: `${where}: trimming ${trims} would leave a clip shorter than twice the transition (${2 * tr.duration} frames). Use a shorter transition or transition.dip-to-black.` };
+        return {
+          problem: `${where}: trimming ${trims} would leave a clip shorter than twice the transition (${2 * tr.duration} frames). Use a shorter transition or transition.dip-to-black.`,
+        };
       if (trimOut) out.push({ op: "trim_item", item: h.prev.id, edge: "end", frames: trimOut });
       if (trimIn) out.push({ op: "trim_item", item: h.item.id, edge: "start", frames: trimIn });
       out.push(plain);
@@ -158,17 +168,23 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
     const taken = takenIds(now);
     // The item: a new one (an object) or one already on the timeline (its id) to move.
     const moving = typeof op.item === "string" ? locate(now, op.item) : undefined;
-    if (typeof op.item === "string" && !moving) return { problem: `${where}: there's no item "${op.item}". Pass the item's id to move it, or a new item object to add one.` };
+    if (typeof op.item === "string" && !moving)
+      return { problem: `${where}: there's no item "${op.item}". Pass the item's id to move it, or a new item object to add one.` };
     const body = (moving ? moving.item : op.item) as Record<string, unknown> | undefined;
-    if (!body || typeof body !== "object" || Array.isArray(body)) return { problem: `${where}: item must be a new item ({id, type, duration, …}) or the id of one to move.` };
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return { problem: `${where}: item must be a new item ({id, type, duration, …}) or the id of one to move.` };
     if (typeof body.id !== "string" || !body.id) return { problem: `${where}: the new item needs an id.` };
     if (!moving && taken.has(body.id)) return { problem: `${where}: the id "${body.id}" is taken. Fix: use "${freshId(body.id, taken)}".` };
-    if (!(Number.isInteger(body.duration) && (body.duration as number) > 0)) return { problem: `${where}: the item needs a duration in frames (a whole number above 0).` };
+    if (!(Number.isInteger(body.duration) && (body.duration as number) > 0))
+      return { problem: `${where}: the item needs a duration in frames (a whole number above 0).` };
     const duration = body.duration as number;
     const trackId = typeof op.track === "string" ? op.track : moving?.track.id;
     if (!trackId) return { problem: `${where}: track is the id of the track to put it on.` };
     const track = now.tracks.find((t) => t.id === trackId);
-    if (!track) return { problem: `${where}: there's no track "${trackId}". Tracks: ${now.tracks.map((t) => `${t.id} (${t.kind}${t.role === "main" ? ", main" : ""})`).join(", ")}.` };
+    if (!track)
+      return {
+        problem: `${where}: there's no track "${trackId}". Tracks: ${now.tracks.map((t) => `${t.id} (${t.kind}${t.role === "main" ? ", main" : ""})`).join(", ")}.`,
+      };
     if (track.locked) return { problem: `${where}: the track "${track.id}" is locked.` };
     const id = body.id;
     if (track.role === "main") {
@@ -225,7 +241,9 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
     const straddle = busy.find((x) => (x.start ?? 0) < wanted && (x.start ?? 0) + x.duration > wanted);
     if (straddle) {
       const end = (straddle.start ?? 0) + straddle.duration;
-      return { problem: `${where}: "${straddle.id}" runs across frame ${wanted} (${straddle.start ?? 0}–${end}), so ripple can't push it. Fix: start at ${end}, or place "free-track".` };
+      return {
+        problem: `${where}: "${straddle.id}" runs across frame ${wanted} (${straddle.start ?? 0}–${end}), so ripple can't push it. Fix: start at ${end}, or place "free-track".`,
+      };
     }
     const later = busy.filter((x) => (x.start ?? 0) >= wanted).sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
     const shift = Math.max(0, wanted + duration - (later[0]?.start ?? Infinity));
@@ -233,7 +251,13 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
     if (shift && locked) return { problem: `${where}: ripple would move "${locked.id}", which is locked. Fix: place "after" or "free-track".` };
     // The last first, so nothing passes through another on the way.
     if (shift) for (const x of [...later].reverse()) out.push({ op: "move_item", item: x.id, start: (x.start ?? 0) + shift });
-    put(track, wanted, shift ? `at frame ${wanted}; ${later.length} item${later.length === 1 ? "" : "s"} after it on "${track.id}" moved ${shift} frames later` : `at frame ${wanted}`);
+    put(
+      track,
+      wanted,
+      shift
+        ? `at frame ${wanted}; ${later.length} item${later.length === 1 ? "" : "s"} after it on "${track.id}" moved ${shift} frames later`
+        : `at frame ${wanted}`,
+    );
   }
   return { ops: out, notes };
 }
@@ -291,7 +315,12 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
       if (!at?.item.transitionIn) return undefined;
       const h = transitionHandles(after, id, at.item.transitionIn);
       if (!h) return undefined;
-      const parts = [h.missingIn ? `${h.missingIn} frames before "${h.item.id}"'s in-point` : "", h.missingOut ? `${h.missingOut} after "${h.prev.id}"'s out-point` : ""].filter(Boolean).join(" and ");
+      const parts = [
+        h.missingIn ? `${h.missingIn} frames before "${h.item.id}"'s in-point` : "",
+        h.missingOut ? `${h.missingOut} after "${h.prev.id}"'s out-point` : "",
+      ]
+        .filter(Boolean)
+        .join(" and ");
       return `It lacks ${parts}. Pass allowTrim: true on the set_transition to trim them${h.fits > 0 ? `, use duration ${h.fits} or less` : ""}, or use transition.dip-to-black (no spare media needed).`;
     }
     case "transition-too-long": {
@@ -312,7 +341,9 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
       const want = at.item.type === "text" || at.item.type === "captions" ? "text" : at.item.type === "audio" ? "audio" : "video";
       // D215: the main track takes any picture (text too).
       const fits = after.tracks.filter((t) => !t.locked && (t.role === "main" ? fitsTrackKind(at.item.type, t) : t.kind === want)).map((t) => t.id);
-      return fits.length ? `A ${at.item.type} item goes on ${want === "video" || at.item.type === "text" ? "the main track or " : ""}a ${want} track: ${fits.slice(0, 6).join(", ")}.` : `Add a ${want} track first (add_track) and put it there.`;
+      return fits.length
+        ? `A ${at.item.type} item goes on ${want === "video" || at.item.type === "text" ? "the main track or " : ""}a ${want} track: ${fits.slice(0, 6).join(", ")}.`
+        : `Add a ${want} track first (add_track) and put it there.`;
     }
     case "missing-start": {
       if (!at) return undefined;
@@ -322,13 +353,20 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
     case "main-item-start":
       return `Drop start: main-track items play in order; pass index on insert_item or move_item instead, and gap (empty frames before the item) to leave space.`;
     case "unknown-media":
-      return after.media.length ? `Media ids in the project: ${after.media.slice(0, 10).map((m) => m.id).join(", ")}${after.media.length > 10 ? ` and ${after.media.length - 10} more` : ""}.` : `The project has no media yet: media_import or media_search first.`;
+      return after.media.length
+        ? `Media ids in the project: ${after.media
+            .slice(0, 10)
+            .map((m) => m.id)
+            .join(", ")}${after.media.length > 10 ? ` and ${after.media.length - 10} more` : ""}.`
+        : `The project has no media yet: media_import or media_search first.`;
     case "media-range": {
       if (!at) return undefined;
       const m = /has (\d+)/.exec(p.message);
       const frames = m ? Number(m[1]) : undefined;
       const room = frames !== undefined ? Math.max(1, Math.floor((frames - (at.item.in ?? 0)) / (at.item.speed ?? 1))) : undefined;
-      return room !== undefined ? `Make it at most ${room} frames long from in ${at.item.in ?? 0}, or set hold: true (freeze the last frame) or loop: true.` : undefined;
+      return room !== undefined
+        ? `Make it at most ${room} frames long from in ${at.item.in ?? 0}, or set hold: true (freeze the last frame) or loop: true.`
+        : undefined;
     }
     case "fade-too-long":
       return at ? `fadeIn plus fadeOut must be at most ${at.item.duration} frames.` : undefined;
@@ -347,11 +385,19 @@ export function projectDiff(before: Project, after: Project) {
   };
   const a = where(before);
   const b = where(after);
-  const span = (x: { track: string; start: number; item: Item }) => ({ id: x.item.id, type: x.item.type, track: x.track, start: x.start, end: x.start + x.item.duration });
+  const span = (x: { track: string; start: number; item: Item }) => ({
+    id: x.item.id,
+    type: x.item.type,
+    track: x.track,
+    start: x.start,
+    end: x.start + x.item.duration,
+  });
   const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
   const added = [...b.values()].filter((x) => !a.has(x.item.id)).map(span);
   const removed = [...a.values()].filter((x) => !b.has(x.item.id)).map(span);
-  const moved = [...b.values()].filter((x) => a.has(x.item.id) && (a.get(x.item.id)!.track !== x.track || a.get(x.item.id)!.start !== x.start)).map((x) => ({ ...span(x), from: { track: a.get(x.item.id)!.track, start: a.get(x.item.id)!.start } }));
+  const moved = [...b.values()]
+    .filter((x) => a.has(x.item.id) && (a.get(x.item.id)!.track !== x.track || a.get(x.item.id)!.start !== x.start))
+    .map((x) => ({ ...span(x), from: { track: a.get(x.item.id)!.track, start: a.get(x.item.id)!.start } }));
   const movedIds = new Set(moved.map((m) => m.id));
   const changed = [...b.values()].filter((x) => a.has(x.item.id) && !movedIds.has(x.item.id) && !same(a.get(x.item.id)!.item, x.item)).map((x) => x.item.id);
   const tracksAdded = after.tracks.filter((t) => !before.tracks.some((u) => u.id === t.id)).map((t) => t.id);

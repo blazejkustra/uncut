@@ -23,7 +23,10 @@ const skip = !existsSync(BUNDLE) ? "the server bundle isn't built (pnpm --filter
 const OPENAI_KEY = "sk-test-openai-not-real-4f2a9c";
 const GOOGLE_KEY = "AIza-test-google-not-real-77b1";
 const KEY_VARS = /^(ANTHROPIC_API_KEY|OPENAI_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY|ELEVENLABS_API_KEY)$/;
-const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a00000000049454e44ae426082", "hex");
+const PNG = Buffer.from(
+  "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a00000000049454e44ae426082",
+  "hex",
+);
 
 let root = "";
 let stub: Server;
@@ -53,11 +56,18 @@ before(async () => {
       requests.push({ url: req.url!, headers: req.headers, body });
       if (req.url === "/v1/images/generations") {
         if (openaiFail) return json(res, 500, { error: { message: "server melted" } });
-        return void setTimeout(() => json(res, 200, { data: [{ b64_json: PNG.toString("base64") }], usage: { input_tokens: 10, output_tokens: 1584 } }), openaiDelay);
+        return void setTimeout(
+          () => json(res, 200, { data: [{ b64_json: PNG.toString("base64") }], usage: { input_tokens: 10, output_tokens: 1584 } }),
+          openaiDelay,
+        );
       }
       if (req.url!.endsWith(":predictLongRunning")) return json(res, 200, { name: veoSlow ? "models/veo/operations/slow" : "models/veo/operations/fast" });
       if (req.url === "/v1beta/models/veo/operations/slow") return json(res, 200, { done: false });
-      if (req.url === "/v1beta/models/veo/operations/fast") return json(res, 200, { done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `http://127.0.0.1:${stubPort}/files/veo.mp4` } }] } } });
+      if (req.url === "/v1beta/models/veo/operations/fast")
+        return json(res, 200, {
+          done: true,
+          response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `http://127.0.0.1:${stubPort}/files/veo.mp4` } }] } },
+        });
       if (req.url === "/files/veo.mp4") {
         res.writeHead(200, { "content-type": "video/mp4" });
         return res.end(mp4);
@@ -75,7 +85,12 @@ after(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const providerEnv = () => ({ UNCUT_OPENAI_BASE: `http://127.0.0.1:${stubPort}`, UNCUT_GOOGLE_BASE: `http://127.0.0.1:${stubPort}`, UNCUT_ELEVENLABS_BASE: `http://127.0.0.1:${stubPort}`, UNCUT_VEO_POLL_MS: "50" });
+const providerEnv = () => ({
+  UNCUT_OPENAI_BASE: `http://127.0.0.1:${stubPort}`,
+  UNCUT_GOOGLE_BASE: `http://127.0.0.1:${stubPort}`,
+  UNCUT_ELEVENLABS_BASE: `http://127.0.0.1:${stubPort}`,
+  UNCUT_VEO_POLL_MS: "50",
+});
 
 /** Every file under `dir` (recursively) whose bytes contain `needle`. */
 function filesContaining(dir: string, needle: string): Array<string> {
@@ -97,7 +112,19 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
   const server = await startServer({
     captureStderr: true,
     // ElevenLabs points at plain http off this machine: its key is never sent there (the refund case).
-    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_PLUGINS_DIR: "", UNCUT_BUNDLED_PLUGINS_DIR: join(base, "no-plugins"), UNCUT_CLAUDE: FAKE_CLAUDE, ANTHROPIC_API_KEY: "", FAKE_PLAN: files.plan, FAKE_PROMPT_LOG: files.prompts, FAKE_RESULT_LOG: files.results, ...providerEnv(), UNCUT_ELEVENLABS_BASE: "http://192.0.2.1", UNCUT_APPROVAL_MS: "4000" },
+    env: {
+      UNCUT_DATA_DIR: join(base, "data"),
+      UNCUT_PLUGINS_DIR: "",
+      UNCUT_BUNDLED_PLUGINS_DIR: join(base, "no-plugins"),
+      UNCUT_CLAUDE: FAKE_CLAUDE,
+      ANTHROPIC_API_KEY: "",
+      FAKE_PLAN: files.plan,
+      FAKE_PROMPT_LOG: files.prompts,
+      FAKE_RESULT_LOG: files.results,
+      ...providerEnv(),
+      UNCUT_ELEVENLABS_BASE: "http://192.0.2.1",
+      UNCUT_APPROVAL_MS: "4000",
+    },
   });
   let stdout = "";
   server.proc.stdout!.on("data", (d) => (stdout += d));
@@ -105,13 +132,24 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
   try {
     // Without keys: the SVG generator is ready, the keyed ones say which key they need.
     const listed = await client.ok("generate.list");
-    assert.deepEqual(listed.map((g: any) => [g.id, g.ready, g.needs ?? null]), [
-      ["generate.svg", true, null],
-      ["generate.gpt-image", false, "Needs your OpenAI key"],
-      ["generate.veo", false, "Needs your Google key"],
-      ["generate.sound", false, "Needs your ElevenLabs key"],
-    ]);
-    assert.deepEqual((await client.ok("keys.list")).map((k: any) => [k.provider, k.set, k.storage]), [["openai", false, "memory"], ["google", false, "memory"], ["elevenlabs", false, "memory"], ["freesound", false, "memory"]]);
+    assert.deepEqual(
+      listed.map((g: any) => [g.id, g.ready, g.needs ?? null]),
+      [
+        ["generate.svg", true, null],
+        ["generate.gpt-image", false, "Needs your OpenAI key"],
+        ["generate.veo", false, "Needs your Google key"],
+        ["generate.sound", false, "Needs your ElevenLabs key"],
+      ],
+    );
+    assert.deepEqual(
+      (await client.ok("keys.list")).map((k: any) => [k.provider, k.set, k.storage]),
+      [
+        ["openai", false, "memory"],
+        ["google", false, "memory"],
+        ["elevenlabs", false, "memory"],
+        ["freesound", false, "memory"],
+      ],
+    );
     assert.equal((await client.fail("generate.start", { generator: "generate.svg", prompt: "x" })).reason, "no-project");
 
     const agent = client.subscribe("agent.subscribe");
@@ -140,7 +178,13 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     await project.until((p) => p?.project.media.some((m: any) => m.id === done.mediaId));
     const image = mediaNow().find((m: any) => m.id === done.mediaId);
     assert.match(image.path, /^media\/generated\/a-phone-on-a-desk \d{8}-\d{6}\.png$/);
-    assert.deepEqual(image.source, { module: "generate.gpt-image", prompt: "A phone on a desk, soft light", model: "gpt-image-2", kind: "image", size: "1024x1024" });
+    assert.deepEqual(image.source, {
+      module: "generate.gpt-image",
+      prompt: "A phone on a desk, soft light",
+      model: "gpt-image-2",
+      kind: "image",
+      size: "1024x1024",
+    });
     assert.equal(image.kind, "image");
     const openaiCall = requests.find((r) => r.url === "/v1/images/generations")!;
     assert.equal(openaiCall.headers.authorization, `Bearer ${OPENAI_KEY}`);
@@ -159,7 +203,11 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     assert.match(svg.path, /^media\/generated\/a-yellow-sun-on-navy \d{8}-\d{6}\.svg$/);
     assert.deepEqual(svg.source, { module: "generate.svg", prompt: "A yellow sun on navy", model: "claude", kind: "image", size: "canvas" });
     assert.equal(svg.probe.width, snap.project.canvas.width);
-    const oneshot = readFileSync(files.prompts, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((e) => e.oneshot);
+    const oneshot = readFileSync(files.prompts, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l))
+      .find((e) => e.oneshot);
     assert.ok(oneshot, "claude was asked once");
     assert.equal(oneshot.tools, "");
     assert.ok(!oneshot.args.includes("--mcp-config"));
@@ -185,7 +233,13 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     await jobs.until((v) => twins.every((t) => v.some((j: any) => j.id === t.jobId && j.phase === "done")), 30000);
     openaiDelay = 0;
     await project.until((p) => p?.project.media.length === 3);
-    assert.deepEqual(mediaNow().filter((m: any) => m.source.prompt === "a twin").map((m: any) => m.path).sort(), ["media/generated/twin 2.png", "media/generated/twin.png"]);
+    assert.deepEqual(
+      mediaNow()
+        .filter((m: any) => m.source.prompt === "a twin")
+        .map((m: any) => m.path)
+        .sort(),
+      ["media/generated/twin 2.png", "media/generated/twin.png"],
+    );
     await client.ok("project.undo");
     await client.ok("project.undo");
     await project.until((p) => p?.project.media.length === 1);
@@ -200,8 +254,15 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
       await agent.until((s) => s?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 120000);
       return agent.values.at(-1).turns.find((t: any) => t.id === turnId);
     };
-    const results = () => readFileSync(files.results, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-    const resultsOf = (tool: string) => results().filter((r) => r.tool === tool).map((r) => ({ isError: r.result.isError === true, text: r.result.content.map((c: any) => c.text).join("\n") }));
+    const results = () =>
+      readFileSync(files.results, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+    const resultsOf = (tool: string) =>
+      results()
+        .filter((r) => r.tool === tool)
+        .map((r) => ({ isError: r.result.isError === true, text: r.result.content.map((c: any) => c.text).join("\n") }));
 
     const logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200"><rect width="400" height="200" fill="#111"/><text x="200" y="115" font-size="48" text-anchor="middle" fill="#fff">Uncut</text></svg>`;
     const anim = `<!doctype html><html><body style="margin:0;background:#0B1D3A"><div id="bar" style="position:absolute;left:0;top:40%;height:20%;background:#F5A524;width:0"></div><script>window.render = (t, info) => { document.getElementById("bar").style.width = Math.min(100, t * 100) + "%"; };</script></body></html>`;
@@ -228,11 +289,33 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     assert.deepEqual([bar.width, bar.height], [320, 180]);
     assert.equal(gen[3]!.text, "GPT Image makes pictures, not video (kind image).");
     assert.equal(turn.spend, undefined, "free generators cost nothing");
-    assert.deepEqual(turn.edits.map((e: any) => e.summary), ["Generated wordmark", `Generated ${bar.name}`]);
-    assert.deepEqual(turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text), ["Generated a video with Veo", "Generated a picture from SVG", "Generated a video from SVG", "Generated a video with GPT Image"]);
+    assert.deepEqual(
+      turn.edits.map((e: any) => e.summary),
+      ["Generated wordmark", `Generated ${bar.name}`],
+    );
+    assert.deepEqual(
+      turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
+      ["Generated a video with Veo", "Generated a picture from SVG", "Generated a video from SVG", "Generated a video with GPT Image"],
+    );
     // A frame of the animation, drawn at t = 0.5 s: about half the bar is orange.
     const barFile = join(snap.dir, bar.path);
-    const mid = execFileSync("ffmpeg", ["-v", "error", "-ss", "0.5", "-i", barFile, "-frames:v", "1", "-vf", "crop=320:2:0:90", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+    const mid = execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-ss",
+      "0.5",
+      "-i",
+      barFile,
+      "-frames:v",
+      "1",
+      "-vf",
+      "crop=320:2:0:90",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "-",
+    ]);
     const orange = [...Array(320).keys()].filter((x) => mid[x * 3]! > 200 && mid[x * 3 + 1]! > 120).length;
     assert.ok(orange > 120 && orange < 200, `orange pixels at 0.5 s: ${orange}`);
 
@@ -241,16 +324,20 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     // The next card that shows up (values seen so far don't count), answered or left alone.
     const answerNext = (allow: boolean | undefined) => {
       const from = agent.values.length;
-      return agent.until((st, i) => i >= from && !!st?.approval, 30000).then(async () => {
-        const card = agent.values.slice(from).find((st: any) => st?.approval).approval;
-        assert.equal(card.text, "Generate a 4 s Veo video, about $1.60 on your Google key");
-        assert.equal(card.estimate, 1.6);
-        if (allow !== undefined) await client.ok("agent.approve", { id: card.id, allow });
-        return card;
-      });
+      return agent
+        .until((st, i) => i >= from && !!st?.approval, 30000)
+        .then(async () => {
+          const card = agent.values.slice(from).find((st: any) => st?.approval).approval;
+          assert.equal(card.text, "Generate a 4 s Veo video, about $1.60 on your Google key");
+          assert.equal(card.estimate, 1.6);
+          if (allow !== undefined) await client.ok("agent.approve", { id: card.id, allow });
+          return card;
+        });
     };
     const allowed = answerNext(true);
-    const veoTurn = await ask("Make the Veo shot", [{ tool: "generate_media", args: { generator: "generate.veo", prompt: "a lake at dawn", seconds: 4, confirmCost: true } }]);
+    const veoTurn = await ask("Make the Veo shot", [
+      { tool: "generate_media", args: { generator: "generate.veo", prompt: "a lake at dawn", seconds: 4, confirmCost: true } },
+    ]);
     await allowed;
     const lake = JSON.parse(resultsOf("generate_media").at(-1)!.text);
     assert.equal(lake.estimatedCost, 1.6);
@@ -297,7 +384,10 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     await client.ok("agent.undoTurn", { turnId: veoTurn.id });
     await client.ok("agent.undoTurn", { turnId: turn.id });
     await project.until((p) => p?.project.media.length === 1);
-    assert.deepEqual(mediaNow().map((m: any) => m.id), [svg.id]);
+    assert.deepEqual(
+      mediaNow().map((m: any) => m.id),
+      [svg.id],
+    );
 
     // The keys never show up in the server's output, the project folder or any child's environment.
     await new Promise((r) => setTimeout(r, 200));
@@ -306,7 +396,11 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
       assert.deepEqual(filesContaining(snap.dir, key), [], "not in the project");
       assert.deepEqual(filesContaining(base, key), [], "not in the data dir, logs or the scripted claude's records");
     }
-    for (const entry of readFileSync(files.prompts, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))) assert.ok(!entry.env.some((k: string) => KEY_VARS.test(k)), "no key variables in claude's environment");
+    for (const entry of readFileSync(files.prompts, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l)))
+      assert.ok(!entry.env.some((k: string) => KEY_VARS.test(k)), "no key variables in claude's environment");
     assert.ok(!existsSync(join(base, "data", "keys.json")), "memory only without the desktop");
   } finally {
     client.close();
@@ -319,13 +413,24 @@ test("keys through the desktop's pipe (--keys-fd 4): only ciphertext in keys.jso
   mkdirSync(join(base, "projects"), { recursive: true });
   const ops: Array<string> = [];
   // UNCUT_CDP: the desktop under the test harness, so the stub base URLs count.
-  const server = await startServer({ args: ["--keys-fd", "4"], env: { UNCUT_CDP: "1", UNCUT_DATA_DIR: join(base, "data"), UNCUT_PLUGINS_DIR: "", UNCUT_BUNDLED_PLUGINS_DIR: join(base, "none"), UNCUT_CLAUDE: FAKE_CLAUDE, ...providerEnv() } });
+  const server = await startServer({
+    args: ["--keys-fd", "4"],
+    env: {
+      UNCUT_CDP: "1",
+      UNCUT_DATA_DIR: join(base, "data"),
+      UNCUT_PLUGINS_DIR: "",
+      UNCUT_BUNDLED_PLUGINS_DIR: join(base, "none"),
+      UNCUT_CLAUDE: FAKE_CLAUDE,
+      ...providerEnv(),
+    },
+  });
   // The desktop's side (apps/desktop/src/server.ts), with a stand-in for safeStorage.
   const pipe = server.proc.stdio[4] as Duplex;
   createInterface({ input: pipe }).on("line", (line) => {
     const msg = JSON.parse(line);
     ops.push(msg.op);
-    if (msg.op === "encrypt") pipe.write(`${JSON.stringify({ id: msg.id, ok: true, data: Buffer.from(`sealed:${[...msg.text].reverse().join("")}`).toString("base64") })}\n`);
+    if (msg.op === "encrypt")
+      pipe.write(`${JSON.stringify({ id: msg.id, ok: true, data: Buffer.from(`sealed:${[...msg.text].reverse().join("")}`).toString("base64") })}\n`);
     else pipe.write(`${JSON.stringify({ id: msg.id, ok: true, text: [...Buffer.from(msg.data, "base64").toString().slice(7)].reverse().join("") })}\n`);
   });
   const client = await connect(server.ready.port, server.ready.token);

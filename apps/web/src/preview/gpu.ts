@@ -131,7 +131,12 @@ type Pic = Rect & { readonly edge?: Rect };
 type Src = { readonly tex: WebGLTexture; readonly img: Pic; readonly flip: boolean; readonly soft: boolean; readonly gamut: boolean };
 const EVERYWHERE: Rect = { x: -1e5, y: -1e5, w: 2e5, h: 2e5 };
 /** A stand-in layer covering the canvas (a blurred target drawn back). */
-const WHOLE = (size: { w: number; h: number }): GpuPicture => ({ id: "", source: undefined as never, box: { x: 0, y: 0, w: size.w, h: size.h, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 0, y: 0, w: size.w, h: size.h } }, opacity: 1 });
+const WHOLE = (size: { w: number; h: number }): GpuPicture => ({
+  id: "",
+  source: undefined as never,
+  box: { x: 0, y: 0, w: size.w, h: size.h, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 0, y: 0, w: size.w, h: size.h } },
+  opacity: 1,
+});
 
 /** Issue #12 (D265): how far apart (device px) a moving picture's four taps are; measured best against the DOM path at 0.25 (0.15 and 0.35 both worse). */
 const SOFT = 0.25;
@@ -176,14 +181,24 @@ export interface GpuSolid {
 
 /** A source's natural size (0 when it has no picture yet). */
 const naturalSize = (s: GpuPicture["source"]) =>
-  s instanceof HTMLVideoElement ? { w: s.videoWidth, h: s.videoHeight } : s instanceof HTMLImageElement ? { w: s.naturalWidth, h: s.naturalHeight } : { w: s.width, h: s.height };
+  s instanceof HTMLVideoElement
+    ? { w: s.videoWidth, h: s.videoHeight }
+    : s instanceof HTMLImageElement
+      ? { w: s.naturalWidth, h: s.naturalHeight }
+      : { w: s.width, h: s.height };
 
 /**
  * What a source shows now, so a paused one isn't uploaded again. A video's key names its file too:
  * a relinked file (same item and media ids, another src) paused at the same time is another picture.
  */
 const frameKey = (s: GpuPicture["source"]) =>
-  s instanceof HTMLVideoElement ? `v${s.currentSrc}|${s.currentTime}|${s.paused ? "p" : performance.now()}` : s instanceof HTMLImageElement ? `i${s.currentSrc}` : s.classList.contains("pv-scrub") ? `c${s.dataset.scrub}|${s.dataset.sample}` : `c${performance.now()}`;
+  s instanceof HTMLVideoElement
+    ? `v${s.currentSrc}|${s.currentTime}|${s.paused ? "p" : performance.now()}`
+    : s instanceof HTMLImageElement
+      ? `i${s.currentSrc}`
+      : s.classList.contains("pv-scrub")
+        ? `c${s.dataset.scrub}|${s.dataset.sample}`
+        : `c${performance.now()}`;
 
 /** Where a picture of size n lands in rect r with an object-fit (centred, as CSS's default object-position). */
 export function fitInto(r: Rect, n: { w: number; h: number }, fit: string): Rect {
@@ -210,7 +225,10 @@ export function plainColour(css: string): readonly [number, number, number, numb
   else {
     const m = /^rgba?\(([^)]+)\)$/.exec(v);
     if (!m) return undefined;
-    const parts = m[1]!.split(/[,\s/]+/).filter(Boolean).map(Number);
+    const parts = m[1]!
+      .split(/[,\s/]+/)
+      .filter(Boolean)
+      .map(Number);
     rgba = [parts[0]! / 255, parts[1]! / 255, parts[2]! / 255, parts[3] ?? 1];
   }
   const a = rgba[3]!;
@@ -244,7 +262,10 @@ export class GpuCompositor {
   private quad!: WebGLBuffer;
   private u: Uniforms = {};
   // Each layer's last uploaded picture (`n`: its natural size), kept while the layer is drawn.
-  private readonly textures = new Map<string, { tex: WebGLTexture; key: string; source?: GpuPicture["source"] | undefined; n: { w: number; h: number }; mip: boolean }>();
+  private readonly textures = new Map<
+    string,
+    { tex: WebGLTexture; key: string; source?: GpuPicture["source"] | undefined; n: { w: number; h: number }; mip: boolean }
+  >();
   // Each effects layer's last drawn picture (`drawn` once it holds one).
   private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number; drawn?: boolean }>();
   // Issue #82 (D241): since when the frame on screen has been held (a layer had nothing to draw).
@@ -306,7 +327,29 @@ export class GpuCompositor {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`compositor: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
     this.u = {};
-    for (const name of ["uRect", "uBacking", "uK", "uTex", "uSolid", "uColour", "uBox", "uRadius", "uImg", "uEdge", "uOpacity", "uWipe", "uIris", "uPx", "uFlipY", "uSoft", "uGamut", "uMasked", "uMask", "uBackingF"]) this.u[name] = gl.getUniformLocation(program, name);
+    for (const name of [
+      "uRect",
+      "uBacking",
+      "uK",
+      "uTex",
+      "uSolid",
+      "uColour",
+      "uBox",
+      "uRadius",
+      "uImg",
+      "uEdge",
+      "uOpacity",
+      "uWipe",
+      "uIris",
+      "uPx",
+      "uFlipY",
+      "uSoft",
+      "uGamut",
+      "uMasked",
+      "uMask",
+      "uBackingF",
+    ])
+      this.u[name] = gl.getUniformLocation(program, name);
     const blur = gl.createProgram()!;
     gl.attachShader(blur, shader(gl.VERTEX_SHADER, BLUR_VERTEX));
     gl.attachShader(blur, shader(gl.FRAGMENT_SHADER, BLUR_FRAGMENT));
@@ -669,7 +712,10 @@ export class GpuCompositor {
     gl.uniform1i(this.bu.uTex!, 0);
     gl.uniform1f(this.bu.uSigma!, sigma);
     gl.activeTexture(gl.TEXTURE0);
-    for (const [from, to, dir] of [[a, tmp, [1, 0]], [tmp, a, [0, 1]]] as const) {
+    for (const [from, to, dir] of [
+      [a, tmp, [1, 0]],
+      [tmp, a, [0, 1]],
+    ] as const) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, to.fbo);
       gl.bindTexture(gl.TEXTURE_2D, from.tex);
       gl.uniform2f(this.bu.uDir!, dir[0], dir[1]);

@@ -72,13 +72,15 @@ export function createOtlpSink(options: SinkOptions): Sink {
   return {
     emit: (name, attributes) => {
       try {
-        logger.emit({ body: name, eventName: name, severityNumber: SeverityNumber.INFO, severityText: "INFO", attributes: { ...attributes, "event.name": name } });
+        logger.emit({
+          body: name,
+          eventName: name,
+          severityNumber: SeverityNumber.INFO,
+          severityText: "INFO",
+          attributes: { ...attributes, "event.name": name },
+        });
       } catch {}
     },
-    shutdown: () =>
-      Promise.race([
-        provider.shutdown().catch(() => {}),
-        new Promise<void>((resolve) => setTimeout(resolve, EXPORT_TIMEOUT_MS + 250).unref()),
-      ]),
+    shutdown: () => Promise.race([provider.shutdown().catch(() => {}), new Promise<void>((resolve) => setTimeout(resolve, EXPORT_TIMEOUT_MS + 250).unref())]),
   };
 }

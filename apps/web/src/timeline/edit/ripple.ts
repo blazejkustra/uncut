@@ -64,7 +64,9 @@ export function withOverlayRipple<P extends Plan>(project: ProjectModel, plan: P
 
 /** Group the selected free-track items, or ungroup the group of `ids` (D157). */
 export function planGrouping(project: ProjectModel, ids: ReadonlyArray<string>, group: boolean): Plan | { readonly problem: string } {
-  const placed = withGroups(project, ids).map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined);
+  const placed = withGroups(project, ids)
+    .map((id) => findItem(project, id))
+    .filter((p): p is Placed => p !== undefined);
   for (const p of placed) {
     const locked = lockOf(p);
     if (locked) return { problem: locked };

@@ -39,7 +39,15 @@ export function EditRow({ step, edits }: { step: AgentItem; edits: ReadonlyArray
   const lines = edits.flatMap((e) => e.lines);
   return (
     <div className={`edit-row ${open ? "open" : ""}`} data-testid="agent-edit-row">
-      <div className="step edit-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the changes" : "Show the changes"} onClick={() => selecting() || setOpen(!open)}>
+      <div
+        className="step edit-step"
+        data-testid="agent-step"
+        data-status={step.status}
+        data-tool={step.tool}
+        aria-expanded={open}
+        title={open ? "Hide the changes" : "Show the changes"}
+        onClick={() => selecting() || setOpen(!open)}
+      >
         {step.status === "running" ? <LoaderCircle className="spin" /> : step.status === "error" ? <X className="bad" /> : <PencilLine />}
         <span className="grow">{friendly(step.status === "running" ? (step.doing ?? step.text) : step.text)}</span>
         {lines.length > 0 && (open ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />)}
@@ -64,7 +72,15 @@ export function MediaRow({ step, edits }: { step: AgentItem; edits: ReadonlyArra
   const summary = edits.length === 1 ? edits[0]!.summary : `Added ${ids.length} files`;
   return (
     <div className={`media-row ${open ? "open" : ""}`} data-testid="agent-import" data-count={ids.length}>
-      <div className="step media-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the files" : "Show the files"} onClick={() => setOpen(!open)}>
+      <div
+        className="step media-step"
+        data-testid="agent-step"
+        data-status={step.status}
+        data-tool={step.tool}
+        aria-expanded={open}
+        title={open ? "Hide the files" : "Show the files"}
+        onClick={() => setOpen(!open)}
+      >
         {step.status === "running" ? <LoaderCircle className="spin" /> : <Images />}
         <span className="grow">{summary}</span>
         {open ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />}
@@ -88,7 +104,8 @@ export function MediaRow({ step, edits }: { step: AgentItem; edits: ReadonlyArra
   );
 }
 
-const StepIcon = ({ status }: { status?: string | undefined }) => (status === "error" ? <X className="bad" /> : status === "running" ? <LoaderCircle className="spin" /> : <Check />);
+const StepIcon = ({ status }: { status?: string | undefined }) =>
+  status === "error" ? <X className="bad" /> : status === "running" ? <LoaderCircle className="spin" /> : <Check />;
 
 /** Tool calls in a row (D139): one line ("Added title, and 3 more"), opened for every step. */
 export function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {

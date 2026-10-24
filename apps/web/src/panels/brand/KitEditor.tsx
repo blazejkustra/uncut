@@ -6,7 +6,21 @@ import { type View, type KitDraft, HEX6, type LogoSlot, lines, LOGO_SLOTS, LOGO_
 import { EditorFrame, ScopeChoice, Swatches } from "./parts.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 
-export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { brand: BrandState; view: Extract<View, { kind: "kit" }>; hasProject: boolean; online: boolean; onDraft: (f: (d: KitDraft) => KitDraft) => void; onClose: () => void }) {
+export function KitEditor({
+  brand,
+  view,
+  hasProject,
+  online,
+  onDraft,
+  onClose,
+}: {
+  brand: BrandState;
+  view: Extract<View, { kind: "kit" }>;
+  hasProject: boolean;
+  online: boolean;
+  onDraft: (f: (d: KitDraft) => KitDraft) => void;
+  onClose: () => void;
+}) {
   const d = view.draft;
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -41,7 +55,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
     if (!from) return;
     const got = await actions.brandImport(view.id, view.scope, from);
     const font = got?.find((f) => f.kind === "font");
-    if (font) onDraft((cur) => ({ ...cur, fonts: cur.fonts.map((x, j) => (j === i ? { ...x, file: font.name, family: x.family.trim() || (font.family ?? x.family) } : x)) }));
+    if (font)
+      onDraft((cur) => ({
+        ...cur,
+        fonts: cur.fonts.map((x, j) => (j === i ? { ...x, file: font.name, family: x.family.trim() || (font.family ?? x.family) } : x)),
+      }));
   };
   const badHex = d.colors.findIndex((c) => !HEX6.test(c.hex.trim()));
   const set = (patch: Partial<KitDraft>) => onDraft((cur) => ({ ...cur, ...patch }));
@@ -77,7 +95,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
         renamed.set(name, copied);
       }
       const to = (n: string | undefined) => (n === undefined ? undefined : (renamed.get(n) ?? n));
-      logos = Object.fromEntries(Object.entries(logos).map(([k, v]) => [k, to(v)]).filter(([, v]) => v !== undefined));
+      logos = Object.fromEntries(
+        Object.entries(logos)
+          .map(([k, v]) => [k, to(v)])
+          .filter(([, v]) => v !== undefined),
+      );
       examples = examples.map((n) => to(n)!);
       fontFiles = new Map(d.fonts.flatMap((f) => (f.file ? [[f.file, to(f.file)!] as const] : [])));
     }
@@ -87,7 +109,14 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       scope: d.scope,
       logos,
       colors: d.colors.map((c) => ({ hex: c.hex.trim().toLowerCase(), role: c.role, ...(c.name ? { name: c.name } : {}) })),
-      fonts: d.fonts.filter((f) => f.family.trim()).map((f) => ({ family: f.family.trim(), role: f.role, ...(f.weight ? { weight: f.weight } : {}), ...(f.file ? { file: fontFiles.get(f.file) ?? f.file } : {}) })),
+      fonts: d.fonts
+        .filter((f) => f.family.trim())
+        .map((f) => ({
+          family: f.family.trim(),
+          role: f.role,
+          ...(f.weight ? { weight: f.weight } : {}),
+          ...(f.file ? { file: fontFiles.get(f.file) ?? f.file } : {}),
+        })),
       ...(d.about.trim() ? { about: d.about.trim() } : {}),
       tone: d.tone,
       taglines: lines(d.taglines),
@@ -117,7 +146,9 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
     const [path] = await actions.pickBrandFiles();
     if (!path) return;
     if (getState().agent?.running) return setNote("The agent is busy");
-    await actions.agentSend(`Make a style guide for the kit "${saved?.name ?? (d.name.trim() || view.id)}" (${view.id}) from this reference: ${path}`, [], [], { access: "auto" });
+    await actions.agentSend(`Make a style guide for the kit "${saved?.name ?? (d.name.trim() || view.id)}" (${view.id}) from this reference: ${path}`, [], [], {
+      access: "auto",
+    });
     actions.openPanel("agent");
   };
 
@@ -145,42 +176,42 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
           const name = d.logos[id];
           const src = name && files[name] ? brandFileUrl(view.id, name, files[name]) : undefined;
           return (
-          <div key={id} className="brand-line" data-testid={`brand-logo-${id}`}>
-            <span className="brand-line-k">{label}</span>
-            <span className="brand-logo-thumb" style={{ background: LOGO_BACKDROP[id] }} data-testid={`brand-logo-${id}-thumb`}>
-              {src ? <img src={src} alt={name} draggable={false} /> : null}
-            </span>
-            <span className={`brand-file ellipsis ${name ? "" : "muted"}`} title={name ? files[name] : undefined}>
-              {name ?? "None"}
-            </span>
-            <button
-              className="btn ghost brand-small-btn"
-              data-testid={`brand-logo-${id}-pick`}
-              disabled={!online}
-              onClick={() =>
-                void pickInto(false).then(([name]) => {
-                  if (name) onDraft((cur) => ({ ...cur, logos: { ...cur.logos, [id]: name } }));
-                })
-              }
-            >
-              Choose…
-            </button>
-            {d.logos[id] && (
-              <Tooltip label="Remove">
-                <button
-                  className="icon-btn"
-                 
-                  data-testid={`brand-logo-${id}-clear`}
-                  onClick={() => {
-                    const { [id]: _gone, ...rest } = d.logos;
-                    set({ logos: rest });
-                  }}
-                >
-                  <X />
-                </button>
-              </Tooltip>
-            )}
-          </div>
+            <div key={id} className="brand-line" data-testid={`brand-logo-${id}`}>
+              <span className="brand-line-k">{label}</span>
+              <span className="brand-logo-thumb" style={{ background: LOGO_BACKDROP[id] }} data-testid={`brand-logo-${id}-thumb`}>
+                {src ? <img src={src} alt={name} draggable={false} /> : null}
+              </span>
+              <span className={`brand-file ellipsis ${name ? "" : "muted"}`} title={name ? files[name] : undefined}>
+                {name ?? "None"}
+              </span>
+              <button
+                className="btn ghost brand-small-btn"
+                data-testid={`brand-logo-${id}-pick`}
+                disabled={!online}
+                onClick={() =>
+                  void pickInto(false).then(([name]) => {
+                    if (name) onDraft((cur) => ({ ...cur, logos: { ...cur.logos, [id]: name } }));
+                  })
+                }
+              >
+                Choose…
+              </button>
+              {d.logos[id] && (
+                <Tooltip label="Remove">
+                  <button
+                    className="icon-btn"
+
+                    data-testid={`brand-logo-${id}-clear`}
+                    onClick={() => {
+                      const { [id]: _gone, ...rest } = d.logos;
+                      set({ logos: rest });
+                    }}
+                  >
+                    <X />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
           );
         })}
         <div className="brand-line brand-import" data-testid="brand-import">
@@ -194,11 +225,21 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
             onKeyDown={(e) => e.key === "Enter" && void importFrom(source)}
           />
           <Tooltip label="Choose a file or folder">
-            <button className="icon-btn" data-testid="brand-import-pick" disabled={!online || busy} onClick={() => void actions.pickBrandSource().then((p) => importFrom(p))}>
+            <button
+              className="icon-btn"
+              data-testid="brand-import-pick"
+              disabled={!online || busy}
+              onClick={() => void actions.pickBrandSource().then((p) => importFrom(p))}
+            >
               <FolderOpen />
             </button>
           </Tooltip>
-          <button className="btn ghost brand-small-btn" data-testid="brand-import-go" disabled={!online || busy || !source.trim()} onClick={() => void importFrom(source)}>
+          <button
+            className="btn ghost brand-small-btn"
+            data-testid="brand-import-go"
+            disabled={!online || busy || !source.trim()}
+            onClick={() => void importFrom(source)}
+          >
             Import
           </button>
         </div>
@@ -208,7 +249,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
         <div className="brand-head">
           <span className="lib-label">Colours</span>
           <Tooltip label="Add colour">
-            <button className="icon-btn" data-testid="brand-color-add" onClick={() => set({ colors: [...d.colors, { hex: "#ffffff", role: d.colors.length ? "accent" : "background" }] })}>
+            <button
+              className="icon-btn"
+              data-testid="brand-color-add"
+              onClick={() => set({ colors: [...d.colors, { hex: "#ffffff", role: d.colors.length ? "accent" : "background" }] })}
+            >
               <Plus />
             </button>
           </Tooltip>
@@ -219,7 +264,14 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
           return (
             <div key={i} className="brand-line" data-testid={`brand-color-${i}`}>
               <span className="brand-swatch big" style={{ background: ok ? c.hex.trim() : "transparent" }} />
-              <input className={`field input mono brand-hex ${ok ? "" : "invalid"}`} data-testid={`brand-color-hex-${i}`} value={c.hex} maxLength={7} spellCheck={false} onChange={(e) => patch({ hex: e.target.value })} />
+              <input
+                className={`field input mono brand-hex ${ok ? "" : "invalid"}`}
+                data-testid={`brand-color-hex-${i}`}
+                value={c.hex}
+                maxLength={7}
+                spellCheck={false}
+                onChange={(e) => patch({ hex: e.target.value })}
+              />
               <select className="field input" data-testid={`brand-color-role-${i}`} value={c.role} onChange={(e) => patch({ role: e.target.value })}>
                 {!(COLOR_ROLES as ReadonlyArray<string>).includes(c.role) && <option value={c.role}>{c.role}</option>}
                 {COLOR_ROLES.map((r) => (
@@ -242,7 +294,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
         <div className="brand-head">
           <span className="lib-label">Fonts</span>
           <Tooltip label="Add font">
-            <button className="icon-btn" data-testid="brand-font-add" onClick={() => set({ fonts: [...d.fonts, { family: "", role: d.fonts.length ? "body" : "headline" }] })}>
+            <button
+              className="icon-btn"
+              data-testid="brand-font-add"
+              onClick={() => set({ fonts: [...d.fonts, { family: "", role: d.fonts.length ? "body" : "headline" }] })}
+            >
               <Plus />
             </button>
           </Tooltip>
@@ -251,8 +307,20 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
           const patch = (p: Partial<(typeof d.fonts)[number]>) => set({ fonts: d.fonts.map((x, j) => (j === i ? { ...x, ...p } : x)) });
           return (
             <div key={i} className="brand-line" data-testid={`brand-font-${i}`}>
-              <input className="field input" data-testid={`brand-font-family-${i}`} placeholder="Family" value={f.family} maxLength={80} onChange={(e) => patch({ family: e.target.value })} />
-              <select className="field input brand-font-role" data-testid={`brand-font-role-${i}`} value={f.role} onChange={(e) => patch({ role: e.target.value })}>
+              <input
+                className="field input"
+                data-testid={`brand-font-family-${i}`}
+                placeholder="Family"
+                value={f.family}
+                maxLength={80}
+                onChange={(e) => patch({ family: e.target.value })}
+              />
+              <select
+                className="field input brand-font-role"
+                data-testid={`brand-font-role-${i}`}
+                value={f.role}
+                onChange={(e) => patch({ role: e.target.value })}
+              >
                 {!(FONT_ROLES as ReadonlyArray<string>).includes(f.role) && <option value={f.role}>{f.role}</option>}
                 {FONT_ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -291,13 +359,33 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
 
       <div className="lib-section">
         <span className="lib-label">What it is</span>
-        <textarea className="gen-prompt brand-text" data-testid="brand-kit-about" rows={3} placeholder="What the product is and does, in a paragraph" value={d.about} onChange={(e) => set({ about: e.target.value })} />
+        <textarea
+          className="gen-prompt brand-text"
+          data-testid="brand-kit-about"
+          rows={3}
+          placeholder="What the product is and does, in a paragraph"
+          value={d.about}
+          onChange={(e) => set({ about: e.target.value })}
+        />
         <span className="lib-label">Tone of voice</span>
         <textarea className="gen-prompt brand-text" data-testid="brand-kit-tone" rows={3} value={d.tone} onChange={(e) => set({ tone: e.target.value })} />
         <span className="lib-label">Taglines, one per line</span>
-        <textarea className="gen-prompt brand-text" data-testid="brand-kit-taglines" rows={2} value={d.taglines} onChange={(e) => set({ taglines: e.target.value })} />
+        <textarea
+          className="gen-prompt brand-text"
+          data-testid="brand-kit-taglines"
+          rows={2}
+          value={d.taglines}
+          onChange={(e) => set({ taglines: e.target.value })}
+        />
         <span className="lib-label">URLs, one per line</span>
-        <textarea className="gen-prompt brand-text mono" data-testid="brand-kit-urls" rows={2} spellCheck={false} value={d.urls} onChange={(e) => set({ urls: e.target.value })} />
+        <textarea
+          className="gen-prompt brand-text mono"
+          data-testid="brand-kit-urls"
+          rows={2}
+          spellCheck={false}
+          value={d.urls}
+          onChange={(e) => set({ urls: e.target.value })}
+        />
         <span className="lib-label">Do's, one per line</span>
         <textarea className="gen-prompt brand-text" data-testid="brand-kit-dos" rows={3} value={d.dos} onChange={(e) => set({ dos: e.target.value })} />
         <span className="lib-label">Don'ts, one per line</span>
@@ -310,10 +398,14 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
           <Tooltip label="Add examples">
             <button
               className="icon-btn"
-             
+
               data-testid="brand-example-add"
               disabled={!online}
-              onClick={() => void pickInto(true).then((names) => names.length && onDraft((cur) => ({ ...cur, examples: [...cur.examples, ...names.filter((n) => !cur.examples.includes(n))] })))}
+              onClick={() =>
+                void pickInto(true).then(
+                  (names) => names.length && onDraft((cur) => ({ ...cur, examples: [...cur.examples, ...names.filter((n) => !cur.examples.includes(n))] })),
+                )
+              }
             >
               <Plus />
             </button>

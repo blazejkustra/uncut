@@ -4,15 +4,40 @@ import { type Project, libraryPreviewUrl, actions, useApp, sfxUrl } from "../../
 import { type Preview, Wave, TogetherButton } from "./preview.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 
-export function HitRow({ hit, kind, project, online, preview, adding }: { hit: LibraryHit; kind: LibraryKind; project: Project; online: boolean; preview: Preview; adding: boolean }) {
+export function HitRow({
+  hit,
+  kind,
+  project,
+  online,
+  preview,
+  adding,
+}: {
+  hit: LibraryHit;
+  kind: LibraryKind;
+  project: Project;
+  online: boolean;
+  preview: Preview;
+  adding: boolean;
+}) {
   const key = hitKey(hit);
   const playing = preview.playing === key && preview.mode === "alone";
   const inProject = !!libraryMediaOf(project, key);
   const peaks = preview.peaks[key];
-  const meta = [hit.creator, ...(hit.seconds ? [lengthLabel(hit.seconds)] : []), ...(hit.provider && hit.provider !== hit.source ? [hit.provider] : []), ...(inProject ? ["in the project"] : [])];
+  const meta = [
+    hit.creator,
+    ...(hit.seconds ? [lengthLabel(hit.seconds)] : []),
+    ...(hit.provider && hit.provider !== hit.source ? [hit.provider] : []),
+    ...(inProject ? ["in the project"] : []),
+  ];
   return (
     <div className="music-row lib-row" data-testid="library-row" data-id={key} title={hit.attribution}>
-      <button className={`icon-btn${playing ? " playing" : ""}`} data-testid="library-play" data-playing={playing} title={playing ? "Stop" : "Listen"} onClick={() => preview.toggle(key, libraryPreviewUrl(hit.source, hit.id), (hit.seconds ?? 0) <= 120)}>
+      <button
+        className={`icon-btn${playing ? " playing" : ""}`}
+        data-testid="library-play"
+        data-playing={playing}
+        title={playing ? "Stop" : "Listen"}
+        onClick={() => preview.toggle(key, libraryPreviewUrl(hit.source, hit.id), (hit.seconds ?? 0) <= 120)}
+      >
         {playing ? <Square /> : <Play />}
       </button>
       <span className="music-text">
@@ -21,7 +46,11 @@ export function HitRow({ hit, kind, project, online, preview, adding }: { hit: L
         {peaks && <Wave peaks={peaks} progress={preview.playing === key ? preview.progress : 0} />}
       </span>
       {kind === "sfx" && <TogetherButton preview={preview} soundKey={key} url={libraryPreviewUrl(hit.source, hit.id)} wave={(hit.seconds ?? 0) <= 120} />}
-      <span className={`lib-license ${hit.license}`} data-testid="library-license" title={hit.license === "by" ? "Needs credit: Copy credits lists it" : "Public domain, no credit needed"}>
+      <span
+        className={`lib-license ${hit.license}`}
+        data-testid="library-license"
+        title={hit.license === "by" ? "Needs credit: Copy credits lists it" : "Public domain, no credit needed"}
+      >
         {LICENSE_NAMES[hit.license]}
       </span>
       <button
@@ -41,7 +70,19 @@ export function HitRow({ hit, kind, project, online, preview, adding }: { hit: L
 }
 
 /** The bundled sound-effects pack (D134, D250): CC0 sounds matching the search and the kind select, listen and +. */
-export function IncludedSfx({ project, online, query, category, preview }: { project: Project; online: boolean; query: string; category: string | undefined; preview: Preview }) {
+export function IncludedSfx({
+  project,
+  online,
+  query,
+  category,
+  preview,
+}: {
+  project: Project;
+  online: boolean;
+  query: string;
+  category: string | undefined;
+  preview: Preview;
+}) {
   const sounds = filterSfx({ query, category });
   return (
     <div data-testid="sfx-included">
@@ -67,8 +108,19 @@ function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; proje
   // The pack's peaks come with it (make-sfx, D208): the waveform shows before it's played.
   const peaks = preview.peaks[key] ?? s.peaks.map((p) => p / 100);
   return (
-    <div className="music-row" data-testid="sfx-row" data-id={s.id} title={s.provider === "uncut" ? `${s.title}: made by Uncut, CC0` : `${s.title} by ${s.author}, CC0: ${s.source}`}>
-      <button className={`icon-btn${playing ? " playing" : ""}`} data-testid="sfx-play" data-playing={playing} title={playing ? "Stop" : "Listen"} onClick={() => preview.toggle(key, sfxUrl(s.file), true)}>
+    <div
+      className="music-row"
+      data-testid="sfx-row"
+      data-id={s.id}
+      title={s.provider === "uncut" ? `${s.title}: made by Uncut, CC0` : `${s.title} by ${s.author}, CC0: ${s.source}`}
+    >
+      <button
+        className={`icon-btn${playing ? " playing" : ""}`}
+        data-testid="sfx-play"
+        data-playing={playing}
+        title={playing ? "Stop" : "Listen"}
+        onClick={() => preview.toggle(key, sfxUrl(s.file), true)}
+      >
         {playing ? <Square /> : <Play />}
       </button>
       <span className="music-text">
@@ -82,7 +134,7 @@ function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; proje
           className="icon-btn"
           data-testid="sfx-add"
           disabled={!online || app.libraryAdding === key}
-         
+
           onClick={(e) => {
             e.currentTarget.blur();
             void actions.addLibrarySound(key, false, s.title);

@@ -48,7 +48,10 @@ interface Message {
 
 async function handle({ id, method, params }: Message) {
   if (method === "initialize") {
-    return send({ id, result: { protocolVersion: params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "uncut", version: "0.0.1" } } });
+    return send({
+      id,
+      result: { protocolVersion: params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "uncut", version: "0.0.1" } },
+    });
   }
   if (method === "tools/list") return send({ id, result: { tools: await bridge("/agent/tools") } });
   if (method === "tools/call") {

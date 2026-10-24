@@ -66,30 +66,174 @@ test("the 20 min long-form example is valid", () => {
 });
 
 const broken: Record<string, [any, (p: any) => void, string]> = {
-  "main-track items can't have a start": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[1].start = 100; }, "main-item-start"],
-  "free-track items need a start": [promo, (p) => { delete p.tracks[0].items[0].start; }, "missing-start"],
-  "two items overlap on one track": [promo, (p) => { p.tracks[0].items[1].start = 60; }, "overlap"],
-  "unknown module": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[1].transitionIn.module = "transition.spin-3d"; }, "unknown-module"],
-  "module of the wrong kind": [promo, (p) => { p.tracks[0].items[1].animation.in.module = "transition.crossfade"; }, "module-kind"],
-  "missing media": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[2].media = "m-nope"; }, "unknown-media"],
-  "missing media inside props": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[4].props.logo.media = "m-gone"; }, "unknown-media"],
-  "clip runs past the end of its media": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[2].in = 200; }, "media-range"],
-  "transition on the first main item": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[0].transitionIn = { module: "transition.crossfade", duration: 6 }; }, "transition-first"],
-  "transition longer than its clips allow": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[1].transitionIn.duration = 60; }, "transition-too-long"],
-  "transition on a free track": [promo, (p) => { p.tracks[0].items[1].transitionIn = { module: "transition.crossfade", duration: 6 }; }, "transition-track"],
-  "duplicate id": [promo, (p) => { p.tracks[0].items[1].id = "txt-hook"; }, "duplicate-id"],
-  "text item on an audio track": [promo, (p) => { p.tracks.find((t: any) => t.id === "a3").items.push({ ...p.tracks[0].items[0], id: "stray", start: 600 }); }, "item-track-kind"],
-  "audio item from a silent clip": [promo, (p) => { p.tracks.find((t: any) => t.id === "a3").items[0].media = "m-sim-login"; }, "media-kind"],
-  "component props that don't match its manifest": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[2].props.device = "nokia-3310"; }, "params"],
-  "duck under a track that doesn't exist": [promo, (p) => { p.tracks.find((t: any) => t.id === "a1").mixer.effects[1].params.under = ["voice"]; }, "unknown-track"],
-  "gain key past the clip": [promo, (p) => { p.tracks.find((t: any) => t.id === "a1").items[0].gainKeys.push({ frame: 900, db: -3 }); }, "key-range"],
-  "scene past the end": [promo, (p) => { p.scenes.at(-1).end = 900; }, "scene-range"],
-  "two main tracks": [promo, (p) => { p.tracks.push({ ...clone(p.tracks.find((t: any) => t.role === "main")), id: "main-2", items: [] }); }, "main-track-count"],
-  "typo in an item field (schema)": [promo, (p) => { p.tracks[0].items[0].duraton = 90; }, "schema"],
-  "float frame count (schema)": [promo, (p) => { p.tracks[0].items[0].duration = 90.5; }, "schema"],
-  "transition with no media handle before the cut": [promo, (p) => { p.tracks.find((t: any) => t.role === "main").items[2].in = 0; }, "transition-handles"],
-  "captions from video without audio": [longform, (p) => { p.tracks[0].items[0].source = "m-screen"; }, "media-kind"],
-  "stabilize on an audio track": [longform, (p) => { p.tracks.find((t: any) => t.id === "a-music").items[0].effects = [{ module: "effect.stabilize" }]; }, "module-kind"],
+  "main-track items can't have a start": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[1].start = 100;
+    },
+    "main-item-start",
+  ],
+  "free-track items need a start": [
+    promo,
+    (p) => {
+      delete p.tracks[0].items[0].start;
+    },
+    "missing-start",
+  ],
+  "two items overlap on one track": [
+    promo,
+    (p) => {
+      p.tracks[0].items[1].start = 60;
+    },
+    "overlap",
+  ],
+  "unknown module": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[1].transitionIn.module = "transition.spin-3d";
+    },
+    "unknown-module",
+  ],
+  "module of the wrong kind": [
+    promo,
+    (p) => {
+      p.tracks[0].items[1].animation.in.module = "transition.crossfade";
+    },
+    "module-kind",
+  ],
+  "missing media": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[2].media = "m-nope";
+    },
+    "unknown-media",
+  ],
+  "missing media inside props": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[4].props.logo.media = "m-gone";
+    },
+    "unknown-media",
+  ],
+  "clip runs past the end of its media": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[2].in = 200;
+    },
+    "media-range",
+  ],
+  "transition on the first main item": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[0].transitionIn = { module: "transition.crossfade", duration: 6 };
+    },
+    "transition-first",
+  ],
+  "transition longer than its clips allow": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[1].transitionIn.duration = 60;
+    },
+    "transition-too-long",
+  ],
+  "transition on a free track": [
+    promo,
+    (p) => {
+      p.tracks[0].items[1].transitionIn = { module: "transition.crossfade", duration: 6 };
+    },
+    "transition-track",
+  ],
+  "duplicate id": [
+    promo,
+    (p) => {
+      p.tracks[0].items[1].id = "txt-hook";
+    },
+    "duplicate-id",
+  ],
+  "text item on an audio track": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.id === "a3").items.push({ ...p.tracks[0].items[0], id: "stray", start: 600 });
+    },
+    "item-track-kind",
+  ],
+  "audio item from a silent clip": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.id === "a3").items[0].media = "m-sim-login";
+    },
+    "media-kind",
+  ],
+  "component props that don't match its manifest": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[2].props.device = "nokia-3310";
+    },
+    "params",
+  ],
+  "duck under a track that doesn't exist": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.id === "a1").mixer.effects[1].params.under = ["voice"];
+    },
+    "unknown-track",
+  ],
+  "gain key past the clip": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.id === "a1").items[0].gainKeys.push({ frame: 900, db: -3 });
+    },
+    "key-range",
+  ],
+  "scene past the end": [
+    promo,
+    (p) => {
+      p.scenes.at(-1).end = 900;
+    },
+    "scene-range",
+  ],
+  "two main tracks": [
+    promo,
+    (p) => {
+      p.tracks.push({ ...clone(p.tracks.find((t: any) => t.role === "main")), id: "main-2", items: [] });
+    },
+    "main-track-count",
+  ],
+  "typo in an item field (schema)": [
+    promo,
+    (p) => {
+      p.tracks[0].items[0].duraton = 90;
+    },
+    "schema",
+  ],
+  "float frame count (schema)": [
+    promo,
+    (p) => {
+      p.tracks[0].items[0].duration = 90.5;
+    },
+    "schema",
+  ],
+  "transition with no media handle before the cut": [
+    promo,
+    (p) => {
+      p.tracks.find((t: any) => t.role === "main").items[2].in = 0;
+    },
+    "transition-handles",
+  ],
+  "captions from video without audio": [
+    longform,
+    (p) => {
+      p.tracks[0].items[0].source = "m-screen";
+    },
+    "media-kind",
+  ],
+  "stabilize on an audio track": [
+    longform,
+    (p) => {
+      p.tracks.find((t: any) => t.id === "a-music").items[0].effects = [{ module: "effect.stabilize" }];
+    },
+    "module-kind",
+  ],
 };
 
 for (const [name, [base, mutate, code]] of Object.entries(broken)) {

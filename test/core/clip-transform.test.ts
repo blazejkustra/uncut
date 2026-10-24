@@ -7,12 +7,28 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { baseBox, clipBox, EASES, fitRect, isPlainBox, keyAt, layout, loadModules, validateProject, visualsAt, type Item, type Project } from "../../packages/core/src/index.ts";
+import {
+  baseBox,
+  clipBox,
+  EASES,
+  fitRect,
+  isPlainBox,
+  keyAt,
+  layout,
+  loadModules,
+  validateProject,
+  visualsAt,
+  type Item,
+  type Project,
+} from "../../packages/core/src/index.ts";
 
 const canvas = { width: 1920, height: 1080 };
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
 const near = (got: { x: number; y: number; w: number; h: number }, want: { x: number; y: number; w: number; h: number }, what: string) =>
-  assert.ok(close(got.x, want.x) && close(got.y, want.y) && close(got.w, want.w) && close(got.h, want.h), `${what}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`);
+  assert.ok(
+    close(got.x, want.x) && close(got.y, want.y) && close(got.w, want.w) && close(got.h, want.h),
+    `${what}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`,
+  );
 const clip = (extra: Partial<Item> = {}): Item => ({ id: "c", type: "clip", media: "m", duration: 90, ...extra });
 
 test("no transform: the whole canvas, contain, scale 1 — the picture fitted as clips drew before D75", () => {
@@ -42,7 +58,11 @@ test("contain, cover and fill place a 4:3 picture in a 16:9 box", () => {
 
 test("one size given: the other from the media's aspect (else the canvas's); no x / y: centred", () => {
   near(baseBox({ transform: { x: 100, y: 200, w: 640 } }, canvas, { width: 800, height: 600 }), { x: 100, y: 200, w: 640, h: 480 }, "w only, 4:3 media");
-  near(baseBox({ transform: { h: 540 } }, canvas, { width: 1080, height: 1920 }), { x: (1920 - 303.75) / 2, y: 270, w: 303.75, h: 540 }, "h only, vertical media, centred");
+  near(
+    baseBox({ transform: { h: 540 } }, canvas, { width: 1080, height: 1920 }),
+    { x: (1920 - 303.75) / 2, y: 270, w: 303.75, h: 540 },
+    "h only, vertical media, centred",
+  );
   near(baseBox({ transform: { w: 960 } }, canvas, undefined), { x: 480, y: 270, w: 960, h: 540 }, "w only, no media size");
   near(baseBox({ transform: { fit: "cover" } }, canvas, { width: 640, height: 480 }), { x: 0, y: 0, w: 1920, h: 1080 }, "fit only");
   // A zero or negative size is ignored rather than drawing nothing.
@@ -110,7 +130,12 @@ const project = (items: Array<Item>): Project => ({
   ],
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 30, text: "Hi" }] },
-    { id: "pip", kind: "video", name: "PiP", items: [{ id: "s", type: "clip", media: "still", start: 0, duration: 60, transform: { x: 40, y: 40, w: 200, radius: 24, opacity: 0.5 } }] },
+    {
+      id: "pip",
+      kind: "video",
+      name: "PiP",
+      items: [{ id: "s", type: "clip", media: "still", start: 0, duration: 60, transform: { x: 40, y: 40, w: 200, radius: 24, opacity: 0.5 } }],
+    },
     { id: "main", kind: "video", role: "main", name: "Main", items },
   ],
 });
@@ -129,7 +154,17 @@ test("loop: a clip longer than its media starts the media over (from its beginni
 });
 
 test("visualsAt: clips carry their box, their opacity includes the box's; text and stills", () => {
-  const p = project([clip({ in: 0, duration: 60, transform: { opacity: 0.25 }, keys: [{ frame: 0, scale: 1 }, { frame: 60, scale: 2 }] })]);
+  const p = project([
+    clip({
+      in: 0,
+      duration: 60,
+      transform: { opacity: 0.25 },
+      keys: [
+        { frame: 0, scale: 1 },
+        { frame: 60, scale: 2 },
+      ],
+    }),
+  ]);
   const { starts } = layout(p);
   const at = visualsAt(p, starts, 30);
   const main = at.find((v) => v.item.id === "c")!;
@@ -147,13 +182,27 @@ test("visualsAt: clips carry their box, their opacity includes the box's; text a
 test("schema: loop on clips, transform.radius and typed keys validate; bad values don't", async () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
   const modules = await loadModules(join(root, "spec/modules/builtin"));
-  const good = project([clip({ in: 0, duration: 150, loop: true, transform: { x: 100, y: 200, w: 640, fit: "cover", radius: 12 }, keys: [{ frame: 0, scale: 1, ease: "inOut" }, { frame: 150, scale: 1.2, x: 300, opacity: 0.5 }] })]);
+  const good = project([
+    clip({
+      in: 0,
+      duration: 150,
+      loop: true,
+      transform: { x: 100, y: 200, w: 640, fit: "cover", radius: 12 },
+      keys: [
+        { frame: 0, scale: 1, ease: "inOut" },
+        { frame: 150, scale: 1.2, x: 300, opacity: 0.5 },
+      ],
+    }),
+  ]);
   assert.deepEqual(validateProject(good, modules), []);
   const bad = (set: Partial<Item>) => validateProject(project([clip({ in: 0, duration: 60, ...set })]), modules);
   assert.ok(bad({ keys: [{ frame: 0, opacity: 1.5 }] }).length > 0, "opacity key above 1");
   assert.ok(bad({ keys: [{ frame: 0, scale: 0 }] }).length > 0, "zero scale key");
   assert.ok(bad({ transform: { radius: -1 } }).length > 0, "negative radius");
-  assert.ok(bad({ keys: [{ frame: 61, x: 0 }] }).some((e) => e.code === "key-range"), "key past the end");
+  assert.ok(
+    bad({ keys: [{ frame: 61, x: 0 }] }).some((e) => e.code === "key-range"),
+    "key past the end",
+  );
   // Without loop, a clip can't run past its media.
   assert.ok(validateProject(project([clip({ in: 0, duration: 150 })]), modules).some((e) => e.code === "media-range"));
 });
@@ -162,7 +211,6 @@ test("schema: loop on clips, transform.radius and typed keys validate; bad value
 
 import { applyEdit, createSession, describeOp, type Op } from "../../packages/core/src/index.ts";
 import { clipState, keyState, planClipBox, planLoop, planResetBox, planToggleKey, resizeBox } from "../../apps/web/src/timeline/clip.ts";
-import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const apply = (p: Project, plan: { ops: ReadonlyArray<Op> } | { problem: string }) => {
@@ -197,7 +245,10 @@ test("planners: one edit per change with the whole box; keyed properties change 
   plan = planClipBox(p, "c", { scale: 1.5 }, 60);
   assert.ok("ops" in plan && plan.summary === "Zoom clip to 150% (key at 2.0 s)");
   p = apply(p, plan);
-  assert.deepEqual(mainClip(p).keys, [{ frame: 0, scale: 1 }, { frame: 60, scale: 1.5 }]);
+  assert.deepEqual(mainClip(p).keys, [
+    { frame: 0, scale: 1 },
+    { frame: 60, scale: 1.5 },
+  ]);
   assert.equal(mainClip(p).transform?.scale, undefined, "the transform's scale is untouched");
   assert.equal(clipState(p, "c", 30)!.box.scale, 1.25);
   assert.equal(keyState(mainClip(p), "scale", 60), "on");
@@ -209,7 +260,10 @@ test("planners: one edit per change with the whole box; keyed properties change 
   plan = planToggleKey(p, "c", "scale", 60);
   assert.ok("ops" in plan && plan.summary === "Remove scale key at 2.0 s");
   p = apply(p, plan);
-  assert.deepEqual(mainClip(p).keys, [{ frame: 0, scale: 1 }, { frame: 60, x: 40 }]);
+  assert.deepEqual(mainClip(p).keys, [
+    { frame: 0, scale: 1 },
+    { frame: 60, x: 40 },
+  ]);
   // Outside the clip: no key.
   assert.ok("problem" in planToggleKey(p, "c", "x", 200));
   // Reset: no transform, no keys.
@@ -238,8 +292,23 @@ test("corner handles: the opposite corner stays, the box keeps its shape unless 
 test("the edit log and the agent's docs say what a box, keys and loop do", () => {
   const p = project([clip({ in: 0, duration: 90 })]);
   const words = (op: Op) => describeOp(op, p);
-  assert.equal(words({ op: "update_item", item: "c", set: { transform: { x: 40, y: 0, w: 640, h: 360, fit: "cover", scale: 1.2, opacity: 0.5, radius: 12 } } }), "Moved M.mp4 (c) on the canvas to x 40, y 0, box 640×360, fit cover, scale 120%, opacity 50%, corners 12");
-  assert.equal(words({ op: "update_item", item: "c", set: { keys: [{ frame: 0, scale: 1 }, { frame: 60, scale: 1.2, x: 4 }] } }), "Keyframed M.mp4 (c): keys x at 2.0s; scale at 0.0s, 2.0s");
+  assert.equal(
+    words({ op: "update_item", item: "c", set: { transform: { x: 40, y: 0, w: 640, h: 360, fit: "cover", scale: 1.2, opacity: 0.5, radius: 12 } } }),
+    "Moved M.mp4 (c) on the canvas to x 40, y 0, box 640×360, fit cover, scale 120%, opacity 50%, corners 12",
+  );
+  assert.equal(
+    words({
+      op: "update_item",
+      item: "c",
+      set: {
+        keys: [
+          { frame: 0, scale: 1 },
+          { frame: 60, scale: 1.2, x: 4 },
+        ],
+      },
+    }),
+    "Keyframed M.mp4 (c): keys x at 2.0s; scale at 0.0s, 2.0s",
+  );
   assert.equal(words({ op: "update_item", item: "c", set: { transform: null, keys: null } }), "Restyled M.mp4 (c): position and size reset; no keys");
   assert.match(words({ op: "update_item", item: "c", set: { loop: true } }), /looped/);
   assert.match(AGENT_TEXT, /Clips \(video and stills\) draw in a box: transform \{x, y, w, h\}/);
@@ -249,19 +318,49 @@ test("the edit log and the agent's docs say what a box, keys and loop do", () =>
 });
 
 test("split and trims keep keyed values: a key on the cut, keys re-timed, none past the end", () => {
-  const p = project([clip({ in: 0, duration: 90, keys: [{ frame: 0, scale: 1 }, { frame: 89, scale: 1.89, x: 50 }] })]);
+  const p = project([
+    clip({
+      in: 0,
+      duration: 90,
+      keys: [
+        { frame: 0, scale: 1 },
+        { frame: 89, scale: 1.89, x: 50 },
+      ],
+    }),
+  ]);
   const split = apply(p, { ops: [{ op: "split_item", item: "c", at: 45, newId: "c2" }] });
   const [a, b] = split.tracks.find((t) => t.role === "main")!.items;
-  assert.deepEqual(a!.keys, [{ frame: 0, scale: 1 }, { frame: 45, scale: 1.45, x: 50 }]);
-  assert.deepEqual(b!.keys, [{ frame: 0, scale: 1.45, x: 50 }, { frame: 44, scale: 1.89, x: 50 }]);
+  assert.deepEqual(a!.keys, [
+    { frame: 0, scale: 1 },
+    { frame: 45, scale: 1.45, x: 50 },
+  ]);
+  assert.deepEqual(b!.keys, [
+    { frame: 0, scale: 1.45, x: 50 },
+    { frame: 44, scale: 1.89, x: 50 },
+  ]);
   const end = apply(p, { ops: [{ op: "trim_item", item: "c", edge: "end", frames: 30 }] });
-  assert.deepEqual(mainClip(end).keys, [{ frame: 0, scale: 1 }, { frame: 60, scale: 1.6, x: 50 }]);
+  assert.deepEqual(mainClip(end).keys, [
+    { frame: 0, scale: 1 },
+    { frame: 60, scale: 1.6, x: 50 },
+  ]);
   const start = apply(p, { ops: [{ op: "trim_item", item: "c", edge: "start", frames: 10 }] });
-  assert.deepEqual(mainClip(start).keys, [{ frame: 0, scale: 1.1, x: 50 }, { frame: 79, scale: 1.89, x: 50 }]);
+  assert.deepEqual(mainClip(start).keys, [
+    { frame: 0, scale: 1.1, x: 50 },
+    { frame: 79, scale: 1.89, x: 50 },
+  ]);
 });
 
 test("an eased segment split or trimmed keeps its motion frame for frame; extending the start adds no key; keyed edits stay on the clip", () => {
-  const kb = project([clip({ in: 0, duration: 100, keys: [{ frame: 0, scale: 1, ease: "inOut" }, { frame: 100, scale: 2 }] })]);
+  const kb = project([
+    clip({
+      in: 0,
+      duration: 100,
+      keys: [
+        { frame: 0, scale: 1, ease: "inOut" },
+        { frame: 100, scale: 2 },
+      ],
+    }),
+  ]);
   const original = mainClip(kb).keys;
   const split = apply(kb, { ops: [{ op: "split_item", item: "c", at: 25, newId: "c2" }] });
   const [a, b] = split.tracks.find((t) => t.role === "main")!.items;
@@ -272,11 +371,26 @@ test("an eased segment split or trimmed keeps its motion frame for frame; extend
   const trimmed = mainClip(apply(kb, { ops: [{ op: "trim_item", item: "c", edge: "start", frames: 25 }] })).keys;
   for (const f of [40, 60, 80]) assert.ok(Math.abs(keyAt(trimmed, "scale", f - 25)! - keyAt(original, "scale", f)!) < 1e-5, `trim, frame ${f}`);
   // Extending the start only shifts the keys.
-  const late = project([clip({ in: 100, duration: 100, keys: [{ frame: 10, scale: 1, ease: "inOut" }, { frame: 90, scale: 2 }] })]);
-  assert.deepEqual(mainClip(apply(late, { ops: [{ op: "trim_item", item: "c", edge: "start", frames: -20 }] })).keys, [{ frame: 30, scale: 1, ease: "inOut" }, { frame: 110, scale: 2 }]);
+  const late = project([
+    clip({
+      in: 100,
+      duration: 100,
+      keys: [
+        { frame: 10, scale: 1, ease: "inOut" },
+        { frame: 90, scale: 2 },
+      ],
+    }),
+  ]);
+  assert.deepEqual(mainClip(apply(late, { ops: [{ op: "trim_item", item: "c", edge: "start", frames: -20 }] })).keys, [
+    { frame: 30, scale: 1, ease: "inOut" },
+    { frame: 110, scale: 2 },
+  ]);
   // A keyed edit with the playhead past the clip goes on its last frame, never past its end.
   const keyed = project([clip({ in: 0, duration: 90, keys: [{ frame: 0, scale: 1 }] })]);
   const plan = planClipBox(keyed, "c", { scale: 1.5 }, 300);
   assert.ok("ops" in plan);
-  assert.deepEqual(mainClip(apply(keyed, plan)).keys, [{ frame: 0, scale: 1 }, { frame: 89, scale: 1.5 }]);
+  assert.deepEqual(mainClip(apply(keyed, plan)).keys, [
+    { frame: 0, scale: 1 },
+    { frame: 89, scale: 1.5 },
+  ]);
 });

@@ -11,7 +11,9 @@ const read = (): Readonly<Record<string, boolean>> => {
   try {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(KEY);
     const saved = raw === null ? {} : (JSON.parse(raw) as unknown);
-    return saved && typeof saved === "object" && !Array.isArray(saved) ? Object.fromEntries(Object.entries(saved).filter(([, v]) => typeof v === "boolean")) : {};
+    return saved && typeof saved === "object" && !Array.isArray(saved)
+      ? Object.fromEntries(Object.entries(saved).filter(([, v]) => typeof v === "boolean"))
+      : {};
   } catch {
     return {};
   }
@@ -21,7 +23,11 @@ let state = read();
 const listeners = new Set<() => void>();
 
 export const sectionOpen = (name: string) => state[name] ?? !CLOSED_BY_DEFAULT.includes(name);
-export const useSectionOpen = (name: string) => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => sectionOpen(name));
+export const useSectionOpen = (name: string) =>
+  useSyncExternalStore(
+    (l) => (listeners.add(l), () => void listeners.delete(l)),
+    () => sectionOpen(name),
+  );
 export function setSectionOpen(name: string, open: boolean) {
   state = { ...state, [name]: open };
   try {

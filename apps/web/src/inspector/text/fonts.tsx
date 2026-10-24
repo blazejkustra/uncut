@@ -101,13 +101,28 @@ export function FontPicker({ value, onPick, testId, disabled }: { value: string;
       </button>
       {open && (
         <Popover anchor={anchor.current} onClose={() => setOpen(false)} testId={`${testId}-popover`} width={260}>
-          <input className="field input ppop-search" data-testid={`${testId}-search`} placeholder="Search fonts" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => {
+          <input
+            className="field input ppop-search"
+            data-testid={`${testId}-search`}
+            placeholder="Search fonts"
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
               const first = [...list.special, ...list.rest][0];
               if (e.key === "Enter" && first !== undefined) pick(first);
-            }} />
+            }}
+          />
           <div className="font-list">
             {[...list.special, ...list.rest].map((f, i) => (
-              <button key={f || "default"} className={`font-opt ${f === value ? "active" : ""} ${i === list.special.length && list.special.length ? "sep" : ""}`} data-testid={`${testId}-option`} data-font={f} style={{ fontFamily: fontCss(f) }} onClick={() => pick(f)}>
+              <button
+                key={f || "default"}
+                className={`font-opt ${f === value ? "active" : ""} ${i === list.special.length && list.special.length ? "sep" : ""}`}
+                data-testid={`${testId}-option`}
+                data-font={f}
+                style={{ fontFamily: fontCss(f) }}
+                onClick={() => pick(f)}
+              >
                 {fontLabel(f)}
               </button>
             ))}

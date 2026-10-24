@@ -20,7 +20,12 @@ import { graphicMediaSource, type GraphicMediaSource } from "./graphicMedia.ts";
 import { Proxies } from "../media/proxies.ts";
 import { Projects } from "../project/projects.ts";
 
-const headers = { "access-control-allow-origin": "*", "access-control-expose-headers": "x-uncut-full", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+const headers = {
+  "access-control-allow-origin": "*",
+  "access-control-expose-headers": "x-uncut-full",
+  "cache-control": "no-store",
+  "x-content-type-options": "nosniff",
+};
 const failed = (status: number, message: string) => HttpServerResponse.text(message, { status, headers });
 
 /** How long the preview's source stays open with nothing asked of it (its decoders and cache go with it). */
@@ -32,7 +37,9 @@ export const PREVIEW_IDLE_MS = 60_000;
  * project is open, and after `idleMs` with nothing asked (never while a request is in flight).
  */
 export function previewSource(make: (dir: string, bin: string, media: () => ReadonlyArray<Media>) => Promise<GraphicMediaSource>, idleMs = PREVIEW_IDLE_MS) {
-  let source: { readonly dir: string; readonly bin: string; readonly media: { current: ReadonlyArray<Media> }; readonly src: Promise<GraphicMediaSource> } | undefined;
+  let source:
+    | { readonly dir: string; readonly bin: string; readonly media: { current: ReadonlyArray<Media> }; readonly src: Promise<GraphicMediaSource> }
+    | undefined;
   let inFlight = 0;
   let idle: NodeJS.Timeout | undefined;
   const close = () => {
@@ -40,7 +47,10 @@ export function previewSource(make: (dir: string, bin: string, media: () => Read
     idle = undefined;
     const gone = source;
     source = undefined;
-    void gone?.src.then((s) => s.close(), () => {});
+    void gone?.src.then(
+      (s) => s.close(),
+      () => {},
+    );
   };
   return {
     /** `ask` with the source for this project (made if need be). */
@@ -111,7 +121,14 @@ export const layer = Layer.unwrap(
         }
         const bin = yield* Effect.promise(ffmpeg);
         if (!bin) return failed(503, "ffmpeg isn't installed, so project media can't be drawn in graphics");
-        const got = yield* Effect.promise(() => preview.use(open.dir, bin, (open.project as Project).media, (src) => src.picture(ask)).then((p) => ({ p }), (error: Error) => ({ error: error.message })));
+        const got = yield* Effect.promise(() =>
+          preview
+            .use(open.dir, bin, (open.project as Project).media, (src) => src.picture(ask))
+            .then(
+              (p) => ({ p }),
+              (error: Error) => ({ error: error.message }),
+            ),
+        );
         if ("error" in got) return failed(404, got.error);
         // A proxy's picture: the size the graphic is shown it at (the exact one's), x-uncut-full: <w>x<h>.
         const full = got.p.full ? { "x-uncut-full": `${got.p.full.width}x${got.p.full.height}` } : {};

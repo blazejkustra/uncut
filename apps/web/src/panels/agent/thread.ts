@@ -2,7 +2,10 @@
 // hand-edit note's lines with media imports folded into one.
 
 /** The turns before the current chat's start (New chat) and the ones of the current chat, in order. */
-export function splitThread<T extends { readonly startedAt: string }>(turns: ReadonlyArray<T>, threadStart: string | undefined): { readonly earlier: ReadonlyArray<T>; readonly current: ReadonlyArray<T> } {
+export function splitThread<T extends { readonly startedAt: string }>(
+  turns: ReadonlyArray<T>,
+  threadStart: string | undefined,
+): { readonly earlier: ReadonlyArray<T>; readonly current: ReadonlyArray<T> } {
   const from = threadStart ? Date.parse(threadStart) : NaN;
   if (!Number.isFinite(from)) return { earlier: [], current: turns };
   const earlier: Array<T> = [];
@@ -12,7 +15,9 @@ export function splitThread<T extends { readonly startedAt: string }>(turns: Rea
 }
 
 /** One line of the hand-edit note as shown: a plain line, or the media imports folded into one. */
-export type NoteLine = { readonly kind: "line"; readonly text: string } | { readonly kind: "imports"; readonly text: string; readonly names: ReadonlyArray<string> };
+export type NoteLine =
+  | { readonly kind: "line"; readonly text: string }
+  | { readonly kind: "imports"; readonly text: string; readonly names: ReadonlyArray<string> };
 
 const IMPORT = /^Added media (.+)$/;
 
@@ -21,7 +26,10 @@ const IMPORT = /^Added media (.+)$/;
  * first of them was) that opens to the names. A single import stays as it was.
  */
 export function noteLines(note: string): ReadonlyArray<NoteLine> {
-  const lines = note.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+  const lines = note
+    .split("\n")
+    .filter((l) => l.startsWith("- "))
+    .map((l) => l.slice(2));
   const names = lines.flatMap((l) => {
     const m = IMPORT.exec(l);
     return m ? [m[1]!] : [];

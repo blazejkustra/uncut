@@ -53,5 +53,6 @@ console.log(`plugins: ${staged.bundled.length} bundled, ${staged.catalog.length}
 const electronDir = dir("../../node_modules/electron");
 createRequire(`${electronDir}/`)("electron");
 for (const file of ["LICENSE", "LICENSES.chromium.html"]) {
-  if (!existsSync(`${electronDir}/dist/${file}`)) throw new Error(`node_modules/electron/dist/${file} is missing: the app would ship without Electron's licences`);
+  if (!existsSync(`${electronDir}/dist/${file}`))
+    throw new Error(`node_modules/electron/dist/${file} is missing: the app would ship without Electron's licences`);
 }

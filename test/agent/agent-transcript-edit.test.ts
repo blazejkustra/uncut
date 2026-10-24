@@ -28,7 +28,12 @@ const which = (name: string) => {
 };
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
-const skip = !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) ? "server bundle or media core not built (run pnpm build)" : !FFMPEG || !FFPROBE ? "ffmpeg isn't installed" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA)
+    ? "server bundle or media core not built (run pnpm build)"
+    : !FFMPEG || !FFPROBE
+      ? "ffmpeg isn't installed"
+      : false;
 
 // Words on round frames at 30 fps (the same as test/core/text-cut.test.ts).
 const WORDS = [
@@ -41,7 +46,15 @@ const WORDS = [
   { text: "Second", start: 4.0, end: 4.5, p: 0.9 },
   { text: "part", start: 4.6, end: 5.0, p: 0.9 },
 ];
-const TRANSCRIPT = { hasAudio: true, seconds: 6, language: "en", requestedLanguage: "auto", model: "base", segments: [{ start: 0.5, end: 5, text: "Hello um this is a test. Second part", words: [0, 8] }], words: WORDS };
+const TRANSCRIPT = {
+  hasAudio: true,
+  seconds: 6,
+  language: "en",
+  requestedLanguage: "auto",
+  model: "base",
+  segments: [{ start: 0.5, end: 5, text: "Hello um this is a test. Second part", words: [0, 8] }],
+  words: WORDS,
+};
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type Client = Awaited<ReturnType<typeof connect>>;
@@ -63,7 +76,12 @@ async function ask(prompt: string, steps: Array<unknown>) {
   const { turnId } = await client.ok("agent.send", { prompt });
   await agent.until((s) => s?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 120000);
   const turn = agent.values.at(-1).turns.find((t: any) => t.id === turnId);
-  const results = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).slice(before).map((l) => JSON.parse(l).result as { isError?: boolean; content: Content });
+  const results = readFileSync(resultLog(), "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .slice(before)
+    .map((l) => JSON.parse(l).result as { isError?: boolean; content: Content });
   return { turn, results };
 }
 const textOf = (r: { content: Content }) => r.content.find((c) => c.type === "text")!.text!;
@@ -77,7 +95,26 @@ before(async () => {
   const footage = join(root, "Footage");
   mkdirSync(footage);
   for (const name of ["Talk", "Other"]) {
-    ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi", "-i", `sine=frequency=${name === "Talk" ? 300 : 500}:sample_rate=48000`, "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(footage, `${name}.mp4`));
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=30",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=${name === "Talk" ? 300 : 500}:sample_rate=48000`,
+      "-t",
+      "6",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+      join(footage, `${name}.mp4`),
+    );
   }
   ff("-f", "lavfi", "-i", "color=red:size=64x64", "-frames:v", "1", join(footage, "Card.png"));
   // PATH: ffmpeg, ffprobe and node (the fake claude's runtime), and no whisper-cli.
@@ -107,7 +144,14 @@ before(async () => {
   const { turn } = await ask("import the talk and put it on the timeline", [
     { tool: "media_import", args: { path: footage } },
     { tool: "project_read", args: {} },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add the talk", ops: [{ op: "insert_item", track: "main", item: { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 180 } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Add the talk",
+        ops: [{ op: "insert_item", track: "main", item: { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 180 } }],
+      },
+    },
   ]);
   assert.equal(turn.status, "done", turn.error);
   await writeCached(dir, await fingerprint(join(footage, "Talk.mp4")), "transcript", TRANSCRIPT);
@@ -143,12 +187,23 @@ test("transcript_edit: dryRun changes nothing; applying cuts words and pauses as
 
   const applied = jsonOf(results[1]!);
   assert.equal(applied.applied, true, textOf(results[1]!));
-  assert.deepEqual(applied.removed.map((r: any) => [r.text, r.mediaFrames.start, r.mediaFrames.end, r.pauses ?? 0]), [["(pause)", 0, 13, 1], ["um", 36, 45, 0], ["(pause)", 95, 118, 1], ["(pause)", 155, 180, 1]]);
+  assert.deepEqual(
+    applied.removed.map((r: any) => [r.text, r.mediaFrames.start, r.mediaFrames.end, r.pauses ?? 0]),
+    [
+      ["(pause)", 0, 13, 1],
+      ["um", 36, 45, 0],
+      ["(pause)", 95, 118, 1],
+      ["(pause)", 155, 180, 1],
+    ],
+  );
   // 5 frames stay after a kept word, 2 before one (D74).
   assert.equal(applied.framesRemoved, 13 + 9 + 23 + 25);
   assert.deepEqual([applied.durationBefore, applied.duration, applied.seconds], [180, 110, 3.67]);
   // transcript_edit ran the loudness pass for the silences (D74); the tone has none, so whisper's edges stand.
-  const cached = (readdirSync(join(dir, ".cache", "analysis"), { recursive: true }) as Array<string>).filter((f) => f.endsWith(".json")).map((f) => f.replace(/^[0-9a-f]{32}\//, "")).sort();
+  const cached = (readdirSync(join(dir, ".cache", "analysis"), { recursive: true }) as Array<string>)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => f.replace(/^[0-9a-f]{32}\//, ""))
+    .sort();
   assert.ok(cached.includes("loudness.json"), JSON.stringify(cached));
   assert.equal(applied.revision, start.revision + 1);
   assert.match(applied.note, /Undo turn reverts it/);
@@ -160,10 +215,19 @@ test("transcript_edit: dryRun changes nothing; applying cuts words and pauses as
 
   const after = await client.ok("project.get", {});
   assert.equal(after.revision, start.revision + 1, "one edit");
-  assert.deepEqual(mainOf(after), [["clip-1", "m-talk", 13, 23], ["clip-2", "m-talk", 45, 50], ["clip-3", "m-talk", 118, 37]]);
+  assert.deepEqual(mainOf(after), [
+    ["clip-1", "m-talk", 13, 23],
+    ["clip-2", "m-talk", 45, 50],
+    ["clip-3", "m-talk", 118, 37],
+  ]);
   assert.equal(turn.edits.length, 1);
   assert.equal(turn.edits[0].summary, "Cut 1 word and 3 pauses (2.3 s)");
-  assert.deepEqual(turn.edits[0].lines, ["Removed a pause (0.4 s) from clip-1", 'Cut "um" (0.3 s) from clip-1', "Removed a pause (0.8 s) from clip-1", "Removed a pause (0.8 s) from clip-1"]);
+  assert.deepEqual(turn.edits[0].lines, [
+    "Removed a pause (0.4 s) from clip-1",
+    'Cut "um" (0.3 s) from clip-1',
+    "Removed a pause (0.8 s) from clip-1",
+    "Removed a pause (0.8 s) from clip-1",
+  ]);
 
   const undone = await client.ok("agent.undoTurn", { turnId: turn.id });
   assert.deepEqual(mainOf(undone), [["clip-1", "m-talk", 0, 180]]);
@@ -179,7 +243,10 @@ test("transcript_edit refusals: nothing asked, bad word ids, a still image, no t
     { tool: "transcript_edit", args: { pauses: { min: 0 } } },
   ]);
   assert.equal(turn.status, "done", turn.error);
-  assert.ok(results.every((r) => r.isError), JSON.stringify(results.map((r) => r.isError)));
+  assert.ok(
+    results.every((r) => r.isError),
+    JSON.stringify(results.map((r) => r.isError)),
+  );
   assert.match(textOf(results[0]!), /Say what to cut/);
   assert.match(textOf(results[1]!), /word ids like "w12"/);
   assert.match(textOf(results[2]!), /there's no w99/);

@@ -3,7 +3,17 @@ import { rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 import type { ExportJob } from "@uncut/contracts";
-import { denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, writeSubtitles, type Media, type Project, type SpeechEnvelope } from "@uncut/core";
+import {
+  denoiseMediaIds,
+  duckMediaIds,
+  flattenCues,
+  subtitleCues,
+  subtitleFormatOf,
+  writeSubtitles,
+  type Media,
+  type Project,
+  type SpeechEnvelope,
+} from "@uncut/core";
 
 import { shadeLayers } from "../shaderPass.ts";
 import { exportCommand, planLoudness, RASTER_CSS, graphFileArgs, hardwareEncoderFailed, usesHardware, silentFailure, type ExportPlan } from "../exportPlan.ts";
@@ -45,7 +55,17 @@ export interface RunJobCtx {
 
 export const makeRunJob = (ctx: RunJobCtx) => {
   const { patch, ffmpegBin, missingMedia, duckEnvelopes } = ctx;
-  const runJob = async (job: ExportJob, planned: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal, replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string }, cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>, css: string = RASTER_CSS) => {
+  const runJob = async (
+    job: ExportJob,
+    planned: ExportPlan,
+    project: Project,
+    mediaPath: (m: Media) => string,
+    overwrite: boolean,
+    signal: AbortSignal,
+    replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string },
+    cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>,
+    css: string = RASTER_CSS,
+  ) => {
     let plan = planned;
     const started = Date.now();
     let temp: string | undefined;
@@ -88,7 +108,9 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       rasterizer = await startRasterizer(command, undefined, { media: graphicMedia.file });
       const onAbort = () => void rasterizer?.close();
       signal.addEventListener("abort", onAbort, { once: true });
-      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css, { bin, major: caps.major }, (done, total) => step("graphics", done, total));
+      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css, { bin, major: caps.major }, (done, total) =>
+        step("graphics", done, total),
+      );
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
       const untagged = await untaggedFiles(bin, plan, signal);
       stage = "shader";
@@ -128,14 +150,39 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       const total = plan.frames / plan.fps;
       const graphFile = join(temp, "graph.txt");
       const encode = async (choice: typeof video) => {
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: choice, loudnorm, loudness, output: partial, subtitles, luts, shaded });
+        const cmd = exportCommand(plan, {
+          untagged,
+          background,
+          rasters,
+          caps,
+          quality: job.quality,
+          video: choice,
+          loudnorm,
+          loudness,
+          output: partial,
+          subtitles,
+          luts,
+          shaded,
+        });
         await writeFile(graphFile, cmd.graph);
         const renderStart = Date.now();
         patch(job.id, { phase: "rendering", progress: 0 });
         let lastPatch = 0;
         return run(
           bin,
-          ["-hide_banner", "-nostdin", "-y", "-nostats", "-progress", "pipe:1", "-stats_period", "0.25", ...cmd.inputs, ...graphFileArgs(caps, graphFile), ...cmd.outputArgs],
+          [
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-stats_period",
+            "0.25",
+            ...cmd.inputs,
+            ...graphFileArgs(caps, graphFile),
+            ...cmd.outputArgs,
+          ],
           signal,
           (line) => {
             const m = /^out_time_us=(\d+)/.exec(line);
@@ -156,7 +203,10 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       // D212: VideoToolbox can be listed and still refuse (no constant-quality mode on an Intel Mac,
       // no free hardware session): the same export again with the software encoder.
       if (r.code !== 0 && !signal.aborted && hardware && hardwareEncoderFailed(r.stderr)) {
-        patch(job.id, { encoder: "software", warnings: [...(plan.warnings ?? []), "The hardware encoder failed on this Mac, so the software one made the video."] });
+        patch(job.id, {
+          encoder: "software",
+          warnings: [...(plan.warnings ?? []), "The hardware encoder failed on this Mac, so the software one made the video."],
+        });
         usedEncoder = "software";
         r = await encode({ ...video, encoder: "software" });
       }
@@ -167,13 +217,16 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       stage = "move";
       if (!job.output) throw new Error("no output");
       // The destination may have appeared while rendering; replace it only if allowed.
-      if (!overwrite && (await exists(job.output))) throw new Error(`${basename(job.output)} appeared in that folder while exporting; the export wasn't moved there.`);
-      if (await replacesMedia(job.output, plan)) throw new Error(`Saving as ${basename(job.output)} would replace footage this project uses. Choose another name or folder.`);
+      if (!overwrite && (await exists(job.output)))
+        throw new Error(`${basename(job.output)} appeared in that folder while exporting; the export wasn't moved there.`);
+      if (await replacesMedia(job.output, plan))
+        throw new Error(`Saving as ${basename(job.output)} would replace footage this project uses. Choose another name or folder.`);
       if (job.subtitlesFile) {
         const imported = await overwritesImported(job.projectDir, job.subtitlesFile);
         if (imported) throw new Error(imported);
       }
-      if (job.subtitlesFile && !overwrite && (await exists(job.subtitlesFile))) throw new Error(`${basename(job.subtitlesFile)} appeared in that folder while exporting; the export wasn't moved there.`);
+      if (job.subtitlesFile && !overwrite && (await exists(job.subtitlesFile)))
+        throw new Error(`${basename(job.subtitlesFile)} appeared in that folder while exporting; the export wasn't moved there.`);
       let sidecar: string | undefined;
       if (job.subtitlesFile) {
         sidecar = join(temp, basename(job.subtitlesFile));
@@ -188,10 +241,20 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       end = { phase: "done", progress: 1, etaSeconds: 0 };
     } catch (error) {
       const cancelled = error instanceof Cancelled || signal.aborted;
-      end = cancelled ? { phase: "cancelled" } : { phase: "failed", error: (error as NodeJS.ErrnoException)?.code ? plainFsError(error, "the temp folder") : (error as Error)?.message || "The export stopped unexpectedly." };
+      end = cancelled
+        ? { phase: "cancelled" }
+        : {
+            phase: "failed",
+            error: (error as NodeJS.ErrnoException)?.code
+              ? plainFsError(error, "the temp folder")
+              : (error as Error)?.message || "The export stopped unexpectedly.",
+          };
       // A failure is logged with where it stopped (the app's log), the stack included, so it can be
       // looked into after the dialog is closed; UNCUT_KEEP_EXPORT_TEMP=1 keeps the work folder too.
-      if (!cancelled) console.error(`[uncut] export ${job.id} failed at ${stage}${temp ? ` (work folder ${temp}${keepTemp ? ", kept" : ""})` : ""}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+      if (!cancelled)
+        console.error(
+          `[uncut] export ${job.id} failed at ${stage}${temp ? ` (work folder ${temp}${keepTemp ? ", kept" : ""})` : ""}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+        );
     } finally {
       // Everything it started and wrote is gone before the job says it's over.
       await rasterizer?.close().catch(() => {});

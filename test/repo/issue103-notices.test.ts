@@ -13,7 +13,8 @@ test("the npm list is what the bundles hold, devDependencies that get bundled in
   const names = (await npmPackages()).map((p) => p.name);
   for (const n of ["effect", "react", "react-dom", "ws", "@opentelemetry/sdk-logs"]) assert.ok(names.includes(n), n);
   // Bundled into the desktop's main once the updater exists (#102).
-  if (readFileSync("apps/desktop/package.json", "utf8").includes("electron-updater")) for (const n of ["electron-updater", "builder-util-runtime", "js-yaml", "lazy-val"]) assert.ok(names.includes(n), n);
+  if (readFileSync("apps/desktop/package.json", "utf8").includes("electron-updater"))
+    for (const n of ["electron-updater", "builder-util-runtime", "js-yaml", "lazy-val"]) assert.ok(names.includes(n), n);
   // Build tools are not in the app.
   for (const n of ["esbuild", "vite", "electron-builder", "typescript"]) assert.ok(!names.includes(n), n);
   for (const p of await npmPackages()) assert.ok(!isConcerning(p.license), `${p.name}: ${p.license}`);

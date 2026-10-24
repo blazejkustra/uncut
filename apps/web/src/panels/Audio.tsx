@@ -24,7 +24,13 @@ export function AudioLibrary({ project }: { project: Project }) {
         Audio
         <span className="lib-head-actions">
           <CopyCredits project={project} />
-          <button className="icon-btn" data-testid="audio-import" disabled={!online} title="Import music into the project (it shows in Media)" onClick={() => void actions.importMedia()}>
+          <button
+            className="icon-btn"
+            data-testid="audio-import"
+            disabled={!online}
+            title="Import music into the project (it shows in Media)"
+            onClick={() => void actions.importMedia()}
+          >
             {importing ? <RefreshCw className="spin" /> : <Plus />}
           </button>
         </span>
@@ -61,7 +67,11 @@ function CopyCredits({ project }: { project: Project }) {
       className={`icon-btn${copied ? " done" : ""}`}
       data-testid="copy-credits"
       data-attribution={credits.attribution.length}
-      title={credits.attribution.length ? `Copy credits (${credits.attribution.length} need${credits.attribution.length === 1 ? "s" : ""} attribution)` : "Copy credits"}
+      title={
+        credits.attribution.length
+          ? `Copy credits (${credits.attribution.length} need${credits.attribution.length === 1 ? "s" : ""} attribution)`
+          : "Copy credits"
+      }
       onClick={async (e) => {
         e.currentTarget.blur();
         await bridge.copyText(creditsText(project));

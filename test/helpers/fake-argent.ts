@@ -31,8 +31,13 @@ const argv = process.argv.slice(2);
 const logFile = process.env.FAKE_ARGENT_LOG;
 const stateDir = process.env.FAKE_ARGENT_STATE ?? (logFile ? join(dirname(logFile), "fake-argent-state") : join(process.cwd(), ".fake-argent-state"));
 const FORBIDDEN = /^(server|stop-all-simulator-servers|stop-simulator-server|shutdown|kill|reset|uninstall|remove|update|init|install)$/;
-const forbidden = argv[0] === "server" || (argv[0] === "run" && FORBIDDEN.test(argv[1] ?? "")) || (argv[0] !== "run" && argv[0] !== "flow" && FORBIDDEN.test(argv[0] ?? ""));
-if (logFile) appendFileSync(logFile, `${JSON.stringify({ argv, cwd: process.cwd(), pid: process.pid, at: Date.now(), ...(forbidden ? { forbidden: true } : {}), ...(argv[0] === "run" && argv[1] === "boot-device" ? { boot: true } : {}) })}\n`);
+const forbidden =
+  argv[0] === "server" || (argv[0] === "run" && FORBIDDEN.test(argv[1] ?? "")) || (argv[0] !== "run" && argv[0] !== "flow" && FORBIDDEN.test(argv[0] ?? ""));
+if (logFile)
+  appendFileSync(
+    logFile,
+    `${JSON.stringify({ argv, cwd: process.cwd(), pid: process.pid, at: Date.now(), ...(forbidden ? { forbidden: true } : {}), ...(argv[0] === "run" && argv[1] === "boot-device" ? { boot: true } : {}) })}\n`,
+  );
 
 const fail = (message: string, code = 1): never => {
   process.stderr.write(`${message}\n`);
@@ -60,7 +65,17 @@ const control = (name: string) => {
 
 const DEFAULT_DEVICES = [
   { platform: "ios", udid: "SIM-IPHONE-16", name: "iPhone 16", state: "Booted", runtime: "com.apple.CoreSimulator.SimRuntime.iOS-18-2", runtimeKind: "mobile" },
-  { platform: "android", serial: "emulator-5554", state: "device", isEmulator: true, kind: "emulator", model: "sdk_gphone64_arm64", avdName: "Pixel_8_API_35", sdkLevel: 35, runtimeKind: "mobile" },
+  {
+    platform: "android",
+    serial: "emulator-5554",
+    state: "device",
+    isEmulator: true,
+    kind: "emulator",
+    model: "sdk_gphone64_arm64",
+    avdName: "Pixel_8_API_35",
+    sdkLevel: 35,
+    runtimeKind: "mobile",
+  },
   { platform: "ios", udid: "SIM-IPAD-OFF", name: "iPad Air", state: "Shutdown", runtime: "com.apple.CoreSimulator.SimRuntime.iOS-18-2", runtimeKind: "mobile" },
   { platform: "ios", udid: "SIM-APPLE-TV", name: "Apple TV", state: "Booted", runtime: "com.apple.CoreSimulator.SimRuntime.tvOS-18-2", runtimeKind: "tv" },
   { platform: "chromium", id: "chromium-cdp-9222", port: 9222, title: "Docs", url: "https://example.com", browser: "Chrome/140", state: "Running" },
@@ -73,13 +88,24 @@ const DEFAULT_AVDS = [
 ];
 const bootedFile = () => join(stateDir, "booted.json");
 /** What boot-device changed: simulators now booted, emulators started for AVDs. */
-const booted = (): { udids: Array<string>; emulators: Array<{ serial: string; avdName: string }> } => (existsSync(bootedFile()) ? JSON.parse(readFileSync(bootedFile(), "utf8")) : { udids: [], emulators: [] });
+const booted = (): { udids: Array<string>; emulators: Array<{ serial: string; avdName: string }> } =>
+  existsSync(bootedFile()) ? JSON.parse(readFileSync(bootedFile(), "utf8")) : { udids: [], emulators: [] };
 const devices = (): Array<Record<string, unknown>> => {
   const b = booted();
   const base = (process.env.FAKE_ARGENT_DEVICES ? JSON.parse(process.env.FAKE_ARGENT_DEVICES) : DEFAULT_DEVICES) as Array<Record<string, unknown>>;
   return [
     ...base.map((d) => (typeof d.udid === "string" && b.udids.includes(d.udid) ? { ...d, state: "Booted" } : d)),
-    ...b.emulators.map((e) => ({ platform: "android", serial: e.serial, state: "device", isEmulator: true, kind: "emulator", model: "sdk_gphone64_arm64", avdName: e.avdName, sdkLevel: 35, runtimeKind: "mobile" })),
+    ...b.emulators.map((e) => ({
+      platform: "android",
+      serial: e.serial,
+      state: "device",
+      isEmulator: true,
+      kind: "emulator",
+      model: "sdk_gphone64_arm64",
+      avdName: e.avdName,
+      sdkLevel: 35,
+      runtimeKind: "mobile",
+    })),
   ];
 };
 const isBooted = (id: string) => devices().some((d) => (d.udid === id || d.serial === id) && (d.state === "Booted" || d.state === "device"));
@@ -89,7 +115,8 @@ async function main() {
   if (argv[0] === "--version" || argv[0] === "-v") return void process.stdout.write(`${process.env.FAKE_ARGENT_VERSION ?? "0.28.0"}\n`);
   if (argv[0] === "run") {
     const tool = argv[1];
-    if (tool === "list-devices") return print({ devices: devices(), avds: process.env.FAKE_ARGENT_AVDS ? JSON.parse(process.env.FAKE_ARGENT_AVDS) : DEFAULT_AVDS });
+    if (tool === "list-devices")
+      return print({ devices: devices(), avds: process.env.FAKE_ARGENT_AVDS ? JSON.parse(process.env.FAKE_ARGENT_AVDS) : DEFAULT_AVDS });
     mkdirSync(stateDir, { recursive: true });
     if (tool === "boot-device") {
       const p = payload();
@@ -117,7 +144,8 @@ async function main() {
       const udid = String(p.udid ?? "");
       if (!isBooted(udid)) return fail(`${udid} is not booted`);
       if (tool === "rotate") {
-        if (!["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"].includes(String(p.orientation))) return fail(`orientation ${p.orientation} is not valid`, 2);
+        if (!["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"].includes(String(p.orientation)))
+          return fail(`orientation ${p.orientation} is not valid`, 2);
         return print({ orientation: p.orientation });
       }
       if (!p.bundleId) return fail("bundleId is required", 2);
@@ -131,7 +159,16 @@ async function main() {
       const file = join(stateDir, `${encodeURIComponent(udid)}.json`);
       if (existsSync(file)) return fail(`A recording is already running on ${udid}`);
       if (!isBooted(udid)) return fail(`${udid} is not booted`);
-      writeFileSync(file, JSON.stringify({ udid, startedAt: Date.now(), timeLimitSeconds: p.timeLimitSeconds ?? 180, trimStatic: p.trimStatic ?? true, showTouches: p.showTouches ?? true }));
+      writeFileSync(
+        file,
+        JSON.stringify({
+          udid,
+          startedAt: Date.now(),
+          timeLimitSeconds: p.timeLimitSeconds ?? 180,
+          trimStatic: p.trimStatic ?? true,
+          showTouches: p.showTouches ?? true,
+        }),
+      );
       if (control("start-delay")) await sleep(control("start-delay"));
       return print({ udid, started: true, timeLimitSeconds: p.timeLimitSeconds ?? 180 });
     }
@@ -151,7 +188,24 @@ async function main() {
       const seconds = Math.max(0.5, Math.min(state.timeLimitSeconds, (Date.now() - state.startedAt) / 1000));
       const out = join(process.cwd(), ".argent", "recordings", `screen-recording-${udid}-${Date.now()}.mp4`);
       mkdirSync(dirname(out), { recursive: true });
-      const ffmpeg = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=180x320:rate=30", "-t", seconds.toFixed(2), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", out]);
+      const ffmpeg = spawnSync("ffmpeg", [
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=180x320:rate=30",
+        "-t",
+        seconds.toFixed(2),
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        out,
+      ]);
       if (ffmpeg.status !== 0) return fail(`ffmpeg failed: ${ffmpeg.stderr}`);
       if (logFile) appendFileSync(logFile, `${JSON.stringify({ argv, completed: "screen-recording-stop", pid: process.pid, at: Date.now() })}\n`);
       return print({ video: out, durationMs: Math.round(seconds * 1000) });

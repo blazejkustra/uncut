@@ -36,7 +36,14 @@ export function ScoreBars({ review }: { review: Review }) {
         const bar = level === "optional" ? OPTIONAL_BAR : REQUIRED_BAR;
         const ev = review.evidence?.[k];
         return (
-          <div key={k} className={`score ${v >= bar ? "ok" : "low"} ${level}`} data-testid="agent-review-score" data-score={k} data-value={v} data-applies={level}>
+          <div
+            key={k}
+            className={`score ${v >= bar ? "ok" : "low"} ${level}`}
+            data-testid="agent-review-score"
+            data-score={k}
+            data-value={v}
+            data-applies={level}
+          >
             <span className="score-name">
               {SCORE_NAMES[k]}
               {level === "optional" && <span className="muted"> (optional)</span>}
@@ -94,10 +101,17 @@ export function ReviewBody({ review, intended, online }: { review: Review; inten
   const type = isVideoType(review.videoType) ? VIDEO_TYPE_NAMES[review.videoType] : undefined;
   return (
     <>
-      <div className="review-by small muted" data-testid="agent-review-by" data-by={review.by ?? "agent"} title={review.by === "critic" ? "A separate Claude that sees only the frames, the brief, the kit and the storyboard" : undefined}>
+      <div
+        className="review-by small muted"
+        data-testid="agent-review-by"
+        data-by={review.by ?? "agent"}
+        title={review.by === "critic" ? "A separate Claude that sees only the frames, the brief, the kit and the storyboard" : undefined}
+      >
         {review.by === "critic" ? "Independent critic" : "Self-scored"}
         {type && <span data-testid="agent-review-type">, judged as {type.toLowerCase()}</span>}
-        {review.intended ? <span data-testid="agent-review-left-out">, {review.intended === 1 ? "1 finding" : `${review.intended} findings`} you marked Intended left out</span> : null}
+        {review.intended ? (
+          <span data-testid="agent-review-left-out">, {review.intended === 1 ? "1 finding" : `${review.intended} findings`} you marked Intended left out</span>
+        ) : null}
       </div>
       {review.error && <div className="small err">{review.error}</div>}
       {blockers.length > 0 && (
@@ -105,7 +119,14 @@ export function ReviewBody({ review, intended, online }: { review: Review; inten
           {blockers.map((b, i) => {
             const marked = isIntended(b, intended);
             return (
-              <div key={i} className={`blocker ${marked ? "marked" : ""}`} data-testid="agent-review-blocker" data-kind={b.kind} data-source={b.source} data-intended={marked}>
+              <div
+                key={i}
+                className={`blocker ${marked ? "marked" : ""}`}
+                data-testid="agent-review-blocker"
+                data-kind={b.kind}
+                data-source={b.source}
+                data-intended={marked}
+              >
                 <span className="blocker-kind">{BLOCKER_NAMES[b.kind] ?? b.kind}</span>
                 {b.at !== undefined && <span className="defect-at">{seconds(b.at)}</span>}
                 <span className="grow">
@@ -137,7 +158,15 @@ export function ReviewBody({ review, intended, online }: { review: Review; inten
           {review.defects.map((d, i) => {
             const marked = isIntended(d, intended);
             return (
-              <div key={i} className={`defect ${marked ? "marked" : ""}`} data-testid="agent-review-defect" data-kind={d.kind} data-source={d.source} data-rule={d.rule} data-intended={marked}>
+              <div
+                key={i}
+                className={`defect ${marked ? "marked" : ""}`}
+                data-testid="agent-review-defect"
+                data-kind={d.kind}
+                data-source={d.source}
+                data-rule={d.rule}
+                data-intended={marked}
+              >
                 <span className="defect-at">{seconds(d.at)}</span>
                 <span className="grow">
                   {d.what}
@@ -153,7 +182,9 @@ export function ReviewBody({ review, intended, online }: { review: Review; inten
       {review.notes && review.by === "critic" && <div className="small">{review.notes}</div>}
       {review.determinism && review.determinism.checked.length > 0 && (
         <div className="small muted" data-testid="agent-review-determinism">
-          {review.determinism.differed.length ? `Drew differently twice: ${review.determinism.differed.join(", ")}` : `${review.determinism.checked.length === 1 ? "1 graphic" : `${review.determinism.checked.length} graphics`} drew the same twice`}
+          {review.determinism.differed.length
+            ? `Drew differently twice: ${review.determinism.differed.join(", ")}`
+            : `${review.determinism.checked.length === 1 ? "1 graphic" : `${review.determinism.checked.length} graphics`} drew the same twice`}
         </div>
       )}
     </>

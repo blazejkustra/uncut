@@ -64,11 +64,16 @@ const ov = (title: string, license: "cc0" | "by", ms: number, tags: Array<string
   tags: tags.map((name) => ({ name })),
   attribution: "",
 });
-const library = (dataDir = join(root, "data")) => soundLibrary({ sfxDir: "assets/sfx", dataDir, freesoundKey: async () => "k", probeSeconds: async () => 1.25 });
+const library = (dataDir = join(root, "data")) =>
+  soundLibrary({ sfxDir: "assets/sfx", dataDir, freesoundKey: async () => "k", probeSeconds: async () => 1.25 });
 
 test("a meme name searches for its free sound-alikes, says it's a clip, and ranks the answers", async () => {
   queries = [];
-  answer = () => [ov("Forest birds", "cc0", 60000), ov("frustrated yell take 2", "by", 3000, ["yell"]), ov("vocals frustrated yell", "cc0", 3200, ["yell", "frustrated"])];
+  answer = () => [
+    ov("Forest birds", "cc0", 60000),
+    ov("frustrated yell take 2", "by", 3000, ["yell"]),
+    ov("vocals frustrated yell", "cc0", 3200, ["yell", "frustrated"]),
+  ];
   const lib = library();
   const r = await lib.search({ kind: "sfx", query: "Faaahh" });
   assert.equal(queries.length, 1);
@@ -76,7 +81,11 @@ test("a meme name searches for its free sound-alikes, says it's a clip, and rank
   assert.equal(r.searched, "frustrated yell");
   assert.equal(r.alias, "Fahh");
   assert.match(r.note!, /isn't free to use: these are free sound-alikes/);
-  assert.deepEqual(r.hits.map((h) => h.title), ["vocals frustrated yell", "frustrated yell take 2", "Forest birds"], "match, then CC0, unrelated last");
+  assert.deepEqual(
+    r.hits.map((h) => h.title),
+    ["vocals frustrated yell", "frustrated yell take 2", "Forest birds"],
+    "match, then CC0, unrelated last",
+  );
   // A plain search: sent as typed, no note.
   const plain = await lib.search({ kind: "sfx", query: "whoosh" });
   assert.equal(queries.at(-1)!.get("q"), "whoosh");
@@ -88,7 +97,10 @@ test("nothing found: one variant is tried (held letters written twice), and said
   queries = [];
   answer = (q) => (q.get("q") === "whoosh" ? [ov("Whoosh", "cc0", 900, ["whoosh"])] : []);
   const r = await library().search({ kind: "sfx", query: "whoooooosh" });
-  assert.deepEqual(queries.map((q) => q.get("q")), ["whoooooosh", "whoosh"]);
+  assert.deepEqual(
+    queries.map((q) => q.get("q")),
+    ["whoooooosh", "whoosh"],
+  );
   assert.equal(r.searched, "whoosh");
   assert.equal(r.hits.length, 1);
   // Found nothing either way: only the two requests, an empty answer.
@@ -144,7 +156,10 @@ test("sound folders: added, indexed, kept, resolved only inside, added to a proj
   // Kept across a restart; ids stable.
   const again = soundFolders({ dataDir: data });
   const relisted = await again.list();
-  assert.deepEqual(relisted.map((x) => x.sounds.map((s) => s.id).sort()), [f.sounds.map((s) => s.id).sort()]);
+  assert.deepEqual(
+    relisted.map((x) => x.sounds.map((s) => s.id).sort()),
+    [f.sounds.map((s) => s.id).sort()],
+  );
   // Resolved by id only, and only while inside the folder.
   const meme = f.sounds.find((s) => s.ext === "wav")!;
   assert.equal((await again.resolve(meme.id))!.path, join(sounds, "memes", "FAHHH meme.wav"));

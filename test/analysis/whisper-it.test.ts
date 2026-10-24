@@ -23,7 +23,14 @@ const which = (name: string) => {
 };
 const WHISPER = which("whisper-cli");
 const FFMPEG = which("ffmpeg");
-const skip = process.env.UNCUT_WHISPER_IT !== "1" ? "set UNCUT_WHISPER_IT=1 to run (real whisper-cli, downloads ggml-tiny.en.bin once)" : !WHISPER ? "whisper-cli isn't installed (brew install whisper-cpp)" : !FFMPEG || !which("say") ? "needs ffmpeg and macOS say" : false;
+const skip =
+  process.env.UNCUT_WHISPER_IT !== "1"
+    ? "set UNCUT_WHISPER_IT=1 to run (real whisper-cli, downloads ggml-tiny.en.bin once)"
+    : !WHISPER
+      ? "whisper-cli isn't installed (brew install whisper-cpp)"
+      : !FFMPEG || !which("say")
+        ? "needs ffmpeg and macOS say"
+        : false;
 const SENTENCE = "Hello world, this is a test. Um, the quick brown fox jumps over the lazy dog.";
 let root = "";
 
@@ -48,10 +55,32 @@ test("real speech: whisper-cli hears the sentence, words in order within the cli
   // say → AIFF → an mp4 with a picture and AAC sound, like footage.
   execFileSync("say", ["-o", join(root, "speech.aiff"), SENTENCE]);
   const clip = join(root, "Talk.mp4");
-  execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=gray:size=320x180:rate=30", "-i", join(root, "speech.aiff"), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
+  execFileSync(FFMPEG!, [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=gray:size=320x180:rate=30",
+    "-i",
+    join(root, "speech.aiff"),
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    clip,
+  ]);
   const project = join(root, "Test.uncut");
   mkdirSync(project);
-  const q = new AnalysisQueue({ ffmpeg: async () => FFMPEG, whisper: async () => ({ bin: WHISPER!, model, modelId: "tiny.en" }), transcribe: transcribeDirect });
+  const q = new AnalysisQueue({
+    ffmpeg: async () => FFMPEG,
+    whisper: async () => ({ bin: WHISPER!, model, modelId: "tiny.en" }),
+    transcribe: transcribeDirect,
+  });
   const target: AnalysisTarget = { dir: project, mediaId: "m-talk", path: clip, kind: "video", hasAudio: true };
   const t0 = Date.now();
   const r = await q.request(target, "transcript");
@@ -60,12 +89,16 @@ test("real speech: whisper-cli hears the sentence, words in order within the cli
   assert.equal(outcome.state, "done", JSON.stringify(outcome));
   const result = (outcome as { result: TranscriptResult }).result;
   const words = result.words!;
-  console.log(`${result.seconds} s of speech in ${(ms / 1000).toFixed(2)} s (${(result.seconds! / (ms / 1000)).toFixed(1)}× realtime, model load included), language ${result.language}`);
+  console.log(
+    `${result.seconds} s of speech in ${(ms / 1000).toFixed(2)} s (${(result.seconds! / (ms / 1000)).toFixed(1)}× realtime, model load included), language ${result.language}`,
+  );
   console.log(words.map((w) => `${w.text}@${w.start.toFixed(2)}–${w.end.toFixed(2)}(${w.p.toFixed(2)})`).join(" "));
   const heard = words.map((w) => w.text.toLowerCase().replace(/[^a-z']/g, ""));
   const expected = ["hello", "world", "this", "is", "a", "test", "the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"];
   const found = expected.filter((w) => heard.includes(w));
-  console.log(`recognised ${found.length}/${expected.length} expected words; fillers ${JSON.stringify(fillersOf(words, result.language))}; pauses ${JSON.stringify(pausesOf(words, result.seconds))}`);
+  console.log(
+    `recognised ${found.length}/${expected.length} expected words; fillers ${JSON.stringify(fillersOf(words, result.language))}; pauses ${JSON.stringify(pausesOf(words, result.seconds))}`,
+  );
   assert.ok(found.length >= 12, `heard: ${heard.join(" ")}`);
   assert.equal(result.language, "en");
   for (let i = 0; i < words.length; i++) {
@@ -75,5 +108,8 @@ test("real speech: whisper-cli hears the sentence, words in order within the cli
   }
   // The order of what was said is kept.
   const order = ["hello", "test", "quick", "fox", "dog"].map((w) => heard.indexOf(w)).filter((i) => i >= 0);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.deepEqual(
+    order,
+    [...order].sort((a, b) => a - b),
+  );
 });

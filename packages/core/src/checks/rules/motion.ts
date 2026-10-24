@@ -29,7 +29,7 @@ export const MOTION_RULES: ReadonlyArray<CheckRule> = [
           message: `Clips play at ${speeds.slice(0, -1).join(", ")} and ${speeds.at(-1)}; mixed speeds in one demo read as dishonest.`,
           itemIds: odd,
           frame: Math.min(...odd.map((id) => ctx.starts.get(id) ?? 0)),
-          hint: "Use one speed for all footage and say it once in the post (for example \"sped up 3×\").",
+          hint: 'Use one speed for all footage and say it once in the post (for example "sped up 3×").',
         },
       ];
     },
@@ -71,7 +71,16 @@ export const MOTION_RULES: ReadonlyArray<CheckRule> = [
                 message: `The ${secs(i.transitionIn!.duration, ctx.fps)} transition into ${i.name ?? i.id} is long; hard cuts or very short crossfades keep the pace.`,
                 itemIds: [i.id],
                 frame: startOf(ctx, i),
-                ...(track.locked || i.locked ? {} : { fix: { summary: "Shorten the transition to 0.3 s", ops: [{ op: "set_transition" as const, item: i.id, transition: { ...i.transitionIn!, duration: Math.max(2, Math.round(0.3 * ctx.fps)) } }] } }),
+                ...(track.locked || i.locked
+                  ? {}
+                  : {
+                      fix: {
+                        summary: "Shorten the transition to 0.3 s",
+                        ops: [
+                          { op: "set_transition" as const, item: i.id, transition: { ...i.transitionIn!, duration: Math.max(2, Math.round(0.3 * ctx.fps)) } },
+                        ],
+                      },
+                    }),
               })),
       ),
   },
@@ -92,7 +101,14 @@ export const MOTION_RULES: ReadonlyArray<CheckRule> = [
       let covered = 0;
       for (const [s, e] of spans) {
         // A gap from frame 0 is the frame-one rule's.
-        if (s > covered && covered > 0 && s - covered >= Math.round(ctx.fps / 5)) out.push({ key: `blank-gap:${covered}`, message: `Nothing shows from ${secs(covered, ctx.fps)} to ${secs(s, ctx.fps)}, so the video goes black there.`, frame: covered, range: { start: covered, end: s }, hint: "Close the gap or fill it with footage." });
+        if (s > covered && covered > 0 && s - covered >= Math.round(ctx.fps / 5))
+          out.push({
+            key: `blank-gap:${covered}`,
+            message: `Nothing shows from ${secs(covered, ctx.fps)} to ${secs(s, ctx.fps)}, so the video goes black there.`,
+            frame: covered,
+            range: { start: covered, end: s },
+            hint: "Close the gap or fill it with footage.",
+          });
         covered = Math.max(covered, e);
       }
       return out;
@@ -110,7 +126,13 @@ export const CANVAS_RULES: ReadonlyArray<CheckRule> = [
     check: (ctx) => {
       const { width, height } = ctx.project.canvas;
       if (Math.abs(width / height - 4 / 5) < 0.01) return [];
-      return [{ key: "canvas-format", message: `The canvas is ${width}×${height}; for X and other phone feeds, 4:5 (1080×1350) shows bigger, while 16:9 is right for YouTube and sites.`, hint: "Pick the format when you make the project; keep this one if it's for a landscape screen." }];
+      return [
+        {
+          key: "canvas-format",
+          message: `The canvas is ${width}×${height}; for X and other phone feeds, 4:5 (1080×1350) shows bigger, while 16:9 is right for YouTube and sites.`,
+          hint: "Pick the format when you make the project; keep this one if it's for a landscape screen.",
+        },
+      ];
     },
   },
 ];

@@ -121,8 +121,32 @@ const rate = (s: string | undefined) => {
 /** A video's upright size, frame rate, frame count and colour tags, from ffprobe. */
 async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
   const ffprobe = join(dirname(bin), "ffprobe");
-  const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space:stream_side_data=rotation:stream_tags=rotate:format=duration,start_time", "-of", "json", path], undefined);
-  type Stream = { width?: number; height?: number; r_frame_rate?: string; avg_frame_rate?: string; nb_frames?: string; duration?: string; color_space?: string; side_data_list?: Array<{ rotation?: number }>; tags?: { rotate?: string } };
+  const r = await run(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space:stream_side_data=rotation:stream_tags=rotate:format=duration,start_time",
+      "-of",
+      "json",
+      path,
+    ],
+    undefined,
+  );
+  type Stream = {
+    width?: number;
+    height?: number;
+    r_frame_rate?: string;
+    avg_frame_rate?: string;
+    nb_frames?: string;
+    duration?: string;
+    color_space?: string;
+    side_data_list?: Array<{ rotation?: number }>;
+    tags?: { rotate?: string };
+  };
   let parsed: { streams?: Array<Stream>; format?: { duration?: string; start_time?: string } } = {};
   try {
     parsed = JSON.parse(r.stdout);
@@ -134,8 +158,15 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
   const fps = rate(s.avg_frame_rate) ?? rate(s.r_frame_rate) ?? 30;
   const duration = Number(s.duration ?? parsed.format?.duration);
   const counted = Number(s.nb_frames);
-  const frames = Number.isInteger(counted) && counted > 0 ? counted : Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration * fps)) : undefined;
-  const base = { width: turned ? s.height : s.width, height: turned ? s.width : s.height, fps, ...(frames ? { frames } : {}), ...(!s.color_space || s.color_space === "unknown" ? { untagged: s.height } : {}) };
+  const frames =
+    Number.isInteger(counted) && counted > 0 ? counted : Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration * fps)) : undefined;
+  const base = {
+    width: turned ? s.height : s.width,
+    height: turned ? s.width : s.height,
+    fps,
+    ...(frames ? { frames } : {}),
+    ...(!s.color_space || s.color_space === "unknown" ? { untagged: s.height } : {}),
+  };
   // Variable rate (its nominal and average rates differ): the frames' own times.
   const nominal = rate(s.r_frame_rate);
   const average = rate(s.avg_frame_rate);
@@ -220,7 +251,13 @@ const recentFrames = (width: number, height: number) => Math.max(1, Math.floor(R
  * (the preview's project changes), `mediaPath` where each one's file is; `videotoolbox` decodes on
  * the Mac's media engine (ffmpeg caps.videotoolboxDecode).
  */
-export function graphicMediaSource(opts: { readonly bin: string; readonly media: () => ReadonlyArray<Media>; readonly mediaPath: (m: Media) => string; readonly videotoolbox?: boolean; readonly proxyPath?: (m: Media) => Promise<string | undefined> }): GraphicMediaSource {
+export function graphicMediaSource(opts: {
+  readonly bin: string;
+  readonly media: () => ReadonlyArray<Media>;
+  readonly mediaPath: (m: Media) => string;
+  readonly videotoolbox?: boolean;
+  readonly proxyPath?: (m: Media) => Promise<string | undefined>;
+}): GraphicMediaSource {
   const infos = new Map<string, Promise<VideoInfo>>();
   // Proxy files read for preview pictures (decoded in software).
   const soft = new Set<string>();
@@ -281,14 +318,16 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     const queue = q;
     queue.users++;
     const done = queue.tail.then(job);
-    queue.tail = done.then(
-      () => {},
-      () => {},
-    ).then(() => {
-      if (--queue.users > 0) return;
-      queues.delete(key);
-      wake();
-    });
+    queue.tail = done
+      .then(
+        () => {},
+        () => {},
+      )
+      .then(() => {
+        if (--queue.users > 0) return;
+        queues.delete(key);
+        wake();
+      });
     return done;
   };
 
@@ -404,7 +443,27 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     const info = await probeVideo(opts.bin, path);
     const { width, height } = graphicMediaSize(info.width, info.height, ask);
     const r = await new Promise<{ code: number | null; out: Buffer }>((resolve, reject) => {
-      const child = spawn(opts.bin, localInputs(opts.bin, ["-hide_banner", "-nostdin", "-v", "error", "-i", path, "-frames:v", "1", "-vf", `scale=w=${width}:h=${height}:flags=bicubic,format=rgba`, "-c:v", "png", "-f", "image2pipe", "pipe:1"]), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "ignore"] });
+      const child = spawn(
+        opts.bin,
+        localInputs(opts.bin, [
+          "-hide_banner",
+          "-nostdin",
+          "-v",
+          "error",
+          "-i",
+          path,
+          "-frames:v",
+          "1",
+          "-vf",
+          `scale=w=${width}:h=${height}:flags=bicubic,format=rgba`,
+          "-c:v",
+          "png",
+          "-f",
+          "image2pipe",
+          "pipe:1",
+        ]),
+        { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "ignore"] },
+      );
       const parts: Array<Buffer> = [];
       child.stdout.on("data", (d: Buffer) => parts.push(d));
       child.once("error", reject);
@@ -445,17 +504,35 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
         const v = proxy ? await probe(proxy).catch(() => undefined) : undefined;
         if (proxy && v) soft.add(proxy);
         // A proxy that can't be read (cut short, replaced meanwhile): the original's.
-        return v && proxy ? videoPicture(proxy, v, graphicMediaSize(v.width, v.height, { w: full.width, h: full.height }), req, full).catch(() => videoPicture(path, exact, full, req)) : videoPicture(path, exact, full, req);
+        return v && proxy
+          ? videoPicture(proxy, v, graphicMediaSize(v.width, v.height, { w: full.width, h: full.height }), req, full).catch(() =>
+              videoPicture(path, exact, full, req),
+            )
+          : videoPicture(path, exact, full, req);
       })(),
     );
   };
 
   /** Video `path`'s frame at req.t at `size` (decoded by the decoder of that file and size); `full`: the exact picture's size, when this one's from a proxy. */
-  const videoPicture = (path: string, v: VideoInfo, size: { readonly width: number; readonly height: number }, req: GraphicMediaRequest, full?: { readonly width: number; readonly height: number }): Promise<GraphicMediaPicture> => {
+  const videoPicture = (
+    path: string,
+    v: VideoInfo,
+    size: { readonly width: number; readonly height: number },
+    req: GraphicMediaRequest,
+    full?: { readonly width: number; readonly height: number },
+  ): Promise<GraphicMediaPicture> => {
     const { width, height } = size;
     const n = frameAt(v, req.t);
     const shownAs = full && (full.width !== width || full.height !== height) ? { full } : {};
-    const decode = (k: number, ahead = false) => videoFrame(path, v, width, height, k, ahead).then(({ raw, n: shown }): GraphicMediaPicture => ({ bytes: bmpOf(raw, width, height), type: "image/bmp" as const, width, height, frame: shown, ...shownAs }));
+    const decode = (k: number, ahead = false) =>
+      videoFrame(path, v, width, height, k, ahead).then(({ raw, n: shown }): GraphicMediaPicture => ({
+        bytes: bmpOf(raw, width, height),
+        type: "image/bmp" as const,
+        width,
+        height,
+        frame: shown,
+        ...shownAs,
+      }));
     const frameKey = (k: number) => `${path}|${width}x${height}|${k}`;
     const key = frameKey(n);
     let got = cache.get(key);

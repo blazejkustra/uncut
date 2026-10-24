@@ -34,22 +34,36 @@ const builtinIds = new Set(modules.keys());
 const moves = new Set([...modules.values()].filter((m) => m.kind === "move").map((m) => m.id));
 const example = JSON.parse(readFileSync("plugins/catalog/taste-extra/uncut.module.json", "utf8")) as ModuleManifest;
 const read = (m: ModuleManifest, taken?: Set<string>) => readContributions(m, { reserved: builtinIds, moves, ...(taken ? { taken } : {}) });
-const withContributes = (contributes: Record<string, unknown>, patch: Record<string, unknown> = {}) => ({ ...example, ...patch, contributes }) as ModuleManifest;
+const withContributes = (contributes: Record<string, unknown>, patch: Record<string, unknown> = {}) =>
+  ({ ...example, ...patch, contributes }) as ModuleManifest;
 
 test("the example plugin validates and contributes a look, a component and two rules", () => {
   assert.deepEqual(validateModule(example), []);
   assert.ok("manifest" in checkManifest(example, builtinIds));
   const { contributions, warnings } = read(example);
   assert.deepEqual(warnings, []);
-  assert.deepEqual(contributions.looks.map((l) => l.id), ["taste.extra.soft-card"]);
+  assert.deepEqual(
+    contributions.looks.map((l) => l.id),
+    ["taste.extra.soft-card"],
+  );
   assert.equal(contributions.looks[0]!.pluginName, "Taste extra");
-  assert.deepEqual(contributions.components.map((c) => c.id), ["taste.extra.sticker"]);
+  assert.deepEqual(
+    contributions.components.map((c) => c.id),
+    ["taste.extra.sticker"],
+  );
   assert.deepEqual(contributions.components[0]!.defaults, { label: "New", color: "#FFD84D" });
-  assert.deepEqual(contributions.rules.map((r) => r.id), ["taste.extra.end-card", "taste.extra.banned-phrases"]);
+  assert.deepEqual(
+    contributions.rules.map((r) => r.id),
+    ["taste.extra.end-card", "taste.extra.banned-phrases"],
+  );
 });
 
 test("data plugins: no tools, something to contribute; contributions validated, namespaced, collisions refused", () => {
-  assert.match((checkManifest({ ...example, agentTools: [{ name: "x_y", description: "d", inputSchema: { type: "object" } }] }, builtinIds) as { problem: string }).problem, /agent tools/);
+  assert.match(
+    (checkManifest({ ...example, agentTools: [{ name: "x_y", description: "d", inputSchema: { type: "object" } }] }, builtinIds) as { problem: string })
+      .problem,
+    /agent tools/,
+  );
   assert.match((checkManifest({ ...example, contributes: {} }, builtinIds) as { problem: string }).problem, /contributes nothing/);
   // Schema: an id must have the plugin's id and a name (three parts at least); a bad rule shape is refused.
   assert.ok(validateModule(withContributes({ rules: [{ id: "solo", title: "x", rule: { type: "max-words", max: 3 } }] })).length > 0);
@@ -74,11 +88,28 @@ test("data plugins: no tools, something to contribute; contributions validated, 
       rules: [{ id: "taste.extra.proc", title: "P", rule: { type: "process" } }],
     }),
   );
-  assert.deepEqual(contributions.looks.map((l) => l.id), ["taste.extra.ok"]);
-  assert.deepEqual(contributions.components.map((c) => c.id), ["taste.extra.fine"]);
+  assert.deepEqual(
+    contributions.looks.map((l) => l.id),
+    ["taste.extra.ok"],
+  );
+  assert.deepEqual(
+    contributions.components.map((c) => c.id),
+    ["taste.extra.fine"],
+  );
   assert.deepEqual(contributions.rules, [], "a process rule needs a process plugin");
-  for (const pattern of [/must be the plugin's id, taste.extra, a dot and one name/, /move.nope isn't one of Uncut's moves/, /text.nope, which isn't a built-in look/, /another plugin \(or entry\) has that id/, /script, an event handler/, /plain CSS/, /needs a plugin that runs a program/]) {
-    assert.ok(warnings.some((w) => pattern.test(w)), `${pattern} in ${warnings.join(" | ")}`);
+  for (const pattern of [
+    /must be the plugin's id, taste.extra, a dot and one name/,
+    /move.nope isn't one of Uncut's moves/,
+    /text.nope, which isn't a built-in look/,
+    /another plugin \(or entry\) has that id/,
+    /script, an event handler/,
+    /plain CSS/,
+    /needs a plugin that runs a program/,
+  ]) {
+    assert.ok(
+      warnings.some((w) => pattern.test(w)),
+      `${pattern} in ${warnings.join(" | ")}`,
+    );
   }
   // Built-in ids are refused (a plugin whose id is a built-in namespace can't take one), and the first plugin keeps an id.
   assert.ok(BUILTIN_CONTRIBUTION_IDS.has("text.big-title") && BUILTIN_CONTRIBUTION_IDS.has("text-read-time"));
@@ -91,13 +122,25 @@ test("data plugins: no tools, something to contribute; contributions validated, 
   assert.equal(second.warnings.length, 4);
 });
 
-const textItem = (id: string, text: string, start: number, duration: number) => ({ id, type: "text", text, start, duration, transform: { x: 100, y: 100 }, style: { size: 60 } });
+const textItem = (id: string, text: string, start: number, duration: number) => ({
+  id,
+  type: "text",
+  text,
+  start,
+  duration,
+  transform: { x: 100, y: 100 },
+  style: { size: 60 },
+});
 function projectWith(items: Array<Record<string, unknown>>, extra: Array<Record<string, unknown>> = []): Project {
   const p = emptyProject("Rules", { width: 1920, height: 1080, fps: 30 });
   return applyEdit(createSession(p), {
     actor: "user",
     ops: [
-      { op: "insert_item", track: p.tracks.find((t) => t.role === "main")!.id, item: { id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#111111" } } },
+      {
+        op: "insert_item",
+        track: p.tracks.find((t) => t.role === "main")!.id,
+        item: { id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#111111" } },
+      },
       { op: "add_track", index: 0, track: { id: "t1", kind: "text", name: "Text" } },
       { op: "add_track", index: 0, track: { id: "t2", kind: "text", name: "Text 2" } },
       ...items.map((item, i) => ({ op: "insert_item", track: i % 2 ? "t2" : "t1", item })),
@@ -109,16 +152,32 @@ function projectWith(items: Array<Record<string, unknown>>, extra: Array<Record<
 test("declarative rules: max words on screen, banned phrases, min text size, ends on an end card", () => {
   const rules = pluginCheckRules([
     { id: "p.x.words", title: "Words", description: "", severity: "warn", plugin: "p.x", pluginName: "P", rule: { type: "max-words", max: 6 } },
-    { id: "p.x.banned", title: "Banned", description: "", severity: "warn", plugin: "p.x", pluginName: "P", rule: { type: "banned-phrases", phrases: ["game changer", "next level"] } },
+    {
+      id: "p.x.banned",
+      title: "Banned",
+      description: "",
+      severity: "warn",
+      plugin: "p.x",
+      pluginName: "P",
+      rule: { type: "banned-phrases", phrases: ["game changer", "next level"] },
+    },
     { id: "p.x.size", title: "Size", description: "", severity: "info", plugin: "p.x", pluginName: "P", rule: { type: "min-text-size", px: 80 } },
     { id: "p.x.end", title: "End", description: "", severity: "warn", plugin: "p.x", pluginName: "P", rule: { type: "end-card", seconds: 2 } },
     { id: "p.x.proc", title: "Proc", description: "", severity: "warn", plugin: "p.x", pluginName: "P", rule: { type: "process" } },
   ]);
-  assert.deepEqual(rules.map((r) => r.id), ["p.x.words", "p.x.banned", "p.x.size", "p.x.end"], "process rules are the server's");
+  assert.deepEqual(
+    rules.map((r) => r.id),
+    ["p.x.words", "p.x.banned", "p.x.size", "p.x.end"],
+    "process rules are the server's",
+  );
   const project = projectWith([textItem("a", "This is a Game  Changer", 0, 90), textItem("b", "three more words", 30, 90), textItem("c", "fine", 200, 60)]);
   const found = projectChecks(project, { rules }).filter((c) => c.id.startsWith("p.x."));
   const by = (id: string) => found.filter((c) => c.id === id);
-  assert.deepEqual(by("p.x.words").map((c) => c.itemIds), [["a", "b"]], "8 words at b's start, 5 at a's");
+  assert.deepEqual(
+    by("p.x.words").map((c) => c.itemIds),
+    [["a", "b"]],
+    "8 words at b's start, 5 at a's",
+  );
   assert.equal(by("p.x.banned").length, 1);
   assert.match(by("p.x.banned")[0]!.message, /says "Game Changer", a phrase P asks to leave out/);
   assert.equal(by("p.x.size").length, 3);
@@ -126,7 +185,13 @@ test("declarative rules: max words on screen, banned phrases, min text size, end
   assert.equal(by("p.x.end").length, 1);
   assert.match(by("p.x.end")[0]!.message, /doesn't end on an end card/);
   // An end card over the last 2 s clears it; a disabled plugin rule finds nothing.
-  const ended = projectWith([], [{ op: "add_track", index: 0, track: { id: "ov", kind: "video", name: "Overlay" } }, { op: "insert_item", track: "ov", item: { id: "end", type: "component", component: "component.end-card", start: 240, duration: 60, props: {} } }]);
+  const ended = projectWith(
+    [],
+    [
+      { op: "add_track", index: 0, track: { id: "ov", kind: "video", name: "Overlay" } },
+      { op: "insert_item", track: "ov", item: { id: "end", type: "component", component: "component.end-card", start: 240, duration: 60, props: {} } },
+    ],
+  );
   assert.equal(projectChecks(ended, { rules }).filter((c) => c.id === "p.x.end").length, 0);
   assert.equal(projectChecks(project, { rules, disabled: ["p.x.end"] }).filter((c) => c.id === "p.x.end").length, 0);
 });
@@ -201,7 +266,10 @@ test("review fixes: version can't break out, only Uncut's script, own-property l
   // Across plugins only what's merged (the allowed ones) claims an id; the first keeps it.
   const a = read(example).contributions;
   const merged = mergeContributions([a, { ...a, looks: a.looks.map((l) => ({ ...l, name: "Copy" })) }]);
-  assert.deepEqual(merged.looks.map((l) => l.name), ["Soft card"]);
+  assert.deepEqual(
+    merged.looks.map((l) => l.name),
+    ["Soft card"],
+  );
   assert.equal(merged.rules.length, 2);
   // Script URLs however they're spelled, and more embedding tags.
   for (const template of [
@@ -213,7 +281,8 @@ test("review fixes: version can't break out, only Uncut's script, own-property l
     `<form action="x"></form>`,
     `<frameset></frameset>`,
     `<portal src="x"></portal>`,
-  ]) assert.ok(componentProblem(template, ""), template);
+  ])
+    assert.ok(componentProblem(template, ""), template);
   assert.ok(componentProblem("<b>x</b>", "a{background:url(javascript:alert(1))}"));
   assert.equal(componentProblem(`<div class="sticker">{{label}} costs 5 &amp; more: see docs</div>`, ".a{color:red}"), undefined);
 });

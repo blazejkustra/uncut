@@ -28,22 +28,28 @@ export const PLUGIN_GUIDE: ReadonlyArray<GuideSection> = [
     id: "what",
     title: "What a plugin is",
     blocks: [
-      { p: "A plugin is one folder with an `uncut.module.json` manifest. It adds things to Uncut (text looks, components, checks, filters, shader effects, skills) and can give the agent tools of its own." },
+      {
+        p: "A plugin is one folder with an `uncut.module.json` manifest. It adds things to Uncut (text looks, components, checks, filters, shader effects, skills) and can give the agent tools of its own.",
+      },
       {
         list: [
-          "A data plugin (`\"runtime\": {\"type\": \"data\"}`) runs nothing: Uncut reads its manifest. Its folder is the manifest plus the `.ts` sources of its shader effects.",
-          "A process plugin (`\"runtime\": {\"type\": \"process\"}`) is a program Uncut starts on the first call to one of its tools: a small MCP server over stdio, written in TypeScript with `@uncut/plugin-sdk`. It runs on Uncut's own Node, so there's no package.json, node_modules or build step.",
+          'A data plugin (`"runtime": {"type": "data"}`) runs nothing: Uncut reads its manifest. Its folder is the manifest plus the `.ts` sources of its shader effects.',
+          'A process plugin (`"runtime": {"type": "process"}`) is a program Uncut starts on the first call to one of its tools: a small MCP server over stdio, written in TypeScript with `@uncut/plugin-sdk`. It runs on Uncut\'s own Node, so there\'s no package.json, node_modules or build step.',
           "Nothing a plugin adds shows, and none of its tools run, until the user allows it. The approval dialog says where it came from, what it adds and what it asks for.",
         ],
       },
-      { p: "Community plugins live in this repo, in `plugins/catalog/<id with dots as dashes>/`. Uncut's Settings › Plugins lists them as a marketplace. `plugins/bundled.json` names the few that ship installed and allowed; every other plugin is install-only." },
+      {
+        p: "Community plugins live in this repo, in `plugins/catalog/<id with dots as dashes>/`. Uncut's Settings › Plugins lists them as a marketplace. `plugins/bundled.json` names the few that ship installed and allowed; every other plugin is install-only.",
+      },
     ],
   },
   {
     id: "start",
     title: "Start from the example",
     blocks: [
-      { p: `The quickest start is a copy of the ${EXAMPLE.name} (\`${EXAMPLE.folder}\`), a data plugin with a text look, a component, a skill and a shader effect. Its \`effect.ts\` header walks through the manifest field by field.` },
+      {
+        p: `The quickest start is a copy of the ${EXAMPLE.name} (\`${EXAMPLE.folder}\`), a data plugin with a text look, a component, a skill and a shader effect. Its \`effect.ts\` header walks through the manifest field by field.`,
+      },
       {
         code: `pnpm plugin:new acme.promo-kit --from ${EXAMPLE.id}
 # or a process plugin with one agent tool:      pnpm plugin:new acme.promo-kit
@@ -51,7 +57,9 @@ export const PLUGIN_GUIDE: ReadonlyArray<GuideSection> = [
 pnpm plugin:check plugins/catalog/acme-promo-kit`,
         lang: "sh",
       },
-      { p: "Pick an id that says who you are and what it is: lowercase letters, digits and dashes in two or more parts (`acme.promo-kit`). The folder is the id with dots as dashes, every contribution id starts with it (`acme.promo-kit.headline`) and tool names start with it too (`acme_promo_kit_word_count`). `plugin:new` puts yours in everywhere and renames the example's skills so they don't clash." },
+      {
+        p: "Pick an id that says who you are and what it is: lowercase letters, digits and dashes in two or more parts (`acme.promo-kit`). The folder is the id with dots as dashes, every contribution id starts with it (`acme.promo-kit.headline`) and tool names start with it too (`acme_promo_kit_word_count`). `plugin:new` puts yours in everywhere and renames the example's skills so they don't clash.",
+      },
     ],
   },
   {
@@ -61,14 +69,20 @@ pnpm plugin:check plugins/catalog/acme-promo-kit`,
       { p: "`uncut.module.json` follows `spec/schema/module.schema.json`. The fields a plugin uses:" },
       {
         table: [
-          ["manifest, apiVersion", "Always `\"uncut.module/0\"` and `\"uncut.module/1\"`, the frozen plugin API."],
+          ["manifest, apiVersion", 'Always `"uncut.module/0"` and `"uncut.module/1"`, the frozen plugin API.'],
           ["id", "`<you>.<what>`, unique in the repo. The folder is named after it."],
           ["kind", "`pack` for a plugin that adds data; a process plugin uses what it is: `capture-source`, `analyzer`, `generator`, `effect`..."],
           ["name, version, description", "What the marketplace card shows. version is semver (`1.0.0`)."],
           ["author, license", "Who made it, and its licence (MIT, like Uncut, unless you have a reason)."],
-          ["runtime", "`{\"type\": \"data\"}`, or `{\"type\": \"process\", \"command\": \"node\", \"args\": [\"server.ts\"], \"timeoutSeconds\": 120}`. One tool call may take timeoutSeconds (at most 1800)."],
-          ["capabilities", "What it may touch, shown before the user allows it: `project:read`, `project:write`, `media:read`, `media:write`, `network`, `process:spawn`, `gpu`, `microphone`, `screen`, `api-key`. Ask only for what you use; a data plugin asks for none."],
-          ["requires", "A program it needs on PATH, with the command that installs it (`{\"binary\": \"whisper-cli\", \"install\": \"brew install whisper-cpp\"}`)."],
+          [
+            "runtime",
+            '`{"type": "data"}`, or `{"type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 120}`. One tool call may take timeoutSeconds (at most 1800).',
+          ],
+          [
+            "capabilities",
+            "What it may touch, shown before the user allows it: `project:read`, `project:write`, `media:read`, `media:write`, `network`, `process:spawn`, `gpu`, `microphone`, `screen`, `api-key`. Ask only for what you use; a data plugin asks for none.",
+          ],
+          ["requires", 'A program it needs on PATH, with the command that installs it (`{"binary": "whisper-cli", "install": "brew install whisper-cpp"}`).'],
           ["agentTools", "A process plugin's tools for the agent: name, description (what the agent reads to decide) and inputSchema (a JSON Schema object)."],
           ["contributes", "What it adds: looks, components, rules, filters, shaders, skills (next section). At most 50 of each."],
         ],
@@ -79,17 +93,40 @@ pnpm plugin:check plugins/catalog/acme-promo-kit`,
     id: "kinds",
     title: "What a plugin can add",
     blocks: [
-      { p: "Every entry of `contributes` has an id `<plugin id>.<name>` (skills have a name instead). A project never depends on a plugin: what a user adds is copied into the project, so it keeps drawing after the plugin is removed." },
+      {
+        p: "Every entry of `contributes` has an id `<plugin id>.<name>` (skills have a name instead). A project never depends on a plugin: what a user adds is copied into the project, so it keeps drawing after the plugin is removed.",
+      },
       {
         table: [
-          ["looks", "Text looks in the Text tab and for the agent's insert_text: the built-in look block (size, weight, font, colour, align, x, y, w as fractions of the frame, background, stroke, shadow, animation). Example: Lower third in the Example kit."],
-          ["components", "Elements tiles: an HTML template with {{param}} placeholders and plain CSS, params as a JSON Schema with defaults. No script, event handlers or script URLs; CSS animates with `--t` (seconds) and `--progress`. Drawn in the graphics sandbox, the same in the preview and the export. Example: Callout badge."],
-          ["rules", "Checks in the Checks tab and the agent's project_check: `max-words`, `banned-phrases`, `min-text-size`, `end-card`, or `process` (Uncut calls the plugin's own `check` tool with the project). Each has a title, a severity (warn or info) and a hint. Example: plugins/catalog/taste-extra."],
+          [
+            "looks",
+            "Text looks in the Text tab and for the agent's insert_text: the built-in look block (size, weight, font, colour, align, x, y, w as fractions of the frame, background, stroke, shadow, animation). Example: Lower third in the Example kit.",
+          ],
+          [
+            "components",
+            "Elements tiles: an HTML template with {{param}} placeholders and plain CSS, params as a JSON Schema with defaults. No script, event handlers or script URLs; CSS animates with `--t` (seconds) and `--progress`. Drawn in the graphics sandbox, the same in the preview and the export. Example: Callout badge.",
+          ],
+          [
+            "rules",
+            "Checks in the Checks tab and the agent's project_check: `max-words`, `banned-phrases`, `min-text-size`, `end-card`, or `process` (Uncut calls the plugin's own `check` tool with the project). Each has a title, a severity (warn or info) and a hint. Example: plugins/catalog/taste-extra.",
+          ],
           ["filters", "Colour looks for the Effects tab: the numbers Uncut's colour maths draws (mixer, mono, adjust, curve, split toning, fade)."],
-          ["shaders", "GPU effects for the Effects tab: a TypeGPU function in a `.ts` file, its params (number, color, bool) and the WGSL that `pnpm plugin:check --write` resolves from it. Example: Spotlight; more in plugins/catalog/typegpu-effects."],
-          ["skills", "Instructions the agent follows when they fit, in the shape of a SKILL.md: name (what the user types after /), title, description (what the agent reads to know when it fits) and instructions. Names are shared by every plugin, and Uncut's own can't be taken. Example: /example-kit-lower-thirds."],
-          ["agent tools", "A process plugin's agentTools: the agent sees them once the plugin is allowed and calls them like Uncut's own. Example: the template from `pnpm plugin:new`."],
-          ["process plugins", "Plugins that run a program for Uncut itself: plugins/argent-capture (kind capture-source, the Capture tab's devices and recordings) and plugins/whisper-transcribe (kind analyzer: Uncut calls its transcribe tool, the agent has no tool of its own)."],
+          [
+            "shaders",
+            "GPU effects for the Effects tab: a TypeGPU function in a `.ts` file, its params (number, color, bool) and the WGSL that `pnpm plugin:check --write` resolves from it. Example: Spotlight; more in plugins/catalog/typegpu-effects.",
+          ],
+          [
+            "skills",
+            "Instructions the agent follows when they fit, in the shape of a SKILL.md: name (what the user types after /), title, description (what the agent reads to know when it fits) and instructions. Names are shared by every plugin, and Uncut's own can't be taken. Example: /example-kit-lower-thirds.",
+          ],
+          [
+            "agent tools",
+            "A process plugin's agentTools: the agent sees them once the plugin is allowed and calls them like Uncut's own. Example: the template from `pnpm plugin:new`.",
+          ],
+          [
+            "process plugins",
+            "Plugins that run a program for Uncut itself: plugins/argent-capture (kind capture-source, the Capture tab's devices and recordings) and plugins/whisper-transcribe (kind analyzer: Uncut calls its transcribe tool, the agent has no tool of its own).",
+          ],
         ],
       },
     ],
@@ -98,7 +135,9 @@ pnpm plugin:check plugins/catalog/acme-promo-kit`,
     id: "sdk",
     title: "The SDK (process plugins)",
     blocks: [
-      { p: "`@uncut/plugin-sdk` (packages/plugin-sdk/src/index.ts) is the whole contract: its types are the documentation. A server is a manifest and one handler per tool:" },
+      {
+        p: "`@uncut/plugin-sdk` (packages/plugin-sdk/src/index.ts) is the whole contract: its types are the documentation. A server is a manifest and one handler per tool:",
+      },
       {
         code: `import { serve, text, ToolError, type ToolContext } from "@uncut/plugin-sdk";
 
@@ -149,8 +188,12 @@ pnpm plugin:check plugins/catalog/acme-promo-kit           # the checks a pull r
 pnpm plugin:check                                          # every plugin in the repo`,
         lang: "sh",
       },
-      { p: "plugin:check validates the manifest against the schema and Uncut's own rules, checks that ids, contribution ids, skill names and tool names aren't taken, that looks, components and rules load without a warning, that the folder holds only top-level .json and .ts files (at most 40 files, 512 KB), what code imports, and resolves each shader with TypeGPU. `pnpm test:fast` runs the same gate (test/repo/plugins-folder.test.ts) on every plugin." },
-      { p: "Then try it in Uncut: Settings › Plugins › Add from a folder or git, choose your folder, Allow, and use what it adds (the Text, Elements, Effects and Checks tabs, / in the composer for skills, or ask the agent to use a tool)." },
+      {
+        p: "plugin:check validates the manifest against the schema and Uncut's own rules, checks that ids, contribution ids, skill names and tool names aren't taken, that looks, components and rules load without a warning, that the folder holds only top-level .json and .ts files (at most 40 files, 512 KB), what code imports, and resolves each shader with TypeGPU. `pnpm test:fast` runs the same gate (test/repo/plugins-folder.test.ts) on every plugin.",
+      },
+      {
+        p: "Then try it in Uncut: Settings › Plugins › Add from a folder or git, choose your folder, Allow, and use what it adds (the Text, Elements, Effects and Checks tabs, / in the composer for skills, or ask the agent to use a tool).",
+      },
     ],
   },
   {

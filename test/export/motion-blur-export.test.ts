@@ -97,7 +97,15 @@ const px = (frame: Buffer, x: number, y: number) => [...frame.subarray((y * W + 
 /** A frame drawn the PNG way (one "graphic" request), as RGBA. */
 async function pngFrame(html: string, t: number, local: number, name: string): Promise<Buffer> {
   const out = join(root, `${name}.png`);
-  await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, { width: W, height: H }), t, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, local), out });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc: graphicDocument(html, { width: W, height: H }),
+    t,
+    info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, local),
+    out,
+  });
   return rgbaOf(out);
 }
 
@@ -131,14 +139,31 @@ test("motion blur: each frame the mean of its sub-frames on premultiplied colour
   assert.equal(blurred.frames.length, FRAMES * W * H * 4, "one frame per frame, not per sub-frame");
   assert.ok(!sharp.frames.equals(blurred.frames), "blur changes the picture");
   // Held frames (a crossfade shows the graphic before its start) are one frame each, sharp.
-  const faded = { ...graphicProject("graphics/mover.html"), tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 30, props: { color: "#000000" } }, { id: "g", type: "graphic", src: "graphics/mover.html", duration: 40, transitionIn: { module: "transition.crossfade", duration: 20 } }] }] } as unknown as Project;
+  const faded = {
+    ...graphicProject("graphics/mover.html"),
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "bg", type: "component", component: "component.solid", duration: 30, props: { color: "#000000" } },
+          { id: "g", type: "graphic", src: "graphics/mover.html", duration: 40, transitionIn: { module: "transition.crossfade", duration: 20 } },
+        ],
+      },
+    ],
+  } as unknown as Project;
   const fp = planExport(faded, { mediaPath: () => "", width: W, height: H, graphic: () => MOVER, motionBlur: true });
   assert.ok(!("problem" in fp));
   const fdir = join(root, "faded");
   mkdirSync(fdir);
   const { rasters } = await rasterise(raster, fp, faded, () => "", fdir, new AbortController().signal, undefined, { bin: FFMPEG });
   const fl = fp.visuals.filter((l) => l.kind === "graphic");
-  assert.ok(fl.some((l) => l.kind === "graphic" && l.frames[0] === l.frames[1]), "it holds frames before its start");
+  assert.ok(
+    fl.some((l) => l.kind === "graphic" && l.frames[0] === l.frames[1]),
+    "it holds frames before its start",
+  );
   for (const l of fl) {
     const o = rasters.get(l)!;
     const n = o.kind === "video" ? rgbaOf(o.file).length / (W * H * 4) : o.kind === "sequence" ? rgbaOf(o.pattern).length / (W * H * 4) : 1;
@@ -176,7 +201,16 @@ test("a graphic request with ts (the critic's blurred frames) is the export's bl
   const blurred = await streamed(MOVER, "mover", true);
   for (const i of [1, 10, 45]) {
     const out = join(root, `mover-ts-${i}.png`);
-    await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(MOVER, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
+    await raster.render({
+      kind: "graphic",
+      width: W,
+      height: H,
+      doc: graphicDocument(MOVER, { width: W, height: H }),
+      t: i / FPS,
+      ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS),
+      info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i),
+      out,
+    });
     const png = rgbaOf(out);
     const frame = frameOf(blurred.frames, i);
     let worst = 0;
@@ -208,7 +242,16 @@ window.render = () => { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ${W}, ${H}); 
 test("D309: a fast sharp bar blurs into one smooth smear (more sub-frames), a still frame keeps the base 4", { skip, timeout: 240000 }, async () => {
   const draw = async (html: string, i: number, name: string) => {
     const out = join(root, `${name}-${i}.png`);
-    const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
+    const reply = await raster.render({
+      kind: "graphic",
+      width: W,
+      height: H,
+      doc: graphicDocument(html, { width: W, height: H }),
+      t: i / FPS,
+      ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS),
+      info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i),
+      out,
+    });
     return { samples: reply?.samples, png: rgbaOf(out) };
   };
   const still = await draw(STILL, 5, "still");
@@ -231,37 +274,74 @@ test("D309: a fast sharp bar blurs into one smooth smear (more sub-frames), a st
 });
 
 /** STREAK's bar, throwing at any moment off the asked-for grid (4 slot middles of the 90° shutter): a graphic that breaks between sub-frames. */
-const OFFGRID = STREAK.replace("window.render = (t, info) => {", `window.render = (t, info) => {
+const OFFGRID = STREAK.replace(
+  "window.render = (t, info) => {",
+  `window.render = (t, info) => {
   const fr = t * info.fps - Math.floor(t * info.fps + 1e-9), k = fr / 0.0625 - 0.5;
-  if (fr > 1e-6 && Math.abs(k - Math.round(k)) > 1e-3) throw new Error("between sub-frames at " + t);`);
+  if (fr > 1e-6 && Math.abs(k - Math.round(k)) > 1e-3) throw new Error("between sub-frames at " + t);`,
+);
 /** STREAK, each render(t) taking 700 ms. */
-const SLOW = STREAK.replace("window.render = (t, info) => {", "window.render = (t, info) => { const until = performance.now() + 700; while (performance.now() < until) {}");
+const SLOW = STREAK.replace(
+  "window.render = (t, info) => {",
+  "window.render = (t, info) => { const until = performance.now() + 700; while (performance.now() < until) {}",
+);
 
-test("D309: refining is optional: a graphic that throws between sub-frames keeps the asked-for ones; a slow one isn't refined past its budget", { skip, timeout: 240000 }, async () => {
-  const draw = async (html: string, i: number, name: string) => {
-    const out = join(root, `${name}-${i}.png`);
-    const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
-    return { samples: reply?.samples, png: rgbaOf(out) };
-  };
-  const broken = await draw(OFFGRID, 5, "offgrid");
-  assert.equal(broken.samples, 4, "the finer grid failed: the 4 asked for kept, the frame not failed");
-  const plain = await draw(STREAK.replace("#fff", "#fffffe"), 5, "plain-ref");
-  assert.ok((plain.samples ?? 0) > 4);
-  // Its 4 bars, 25 px apart (the asked-for grid's mean), not a smear.
-  const row = Array.from({ length: W }, (_, x) => broken.png[(100 * W + x) * 4]!);
-  assert.ok(row.slice(24, 116).some((v) => v < 8), `the asked-for grid's mean: ${row.join(",")}`);
-  // The next frame draws (the failed grid's window was replaced).
-  assert.equal((await draw(OFFGRID, 6, "offgrid")).samples, 4);
-  // 700 ms a render(t): 16 more would end past the refinement budget, so the 4 asked for.
-  const t0 = Date.now();
-  assert.equal((await draw(SLOW, 5, "slow")).samples, 4);
-  assert.ok(Date.now() - t0 < 10_000);
-});
+test(
+  "D309: refining is optional: a graphic that throws between sub-frames keeps the asked-for ones; a slow one isn't refined past its budget",
+  { skip, timeout: 240000 },
+  async () => {
+    const draw = async (html: string, i: number, name: string) => {
+      const out = join(root, `${name}-${i}.png`);
+      const reply = await raster.render({
+        kind: "graphic",
+        width: W,
+        height: H,
+        doc: graphicDocument(html, { width: W, height: H }),
+        t: i / FPS,
+        ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS),
+        info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i),
+        out,
+      });
+      return { samples: reply?.samples, png: rgbaOf(out) };
+    };
+    const broken = await draw(OFFGRID, 5, "offgrid");
+    assert.equal(broken.samples, 4, "the finer grid failed: the 4 asked for kept, the frame not failed");
+    const plain = await draw(STREAK.replace("#fff", "#fffffe"), 5, "plain-ref");
+    assert.ok((plain.samples ?? 0) > 4);
+    // Its 4 bars, 25 px apart (the asked-for grid's mean), not a smear.
+    const row = Array.from({ length: W }, (_, x) => broken.png[(100 * W + x) * 4]!);
+    assert.ok(
+      row.slice(24, 116).some((v) => v < 8),
+      `the asked-for grid's mean: ${row.join(",")}`,
+    );
+    // The next frame draws (the failed grid's window was replaced).
+    assert.equal((await draw(OFFGRID, 6, "offgrid")).samples, 4);
+    // 700 ms a render(t): 16 more would end past the refinement budget, so the 4 asked for.
+    const t0 = Date.now();
+    assert.equal((await draw(SLOW, 5, "slow")).samples, 4);
+    assert.ok(Date.now() - t0 < 10_000);
+  },
+);
 
 test("D309: a request's deadline counts from when the rasteriser starts on it, not from when it was sent", { skip, timeout: 120000 }, async () => {
-  const slowStill = STILL.replace("window.render = () => {", "window.render = () => { const until = performance.now() + 1200; while (performance.now() < until) {}");
+  const slowStill = STILL.replace(
+    "window.render = () => {",
+    "window.render = () => { const until = performance.now() + 1200; while (performance.now() < until) {}",
+  );
   const doc = graphicDocument(slowStill, { width: W, height: H });
-  const job = (i: number, o?: { timeoutMs: number }) => raster.render({ kind: "graphic", width: W, height: H, doc, t: i / FPS, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out: join(root, `queued-${i}.png`) }, o);
+  const job = (i: number, o?: { timeoutMs: number }) =>
+    raster.render(
+      {
+        kind: "graphic",
+        width: W,
+        height: H,
+        doc,
+        t: i / FPS,
+        info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i),
+        out: join(root, `queued-${i}.png`),
+      },
+      o,
+    );
   // The document loaded first (its load isn't what's measured): a loaded runner took the CI run of
   // 2026-10-19 past a 1.5 s deadline on load, render(t) and capture alone.
   await job(9);
@@ -279,12 +359,37 @@ test("end to end: 1080×1350 at 60 fps, H.264 High with sound: every frame, 60/1
   mkdirSync(join(dir, "graphics"), { recursive: true });
   // A 60 fps clip: black with a white flash at 2.0 s (frames 120–125), silent with a 1 kHz beep at 2.0–2.1 s.
   const clip = join(root, "Flash.mp4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=540x676:r=60:d=6,drawbox=x=0:y=0:w=540:h=676:color=white:t=fill:enable='between(n,120,125)'", "-f", "lavfi", "-i", "aevalsrc='if(between(t,2,2.1),0.6*sin(2*PI*1000*t),0)':s=48000:d=6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", clip]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=black:s=540x676:r=60:d=6,drawbox=x=0:y=0:w=540:h=676:color=white:t=fill:enable='between(n,120,125)'",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc='if(between(t,2,2.1),0.6*sin(2*PI*1000*t),0)':s=48000:d=6",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-shortest",
+    clip,
+  ]);
   // The graphic: a bar crossing the top quarter (transparent elsewhere), 8 s.
-  writeFileSync(join(dir, "graphics", "bar.html"), `<canvas id="c" width="${BW}" height="${BH}"></canvas><script>
+  writeFileSync(
+    join(dir, "graphics", "bar.html"),
+    `<canvas id="c" width="${BW}" height="${BH}"></canvas><script>
 const ctx = document.getElementById("c").getContext("2d");
 window.render = (t) => { ctx.clearRect(0, 0, ${BW}, ${BH}); ctx.fillStyle = "#ff3366"; ctx.fillRect((t * 700) % ${BW}, 60, 160, 200); };
-</script>`);
+</script>`,
+  );
   const frames = 480;
   const project = {
     format: "uncut/0",
@@ -292,9 +397,33 @@ window.render = (t) => { ctx.clearRect(0, 0, ${BW}, ${BH}); ctx.fillStyle = "#ff
     canvas: { width: BW, height: BH, fps: 60 },
     media: [{ id: "m-flash", kind: "video", name: "Flash.mp4", path: clip, probe: { frames: 360, fps: 60, width: 540, height: 676, hasAudio: true } }],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [{ id: "title", type: "text", start: 30, duration: 120, text: "Sixty frames", style: { preset: "text.title" }, animation: { in: { module: "move.rise", duration: 20 } } }] },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [
+          {
+            id: "title",
+            type: "text",
+            start: 30,
+            duration: 120,
+            text: "Sixty frames",
+            style: { preset: "text.title" },
+            animation: { in: { module: "move.rise", duration: 20 } },
+          },
+        ],
+      },
       { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "bar", type: "graphic", src: "graphics/bar.html", start: 0, duration: frames }] },
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "flash", type: "clip", media: "m-flash", in: 0, duration: 360 }, { id: "tail", type: "component", component: "component.solid", duration: 120, props: { color: "#202020" } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "flash", type: "clip", media: "m-flash", in: 0, duration: 360 },
+          { id: "tail", type: "component", component: "component.solid", duration: 120, props: { color: "#202020" } },
+        ],
+      },
     ],
   } as unknown as Project;
   const { readGraphics } = await import("../../apps/server/src/export/exporter.ts");
@@ -307,17 +436,60 @@ window.render = (t) => { ctx.clearRect(0, 0, ${BW}, ${BH}); ctx.fillStyle = "#ff
   let last: Record<string, unknown> = {};
   const previous = process.env.UNCUT_RENDER_ENTRY;
   process.env.UNCUT_RENDER_ENTRY = DESKTOP;
-  const runJob = makeRunJob({ patch: (_id, change) => void (last = { ...last, ...change }), ffmpegBin: async () => FFMPEG, missingMedia: async () => undefined, duckEnvelopes: async () => new Map() });
+  const runJob = makeRunJob({
+    patch: (_id, change) => void (last = { ...last, ...change }),
+    ffmpegBin: async () => FFMPEG,
+    missingMedia: async () => undefined,
+    duckEnvelopes: async () => new Map(),
+  });
   const started = Date.now();
   try {
-    await runJob({ id: "j", projectDir: dir, name: "Film", output, quality: "high", loudness: "off", phase: "queued", progress: 0, width: BW, height: BH, fps: 60, seconds: frames / 60, startedAt: new Date().toISOString() }, plan, project, (m) => m.path, true, new AbortController().signal, () => plan, new Map());
+    await runJob(
+      {
+        id: "j",
+        projectDir: dir,
+        name: "Film",
+        output,
+        quality: "high",
+        loudness: "off",
+        phase: "queued",
+        progress: 0,
+        width: BW,
+        height: BH,
+        fps: 60,
+        seconds: frames / 60,
+        startedAt: new Date().toISOString(),
+      },
+      plan,
+      project,
+      (m) => m.path,
+      true,
+      new AbortController().signal,
+      () => plan,
+      new Map(),
+    );
   } finally {
     if (previous === undefined) delete process.env.UNCUT_RENDER_ENTRY;
     else process.env.UNCUT_RENDER_ENTRY = previous;
   }
   console.log(`  8 s at 1080×1350, 60 fps, blurred graphic: exported in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   assert.equal(last.phase, "done", String(last.error));
-  const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,nb_read_frames,duration", "-of", "json", output], { encoding: "utf8" })) as { streams: Array<Record<string, string>> };
+  const probe = JSON.parse(
+    execFileSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-count_frames",
+        "-show_entries",
+        "stream=codec_type,codec_name,width,height,r_frame_rate,nb_read_frames,duration",
+        "-of",
+        "json",
+        output,
+      ],
+      { encoding: "utf8" },
+    ),
+  ) as { streams: Array<Record<string, string>> };
   const video = probe.streams.find((s) => s.codec_type === "video")!;
   const audio = probe.streams.find((s) => s.codec_type === "audio");
   assert.equal(video.codec_name, "h264");
@@ -328,7 +500,9 @@ window.render = (t) => { ctx.clearRect(0, 0, ${BW}, ${BH}); ctx.fillStyle = "#ff
   assert.ok(audio, "a sound track");
   assert.ok(Math.abs(Number(audio.duration) - Number(video.duration)) <= 1 / 30, `sound ${audio.duration} s, picture ${video.duration} s`);
   // The flash: the first frame whose middle (under the text and the bar) is bright.
-  const luma = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", "crop=200:200:440:900,scale=1:1:flags=area,format=gray", "-f", "rawvideo", "-"], { maxBuffer: 64 * 1024 * 1024 });
+  const luma = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", "crop=200:200:440:900,scale=1:1:flags=area,format=gray", "-f", "rawvideo", "-"], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
   const flashFrame = [...luma].findIndex((v) => v > 128);
   assert.ok(flashFrame >= 119 && flashFrame <= 121, `the flash at frame ${flashFrame} (120)`);
   // The beep: the first 48 kHz sample that's loud.
@@ -341,7 +515,9 @@ window.render = (t) => { ctx.clearRect(0, 0, ${BW}, ${BH}); ctx.fillStyle = "#ff
     }
   assert.ok(Math.abs(beep - flashFrame / 60) <= 1 / 60 + 0.005, `the beep at ${beep.toFixed(3)} s, the flash at ${(flashFrame / 60).toFixed(3)} s`);
   // The graphic's band: no two consecutive frames alike (nothing held), over a stretch past 360 frames.
-  const band = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", `crop=${BW}:200:0:60,scale=270:50,format=gray`, "-f", "rawvideo", "-"], { maxBuffer: 256 * 1024 * 1024 });
+  const band = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", `crop=${BW}:200:0:60,scale=270:50,format=gray`, "-f", "rawvideo", "-"], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
   const size = 270 * 50;
   let same = 0;
   for (let f = 1; f < frames; f++) if (band.subarray((f - 1) * size, f * size).equals(band.subarray(f * size, (f + 1) * size))) same++;

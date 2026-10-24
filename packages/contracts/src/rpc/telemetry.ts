@@ -18,4 +18,6 @@ export const TelemetryStateRpc = Rpc.make(RPC_METHODS.telemetryState, { payload:
 // The Settings › App toggle: saved in settings.json, effective at once.
 export const TelemetrySetRpc = Rpc.make(RPC_METHODS.telemetrySet, { payload: Schema.Struct({ enabled: Schema.Boolean }), success: TelemetryState });
 // An uncaught error in the window: its class name and stack, from which the server keeps only a fingerprint.
-export const TelemetryCrashRpc = Rpc.make(RPC_METHODS.telemetryCrash, { payload: Schema.Struct({ name: Schema.String, stack: Schema.optional(Schema.String) }) });
+export const TelemetryCrashRpc = Rpc.make(RPC_METHODS.telemetryCrash, {
+  payload: Schema.Struct({ name: Schema.String, stack: Schema.optional(Schema.String) }),
+});

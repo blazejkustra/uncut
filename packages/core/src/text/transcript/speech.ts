@@ -1,5 +1,3 @@
-
-
 export const ms3 = (s: number) => Math.round(s * 1000) / 1000;
 
 /** A transcript segment: its span (seconds) and its words [first, end) (whisper's segments, D68). */
@@ -64,7 +62,15 @@ export function encodeEnvelope(db: ArrayLike<number>, rate = ENVELOPE_RATE): Sto
 /** A cached envelope decoded (undefined when it isn't one). */
 export function decodeEnvelope(value: unknown): SpeechEnvelope | undefined {
   const e = value as Partial<StoredEnvelope> | undefined;
-  if (!e || typeof e !== "object" || typeof e.data !== "string" || !(typeof e.rate === "number" && e.rate > 0) || typeof e.db0 !== "number" || typeof e.step !== "number") return undefined;
+  if (
+    !e ||
+    typeof e !== "object" ||
+    typeof e.data !== "string" ||
+    !(typeof e.rate === "number" && e.rate > 0) ||
+    typeof e.db0 !== "number" ||
+    typeof e.step !== "number"
+  )
+    return undefined;
   let bin: string;
   try {
     bin = atob(e.data);
@@ -116,7 +122,12 @@ export function envelopeInformative(env: SpeechEnvelope | undefined): env is Spe
   return loud && quiet;
 }
 
-type SpeechOptions = { readonly segments?: ReadonlyArray<SpeechSegment> | undefined; readonly silences?: ReadonlyArray<Span2> | undefined; readonly seconds?: number | undefined; readonly envelope?: SpeechEnvelope | undefined };
+type SpeechOptions = {
+  readonly segments?: ReadonlyArray<SpeechSegment> | undefined;
+  readonly silences?: ReadonlyArray<Span2> | undefined;
+  readonly seconds?: number | undefined;
+  readonly envelope?: SpeechEnvelope | undefined;
+};
 
 /** speechWords' words, and which of their edges the sound measured (a silence, or the envelope going quiet). */
 export interface HeardWords<W> {
@@ -145,7 +156,10 @@ export interface HeardWords<W> {
  *   each side); without the envelope it gets SHORT_WORD_SPAN_S around it.
  * Words with sound only get longer here; idempotent (running it on its own output changes nothing).
  */
-export function speechEdges<W extends { readonly start: number; readonly end: number }>(words: ReadonlyArray<W>, { segments, silences, seconds, envelope }: SpeechOptions = {}): HeardWords<W> {
+export function speechEdges<W extends { readonly start: number; readonly end: number }>(
+  words: ReadonlyArray<W>,
+  { segments, silences, seconds, envelope }: SpeechOptions = {},
+): HeardWords<W> {
   // Copies with writable edges (W's own fields kept).
   const out = words.map((w) => ({ ...w })) as Array<W & { start: number; end: number }>;
   const n = out.length;
@@ -248,7 +262,7 @@ export function speechEdges<W extends { readonly start: number; readonly end: nu
           capped = true;
           break;
         }
-        if (loud(k)) (lastLoud = k), (quiet = 0);
+        if (loud(k)) ((lastLoud = k), (quiet = 0));
         else quiet++;
       }
       if (!capped && (quiet >= (lastLoud < 0 ? search : hold) || bound === silence || bound === end)) {
@@ -282,7 +296,7 @@ export function speechEdges<W extends { readonly start: number; readonly end: nu
           capped = true;
           break;
         }
-        if (loud(k)) (firstLoud = k), (quiet = 0);
+        if (loud(k)) ((firstLoud = k), (quiet = 0));
         else quiet++;
       }
       if (!capped && (quiet >= (firstLoud < 0 ? search : hold) || bound === silence || bound === 0)) {
@@ -299,8 +313,14 @@ export function speechEdges<W extends { readonly start: number; readonly end: nu
       if (!short[i]) continue;
       const w = out[i]!;
       const mid = (w.start + w.end) / 2;
-      const prevEnd = Math.max(i > 0 ? out[i - 1]!.end : 0, ...(silences ?? []).filter((x) => x.start < mid && x.end > mid - SHORT_WORD_SPAN_S / 2).map((x) => Math.min(x.end, mid)));
-      const nextStart = Math.min(i + 1 < n ? out[i + 1]!.start : limit, ...(silences ?? []).filter((x) => x.end > mid && x.start < mid + SHORT_WORD_SPAN_S / 2).map((x) => Math.max(x.start, mid)));
+      const prevEnd = Math.max(
+        i > 0 ? out[i - 1]!.end : 0,
+        ...(silences ?? []).filter((x) => x.start < mid && x.end > mid - SHORT_WORD_SPAN_S / 2).map((x) => Math.min(x.end, mid)),
+      );
+      const nextStart = Math.min(
+        i + 1 < n ? out[i + 1]!.start : limit,
+        ...(silences ?? []).filter((x) => x.end > mid && x.start < mid + SHORT_WORD_SPAN_S / 2).map((x) => Math.max(x.start, mid)),
+      );
       w.start = Math.min(w.start, Math.max(prevEnd, mid - SHORT_WORD_SPAN_S / 2));
       w.end = Math.max(w.end, Math.min(nextStart, mid + SHORT_WORD_SPAN_S / 2));
     }
@@ -313,4 +333,5 @@ export function speechEdges<W extends { readonly start: number; readonly end: nu
 }
 
 /** speechEdges' words (where each word is heard, D74). */
-export const speechWords = <W extends { readonly start: number; readonly end: number }>(words: ReadonlyArray<W>, options: SpeechOptions = {}): Array<W> => speechEdges(words, options).words;
+export const speechWords = <W extends { readonly start: number; readonly end: number }>(words: ReadonlyArray<W>, options: SpeechOptions = {}): Array<W> =>
+  speechEdges(words, options).words;

@@ -69,7 +69,10 @@ const isOff = (value: string | undefined) => value !== undefined && /^(0|false|n
  * Whether this run checks for updates, and where. `signature` is read only for a packaged app
  * (undefined when codesign couldn't say: treated as unsigned).
  */
-export function updatePolicy(env: Record<string, string | undefined>, app: { readonly packaged: boolean; readonly signature?: BundleSignature | undefined }): UpdatePolicy {
+export function updatePolicy(
+  env: Record<string, string | undefined>,
+  app: { readonly packaged: boolean; readonly signature?: BundleSignature | undefined },
+): UpdatePolicy {
   if (isOff(env.UNCUT_AUTO_UPDATE)) return { enabled: false, reason: "off", detail: "UNCUT_AUTO_UPDATE is off" };
   if (!app.packaged) return { enabled: false, reason: "dev", detail: "a development run (not packaged)" };
   const test = Boolean(env.UNCUT_CDP);
@@ -84,7 +87,8 @@ export function updatePolicy(env: Record<string, string | undefined>, app: { rea
   // then refuses to install it); everything else needs the release signature.
   const s = app.signature;
   const signed = s !== undefined && s.signed && !s.adHoc && s.teamId !== undefined;
-  if (!signed && !(test && rawFeed)) return { enabled: false, reason: "unsigned", detail: s?.adHoc ? "an ad-hoc signed build" : "not signed with a Developer ID" };
+  if (!signed && !(test && rawFeed))
+    return { enabled: false, reason: "unsigned", detail: s?.adHoc ? "an ad-hoc signed build" : "not signed with a Developer ID" };
   return { enabled: true, feed, test };
 }
 
@@ -98,7 +102,8 @@ export function disabledLabel(policy: UpdatePolicy): string | undefined {
 
 /** The app-update.yml electron-updater reads (it needs one for its cache folder name; the feed is the same). */
 export function updaterConfigYaml(feed: Feed): string {
-  const lines = feed.provider === "github" ? ["provider: github", `owner: ${feed.owner}`, `repo: ${feed.repo}`] : ["provider: generic", `url: ${JSON.stringify(feed.url)}`];
+  const lines =
+    feed.provider === "github" ? ["provider: github", `owner: ${feed.owner}`, `repo: ${feed.repo}`] : ["provider: generic", `url: ${JSON.stringify(feed.url)}`];
   return [...lines, `updaterCacheDirName: ${UPDATER_CACHE_DIR}`, ""].join("\n");
 }
 
@@ -205,12 +210,16 @@ export function parseStepAsides(raw: unknown): StepAside[] {
   const out: StepAside[] = [];
   for (const e of raw) {
     if (typeof e === "number") out.push({ t: e, pid: 0 });
-    else if (typeof e === "object" && e !== null && typeof (e as StepAside).t === "number" && typeof (e as StepAside).pid === "number") out.push({ t: (e as StepAside).t, pid: (e as StepAside).pid });
+    else if (typeof e === "object" && e !== null && typeof (e as StepAside).t === "number" && typeof (e as StepAside).pid === "number")
+      out.push({ t: (e as StepAside).t, pid: (e as StepAside).pid });
   }
   return out;
 }
 
-export type PendingInstall = { readonly action: "none" } | { readonly action: "step-aside"; readonly shipItPid: number } | { readonly action: "hold-updates"; readonly shipItPid: number };
+export type PendingInstall =
+  | { readonly action: "none" }
+  | { readonly action: "step-aside"; readonly shipItPid: number }
+  | { readonly action: "hold-updates"; readonly shipItPid: number };
 
 /** A file:// URL field of ShipItState.plist (targetBundleURL: file:///Applications/Uncut.app/) as a path without the trailing slash. */
 function fileUrlPath(state: unknown, key: "targetBundleURL" | "updateBundleURL"): string | undefined {
@@ -231,7 +240,13 @@ const targetPath = (state: unknown) => fileUrlPath(state, "targetBundleURL");
  * times (ms) this app stepped aside before and for which ShipIt. A ShipIt already waited out once
  * never keeps the app closed again.
  */
-export function pendingInstall(input: { readonly state: unknown; readonly bundlePath: string; readonly shipItPid: number | undefined; readonly stepAsides: readonly StepAside[]; readonly now: number }): PendingInstall {
+export function pendingInstall(input: {
+  readonly state: unknown;
+  readonly bundlePath: string;
+  readonly shipItPid: number | undefined;
+  readonly stepAsides: readonly StepAside[];
+  readonly now: number;
+}): PendingInstall {
   const target = targetPath(input.state);
   if (input.shipItPid === undefined || target === undefined) return { action: "none" };
   if (target !== input.bundlePath.replace(/\/+$/, "")) return { action: "none" };
@@ -274,7 +289,12 @@ export function installingMessage(version: string | undefined): string {
  * gives up on its own after the wait), waits (bounded) for ShipIt to exit, closes the dialog and
  * opens the bundle (a no-op focus if ShipIt relaunched it). `osascript` is swappable for tests.
  */
-export function stepAsideWatcher(pid: number, bundlePath: string, message: string = installingMessage(undefined), osascript = "/usr/bin/osascript"): { readonly file: string; readonly args: readonly string[] } {
+export function stepAsideWatcher(
+  pid: number,
+  bundlePath: string,
+  message: string = installingMessage(undefined),
+  osascript = "/usr/bin/osascript",
+): { readonly file: string; readonly args: readonly string[] } {
   const dialog = `'${osascript.replace(/'/g, `'\\''`)}' -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Uncut" buttons {"OK"} default button 1 giving up after ${STEP_ASIDE_WAIT_S}' -e 'end run' "$3" >/dev/null 2>&1 & d=$!`;
   const script = `${dialog}; n=0; while kill -0 "$1" 2>/dev/null && [ "$n" -lt ${STEP_ASIDE_WAIT_S} ]; do sleep 1; n=$((n+1)); done; kill "$d" 2>/dev/null; sleep 1; exec /usr/bin/open "$2"`;
   return { file: "/bin/sh", args: ["-c", script, "uncut-update-wait", String(pid), bundlePath, message] };

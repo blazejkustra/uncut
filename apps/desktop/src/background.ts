@@ -11,7 +11,11 @@ export const isTestBackground = (env: NodeJS.ProcessEnv) => Boolean(env.UNCUT_CD
  * hidden or occluded, and Chromium would then throttle its timers and requestAnimationFrame (the
  * playback clock) or stop painting it. These keep it running as if it were in front.
  */
-export const BACKGROUND_SWITCHES: ReadonlyArray<string> = ["disable-renderer-backgrounding", "disable-background-timer-throttling", "disable-backgrounding-occluded-windows"];
+export const BACKGROUND_SWITCHES: ReadonlyArray<string> = [
+  "disable-renderer-backgrounding",
+  "disable-background-timer-throttling",
+  "disable-backgrounding-occluded-windows",
+];
 
 // ---- the display a test window draws for (D216) ----
 
@@ -28,7 +32,10 @@ export const BACKGROUND_SWITCHES: ReadonlyArray<string> = ["disable-renderer-bac
 export const TEST_DISPLAY_ARGS: ReadonlyArray<string> = ["--force-device-scale-factor=2", "--force-color-profile=srgb"];
 
 /** Where a test window goes (D216): centred in the primary display's work area, never on whichever display has the focus. */
-export function centredIn(area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, size: { readonly width: number; readonly height: number }) {
+export function centredIn(
+  area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  size: { readonly width: number; readonly height: number },
+) {
   return { x: Math.round(area.x + Math.max(0, area.width - size.width) / 2), y: Math.round(area.y + Math.max(0, area.height - size.height) / 2) };
 }
 
@@ -62,9 +69,16 @@ export function testMedia(env: NodeJS.ProcessEnv): { readonly access: Readonly<R
  * takes from ScreenCaptureKit on macOS 13 and Core Audio taps on 14.2 and later). Tests answer from
  * UNCUT_TEST_SYSTEM_AUDIO ("unsupported" plays an older Mac), only together with test media.
  */
-export function systemAudioSupport(platform: string, version: string, env: NodeJS.ProcessEnv = {}): { readonly supported: boolean; readonly macos: string; readonly standin?: boolean } {
+export function systemAudioSupport(
+  platform: string,
+  version: string,
+  env: NodeJS.ProcessEnv = {},
+): { readonly supported: boolean; readonly macos: string; readonly standin?: boolean } {
   // Tests record a stand-in sound drawn in the page (never the real loopback).
-  if (testMedia(env)) return env.UNCUT_TEST_SYSTEM_AUDIO === "unsupported" ? { supported: false, macos: "12.7", standin: true } : { supported: true, macos: "15.0", standin: true };
+  if (testMedia(env))
+    return env.UNCUT_TEST_SYSTEM_AUDIO === "unsupported"
+      ? { supported: false, macos: "12.7", standin: true }
+      : { supported: true, macos: "15.0", standin: true };
   if (platform !== "darwin") return { supported: false, macos: "" };
   const major = Number(version.split(".")[0]);
   return { supported: Number.isFinite(major) && major >= MIN_SYSTEM_AUDIO_MACOS, macos: version };

@@ -43,7 +43,10 @@ export function logoSlot(name: string): LogoSlot {
 /** The family a font file's name suggests: "Inter-SemiBold.woff2" → "Inter", "dm_sans_regular.ttf" → "Dm Sans". */
 export function fontFamilyOf(name: string): string {
   const stem = basename(name, extname(name))
-    .replace(/[-_ ](thin|hairline|extra-?light|ultra-?light|light|regular|book|normal|medium|semi-?bold|demi-?bold|bold|extra-?bold|ultra-?bold|black|heavy|italic|oblique|variable|vf|var|wght|\d{3})([-_ ].*)?$/i, "")
+    .replace(
+      /[-_ ](thin|hairline|extra-?light|ultra-?light|light|regular|book|normal|medium|semi-?bold|demi-?bold|bold|extra-?bold|ultra-?bold|black|heavy|italic|oblique|variable|vf|var|wght|\d{3})([-_ ].*)?$/i,
+      "",
+    )
     .replace(/\[.*\]$/, "")
     .replace(/[-_]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -70,7 +73,13 @@ const described = (name: string): ImportedFile => {
  * Copies the logos and fonts `source` points at (a path, a folder or an https address) into the
  * kit's folder; the files as named there, or why nothing came in.
  */
-export async function importIntoKit(dirs: BrandDirs, kitId: string, scope: BrandScope, source: string, signal: AbortSignal = new AbortController().signal): Promise<{ readonly files: ReadonlyArray<ImportedFile> } | { readonly problem: string }> {
+export async function importIntoKit(
+  dirs: BrandDirs,
+  kitId: string,
+  scope: BrandScope,
+  source: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<{ readonly files: ReadonlyArray<ImportedFile> } | { readonly problem: string }> {
   const raw = source.trim();
   if (!raw) return { problem: "Give a file, a folder or a web address." };
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {

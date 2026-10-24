@@ -33,7 +33,12 @@ export function RegionSelect({ project, onDone }: { project: ProjectModel; onDon
     const r = e.currentTarget.getBoundingClientRect();
     return { x: Math.min(r.width, Math.max(0, e.clientX - r.left)), y: Math.min(r.height, Math.max(0, e.clientY - r.top)), r };
   };
-  const box = (d: { x0: number; y0: number; x1: number; y1: number }): Rect => ({ x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) });
+  const box = (d: { x0: number; y0: number; x1: number; y1: number }): Rect => ({
+    x: Math.min(d.x0, d.x1),
+    y: Math.min(d.y0, d.y1),
+    w: Math.abs(d.x1 - d.x0),
+    h: Math.abs(d.y1 - d.y0),
+  });
   const add = (at: { frame: number } | { start: number; end: number }) => {
     if (picked) actions.addRegionToChat(picked.area, at);
     setPicked(undefined);
@@ -83,7 +88,12 @@ export function RegionSelect({ project, onDone }: { project: ProjectModel; onDon
     >
       {shown && <div className="pv-region drawing" data-testid="region-rect" style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h }} />}
       {picked && (
-        <div className="pv-region-pick" data-testid="region-pick" style={{ left: picked.screen.x, top: picked.screen.y + picked.screen.h + 6 }} onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          className="pv-region-pick"
+          data-testid="region-pick"
+          style={{ left: picked.screen.x, top: picked.screen.y + picked.screen.h + 6 }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button className="btn primary" data-testid="region-add-frame" onClick={() => add({ frame })}>
             Add to chat at {momentLabel(frame, fps)}
           </button>

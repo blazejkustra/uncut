@@ -34,7 +34,11 @@ const licenceOf = (json: Record<string, unknown>): string => {
 const repositoryOf = (json: Record<string, unknown>): string => {
   const r = json.repository;
   const url = typeof r === "string" ? r : r && typeof r === "object" && "url" in r ? String((r as { url: unknown }).url) : "";
-  return url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://").replace(/^github:/, "https://github.com/");
+  return url
+    .replace(/^git\+/, "")
+    .replace(/\.git$/, "")
+    .replace(/^git:\/\//, "https://")
+    .replace(/^github:/, "https://github.com/");
 };
 
 /** Node's lookup: <dir>/node_modules/<name>, then each parent's. */
@@ -54,8 +58,15 @@ const at = (p: string) => join(ROOT, p);
 const viteQueries = {
   name: "vite-queries",
   setup(b: { onResolve: Function; onLoad: Function }) {
-    b.onResolve({ filter: /\?/ }, (a: { path: string; resolveDir: string }) => ({ path: resolve(a.resolveDir, a.path.replace(/\?.*$/, "")), namespace: "query" }));
-    b.onLoad({ filter: /.*/, namespace: "query" }, (a: { path: string }) => ({ contents: `${/\.[cm]?[jt]sx?$/.test(a.path) ? `import ${JSON.stringify(a.path)};` : ""}export default "";`, loader: "js", resolveDir: ROOT }));
+    b.onResolve({ filter: /\?/ }, (a: { path: string; resolveDir: string }) => ({
+      path: resolve(a.resolveDir, a.path.replace(/\?.*$/, "")),
+      namespace: "query",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "query" }, (a: { path: string }) => ({
+      contents: `${/\.[cm]?[jt]sx?$/.test(a.path) ? `import ${JSON.stringify(a.path)};` : ""}export default "";`,
+      loader: "js",
+      resolveDir: ROOT,
+    }));
   },
 };
 
@@ -64,10 +75,31 @@ async function bundledInputs(): Promise<Array<string>> {
   const { build } = esbuild();
   const common = { bundle: true, write: false, metafile: true, outdir: join(ROOT, "dist-notices"), logLevel: "silent", absWorkingDir: ROOT };
   const results = await Promise.all([
-    build({ ...common, entryPoints: [at("apps/server/src/app/bin.ts"), at("apps/server/src/agent/mcp.ts")], platform: "node", format: "esm", external: ["bufferutil", "utf-8-validate"] }),
-    build({ ...common, entryPoints: { main: at("apps/desktop/src/main.ts"), preload: at("apps/desktop/src/preload.ts") }, platform: "node", format: "cjs", external: ["electron"], loader: { ".woff2": "dataurl" } }),
+    build({
+      ...common,
+      entryPoints: [at("apps/server/src/app/bin.ts"), at("apps/server/src/agent/mcp.ts")],
+      platform: "node",
+      format: "esm",
+      external: ["bufferutil", "utf-8-validate"],
+    }),
+    build({
+      ...common,
+      entryPoints: { main: at("apps/desktop/src/main.ts"), preload: at("apps/desktop/src/preload.ts") },
+      platform: "node",
+      format: "cjs",
+      external: ["electron"],
+      loader: { ".woff2": "dataurl" },
+    }),
     build({ ...common, entryPoints: [at("apps/web/src/preview/shaderRunner.ts")], platform: "browser", format: "iife" }),
-    build({ ...common, entryPoints: [at("apps/web/src/main.tsx")], platform: "browser", format: "esm", jsx: "automatic", loader: { ".woff2": "dataurl", ".svg": "file", ".png": "file" }, plugins: [viteQueries] }),
+    build({
+      ...common,
+      entryPoints: [at("apps/web/src/main.tsx")],
+      platform: "browser",
+      format: "esm",
+      jsx: "automatic",
+      loader: { ".woff2": "dataurl", ".svg": "file", ".png": "file" },
+      plugins: [viteQueries],
+    }),
   ]);
   return results.flatMap((r) => Object.keys(r.metafile?.inputs ?? {}));
 }
@@ -123,7 +155,8 @@ export function licenceFiles(dir: string): Array<[string, string]> {
 }
 
 /** Licences that would put conditions on Uncut's own code or that nobody stated. */
-export const isConcerning = (licence: string) => /GPL|UNKNOWN|UNLICENSED|SEE LICENSE/i.test(licence) && !/\bOR\b.*\b(MIT|Apache|BSD|ISC)\b|\b(MIT|Apache|BSD|ISC)\b.*\bOR\b/i.test(licence);
+export const isConcerning = (licence: string) =>
+  /GPL|UNKNOWN|UNLICENSED|SEE LICENSE/i.test(licence) && !/\bOR\b.*\b(MIT|Apache|BSD|ISC)\b|\b(MIT|Apache|BSD|ISC)\b.*\bOR\b/i.test(licence);
 
 type Crate = { name: string; version: string; license: string; buildOnly: boolean; dir?: string };
 /** Procedural-macro crates run while compiling and leave no code in the binary. */
@@ -156,24 +189,30 @@ export function crates(): Array<Crate> {
 const rule = "=".repeat(78);
 const section = (title: string) => `\n${rule}\n${title}\n${rule}\n\n`;
 
-const MIT_T3 = [
-  "MIT License", "", "Copyright (c) 2026 T3 Tools Inc.", "",
-  "Permission is hereby granted, free of charge, to any person obtaining a copy",
-  "of this software and associated documentation files (the \"Software\"), to deal",
-  "in the Software without restriction, including without limitation the rights",
-  "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell",
-  "copies of the Software, and to permit persons to whom the Software is",
-  "furnished to do so, subject to the following conditions:", "",
-  "The above copyright notice and this permission notice shall be included in all",
-  "copies or substantial portions of the Software.", "",
-  "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR",
-  "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,",
-  "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE",
-  "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER",
-  "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,",
-  "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
-  "SOFTWARE.",
-].join("\n") + "\n";
+const MIT_T3 =
+  [
+    "MIT License",
+    "",
+    "Copyright (c) 2026 T3 Tools Inc.",
+    "",
+    "Permission is hereby granted, free of charge, to any person obtaining a copy",
+    'of this software and associated documentation files (the "Software"), to deal',
+    "in the Software without restriction, including without limitation the rights",
+    "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell",
+    "copies of the Software, and to permit persons to whom the Software is",
+    "furnished to do so, subject to the following conditions:",
+    "",
+    "The above copyright notice and this permission notice shall be included in all",
+    "copies or substantial portions of the Software.",
+    "",
+    'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR',
+    "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,",
+    "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE",
+    "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER",
+    "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,",
+    "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
+    "SOFTWARE.",
+  ].join("\n") + "\n";
 
 /** Files that port t3code's patterns (issue #103): each must still name t3code, so the list stays true. */
 const T3CODE_PORTS: ReadonlyArray<readonly [string, string]> = [
@@ -197,7 +236,20 @@ export async function render(): Promise<string> {
   s += "Shipped in the app (inlined in the editor and the renderer, licence in Resources/fonts/OFL.txt).\n\n";
   s += readFileSync(join(ROOT, "assets/fonts/OFL.txt"), "utf8").trimEnd() + "\n";
 
-  const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as { sounds: Array<{ file: string; title: string; author: string; provider?: string; source: string; sourceFile?: string; license: string; licenseChecked?: string; licenseProof?: string; trimmed?: string }> };
+  const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as {
+    sounds: Array<{
+      file: string;
+      title: string;
+      author: string;
+      provider?: string;
+      source: string;
+      sourceFile?: string;
+      license: string;
+      licenseChecked?: string;
+      licenseProof?: string;
+      trimmed?: string;
+    }>;
+  };
   s += section("Sound effects (CC0 1.0, public domain)");
   s += "Shipped in Resources/sfx (D134, D208): sounds from Freesound (each sound's page links the CC0 1.0\n";
   s += "deed) and from Kenney's packs (kenney.nl; each pack's License.txt says Creative Commons Zero, CC0),\n";
@@ -231,7 +283,9 @@ export async function render(): Promise<string> {
   s += "Uncut isn't made by, endorsed by or affiliated with any of them.\n";
 
   // Issue #103 (D278): t3code's code patterns that Uncut ports, and (while the files exist) its embedded marks.
-  for (const [file] of T3CODE_PORTS) if (!readFileSync(join(ROOT, file), "utf8").includes("t3code")) throw new Error(`${file} no longer names t3code: update T3CODE_PORTS in scripts/notices.ts`);
+  for (const [file] of T3CODE_PORTS)
+    if (!readFileSync(join(ROOT, file), "utf8").includes("t3code"))
+      throw new Error(`${file} no longer names t3code: update T3CODE_PORTS in scripts/notices.ts`);
   const providerMarks = join(ROOT, "apps/web/src/panels/composer/providerMarks.tsx");
   const t3Marks = existsSync(providerMarks) && /<path/.test(readFileSync(providerMarks, "utf8"));
   s += section("t3code (MIT)");
@@ -259,9 +313,11 @@ export async function render(): Promise<string> {
 
   // D281: the tools' marks on the setup and Settings rows, and the plugins' own icons.
   const toolMarks = readFileSync(join(ROOT, "apps/web/src/onboarding/toolMarks.tsx"), "utf8");
-  for (const needle of ['Simple Icons "ffmpeg"', "software-mansion/argent", "36aa14a"]) if (!toolMarks.includes(needle)) throw new Error(`apps/web/src/onboarding/toolMarks.tsx no longer names ${needle}: update scripts/notices.ts`);
+  for (const needle of ['Simple Icons "ffmpeg"', "software-mansion/argent", "36aa14a"])
+    if (!toolMarks.includes(needle)) throw new Error(`apps/web/src/onboarding/toolMarks.tsx no longer names ${needle}: update scripts/notices.ts`);
   const typegpuIcon = readFileSync(join(ROOT, "plugins/catalog/typegpu-effects/icon.svg"), "utf8");
-  if (!typegpuIcon.includes("software-mansion/TypeGPU")) throw new Error("plugins/catalog/typegpu-effects/icon.svg no longer names its source: update scripts/notices.ts");
+  if (!typegpuIcon.includes("software-mansion/TypeGPU"))
+    throw new Error("plugins/catalog/typegpu-effects/icon.svg no longer names its source: update scripts/notices.ts");
   s += section("Tool and plugin marks");
   s += "The setup wizard's and Settings' rows (apps/web/src/onboarding/toolMarks.tsx) and the plugins'\n";
   s += "icons (icon.svg in each plugin folder) are drawn in one colour, the row's text colour:\n\n";

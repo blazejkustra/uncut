@@ -11,7 +11,8 @@ export const locate = (project: Pick<Project, "tracks">, id: Id) => {
   }
   return undefined;
 };
-export const lockProblem = (track: Track, item: Item) => (track.locked ? `The ${track.name} track is locked. Unlock it to edit it.` : item.locked ? "That item is locked." : undefined);
+export const lockProblem = (track: Track, item: Item) =>
+  track.locked ? `The ${track.name} track is locked. Unlock it to edit it.` : item.locked ? "That item is locked." : undefined;
 
 export interface DetachAudioPlan {
   readonly ops: ReadonlyArray<Op>;
@@ -28,7 +29,12 @@ export interface DetachAudioPlan {
  * audio track free for that stretch, else on a new "Audio N" track. Captions and transcript cuts
  * keep following the clip on main (its picture), not the detached sound.
  */
-export function planDetachAudio(project: Pick<Project, "tracks" | "media" | "canvas">, itemId: Id, taken: Set<string>, options: { readonly id?: Id; readonly track?: Id } = {}): DetachAudioPlan | { readonly problem: string } {
+export function planDetachAudio(
+  project: Pick<Project, "tracks" | "media" | "canvas">,
+  itemId: Id,
+  taken: Set<string>,
+  options: { readonly id?: Id; readonly track?: Id } = {},
+): DetachAudioPlan | { readonly problem: string } {
   const found = locate(project, itemId);
   if (!found) return { problem: "That item isn't in the project any more." };
   const { track, item } = found;
@@ -100,7 +106,12 @@ export const speedLabel = (speed: number) => `${Math.round(speed * 100) / 100}×
  * animations scale with it, fades are kept within the new length. `keepPitch` false lets the
  * pitch follow the speed (absent: unchanged). Checked with the timeline rules.
  */
-export function planSetSpeed(project: Project, itemId: Id, speed: number, keepPitch?: boolean): { readonly ops: ReadonlyArray<Op>; readonly summary: string; readonly duration: number } | { readonly problem: string } {
+export function planSetSpeed(
+  project: Project,
+  itemId: Id,
+  speed: number,
+  keepPitch?: boolean,
+): { readonly ops: ReadonlyArray<Op>; readonly summary: string; readonly duration: number } | { readonly problem: string } {
   const found = locate(project, itemId);
   if (!found) return { problem: "That item isn't in the project any more." };
   const { track, item } = found;
@@ -109,20 +120,25 @@ export function planSetSpeed(project: Project, itemId: Id, speed: number, keepPi
   if (!media || media.kind === "image") return { problem: "A still picture has no speed." };
   const locked = lockProblem(track, item);
   if (locked) return { problem: locked };
-  if (!Number.isFinite(speed) || speed < SPEED_RANGE.min || speed > SPEED_RANGE.max) return { problem: `Pick a speed from ${SPEED_RANGE.min}× to ${SPEED_RANGE.max}×.` };
+  if (!Number.isFinite(speed) || speed < SPEED_RANGE.min || speed > SPEED_RANGE.max)
+    return { problem: `Pick a speed from ${SPEED_RANGE.min}× to ${SPEED_RANGE.max}×.` };
   const old = item.speed ?? 1;
   const next = Math.round(speed * 1000) / 1000;
   const ratio = old / next;
   let duration = Math.max(1, Math.round(item.duration * ratio));
   const frames = media.probe?.frames;
   const from = item.in ?? 0;
-  if (frames && !item.loop && !(item.type === "clip" && item.hold) && from + duration * next > frames) duration = Math.max(1, Math.floor((frames - from) / next));
+  if (frames && !item.loop && !(item.type === "clip" && item.hold) && from + duration * next > frames)
+    duration = Math.max(1, Math.floor((frames - from) / next));
   const scale = (f: number) => Math.min(duration, Math.round(f * ratio));
   const set: Record<string, unknown> = { speed: next === 1 ? null : next, duration };
   if (keepPitch !== undefined) set.keepPitch = keepPitch ? null : false;
   if (item.keys?.length) set.keys = item.keys.map((k) => ({ ...k, frame: scale(k.frame) }));
   if (item.gainKeys?.length) set.gainKeys = item.gainKeys.map((k) => ({ ...k, frame: scale(k.frame) }));
-  if (item.animation) set.animation = Object.fromEntries(Object.entries(item.animation).map(([k, a]) => [k, a ? { ...a, duration: Math.max(1, Math.min(duration, Math.round(a.duration * ratio))) } : a]));
+  if (item.animation)
+    set.animation = Object.fromEntries(
+      Object.entries(item.animation).map(([k, a]) => [k, a ? { ...a, duration: Math.max(1, Math.min(duration, Math.round(a.duration * ratio))) } : a]),
+    );
   const fadeIn = item.fadeIn ? Math.min(item.fadeIn, duration) : undefined;
   const fadeOut = item.fadeOut ? Math.min(item.fadeOut, duration - (fadeIn ?? 0)) : undefined;
   if (item.fadeIn !== undefined) set.fadeIn = fadeIn ?? null;
@@ -141,7 +157,8 @@ export function planSetSpeed(project: Project, itemId: Id, speed: number, keepPi
     if ("problem" in retry) return retry;
     return { ops: [...drop, ...ops], summary: `Speed ${speedLabel(next)}`, duration };
   }
-  if ("problem" in draft) return /overlaps/.test(draft.problem) ? { problem: "There's no room on this track for it at that speed: move the next item first." } : draft;
+  if ("problem" in draft)
+    return /overlaps/.test(draft.problem) ? { problem: "There's no room on this track for it at that speed: move the next item first." } : draft;
   return { ops, summary: next === old ? (keepPitch === false ? "Pitch follows speed" : "Keep pitch") : `Speed ${speedLabel(next)}`, duration };
 }
 
@@ -166,7 +183,11 @@ const retimes = (op: Op): string | undefined => {
  * edits are applied (the server) and drafted (the renderer).
  */
 export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): ReadonlyArray<Op> {
-  const linked = project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => (i.type === "audio" || i.type === "clip") && typeof i.linkedTo === "string").map((i) => ({ item: i, track: t }))));
+  const linked = project.tracks.flatMap((t) =>
+    t.role === "main"
+      ? []
+      : t.items.filter((i) => (i.type === "audio" || i.type === "clip") && typeof i.linkedTo === "string").map((i) => ({ item: i, track: t })),
+  );
   if (!linked.length || !ops.length) return ops;
   let after: Project;
   try {
@@ -244,14 +265,32 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
       const want = { start, in: from, duration, speed: speed === 1 ? undefined : speed, keepPitch: keepPitch === false ? false : undefined, linkedTo };
       if (i === 0) {
         const cur = now.item;
-        const same = cur.start === want.start && (cur.in ?? 0) === want.in && cur.duration === want.duration && cur.speed === want.speed && cur.keepPitch === want.keepPitch && cur.linkedTo === want.linkedTo && !several;
+        const same =
+          cur.start === want.start &&
+          (cur.in ?? 0) === want.in &&
+          cur.duration === want.duration &&
+          cur.speed === want.speed &&
+          cur.keepPitch === want.keepPitch &&
+          cur.linkedTo === want.linkedTo &&
+          !several;
         if (same) return;
         const keys = cur.gainKeys?.length && (several || cur.in !== want.in || cur.duration !== want.duration || cur.speed !== want.speed);
         const boxKeys = isClip && cur.keys?.length && (several || cur.duration !== want.duration || cur.speed !== want.speed);
         extra.push({
           op: "update_item",
           item: a.id,
-          set: { start, in: from, duration, speed: want.speed ?? null, keepPitch: want.keepPitch ?? null, linkedTo: linkedTo ?? null, fadeIn: fadeIn || null, fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null, ...(keys ? { gainKeys: null } : {}), ...(boxKeys ? { keys: null } : {}) },
+          set: {
+            start,
+            in: from,
+            duration,
+            speed: want.speed ?? null,
+            keepPitch: want.keepPitch ?? null,
+            linkedTo: linkedTo ?? null,
+            fadeIn: fadeIn || null,
+            fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null,
+            ...(keys ? { gainKeys: null } : {}),
+            ...(boxKeys ? { keys: null } : {}),
+          },
         });
         return;
       }
@@ -259,14 +298,42 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         // A linked picture's piece: the same clip (box, effects, look) over the piece's stretch.
         const { fadeIn: _fi, fadeOut: _fo, keys: _k, gainKeys: _g, animation: _a, speed: _s, keepPitch: _p, ...rest } = a;
         const id = uniqueIn(a.id.replace(/-\d+$/, "") || "clip", taken);
-        extra.push({ op: "insert_item", track: now.track.id, item: { ...rest, id, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), ...(linkedTo ? { linkedTo } : {}) } as Item });
+        extra.push({
+          op: "insert_item",
+          track: now.track.id,
+          item: {
+            ...rest,
+            id,
+            in: from,
+            start,
+            duration,
+            ...(want.speed ? { speed: want.speed } : {}),
+            ...(want.keepPitch === false ? { keepPitch: false } : {}),
+            ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}),
+            ...(linkedTo ? { linkedTo } : {}),
+          } as Item,
+        });
         return;
       }
       const id = uniqueIn("audio", taken);
       extra.push({
         op: "insert_item",
         track: now.track.id,
-        item: { id, type: "audio", media: a.media!, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}), ...(a.mute ? { mute: true } : {}), ...(a.name ? { name: a.name } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), ...(linkedTo ? { linkedTo } : {}) },
+        item: {
+          id,
+          type: "audio",
+          media: a.media!,
+          in: from,
+          start,
+          duration,
+          ...(want.speed ? { speed: want.speed } : {}),
+          ...(want.keepPitch === false ? { keepPitch: false } : {}),
+          ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}),
+          ...(a.mute ? { mute: true } : {}),
+          ...(a.name ? { name: a.name } : {}),
+          ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}),
+          ...(linkedTo ? { linkedTo } : {}),
+        },
       });
     });
   }
@@ -275,5 +342,11 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   const check = tryOps(project, synced);
   if (!("problem" in check)) return synced;
   // Something is in the way: the linked items stop following rather than the edit failing.
-  return [...ops, ...unlink, ...linked.filter(({ item }) => afterItems.has(item.id) && !unlink.some((u) => (u as { item: string }).item === item.id)).map(({ item }) => ({ op: "update_item" as const, item: item.id, set: { linkedTo: null } }))];
+  return [
+    ...ops,
+    ...unlink,
+    ...linked
+      .filter(({ item }) => afterItems.has(item.id) && !unlink.some((u) => (u as { item: string }).item === item.id))
+      .map(({ item }) => ({ op: "update_item" as const, item: item.id, set: { linkedTo: null } })),
+  ];
 }

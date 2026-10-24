@@ -30,7 +30,15 @@ before(async () => {
   mkdirSync(join(root, "projects"));
   cpSync(FAKE_PLUGIN, join(root, "plugins", "fake"), { recursive: true });
   for (const f of ["prompts.jsonl", "results.jsonl", "plugin.jsonl"]) writeFileSync(join(root, f), "");
-  writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "fake_env", args: {} }, { tool: "fake_echo", args: { text: "from the app" } }]]));
+  writeFileSync(
+    join(root, "plan.json"),
+    JSON.stringify([
+      [
+        { tool: "fake_env", args: {} },
+        { tool: "fake_echo", args: { text: "from the app" } },
+      ],
+    ]),
+  );
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -110,11 +118,15 @@ test("a plugin is allowed in Settings, then the agent calls its tool in the pack
       ["Used fake_env from Fake capture", "done"],
       ["Used fake_echo from Fake capture", "done"],
     ]);
-    const results = readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const results = readFileSync(join(root, "results.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     const facts = JSON.parse(results[0].result.content[0].text);
     assert.equal(facts.cwd, realpathSync(join(root, "plugins", "fake")));
     assert.deepEqual(facts.argv, ["--from-manifest"]);
-    for (const k of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "UNCUT_DATA_DIR", "UNCUT_PLUGINS_DIR", "UNCUT_CLAUDE"]) assert.ok(!facts.env.includes(k), `${k} isn't passed to the plugin`);
+    for (const k of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "UNCUT_DATA_DIR", "UNCUT_PLUGINS_DIR", "UNCUT_CLAUDE"])
+      assert.ok(!facts.env.includes(k), `${k} isn't passed to the plugin`);
     assert.equal(results[1].result.content[0].text, "fake_echo: from the app");
     assert.equal(results[1].result.content[1].type, "image");
     const pid = facts.pid as number;

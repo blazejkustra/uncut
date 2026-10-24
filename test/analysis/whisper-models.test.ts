@@ -45,7 +45,11 @@ const gate = () => {
 before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-models-")));
   server = createServer((req, res) => {
-    seen.push({ url: req.url ?? "", ...(req.headers.range ? { range: req.headers.range } : {}), ...(req.headers["if-range"] ? { ifRange: String(req.headers["if-range"]) } : {}) });
+    seen.push({
+      url: req.url ?? "",
+      ...(req.headers.range ? { range: req.headers.range } : {}),
+      ...(req.headers["if-range"] ? { ifRange: String(req.headers["if-range"]) } : {}),
+    });
     if (req.url === "/missing.bin") {
       res.writeHead(404).end("no");
       return;
@@ -64,7 +68,12 @@ before(async () => {
       return;
     }
     const part = BODY.subarray(start);
-    res.writeHead(m ? 206 : 200, { "content-length": String(part.length), "content-type": "application/octet-stream", etag, ...(m ? { "content-range": `bytes ${start}-${BODY.length - 1}/${BODY.length}` } : {}) });
+    res.writeHead(m ? 206 : 200, {
+      "content-length": String(part.length),
+      "content-type": "application/octet-stream",
+      etag,
+      ...(m ? { "content-range": `bytes ${start}-${BODY.length - 1}/${BODY.length}` } : {}),
+    });
     if (mode === "hold") {
       res.write(part.subarray(0, 64 * 1024));
       return;
@@ -109,7 +118,10 @@ test("the catalog: the default is the multilingual large-v3-turbo q5_0 (~574 MB)
   assert.equal(DEFAULT_MODEL, "large-v3-turbo-q5_0");
   const d = modelInfo(DEFAULT_MODEL)!;
   assert.deepEqual([d.file, d.bytes, d.multilingual, d.offered], ["ggml-large-v3-turbo-q5_0.bin", 574041195, true, true]);
-  assert.deepEqual(MODELS.filter((m) => m.offered).map((m) => m.id), ["large-v3-turbo-q5_0", "small", "base"]);
+  assert.deepEqual(
+    MODELS.filter((m) => m.offered).map((m) => m.id),
+    ["large-v3-turbo-q5_0", "small", "base"],
+  );
   for (const m of MODELS) assert.match(m.sha256, /^[0-9a-f]{64}$/);
 });
 
@@ -140,7 +152,10 @@ test("a download: progress, a .part while it runs, renamed when whole and checke
 test("a wrong checksum or size: an error, and no model file nor .part left", async () => {
   mode = "normal";
   const { dest, part } = fresh("bad");
-  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: "0".repeat(64), signal: new AbortController().signal }), /damaged/);
+  await assert.rejects(
+    downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: "0".repeat(64), signal: new AbortController().signal }),
+    /damaged/,
+  );
   assert.ok(!existsSync(dest) && !existsSync(part));
   await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest, bytes: 1000, signal: new AbortController().signal }), /bigger than the model/);
   assert.ok(!existsSync(dest) && !existsSync(part));
@@ -152,7 +167,14 @@ test("cancel mid-download: rejects with Cancelled, and leaves no partial file", 
   mode = "slow";
   const { dir, dest, part } = fresh("cancel");
   const controller = new AbortController();
-  const done = downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: SHA, signal: controller.signal, onProgress: (received) => received > 512 * 1024 && controller.abort() });
+  const done = downloadFile({
+    url: `${base}/files/x.bin`,
+    dest,
+    bytes: BODY.length,
+    sha256: SHA,
+    signal: controller.signal,
+    onProgress: (received) => received > 512 * 1024 && controller.abort(),
+  });
   await assert.rejects(done, Cancelled);
   assert.ok(!existsSync(dest) && !existsSync(part));
   assert.deepEqual(readdirSync(dir), []);
@@ -162,7 +184,17 @@ test("a dropped connection keeps the .part; the next try resumes it with a Range
   mode = "drop";
   dropGate = gate();
   const { dest, part } = fresh("resume");
-  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal, onProgress: (received) => received >= 1024 * 1024 && dropGate?.release() }), /resumes where it stopped/);
+  await assert.rejects(
+    downloadFile({
+      url: `${base}/files/x.bin`,
+      dest,
+      bytes: BODY.length,
+      sha256: SHA,
+      signal: new AbortController().signal,
+      onProgress: (received) => received >= 1024 * 1024 && dropGate?.release(),
+    }),
+    /resumes where it stopped/,
+  );
   dropGate = undefined;
   assert.ok(!existsSync(dest));
   const kept = statSync(part).size;
@@ -177,7 +209,10 @@ test("a dropped connection keeps the .part; the next try resumes it with a Range
   mkdirSync(other.dir, { recursive: true });
   writeFileSync(other.part, randomBytes(1000));
   mode = "normal";
-  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest: other.dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal }), /damaged/);
+  await assert.rejects(
+    downloadFile({ url: `${base}/files/x.bin`, dest: other.dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal }),
+    /damaged/,
+  );
   assert.ok(!existsSync(other.part) && !existsSync(other.dest));
 });
 
@@ -205,7 +240,10 @@ test("the store: on demand only, one download joined by every asker, a Setup dow
   assert.ok(readFileSync(a).equals(BODY));
   assert.ok(fractions.length > 0 && fractions.every((f) => f >= 0 && f <= 1));
   assert.equal(store.state().models.find((m) => m.id === "base")!.installed, true);
-  assert.deepEqual(store.state().downloads.find((d) => d.model === "base"), { model: "base", phase: "done", received: BODY.length, total: BODY.length });
+  assert.deepEqual(
+    store.state().downloads.find((d) => d.model === "base"),
+    { model: "base", phase: "done", received: BODY.length, total: BODY.length },
+  );
   assert.ok(states.some((s) => s.downloads.some((d) => d.model === "base" && d.phase === "downloading" && d.received > 0)));
   // Installed: no request.
   seen.length = 0;
@@ -266,7 +304,14 @@ test("a pause keeps the .part; the resume asks for the rest with If-Range; a cha
   const { dest, part } = fresh("pause");
   const paused = new AbortController();
   await assert.rejects(
-    downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: SHA, signal: paused.signal, onProgress: (received) => received > 512 * 1024 && paused.abort(new Paused()) }),
+    downloadFile({
+      url: `${base}/files/x.bin`,
+      dest,
+      bytes: BODY.length,
+      sha256: SHA,
+      signal: paused.signal,
+      onProgress: (received) => received > 512 * 1024 && paused.abort(new Paused()),
+    }),
     Cancelled,
   );
   const kept = statSync(part).size;
@@ -283,7 +328,15 @@ test("a pause keeps the .part; the resume asks for the rest with If-Range; a cha
   const changed = fresh("changed");
   mode = "slow";
   const p2 = new AbortController();
-  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest: changed.dest, signal: p2.signal, onProgress: (received) => received > 256 * 1024 && p2.abort(new Paused()) }), Cancelled);
+  await assert.rejects(
+    downloadFile({
+      url: `${base}/files/x.bin`,
+      dest: changed.dest,
+      signal: p2.signal,
+      onProgress: (received) => received > 256 * 1024 && p2.abort(new Paused()),
+    }),
+    Cancelled,
+  );
   etag = '"v2"';
   mode = "normal";
   seen.length = 0;
@@ -300,7 +353,10 @@ test("a pause keeps the .part; the resume asks for the rest with If-Range; a cha
   mode = "badrange";
   seen.length = 0;
   await downloadFile({ url: `${base}/files/x.bin`, dest: wrong.dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal });
-  assert.deepEqual(seen.map((x) => x.range), ["bytes=1000-", undefined]);
+  assert.deepEqual(
+    seen.map((x) => x.range),
+    ["bytes=1000-", undefined],
+  );
   assert.ok(readFileSync(wrong.dest).equals(BODY));
 });
 
@@ -310,7 +366,10 @@ test("a folder Uncut can't write in is said in a sentence", async () => {
   mkdirSync(locked);
   chmodSync(locked, 0o500);
   try {
-    await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest: join(locked, "m", "x.bin"), signal: new AbortController().signal }), /isn't allowed to write in/);
+    await assert.rejects(
+      downloadFile({ url: `${base}/files/x.bin`, dest: join(locked, "m", "x.bin"), signal: new AbortController().signal }),
+      /isn't allowed to write in/,
+    );
   } finally {
     chmodSync(locked, 0o700);
   }
@@ -326,7 +385,8 @@ test("the store: a cancel ends the download at once (a new Download starts afres
   store.download("base");
   assert.equal(store.state().downloads.find((d) => d.model === "base")!.phase, "downloading");
   // The file is renamed into place a moment before the download's phase turns "done": wait for both.
-  const finished = () => store.state().models.find((m) => m.id === "base")!.installed && store.state().downloads.find((d) => d.model === "base")!.phase === "done";
+  const finished = () =>
+    store.state().models.find((m) => m.id === "base")!.installed && store.state().downloads.find((d) => d.model === "base")!.phase === "done";
   for (let i = 0; i < 200 && !finished(); i++) await sleep(25);
   assert.ok(readFileSync(join(dir, "ggml-base.bin")).equals(BODY), "the new download finished whole");
   assert.equal(store.state().downloads.find((d) => d.model === "base")!.phase, "done");
@@ -335,7 +395,8 @@ test("the store: a cancel ends the download at once (a new Download starts afres
   // A transcript that stops waiting pauses it: the .part stays for the next ask, which resumes.
   const waiter = new AbortController();
   const gone = store.ensure("small", { signal: waiter.signal });
-  for (let i = 0; i < 100 && (!existsSync(join(dir, "ggml-small.bin.part")) || statSync(join(dir, "ggml-small.bin.part")).size < 256 * 1024); i++) await sleep(20);
+  for (let i = 0; i < 100 && (!existsSync(join(dir, "ggml-small.bin.part")) || statSync(join(dir, "ggml-small.bin.part")).size < 256 * 1024); i++)
+    await sleep(20);
   waiter.abort();
   await assert.rejects(gone, Cancelled);
   await sleep(100);

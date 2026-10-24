@@ -27,7 +27,14 @@ export function findItem(project: ProjectModel, id: string | undefined): Placed 
 }
 
 // The kind of track each item type lives on off the main track (a new track for it gets this kind).
-export const TRACK_KINDS: Readonly<Record<Item["type"], Track["kind"]>> = { clip: "video", component: "video", graphic: "video", text: "text", captions: "text", audio: "audio" };
+export const TRACK_KINDS: Readonly<Record<Item["type"], Track["kind"]>> = {
+  clip: "video",
+  component: "video",
+  graphic: "video",
+  text: "text",
+  captions: "text",
+  audio: "audio",
+};
 export const homeKind = (item: Pick<Item, "type">): Track["kind"] => TRACK_KINDS[item.type];
 /** Whether an item may go on a track (the validator's rule, core rules.ts): D215, the main track takes any picture, text too. */
 export const fitsTrack = (item: Item, track: Track) => fitsTrackKind(item.type, track);

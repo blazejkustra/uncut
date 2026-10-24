@@ -78,11 +78,13 @@ export const providerBase = (name: string, fallback: string) => {
 };
 
 /** node --test (NODE_TEST_CONTEXT), the test harness's UNCUT_TEST_* switches, or the packaged app under it (UNCUT_CDP). */
-export const inTestContext = (env: NodeJS.ProcessEnv = process.env) => Boolean(env.NODE_TEST_CONTEXT || env.UNCUT_CDP) || Object.keys(env).some((k) => k.startsWith("UNCUT_TEST"));
+export const inTestContext = (env: NodeJS.ProcessEnv = process.env) =>
+  Boolean(env.NODE_TEST_CONTEXT || env.UNCUT_CDP) || Object.keys(env).some((k) => k.startsWith("UNCUT_TEST"));
 
 /** fetch, except that in any test context a request to anything but this machine is refused: tests never reach a real provider. */
 export async function guardedFetch(url: string, init: RequestInit): Promise<Response> {
-  if (inTestContext() && !LOOPBACK.has(new URL(url).hostname)) throw new Error(`Refused in a test run: ${new URL(url).host} isn't this machine (tests never call a real provider).`);
+  if (inTestContext() && !LOOPBACK.has(new URL(url).hostname))
+    throw new Error(`Refused in a test run: ${new URL(url).host} isn't this machine (tests never call a real provider).`);
   return fetch(url, init);
 }
 const base = providerBase;
@@ -107,13 +109,27 @@ export async function replyError(provider: string, res: Response, key: string): 
       const body = JSON.parse(text) as { error?: { message?: unknown } | string; detail?: unknown; message?: unknown };
       const e = body.error;
       const d = body.detail as { message?: unknown } | Array<{ msg?: unknown }> | string | undefined;
-      detail = typeof e === "string" ? e : typeof e?.message === "string" ? e.message : typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => String(x?.msg ?? "")).join("; ") : typeof d?.message === "string" ? d.message : typeof body.message === "string" ? body.message : "";
+      detail =
+        typeof e === "string"
+          ? e
+          : typeof e?.message === "string"
+            ? e.message
+            : typeof d === "string"
+              ? d
+              : Array.isArray(d)
+                ? d.map((x) => String(x?.msg ?? "")).join("; ")
+                : typeof d?.message === "string"
+                  ? d.message
+                  : typeof body.message === "string"
+                    ? body.message
+                    : "";
     } catch {
       detail = text.trim().split("\n")[0] ?? "";
     }
   } catch {}
   detail = redact(detail, key).slice(0, 300);
-  if (res.status === 401 || res.status === 403) return new Error(`${provider} didn't accept your key (${res.status})${detail ? `: ${detail}` : ""}. Check it in Settings › Keys.`);
+  if (res.status === 401 || res.status === 403)
+    return new Error(`${provider} didn't accept your key (${res.status})${detail ? `: ${detail}` : ""}. Check it in Settings › Keys.`);
   if (res.status === 429) return new Error(`${provider} says too many requests or no credit left (429)${detail ? `: ${detail}` : ""}.`);
   return new Error(`${provider} refused the request (${res.status})${detail ? `: ${detail}` : ""}.`);
 }
@@ -138,7 +154,14 @@ export const MAX_REDIRECTS = 5;
  * API's own origin over a key-safe scheme (https, or http to a loopback stub); a hop to another
  * origin gets no key. Plain http to anywhere else is refused outright.
  */
-export async function followRedirects(provider: string, start: URL, apiOrigin: string, keyHeaders: Record<string, string>, signal: AbortSignal, key: string): Promise<Response> {
+export async function followRedirects(
+  provider: string,
+  start: URL,
+  apiOrigin: string,
+  keyHeaders: Record<string, string>,
+  signal: AbortSignal,
+  key: string,
+): Promise<Response> {
   let url = start;
   for (let hop = 0; ; hop++) {
     if (!keySafe(url)) throw new Error(`${provider}'s file link isn't https.`);
@@ -199,7 +222,9 @@ export async function download(provider: string, res: Response, path: string, si
  * The providers whose key a plugin's generator may use (#107): each one's API, the only origin
  * Uncut sends that key to for a plugin (uncut/fetch), and how the key goes in a request.
  */
-export const PROVIDER_API: Partial<Record<KeyProvider, { readonly name: string; readonly env: string; readonly fallback: string; readonly auth: (key: string) => Record<string, string> }>> = {
+export const PROVIDER_API: Partial<
+  Record<KeyProvider, { readonly name: string; readonly env: string; readonly fallback: string; readonly auth: (key: string) => Record<string, string> }>
+> = {
   openai: { name: "OpenAI", env: "UNCUT_OPENAI_BASE", fallback: "https://api.openai.com", auth: (key) => ({ authorization: `Bearer ${key}` }) },
   google: { name: "Google", env: "UNCUT_GOOGLE_BASE", fallback: "https://generativelanguage.googleapis.com", auth: (key) => ({ "x-goog-api-key": key }) },
   elevenlabs: { name: "ElevenLabs", env: "UNCUT_ELEVENLABS_BASE", fallback: "https://api.elevenlabs.io", auth: (key) => ({ "xi-api-key": key }) },
@@ -235,15 +260,26 @@ export const gptImage: KeyedGenerator = {
   kinds: ["image"],
   sizes: OPENAI_SIZES,
   billing: "Billed to your OpenAI key, about $0.03 to $0.05 a picture",
-  check: (input) => (input.kind !== "image" ? "GPT Image makes stills only (kind image)." : input.size && !OPENAI_SIZES.includes(input.size) ? `size must be one of ${OPENAI_SIZES.join(", ")}.` : undefined),
-  estimate: (input) => Number(((OPENAI_TOKENS[input.size ?? OPENAI_SIZES[0]!] ?? 1584) * OPENAI_OUT_PER_TOKEN + (input.prompt.length / 4) * OPENAI_IN_PER_TOKEN).toFixed(3)),
+  check: (input) =>
+    input.kind !== "image"
+      ? "GPT Image makes stills only (kind image)."
+      : input.size && !OPENAI_SIZES.includes(input.size)
+        ? `size must be one of ${OPENAI_SIZES.join(", ")}.`
+        : undefined,
+  estimate: (input) =>
+    Number(((OPENAI_TOKENS[input.size ?? OPENAI_SIZES[0]!] ?? 1584) * OPENAI_OUT_PER_TOKEN + (input.prompt.length / 4) * OPENAI_IN_PER_TOKEN).toFixed(3)),
   async generate(input, ctx) {
     const size = input.size ?? OPENAI_SIZES[0]!;
     ctx.status("Asking GPT Image…");
     const res = await send(
       "OpenAI",
       `${base("UNCUT_OPENAI_BASE", "https://api.openai.com")}/v1/images/generations`,
-      { method: "POST", headers: { authorization: `Bearer ${ctx.key}`, "content-type": "application/json" }, body: JSON.stringify({ model: OPENAI_MODEL, prompt: input.prompt, size, quality: "medium", n: 1 }), signal: ctx.signal },
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${ctx.key}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: OPENAI_MODEL, prompt: input.prompt, size, quality: "medium", n: 1 }),
+        signal: ctx.signal,
+      },
       ctx.key,
       ctx.sent,
     );
@@ -257,7 +293,10 @@ export const gptImage: KeyedGenerator = {
     await writeFile(path, png, { flag: "wx" });
     const out = Number(body.usage?.output_tokens);
     const inTokens = Number(body.usage?.input_tokens);
-    const cost = Number.isFinite(out) && out > 0 ? out * OPENAI_OUT_PER_TOKEN + (Number.isFinite(inTokens) ? inTokens * OPENAI_IN_PER_TOKEN : 0) : gptImage.estimate(input);
+    const cost =
+      Number.isFinite(out) && out > 0
+        ? out * OPENAI_OUT_PER_TOKEN + (Number.isFinite(inTokens) ? inTokens * OPENAI_IN_PER_TOKEN : 0)
+        : gptImage.estimate(input);
     return { path, model: OPENAI_MODEL, cost: Number(cost.toFixed(3)) };
   },
 };
@@ -304,7 +343,15 @@ export const veo: KeyedGenerator = {
     const started = await send(
       "Google",
       `${root}/v1beta/models/${VEO_MODEL}:predictLongRunning`,
-      { method: "POST", headers, body: JSON.stringify({ instances: [{ prompt: input.prompt }], parameters: { aspectRatio: input.size ?? VEO_SIZES[0], durationSeconds: seconds, resolution: "720p" } }), signal: ctx.signal },
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          instances: [{ prompt: input.prompt }],
+          parameters: { aspectRatio: input.size ?? VEO_SIZES[0], durationSeconds: seconds, resolution: "720p" },
+        }),
+        signal: ctx.signal,
+      },
       ctx.key,
       ctx.sent,
     );
@@ -366,7 +413,12 @@ export const sound: KeyedGenerator = {
   sizes: [],
   seconds: SOUND_SECONDS,
   billing: "Billed to your ElevenLabs credits, 40 a second (about $0.01)",
-  check: (input) => (input.kind !== "audio" ? "Sound effects make audio only (kind audio)." : input.seconds !== undefined && !(input.seconds >= 0.5 && input.seconds <= 30) ? "seconds must be from 0.5 to 30." : undefined),
+  check: (input) =>
+    input.kind !== "audio"
+      ? "Sound effects make audio only (kind audio)."
+      : input.seconds !== undefined && !(input.seconds >= 0.5 && input.seconds <= 30)
+        ? "seconds must be from 0.5 to 30."
+        : undefined,
   estimate: (input) => Number(((input.seconds ?? 5) * SOUND_PER_SECOND).toFixed(3)),
   async generate(input, ctx) {
     const seconds = input.seconds ?? 5;
@@ -374,7 +426,12 @@ export const sound: KeyedGenerator = {
     const res = await send(
       "ElevenLabs",
       `${base("UNCUT_ELEVENLABS_BASE", "https://api.elevenlabs.io")}/v1/sound-generation?output_format=mp3_44100_128`,
-      { method: "POST", headers: { "xi-api-key": ctx.key, "content-type": "application/json" }, body: JSON.stringify({ text: input.prompt, duration_seconds: seconds, model_id: SOUND_MODEL }), signal: ctx.signal },
+      {
+        method: "POST",
+        headers: { "xi-api-key": ctx.key, "content-type": "application/json" },
+        body: JSON.stringify({ text: input.prompt, duration_seconds: seconds, model_id: SOUND_MODEL }),
+        signal: ctx.signal,
+      },
       ctx.key,
       ctx.sent,
     );

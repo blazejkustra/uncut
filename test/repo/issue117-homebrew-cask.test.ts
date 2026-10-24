@@ -36,7 +36,10 @@ test("the cask's app name, bundle id and arm64-only build match electron-builder
   assert.match(builder, /^productName: Uncut$/m);
   assert.match(builder, /^appId: com\.blazejkustra\.uncut$/m);
   // Only arm64 targets: no on_intel block to keep in step.
-  assert.deepEqual([...builder.matchAll(/^\s+arch: (\S+)$/gm)].map((m) => m[1]).filter((a) => a !== "arm64"), []);
+  assert.deepEqual(
+    [...builder.matchAll(/^\s+arch: (\S+)$/gm)].map((m) => m[1]).filter((a) => a !== "arm64"),
+    [],
+  );
 });
 
 test("zap: Uncut's data folder, the bundle id's caches and preferences, the updater's cache", () => {
@@ -50,7 +53,7 @@ test("zap: Uncut's data folder, the bundle id's caches and preferences, the upda
 
 test("bad input is refused: not a release version, not a sha256", () => {
   assert.equal(caskVersion(" v1.2.3 "), "1.2.3");
-  for (const v of ["", "v", "1.2", "1.2.3-beta.1", "1.2.3\"; system \"x", "latest"]) assert.throws(() => caskVersion(v), /Not a release version/, v);
+  for (const v of ["", "v", "1.2", "1.2.3-beta.1", '1.2.3"; system "x', "latest"]) assert.throws(() => caskVersion(v), /Not a release version/, v);
   for (const s of ["", SHA.slice(1), `${SHA}0`, SHA.replace("9", "g"), `"${SHA}"`]) assert.throws(() => caskSha256(s), /Not a sha256/, s);
 });
 

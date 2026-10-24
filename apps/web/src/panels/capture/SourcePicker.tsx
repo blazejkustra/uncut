@@ -41,7 +41,14 @@ export function SourcePicker({ picked, onPick, onClose }: { picked: string; onPi
         {(sources?.length ?? 0) > 6 && (
           <label className="capture-search">
             <Search />
-            <input data-testid="capture-source-search" placeholder="Find a window" spellCheck={false} value={query} autoFocus onChange={(e) => setQuery(e.target.value)} />
+            <input
+              data-testid="capture-source-search"
+              placeholder="Find a window"
+              spellCheck={false}
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+            />
           </label>
         )}
         {error && <div className="inline-error small">{error}</div>}

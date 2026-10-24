@@ -15,8 +15,25 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { AnalysisQueue, cacheFile, fingerprint, parseAnalyzers, spawnRunner, type AnalysisTarget, type Runner } from "../../apps/server/src/analysis/analysis.ts";
-import { fillersOf, isTranscriptResult, parseWhisperJson, pausesOf, sweepStaleTranscriptTemp, TEMP_PREFIX, transcribeDirect, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
+import {
+  AnalysisQueue,
+  cacheFile,
+  fingerprint,
+  parseAnalyzers,
+  spawnRunner,
+  type AnalysisTarget,
+  type Runner,
+} from "../../apps/server/src/analysis/analysis.ts";
+import {
+  fillersOf,
+  isTranscriptResult,
+  parseWhisperJson,
+  pausesOf,
+  sweepStaleTranscriptTemp,
+  TEMP_PREFIX,
+  transcribeDirect,
+  type TranscriptResult,
+} from "../../apps/server/src/analysis/transcription.ts";
 import { transcriptOut, transcriptSummary } from "../../apps/server/src/agent/agentTranscript.ts";
 import { NO_WHISPER } from "../../apps/server/src/analysis/whisper.ts";
 import { SAY_TOKENS, whisperJson, type Token } from "../helpers/whisper-json.ts";
@@ -41,11 +58,35 @@ let temps = "";
 let model = "";
 const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
 const whisperLog = () => join(root, "whisper.log");
-const whisperRuns = () => (existsSync(whisperLog()) ? readFileSync(whisperLog(), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: Array<string>; env: Array<string> }) : []);
-const target = (path: string, mediaId = "m-talk", extra: Partial<AnalysisTarget> = {}): AnalysisTarget => ({ dir: project, mediaId, path, kind: "video", hasAudio: true, seconds: 6, ...extra });
-const resolver = (bin = FAKE) => async () => ({ bin, model, modelId: "tiny.en" });
+const whisperRuns = () =>
+  existsSync(whisperLog())
+    ? readFileSync(whisperLog(), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as { argv: Array<string>; env: Array<string> })
+    : [];
+const target = (path: string, mediaId = "m-talk", extra: Partial<AnalysisTarget> = {}): AnalysisTarget => ({
+  dir: project,
+  mediaId,
+  path,
+  kind: "video",
+  hasAudio: true,
+  seconds: 6,
+  ...extra,
+});
+const resolver =
+  (bin = FAKE) =>
+  async () => ({ bin, model, modelId: "tiny.en" });
 const queue = (options: Partial<ConstructorParameters<typeof AnalysisQueue>[0]> = {}, jobs?: Array<ReadonlyArray<AnalysisJob>>) =>
-  new AnalysisQueue({ ffmpeg: async () => ffmpegPath, whisper: resolver(), transcribe: transcribeDirect, tmpRoot: temps, onChange: (j) => jobs?.push(j), ...options });
+  new AnalysisQueue({
+    ffmpeg: async () => ffmpegPath,
+    whisper: resolver(),
+    transcribe: transcribeDirect,
+    tmpRoot: temps,
+    onChange: (j) => jobs?.push(j),
+    ...options,
+  });
 const leftovers = () => readdirSync(temps).filter((f) => f.startsWith(TEMP_PREFIX));
 
 before(() => {
@@ -62,7 +103,26 @@ before(() => {
   process.env.FAKE_WHISPER_JSON = join(root, "say.json");
   process.env.FAKE_WHISPER_LOG = whisperLog();
   // A 6 s clip: picture and a tone (stands in for speech; the fake whisper doesn't listen).
-  ff("-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30", "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000", "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "talk.mp4"));
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=160x90:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=300:sample_rate=48000",
+    "-t",
+    "6",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "talk.mp4"),
+  );
   ff("-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "mute.mp4"));
 });
 after(() => {
@@ -81,8 +141,17 @@ test("analyzers: transcript (and transcription) name the transcript job", () => 
 test("parsing whisper's JSON: words from tokens, punctuation doesn't swallow a pause, specials and annotations dropped, Polish bytes joined", () => {
   const say = parseWhisperJson(whisperJson(SAY_TOKENS).toString("latin1"), 5.3);
   assert.equal(say.language, "en");
-  assert.deepEqual(say.words.map((w) => w.text), ["Hello", "world,", "this", "is", "a", "test.", "Um,", "the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog."]);
-  assert.deepEqual(say.segments.map((s) => [s.text, s.words]), [["Hello world, this is a test.", [0, 6]], ["Um, the quick brown fox jumps over the lazy dog.", [6, 16]]]);
+  assert.deepEqual(
+    say.words.map((w) => w.text),
+    ["Hello", "world,", "this", "is", "a", "test.", "Um,", "the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog."],
+  );
+  assert.deepEqual(
+    say.segments.map((s) => [s.text, s.words]),
+    [
+      ["Hello world, this is a test.", [0, 6]],
+      ["Um, the quick brown fox jumps over the lazy dog.", [6, 16]],
+    ],
+  );
   // "world" ends at 0.65 s: the comma (timed at 1.12, where "this" starts) doesn't stretch it.
   assert.deepEqual(say.words[1], { text: "world,", start: 0.46, end: 0.65, p: 0.44 });
   assert.equal(say.words[5]!.end, 1.92, "test. ends with test, not at the full stop's 2.22");
@@ -108,11 +177,18 @@ test("parsing whisper's JSON: words from tokens, punctuation doesn't swallow a p
       [" żółw", 2700, 2650],
       [".", 3000, 3000],
     ],
-    [[" Yyy", 3500, 3900], [" znaczy", 4100, 4500], [" koniec", 6900, 7400]],
+    [
+      [" Yyy", 3500, 3900],
+      [" znaczy", 4100, 4500],
+      [" koniec", 6900, 7400],
+    ],
   ];
   const r = parseWhisperJson(whisperJson(pl, "pl").toString("latin1"), 7);
   assert.equal(r.language, "pl");
-  assert.deepEqual(r.words.map((w) => w.text), ["Cześć,", "no,", "to", "jest", "żółw.", "Yyy", "znaczy", "koniec"]);
+  assert.deepEqual(
+    r.words.map((w) => w.text),
+    ["Cześć,", "no,", "to", "jest", "żółw.", "Yyy", "znaczy", "koniec"],
+  );
   assert.equal(r.segments.length, 2, "the [BLANK_AUDIO] segment is gone");
   assert.equal(r.segments[0]!.text, "Cześć, no, to jest (laughs) żółw.", "the segment keeps its text");
   assert.deepEqual([r.words[0]!.start, r.words[0]!.end, r.words[0]!.p], [1, 1.4, 0.6], "a word spans its pieces; p is the lowest");
@@ -129,11 +205,15 @@ test("fillers: hesitations and discourse words, each list only for its language"
     { i: 6, n: 1, kind: "hesitation" },
   ]);
   assert.deepEqual(fillersOf(w("No, I mean no."), "en"), [{ i: 1, n: 2, kind: "maybe" }], "English no is a word, not a filler");
-  assert.deepEqual(fillersOf(w("Yyy no, to jest znaczy, dobre. Nie no tak"), "pl"), [
-    { i: 0, n: 1, kind: "hesitation" },
-    { i: 1, n: 1, kind: "maybe" },
-    { i: 4, n: 1, kind: "maybe" },
-  ], "Polish no only standing apart (a comma after it, or a sentence before)");
+  assert.deepEqual(
+    fillersOf(w("Yyy no, to jest znaczy, dobre. Nie no tak"), "pl"),
+    [
+      { i: 0, n: 1, kind: "hesitation" },
+      { i: 1, n: 1, kind: "maybe" },
+      { i: 4, n: 1, kind: "maybe" },
+    ],
+    "Polish no only standing apart (a comma after it, or a sentence before)",
+  );
   assert.deepEqual(fillersOf(w("Um, yyy"), "de"), [], "no list for other languages");
   assert.deepEqual(fillersOf(w("Yyy um"), undefined), []);
 });
@@ -166,63 +246,70 @@ test("pauses: gaps of 0.3 s or more, the edges, aligned to the loudness silences
   ]);
 });
 
-test("through the queue: one ffmpeg + whisper run, cached as transcript.json; a re-ask runs nothing; the temp folder is gone", { skip, timeout: 60000 }, async () => {
-  const calls: Array<string> = [];
-  const runner: Runner = (bin, args, options) => (calls.push(bin), spawnRunner(bin, args, options));
-  const jobs: Array<ReadonlyArray<AnalysisJob>> = [];
-  const q = queue({ runner }, jobs);
-  const file = join(root, "talk.mp4");
-  // Slow enough for progress updates (they're published at most every 250 ms).
-  process.env.FAKE_WHISPER_SLEEP_MS = "1200";
-  const r = await q.request(target(file), "transcript");
-  assert.ok(r.job, "a job");
-  const outcome = await r.done;
-  delete process.env.FAKE_WHISPER_SLEEP_MS;
-  assert.equal(outcome.state, "done", JSON.stringify(outcome));
-  const result = (outcome as { result: TranscriptResult }).result;
-  assert.equal(result.hasAudio, true);
-  assert.equal(result.language, "en");
-  assert.equal(result.model, "tiny.en");
-  assert.equal(result.requestedLanguage, "auto");
-  assert.ok(Math.abs(result.seconds! - 6) < 0.1, String(result.seconds));
-  assert.equal(result.words!.length, 16);
-  assert.deepEqual(calls, [ffmpegPath, FAKE], "ffmpeg, then whisper");
-  const run = whisperRuns().at(-1)!;
-  for (const flag of ["-ojf", "-pp", "-np"]) assert.ok(run.argv.includes(flag), flag);
-  assert.equal(run.argv[run.argv.indexOf("-l") + 1], "auto");
-  assert.equal(run.argv[run.argv.indexOf("-m") + 1], model);
-  assert.deepEqual(run.env, [], "no ANTHROPIC_* handed on");
-  assert.ok(jobs.some((list) => list.some((j) => j.id === r.job!.id && j.phase === "running" && j.progress > 0.05)), "progress from whisper's lines");
-  assert.deepEqual(leftovers(), [], "the temp WAV folder is removed");
-  const fp = await fingerprint(file);
-  const cached = JSON.parse(readFileSync(cacheFile(project, fp, "transcript"), "utf8"));
-  assert.equal(cached.analyzer, "transcript");
-  assert.equal(cached.version, 1);
-  assert.ok(isTranscriptResult(cached.result));
+test(
+  "through the queue: one ffmpeg + whisper run, cached as transcript.json; a re-ask runs nothing; the temp folder is gone",
+  { skip, timeout: 60000 },
+  async () => {
+    const calls: Array<string> = [];
+    const runner: Runner = (bin, args, options) => (calls.push(bin), spawnRunner(bin, args, options));
+    const jobs: Array<ReadonlyArray<AnalysisJob>> = [];
+    const q = queue({ runner }, jobs);
+    const file = join(root, "talk.mp4");
+    // Slow enough for progress updates (they're published at most every 250 ms).
+    process.env.FAKE_WHISPER_SLEEP_MS = "1200";
+    const r = await q.request(target(file), "transcript");
+    assert.ok(r.job, "a job");
+    const outcome = await r.done;
+    delete process.env.FAKE_WHISPER_SLEEP_MS;
+    assert.equal(outcome.state, "done", JSON.stringify(outcome));
+    const result = (outcome as { result: TranscriptResult }).result;
+    assert.equal(result.hasAudio, true);
+    assert.equal(result.language, "en");
+    assert.equal(result.model, "tiny.en");
+    assert.equal(result.requestedLanguage, "auto");
+    assert.ok(Math.abs(result.seconds! - 6) < 0.1, String(result.seconds));
+    assert.equal(result.words!.length, 16);
+    assert.deepEqual(calls, [ffmpegPath, FAKE], "ffmpeg, then whisper");
+    const run = whisperRuns().at(-1)!;
+    for (const flag of ["-ojf", "-pp", "-np"]) assert.ok(run.argv.includes(flag), flag);
+    assert.equal(run.argv[run.argv.indexOf("-l") + 1], "auto");
+    assert.equal(run.argv[run.argv.indexOf("-m") + 1], model);
+    assert.deepEqual(run.env, [], "no ANTHROPIC_* handed on");
+    assert.ok(
+      jobs.some((list) => list.some((j) => j.id === r.job!.id && j.phase === "running" && j.progress > 0.05)),
+      "progress from whisper's lines",
+    );
+    assert.deepEqual(leftovers(), [], "the temp WAV folder is removed");
+    const fp = await fingerprint(file);
+    const cached = JSON.parse(readFileSync(cacheFile(project, fp, "transcript"), "utf8"));
+    assert.equal(cached.analyzer, "transcript");
+    assert.equal(cached.version, 1);
+    assert.ok(isTranscriptResult(cached.result));
 
-  // The re-ask: no job, nothing spawned. Naming the language it's in is a hit too.
-  const again = await q.request(target(file, "m-talk-2"), "transcript");
-  assert.equal(again.job, undefined);
-  assert.equal(((await again.done) as { cached: boolean }).cached, true);
-  const en = await q.request(target(file), "transcript", { language: "en" });
-  assert.equal(en.job, undefined);
-  assert.equal(calls.length, 2, "no ffmpeg or whisper for cached answers");
+    // The re-ask: no job, nothing spawned. Naming the language it's in is a hit too.
+    const again = await q.request(target(file, "m-talk-2"), "transcript");
+    assert.equal(again.job, undefined);
+    assert.equal(((await again.done) as { cached: boolean }).cached, true);
+    const en = await q.request(target(file), "transcript", { language: "en" });
+    assert.equal(en.job, undefined);
+    assert.equal(calls.length, 2, "no ffmpeg or whisper for cached answers");
 
-  // Another language is another transcript: it runs (whisper told -l pl) and replaces the cache.
-  const pl = await q.request(target(file), "transcript", { language: "pl" });
-  assert.ok(pl.job);
-  const plOut = (await pl.done) as { state: string; result: TranscriptResult };
-  assert.equal(plOut.state, "done");
-  assert.equal(plOut.result.language, "pl");
-  assert.equal(plOut.result.requestedLanguage, "pl");
-  assert.equal(whisperRuns().at(-1)!.argv[whisperRuns().at(-1)!.argv.indexOf("-l") + 1], "pl");
-  assert.equal(calls.length, 4);
-  // A broken cache file is a miss.
-  writeFileSync(cacheFile(project, fp, "transcript"), JSON.stringify({ ...cached, result: { hasAudio: true, words: "nope" } }));
-  const redo = await q.request(target(file), "transcript");
-  assert.ok(redo.job, "redone");
-  assert.equal((await redo.done).state, "done");
-});
+    // Another language is another transcript: it runs (whisper told -l pl) and replaces the cache.
+    const pl = await q.request(target(file), "transcript", { language: "pl" });
+    assert.ok(pl.job);
+    const plOut = (await pl.done) as { state: string; result: TranscriptResult };
+    assert.equal(plOut.state, "done");
+    assert.equal(plOut.result.language, "pl");
+    assert.equal(plOut.result.requestedLanguage, "pl");
+    assert.equal(whisperRuns().at(-1)!.argv[whisperRuns().at(-1)!.argv.indexOf("-l") + 1], "pl");
+    assert.equal(calls.length, 4);
+    // A broken cache file is a miss.
+    writeFileSync(cacheFile(project, fp, "transcript"), JSON.stringify({ ...cached, result: { hasAudio: true, words: "nope" } }));
+    const redo = await q.request(target(file), "transcript");
+    assert.ok(redo.job, "redone");
+    assert.equal((await redo.done).state, "done");
+  },
+);
 
 test("no sound: images and silent clips get no job; a file ffmpeg finds no audio in is a result, not an error", { skip, timeout: 60000 }, async () => {
   const q = queue();
@@ -261,24 +348,35 @@ test("cancel mid-whisper: whisper is killed, the temp WAV is removed, nothing is
   }
 });
 
-test("clear failures: no whisper-cli, a model that can't be had, whisper writing nothing; the temp folder goes each time", { skip, timeout: 60000 }, async () => {
-  const file = join(root, "talk.mp4");
-  const fail = async (q: AnalysisQueue, language?: string) => {
-    const r = await q.request(target(file, "m-fail"), "transcript", { language: language ?? "de" });
-    const out = await r.done;
-    assert.equal(out.state, "failed", JSON.stringify(out));
-    return (out as { error: string }).error;
-  };
-  assert.equal(await fail(queue({ whisper: async () => Promise.reject(new Error(NO_WHISPER)) })), NO_WHISPER);
-  assert.match(NO_WHISPER, /brew install whisper-cpp/);
-  assert.match(await fail(queue({ whisper: async () => Promise.reject(new Error("The speech model (Large v3 Turbo, 574 MB) couldn't be downloaded: The model server answered 404.")) })), /speech model .* couldn't be downloaded: .*404/);
-  // whisper-cli exits 3 when it can't load the model and writes no JSON: the failure, in its own words.
-  const noModel = await fail(queue({ whisper: async () => ({ bin: FAKE, model: join(root, "models", "missing.bin"), modelId: "base" }) }));
-  assert.match(noModel, /^whisper-cli couldn't transcribe it: .*failed to (open|initialize)/);
-  assert.match(await fail(queue({ ffmpeg: async () => undefined })), /ffmpeg isn't installed, and Uncut needs it to transcribe/);
-  assert.match(await fail(queue({ whisper: undefined })), /isn't set up/);
-  assert.deepEqual(leftovers(), []);
-});
+test(
+  "clear failures: no whisper-cli, a model that can't be had, whisper writing nothing; the temp folder goes each time",
+  { skip, timeout: 60000 },
+  async () => {
+    const file = join(root, "talk.mp4");
+    const fail = async (q: AnalysisQueue, language?: string) => {
+      const r = await q.request(target(file, "m-fail"), "transcript", { language: language ?? "de" });
+      const out = await r.done;
+      assert.equal(out.state, "failed", JSON.stringify(out));
+      return (out as { error: string }).error;
+    };
+    assert.equal(await fail(queue({ whisper: async () => Promise.reject(new Error(NO_WHISPER)) })), NO_WHISPER);
+    assert.match(NO_WHISPER, /brew install whisper-cpp/);
+    assert.match(
+      await fail(
+        queue({
+          whisper: async () => Promise.reject(new Error("The speech model (Large v3 Turbo, 574 MB) couldn't be downloaded: The model server answered 404.")),
+        }),
+      ),
+      /speech model .* couldn't be downloaded: .*404/,
+    );
+    // whisper-cli exits 3 when it can't load the model and writes no JSON: the failure, in its own words.
+    const noModel = await fail(queue({ whisper: async () => ({ bin: FAKE, model: join(root, "models", "missing.bin"), modelId: "base" }) }));
+    assert.match(noModel, /^whisper-cli couldn't transcribe it: .*failed to (open|initialize)/);
+    assert.match(await fail(queue({ ffmpeg: async () => undefined })), /ffmpeg isn't installed, and Uncut needs it to transcribe/);
+    assert.match(await fail(queue({ whisper: undefined })), /isn't set up/);
+    assert.deepEqual(leftovers(), []);
+  },
+);
 
 test("the model download shows as the job's stage, then transcription; one transcript runs at a time", { skip, timeout: 60000 }, async () => {
   const jobs: Array<ReadonlyArray<AnalysisJob>> = [];
@@ -305,7 +403,10 @@ test("the model download shows as the job's stage, then transcription; one trans
   assert.equal(q.job(rb.job!.id)!.phase, "queued", "the second transcript waits for the first");
   release();
   assert.equal((await ra.done).state, "done");
-  assert.ok(jobs.some((list) => list.some((j) => j.id === ra.job!.id && j.phase === "running" && j.stage === undefined && j.progress < 0.4)), "back to transcription progress");
+  assert.ok(
+    jobs.some((list) => list.some((j) => j.id === ra.job!.id && j.phase === "running" && j.stage === undefined && j.progress < 0.4)),
+    "back to transcription progress",
+  );
   assert.equal((await rb.done).state, "done");
   assert.equal(q.job(ra.job!.id)!.stage, undefined);
 });
@@ -336,7 +437,10 @@ test("transcript_read's answer: words in project frames, text lines with fillers
 
   // Range: only words overlapping frames [60, 100); paging: 3 words at a time, then from next.from.
   const ranged = transcriptOut(result, { cached: true, fps: 30, length: 159, range: { start: 60, end: 100 }, format: "words" }) as Record<string, any>;
-  assert.deepEqual(ranged.list.map((x: { text: string }) => x.text), ["Um,", "the", "quick"]);
+  assert.deepEqual(
+    ranged.list.map((x: { text: string }) => x.text),
+    ["Um,", "the", "quick"],
+  );
   const page1 = transcriptOut(result, { cached: true, fps: 30, length: 159, maxWords: 3 }) as Record<string, any>;
   assert.deepEqual(page1.shown, { from: 0, to: 2 });
   assert.equal(page1.next.from, 3);
@@ -361,7 +465,7 @@ test("transcript_read's answer: words in project frames, text lines with fillers
 });
 
 test("the agent's tool: transcript_read is offered over MCP with its schema; the turn card's words", async () => {
-  const { mcpTools, stepLabel, TOOL_NAMES, SYSTEM_PROMPT } = await import("../../apps/server/src/agent/agentTools.ts");
+  const { mcpTools, stepLabel, TOOL_NAMES } = await import("../../apps/server/src/agent/agentTools.ts");
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("transcript_read"));
   const tool = mcpTools().find((t) => t.name === "transcript_read")!;
   assert.deepEqual(Object.keys((tool.inputSchema as { properties: object }).properties).sort(), ["format", "from", "item", "language", "media", "range"]);
@@ -377,12 +481,29 @@ test("the agent's tool: transcript_read is offered over MCP with its schema; the
 test("temp folders carry the server's pid; a sweep removes a dead server's (and old unmarked ones), never a live one's; control characters don't break the JSON", async () => {
   const dir = mkdtempSync(join(tmpdir(), "uncut-sweep-"));
   try {
-    for (const name of [`uncut-transcript-${process.pid}-aaaaaa`, "uncut-transcript-999999-bbbbbb", "uncut-transcript-cccccc", "uncut-export-999999-dddddd", "other"]) mkdirSync(join(dir, name));
+    for (const name of [
+      `uncut-transcript-${process.pid}-aaaaaa`,
+      "uncut-transcript-999999-bbbbbb",
+      "uncut-transcript-cccccc",
+      "uncut-export-999999-dddddd",
+      "other",
+    ])
+      mkdirSync(join(dir, name));
     await sweepStaleTranscriptTemp(dir, Date.now() + 2 * 3600_000);
     assert.deepEqual(readdirSync(dir).sort(), [`uncut-transcript-${process.pid}-aaaaaa`, "other", "uncut-export-999999-dddddd"].sort());
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  const json = whisperJson([[[" Hi\u0001", 0, 300], [" there", 300, 600]]]).toString("latin1").replaceAll("\\u0001", "\u0001");
-  assert.deepEqual(parseWhisperJson(json, 1).words.map((w) => w.text), ["Hi", "there"]);
+  const json = whisperJson([
+    [
+      [" Hi\u0001", 0, 300],
+      [" there", 300, 600],
+    ],
+  ])
+    .toString("latin1")
+    .replaceAll("\\u0001", "\u0001");
+  assert.deepEqual(
+    parseWhisperJson(json, 1).words.map((w) => w.text),
+    ["Hi", "there"],
+  );
 });

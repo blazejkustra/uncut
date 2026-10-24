@@ -17,7 +17,11 @@ export const uniqueIn = (base: string, taken: Set<string>) => {
 
 /** Every id in use (media, tracks, items, scenes). */
 export const takenIds = (project: Pick<Project, "media" | "tracks"> & Partial<Pick<Project, "scenes">>) =>
-  new Set([...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)]);
+  new Set([
+    ...project.media.map((m) => m.id),
+    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+    ...(project.scenes ?? []).map((s) => s.id),
+  ]);
 
 /** Free-track items other than `exclude`, as [start, end) in time order. */
 export function busySpans(track: Track, exclude?: string): Array<{ start: number; end: number }> {
@@ -28,7 +32,8 @@ export function busySpans(track: Track, exclude?: string): Array<{ start: number
 }
 
 /** Whether [start, start + duration) is free on a free track (ignoring `exclude`). */
-export const isFree = (track: Track, start: number, duration: number, exclude?: string) => busySpans(track, exclude).every((b) => start + duration <= b.start || start >= b.end);
+export const isFree = (track: Track, start: number, duration: number, exclude?: string) =>
+  busySpans(track, exclude).every((b) => start + duration <= b.start || start >= b.end);
 
 /**
  * Where an item `duration` long can go on a free track nearest to `start` without overlapping
@@ -76,7 +81,12 @@ export interface PlaceMediaPlan {
 }
 
 /** The length a media file gets on the timeline, in project frames (undefined: unknown, can't be placed). */
-export const placedLength = (media: PlaceMedia, fps: number, imageSeconds = IMAGE_SECONDS) => (media.kind === "image" ? Math.max(1, Math.round(imageSeconds * fps)) : media.probe?.frames && media.probe.frames > 0 ? Math.floor(media.probe.frames) : undefined);
+export const placedLength = (media: PlaceMedia, fps: number, imageSeconds = IMAGE_SECONDS) =>
+  media.kind === "image"
+    ? Math.max(1, Math.round(imageSeconds * fps))
+    : media.probe?.frames && media.probe.frames > 0
+      ? Math.floor(media.probe.frames)
+      : undefined;
 
 /**
  * The first unlocked, heard audio track (not main) free over [start, start + duration), or undefined
@@ -85,7 +95,9 @@ export const placedLength = (media: PlaceMedia, fps: number, imageSeconds = IMAG
 export function freeAudioTrack(project: Pick<Project, "tracks">, start: number, duration: number): Track | undefined {
   // Not a muted track, nor one a solo elsewhere silences: the new sound would be unheard.
   const solo = project.tracks.some((t) => t.mixer?.solo === true);
-  return project.tracks.find((t) => t.kind === "audio" && t.role !== "main" && !t.locked && !t.mixer?.mute && (!solo || t.mixer?.solo === true) && isFree(t, start, duration));
+  return project.tracks.find(
+    (t) => t.kind === "audio" && t.role !== "main" && !t.locked && !t.mixer?.mute && (!solo || t.mixer?.solo === true) && isFree(t, start, duration),
+  );
 }
 
 /** The next "Audio" track name: Audio, Audio 2, … */
@@ -107,7 +119,16 @@ export const nextName = (project: Pick<Project, "tracks">, base: string) => {
  * Nothing that is already there moves (except main's ripple when inserting into it). `taken` holds
  * every id in use and gets the new ones. Media of unknown length are refused.
  */
-export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, media: ReadonlyArray<PlaceMedia>, at: { readonly frame: Frame; readonly track?: Id | undefined; /** A photo's length (F30: the app's default; IMAGE_SECONDS when absent). */ readonly imageSeconds?: number | undefined }, taken: Set<string>): PlaceMediaPlan | { readonly problem: string } {
+export function planPlaceMedia(
+  project: Pick<Project, "tracks" | "canvas">,
+  media: ReadonlyArray<PlaceMedia>,
+  at: {
+    readonly frame: Frame;
+    readonly track?: Id | undefined;
+    /** A photo's length (F30: the app's default; IMAGE_SECONDS when absent). */ readonly imageSeconds?: number | undefined;
+  },
+  taken: Set<string>,
+): PlaceMediaPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   // The project as the ops so far leave it (tracks only, starts resolved for free tracks).
   let tracks: Array<Track> = project.tracks.map((t) => ({ ...t, items: [...t.items] }));
@@ -128,7 +149,10 @@ export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, medi
       else if (main && !main.locked && main.items.length === 0) track = main;
       else {
         const mi = tracks.findIndex((t) => t.role === "main");
-        track = tracks.slice(0, Math.max(0, mi)).reverse().find((t) => t.kind === "video" && !t.locked && isFree(t, cursor, length));
+        track = tracks
+          .slice(0, Math.max(0, mi))
+          .reverse()
+          .find((t) => t.kind === "video" && !t.locked && isFree(t, cursor, length));
       }
       if (!track) {
         const audio = type === "audio";

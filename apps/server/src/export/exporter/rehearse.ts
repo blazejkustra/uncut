@@ -54,7 +54,10 @@ export function rehearsalCalls(layer: GraphicLayer, fps: number): Array<{ readon
     const ts = layer.motion?.ts[i] ?? [local / fps];
     if (prev && prev.length === ts.length && prev.every((t, j) => t === ts[j])) continue;
     prev = ts;
-    const refined = layer.motion && out.length % REHEARSE_REFINED_EVERY === 0 && blurRefinable(ts) ? [ts, ...blurLevels(ts, Math.max(BLUR_REFINE.max, ts.length))].flat() : ts;
+    const refined =
+      layer.motion && out.length % REHEARSE_REFINED_EVERY === 0 && blurRefinable(ts)
+        ? [ts, ...blurLevels(ts, Math.max(BLUR_REFINE.max, ts.length))].flat()
+        : ts;
     out.push({ i, local, ts: refined });
   }
   return out;
@@ -92,7 +95,11 @@ const keyOf = (layers: ReadonlyArray<GraphicLayer>, plan: ExportPlan) => {
  * Rehearse `plan`'s graphics on `r` within `budgetMs` (see the header). `width`/`height`: the
  * canvas the export draws at. Already passed (the same documents, frames and sub-frames): nothing run.
  */
-export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { readonly budgetMs: number; readonly signal?: AbortSignal; readonly now?: () => number }): Promise<Rehearsal> {
+export async function rehearseGraphics(
+  r: Rasterizer,
+  plan: ExportPlan,
+  o: { readonly budgetMs: number; readonly signal?: AbortSignal; readonly now?: () => number },
+): Promise<Rehearsal> {
   const now = o.now ?? Date.now;
   const fps = plan.fps;
   const layers = plan.visuals.filter((l): l is GraphicLayer => l.kind === "graphic");
@@ -114,23 +121,38 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
     const name = `"${layer.item.name ?? layer.item.id}" (${layer.item.src})`;
     const info = { fps, duration: (layer.item.in ?? 0) + layer.item.duration, width, height, props: layer.item.props ?? {} };
     const list = calls[k]!;
-    for (let a = 0; a < list.length; ) {
+    for (let a = 0; a < list.length;) {
       if (o.signal?.aborted) return { covered, total, reached };
       // Each request waits at most what's left of the budget (and never past the rasteriser's own deadline).
       const left = deadline - now();
       if (left <= 0) return remember(key, { covered, total, reached }, o.budgetMs);
       const capped = left < RENDER_TIMEOUT_MS;
       let b = a + 1;
-      for (let calls = list[a]!.ts.length; b < list.length && b - a < REHEARSE_CHUNK && calls + list[b]!.ts.length <= REHEARSE_CALLS; b++) calls += list[b]!.ts.length;
+      for (let calls = list[a]!.ts.length; b < list.length && b - a < REHEARSE_CHUNK && calls + list[b]!.ts.length <= REHEARSE_CALLS; b++)
+        calls += list[b]!.ts.length;
       const chunk = list.slice(a, b);
       a = b;
       try {
-        await r.render({ kind: "graphic-run", width, height, doc: layer.doc, info, frames: chunk.map((c) => c.local), ...(layer.motion ? { ts: chunk.map((c) => c.ts) } : {}), name, fresh }, { timeoutMs: left });
+        await r.render(
+          {
+            kind: "graphic-run",
+            width,
+            height,
+            doc: layer.doc,
+            info,
+            frames: chunk.map((c) => c.local),
+            ...(layer.motion ? { ts: chunk.map((c) => c.ts) } : {}),
+            name,
+            fresh,
+          },
+          { timeoutMs: left },
+        );
       } catch (error) {
         const message = (error as Error).message ?? String(error);
         // Cut short by the budget: the time budget ran out (as between requests). Past the
         // rasteriser's own deadline: a stall, remembered for this graphic.
-        if (STALLED.test(message)) return capped ? remember(key, { covered, total, reached }, o.budgetMs) : rememberStall(key, { covered, total, reached, stalled: true });
+        if (STALLED.test(message))
+          return capped ? remember(key, { covered, total, reached }, o.budgetMs) : rememberStall(key, { covered, total, reached, stalled: true });
         // Stopped (the turn, the session closed under it): the rasteriser's "stopped" isn't the graphic's failure.
         if (o.signal?.aborted) return { covered, total, reached };
         const m = /at its frame (\d+(?:\.\d+)?): ([\s\S]*)$/.exec(message);
@@ -138,7 +160,13 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
         const why = (m ? m[2]! : message.replace(/^The text renderer failed: /, "")).replace(`${name}: `, "");
         const at = chunk.find((c) => c.local === local) ?? chunk[0]!;
         const second = (layer.f0 + at.i) / fps;
-        const failed = { frame: layer.f0 + at.i, failure: `The graphic ${name} would stop the export at ${second.toFixed(2)} s (its frame ${local}): ${why}`, covered: covered + chunk.indexOf(at), total, reached: second };
+        const failed = {
+          frame: layer.f0 + at.i,
+          failure: `The graphic ${name} would stop the export at ${second.toFixed(2)} s (its frame ${local}): ${why}`,
+          covered: covered + chunk.indexOf(at),
+          total,
+          reached: second,
+        };
         // Only a failure the graphic's own render(t) threw is kept: a rasteriser that crashed or
         // stopped is said this once and rehearsed again next time.
         return m ? remember(key, failed, o.budgetMs) : failed;
@@ -153,7 +181,8 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
 
 /** The rehearsal as a line for the agent or the critic ("" when there were no graphics to rehearse). */
 export function rehearsalLine(x: Rehearsal): string {
-  if (x.failure) return `${x.failure}. Fix the graphic: the export calls render(t) for every frame in order (and each motion-blur sub-frame), so whatever throws on any frame stops it.`;
+  if (x.failure)
+    return `${x.failure}. Fix the graphic: the export calls render(t) for every frame in order (and each motion-blur sub-frame), so whatever throws on any frame stops it.`;
   if (!x.total) return "";
   if (x.covered >= x.total) return "Export rehearsal: every graphic frame ran as the export runs it, in order with motion blur's sub-frames, without an error.";
   return `Export rehearsal: the graphics ran as the export runs them up to ${x.reached.toFixed(2)} s (${x.covered} of ${x.total} frames, ${x.stalled ? "then a stretch took longer than the renderer waits" : "time budget"}) without an error; past that not checked.`;

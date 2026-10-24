@@ -21,10 +21,12 @@ export function mediaTimeAt(clip: TileClip, fps: number, x: number, width: numbe
 }
 
 /** The tile showing media time `t`: the nearest frame taken, within the strip. */
-export const tileAt = (layout: Pick<FilmstripLayout, "interval" | "count">, t: number) => Math.max(0, Math.min(layout.count - 1, Math.round(t / layout.interval)));
+export const tileAt = (layout: Pick<FilmstripLayout, "interval" | "count">, t: number) =>
+  Math.max(0, Math.min(layout.count - 1, Math.round(t / layout.interval)));
 
 /** A cell's width (px) for tiles drawn `height` px high. */
-export const cellWidth = (layout: Pick<FilmstripLayout, "tileWidth" | "tileHeight">, height: number) => Math.max(8, (layout.tileWidth * height) / layout.tileHeight);
+export const cellWidth = (layout: Pick<FilmstripLayout, "tileWidth" | "tileHeight">, height: number) =>
+  Math.max(8, (layout.tileWidth * height) / layout.tileHeight);
 
 /**
  * The cells of a clip `width` px wide that fall in [`left`, `right`) (px from the clip's left edge,

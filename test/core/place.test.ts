@@ -24,7 +24,13 @@ const base: Project = {
   ],
 };
 const ids = (p: Project) => new Set([...p.media.map((m) => m.id), ...p.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]);
-const take = (id: string, kind: Media["kind"], frames: number): Media => ({ id, kind, name: `${id}.m4a`, path: `media/captures/${id}`, probe: { frames, hasAudio: true } });
+const take = (id: string, kind: Media["kind"], frames: number): Media => ({
+  id,
+  kind,
+  name: `${id}.m4a`,
+  path: `media/captures/${id}`,
+  probe: { frames, hasAudio: true },
+});
 
 /** add_media + the placement, as one edit, validated. */
 function place(p: Project, media: Media, frame: number, placement: "voiceover" | "video") {

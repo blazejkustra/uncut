@@ -14,15 +14,36 @@ test("D219: the app's page gets what it uses; nothing else, and nothing for any 
     assert.equal(allowPermission(p, true), true, p);
     assert.equal(allowPermission(p, false), false, `${p} from a graphic's iframe`);
   }
-  for (const p of ["geolocation", "notifications", "midi", "midiSysex", "hid", "usb", "serial", "clipboard-read", "openExternal", "idle-detection", "window-management", "speaker-selection", "storage-access", "unknown"]) assert.equal(allowPermission(p, true), false, p);
+  for (const p of [
+    "geolocation",
+    "notifications",
+    "midi",
+    "midiSysex",
+    "hid",
+    "usb",
+    "serial",
+    "clipboard-read",
+    "openExternal",
+    "idle-detection",
+    "window-management",
+    "speaker-selection",
+    "storage-access",
+    "unknown",
+  ])
+    assert.equal(allowPermission(p, true), false, p);
   assert.ok(APP_PERMISSIONS.size <= 10);
 });
 
-test("D219: the built renderer's CSP comes first in <head> and shuts object-src, base-uri and form-action", { skip: existsSync(BUILT) ? false : "the web app isn't built (pnpm build)" }, () => {
-  const html = readFileSync(BUILT, "utf8");
-  const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1]?.replace(/&#39;/g, "'");
-  assert.ok(csp, "a CSP meta tag");
-  for (const d of ["default-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "connect-src ws://127.0.0.1:* http://127.0.0.1:*"]) assert.ok(csp.includes(d), d);
-  assert.ok(!/script-src[^;]*unsafe/.test(csp) && !csp.includes("'unsafe-eval'"), "no inline or eval'd scripts");
-  assert.ok(html.indexOf("Content-Security-Policy") < html.indexOf("<script"), "the policy precedes the script");
-});
+test(
+  "D219: the built renderer's CSP comes first in <head> and shuts object-src, base-uri and form-action",
+  { skip: existsSync(BUILT) ? false : "the web app isn't built (pnpm build)" },
+  () => {
+    const html = readFileSync(BUILT, "utf8");
+    const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1]?.replace(/&#39;/g, "'");
+    assert.ok(csp, "a CSP meta tag");
+    for (const d of ["default-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "connect-src ws://127.0.0.1:* http://127.0.0.1:*"])
+      assert.ok(csp.includes(d), d);
+    assert.ok(!/script-src[^;]*unsafe/.test(csp) && !csp.includes("'unsafe-eval'"), "no inline or eval'd scripts");
+    assert.ok(html.indexOf("Content-Security-Policy") < html.indexOf("<script"), "the policy precedes the script");
+  },
+);

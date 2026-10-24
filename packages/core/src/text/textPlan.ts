@@ -31,7 +31,12 @@ export type InsertTextPlan = { readonly ops: Array<Op>; readonly itemId: string;
 
 /** An id nothing in the project (or `taken`) uses: base-1, base-2, … */
 function freeId(project: Pick<Project, "media" | "tracks" | "scenes">, base: string, taken: Set<string>) {
-  const ids = new Set([...taken, ...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)]);
+  const ids = new Set([
+    ...taken,
+    ...project.media.map((m) => m.id),
+    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+    ...(project.scenes ?? []).map((s) => s.id),
+  ]);
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
@@ -83,17 +88,27 @@ export function lookItem(look: TextLook, project: Pick<Project, "canvas" | "them
  * stretch (tracks top to bottom as the timeline shows them), else a new text track on top. The
  * looks in its `with` follow, each on the next free (or a new) text track.
  */
-export function planInsertText(project: Pick<Project, "canvas" | "theme" | "tracks" | "media" | "scenes">, req: InsertTextRequest, extraLooks: Readonly<Record<string, TextLook>> = {}): InsertTextPlan {
-  const lookOf = (id: string): TextLook | undefined => (Object.hasOwn(TEXT_STYLES, id) ? TEXT_STYLES[id] : undefined) ?? (Object.hasOwn(extraLooks, id) ? extraLooks[id] : undefined);
+export function planInsertText(
+  project: Pick<Project, "canvas" | "theme" | "tracks" | "media" | "scenes">,
+  req: InsertTextRequest,
+  extraLooks: Readonly<Record<string, TextLook>> = {},
+): InsertTextPlan {
+  const lookOf = (id: string): TextLook | undefined =>
+    (Object.hasOwn(TEXT_STYLES, id) ? TEXT_STYLES[id] : undefined) ?? (Object.hasOwn(extraLooks, id) ? extraLooks[id] : undefined);
   const look = lookOf(req.look);
   if (!look) return { problem: `There's no text look called ${req.look}. modules_list with kind "text-style" lists them.` };
-  if (!Number.isInteger(req.start) || req.start < 0 || !Number.isInteger(req.duration) || req.duration < 1) return { problem: "start must be a frame (0 or more) and duration at least 1 frame." };
+  if (!Number.isInteger(req.start) || req.start < 0 || !Number.isInteger(req.duration) || req.duration < 1)
+    return { problem: "start must be a frame (0 or more) and duration at least 1 frame." };
   const { start, duration } = req;
   const ops: Array<Op> = [];
   const taken = new Set<string>();
   // A requested id is reserved first, so a new track can't take it.
   if (req.id !== undefined) {
-    const used = [...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)];
+    const used = [
+      ...project.media.map((m) => m.id),
+      ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+      ...(project.scenes ?? []).map((s) => s.id),
+    ];
     if (used.includes(req.id)) return { problem: `The id "${req.id}" is already used in this project: pick another, or leave id out.` };
     taken.add(req.id);
   }
@@ -101,7 +116,11 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
   // (text added there wouldn't show).
   const tracks: Array<{ id: string; locked?: boolean; spans: Array<[number, number]> }> = project.tracks
     .filter((t: Track) => t.kind === "text" && !t.hidden)
-    .map((t) => ({ id: t.id, ...(t.locked ? { locked: true } : {}), spans: t.items.map((i): [number, number] => [i.start ?? 0, (i.start ?? 0) + i.duration]) }));
+    .map((t) => ({
+      id: t.id,
+      ...(t.locked ? { locked: true } : {}),
+      spans: t.items.map((i): [number, number] => [i.start ?? 0, (i.start ?? 0) + i.duration]),
+    }));
   let textTracks = project.tracks.filter((t) => t.kind === "text").length;
   const place = (): string => {
     const free = tracks.find((t) => !t.locked && t.spans.every(([a, b]) => b <= start || start + duration <= a));
@@ -117,15 +136,26 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
     return id;
   };
   const base = lookItem(look, project, duration);
-  const transform = { ...base.transform, ...(req.transform ?? {}) };
-  const style = { ...base.style, ...(req.style ?? {}) };
-  const animation = req.animation === null ? undefined : req.animation ?? base.animation;
+  const transform = { ...base.transform, ...req.transform };
+  const style = { ...base.style, ...req.style };
+  const animation = req.animation === null ? undefined : (req.animation ?? base.animation);
   const trackId = place();
-  const itemId = req.id ?? freeId(project, req.idBase ?? (Object.hasOwn(TEXT_STYLES, req.look) ? req.look.replace(/^text\./, "") : req.look.split(".").at(-1)!), taken);
+  const itemId =
+    req.id ?? freeId(project, req.idBase ?? (Object.hasOwn(TEXT_STYLES, req.look) ? req.look.replace(/^text\./, "") : req.look.split(".").at(-1)!), taken);
   taken.add(itemId);
   // D157: a look with companions (a kicker over a title) makes one group: they move, trim and delete together.
   const group = !req.alone && look.with?.some((w) => lookOf(w.look)) ? `group-${itemId}` : undefined;
-  const item: Item = { id: itemId, type: "text", start, duration, text: req.text ?? look.text, transform, style: style as Item["style"], ...(animation ? { animation } : {}), ...(group ? { group } : {}) };
+  const item: Item = {
+    id: itemId,
+    type: "text",
+    start,
+    duration,
+    text: req.text ?? look.text,
+    transform,
+    style: style as Item["style"],
+    ...(animation ? { animation } : {}),
+    ...(group ? { group } : {}),
+  };
   ops.push({ op: "insert_item", track: trackId, item } as Op);
   const itemIds = [itemId];
   if (!req.alone) {
@@ -137,7 +167,17 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
       taken.add(id);
       const y = Math.round(transform.y + (extra.dy ?? 0) * project.canvas.height);
       const t = other.span ? { ...fields.transform, y } : { ...fields.transform, x: transform.x, y };
-      const companion: Item = { id, type: "text", start, duration, text: extra.text, transform: t, style: fields.style as Item["style"], ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}), ...(group ? { group } : {}) };
+      const companion: Item = {
+        id,
+        type: "text",
+        start,
+        duration,
+        text: extra.text,
+        transform: t,
+        style: fields.style as Item["style"],
+        ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}),
+        ...(group ? { group } : {}),
+      };
       ops.push({ op: "insert_item", track: place(), item: companion } as Op);
       itemIds.push(id);
     }

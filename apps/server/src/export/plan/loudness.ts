@@ -7,7 +7,11 @@ import { type AudioOptions, audioGraph } from "./audio.ts";
  * chain. Without `options` it measures the mix as it goes into the limiter (the first pass, D87);
  * with a gain it measures what the limiter puts out (the check when the limiter will work).
  */
-export function loudnessCommand(plan: ExportPlan, target: number, options: AudioOptions = { noLimiter: true }): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
+export function loudnessCommand(
+  plan: ExportPlan,
+  target: number,
+  options: AudioOptions = { noLimiter: true },
+): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
   // ebur128 (integrated loudness and true peak, D87) and loudnorm's JSON (the bypassed limiter's two-pass loudnorm) in one pass.
   const audio = audioGraph(plan, 0, { ...options, tail: `ebur128=peak=true:framelog=quiet,loudnorm=I=${target}:TP=-1:LRA=11:print_format=json` });
   return { inputs: audio.inputs, graph: audio.filters.join(";\n"), outputArgs: ["-map", "[aout]", "-f", "null", "-"] };
@@ -64,7 +68,11 @@ export const loudnormFilter = (target: number, m: LoudnessMeasure) =>
  * closest one measured. With the limiter bypassed:
  * two-pass loudnorm as before D86. Nothing to do for silence.
  */
-export async function planLoudness(plan: ExportPlan, target: number, measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>): Promise<{ readonly loudness?: { readonly gainDb: number }; readonly loudnorm?: string }> {
+export async function planLoudness(
+  plan: ExportPlan,
+  target: number,
+  measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>,
+): Promise<{ readonly loudness?: { readonly gainDb: number }; readonly loudnorm?: string }> {
   if (!plan.audio.length) return {};
   const stderr = await measure(loudnessCommand(plan, target), "loudness.txt");
   const norm = parseLoudness(stderr);
@@ -115,7 +123,11 @@ export async function planLoudness(plan: ExportPlan, target: number, measure: (p
  * the first pass (loudnorm's linear gain; where loudnorm would turn dynamic to hold its true peak
  * the preview is louder than the export: a known limit). Also the mix's own integrated loudness.
  */
-export async function loudnessGain(plan: ExportPlan, target: number, measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>): Promise<{ readonly gainDb?: number; readonly lufs?: number }> {
+export async function loudnessGain(
+  plan: ExportPlan,
+  target: number,
+  measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>,
+): Promise<{ readonly gainDb?: number; readonly lufs?: number }> {
   let first: string | undefined;
   const once = async (pass: ReturnType<typeof loudnessCommand>, name: string) => {
     const stderr = await measure(pass, name);
@@ -126,6 +138,7 @@ export async function loudnessGain(plan: ExportPlan, target: number, measure: (p
   const mix = first !== undefined ? parseEbur128(first) : undefined;
   const lufs = mix ? { lufs: mix.lufs } : {};
   if (result.loudness) return { gainDb: result.loudness.gainDb, ...lufs };
-  if (result.loudnorm && mix) return { gainDb: Math.round(Math.min(MAX_LOUDNESS_GAIN_DB, Math.max(-MAX_LOUDNESS_GAIN_DB, target - mix.lufs)) * 100) / 100, ...lufs };
+  if (result.loudnorm && mix)
+    return { gainDb: Math.round(Math.min(MAX_LOUDNESS_GAIN_DB, Math.max(-MAX_LOUDNESS_GAIN_DB, target - mix.lufs)) * 100) / 100, ...lufs };
   return lufs;
 }

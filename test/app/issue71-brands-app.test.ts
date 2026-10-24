@@ -36,7 +36,15 @@ const HANDLES: Array<[string, string]> = [
   ["web", "uncut.app"],
 ];
 const follow = (platform: string, handle: string, i: number): Item =>
-  ({ id: `f-${platform}`, type: "component", component: "component.follow", start: 0, duration: 150, props: { handle, label: "Follow", platform, style: "pill" }, transform: { x: 40 + (i % 2) * 620, y: 60 + Math.floor(i / 2) * 160, w: 580, h: 120 } }) as Item;
+  ({
+    id: `f-${platform}`,
+    type: "component",
+    component: "component.follow",
+    start: 0,
+    duration: 150,
+    props: { handle, label: "Follow", platform, style: "pill" },
+    transform: { x: 40 + (i % 2) * 620, y: 60 + Math.floor(i / 2) * 160, w: 580, h: 120 },
+  }) as Item;
 const project = (): Project => ({
   format: "uncut/0",
   name: "Brands",
@@ -44,7 +52,13 @@ const project = (): Project => ({
   media: [],
   tracks: [
     ...HANDLES.map(([p, h], i) => ({ id: `t-${p}`, kind: "video" as const, name: p, items: [follow(p, h, i)] })),
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 150, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "bg", type: "component", component: "component.solid", duration: 150, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }],
+    },
   ],
 });
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
@@ -63,7 +77,10 @@ after(async () => {
 });
 
 test("D275: follow handles with brand logos in their colours; the Inspector names the platforms", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -105,11 +122,18 @@ test("D275: follow handles with brand logos in their colours; the Inspector name
 
   // Switch it to Bluesky: one edit, redrawn in Bluesky's blue with its mark.
   await page.select("[data-testid=param-platform]", "bluesky");
-  await page.waitForFunction(() => document.querySelector('.pv-comp[data-item="f-instagram"]')?.innerHTML.toLowerCase().includes("#1185fe"), { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.pv-comp[data-item="f-instagram"]')?.innerHTML.toLowerCase().includes("#1185fe"), {
+    timeout: 10000,
+  });
   assert.ok((await drawn("f-instagram")).includes(BRAND_ICONS.bluesky!.path));
   await page.waitForFunction(() => /revision [1-9]/.test(document.querySelector<HTMLElement>("[data-testid=saved]")!.title), { timeout: 10000 });
   await sleep(500);
-  assert.equal(onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === "f-instagram")!.props!.platform, "bluesky");
+  assert.equal(
+    onDisk()
+      .tracks.flatMap((t) => t.items)
+      .find((i) => i.id === "f-instagram")!.props!.platform,
+    "bluesky",
+  );
   await sleep(200);
   await page.screenshot({ path: out("issue71-brands-inspector.png") });
 });

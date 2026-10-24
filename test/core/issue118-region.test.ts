@@ -55,5 +55,10 @@ test("the chip in the <context> block", () => {
   assert.match(block, /^@Area 0:03 = an area of the picture the user marked: x 1200–1600/m);
   // Two areas at the same moment are two lines.
   const other = { ...mention, id: "region:0,600,400,400@90", label: "Area 2 0:03", area: { x: 0, y: 600, w: 400, h: 400 } };
-  assert.equal(contextBlock(project, [mention, other]).split("\n").filter((l) => l.startsWith("@Area")).length, 2);
+  assert.equal(
+    contextBlock(project, [mention, other])
+      .split("\n")
+      .filter((l) => l.startsWith("@Area")).length,
+    2,
+  );
 });

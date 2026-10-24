@@ -14,7 +14,19 @@ import { crashFingerprint, frameOf } from "../../apps/server/src/telemetry/finge
 import { ID_FILE, OLD_ID_FILE } from "../../apps/server/src/telemetry/identity.ts";
 import { SPOOL_FILE, crashOf, spoolCrash, takeSpooledCrashes } from "../../apps/server/src/telemetry/spool.ts";
 import { withoutOtelEnv } from "../../apps/server/src/telemetry/client.ts";
-import { consentOf, ENDPOINT, initTelemetry, resetTelemetry, setTelemetryChoice, targetOf, telemetryStatus, track, trackCrash, trackRendererCrash, shutdownTelemetry } from "../../apps/server/src/telemetry/telemetry.ts";
+import {
+  consentOf,
+  ENDPOINT,
+  initTelemetry,
+  resetTelemetry,
+  setTelemetryChoice,
+  targetOf,
+  telemetryStatus,
+  track,
+  trackCrash,
+  trackRendererCrash,
+  shutdownTelemetry,
+} from "../../apps/server/src/telemetry/telemetry.ts";
 
 type Received = { path: string; headers: IncomingHttpHeaders; body: string };
 let collector: Server;
@@ -45,7 +57,11 @@ afterEach(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const localEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: "test-app-token-0123456789", ...extra });
+const localEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
+  UNCUT_TELEMETRY_ENDPOINT: endpoint,
+  UNCUT_TELEMETRY_TOKEN: "test-app-token-0123456789",
+  ...extra,
+});
 const start = (env: NodeJS.ProcessEnv, token = "") => initTelemetry({ dataDir, version: "1.2.3", env, token, sink: { scheduledDelayMillis: 50 } });
 /** The user turned it off in Settings, before this run. */
 const turnedOff = () => writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ telemetry: { enabled: false } }));
@@ -58,7 +74,12 @@ const settle = async () => {
 type KV = { key: string; value: Record<string, unknown> };
 const records = () =>
   received.flatMap((r) => {
-    const json = JSON.parse(r.body) as { resourceLogs: Array<{ resource: { attributes: Array<KV> }; scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<KV>; severityText: string }> }> }> };
+    const json = JSON.parse(r.body) as {
+      resourceLogs: Array<{
+        resource: { attributes: Array<KV> };
+        scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<KV>; severityText: string }> }>;
+      }>;
+    };
     return json.resourceLogs.flatMap((rl) => rl.scopeLogs.flatMap((sl) => sl.logRecords.map((lr) => ({ resource: rl.resource, ...lr }))));
   });
 const attrs = (list: Array<KV>) => Object.fromEntries(list.map((a) => [a.key, Object.values(a.value)[0]]));
@@ -67,19 +88,46 @@ const attrs = (list: Array<KV>) => Object.fromEntries(list.map((a) => [a.key, Ob
 
 test("sanitize keeps only catalogued events and allowlisted, valid attributes", () => {
   assert.equal(sanitize("file:open", { path: "/Users/me/x.mp4" }), undefined);
-  assert.deepEqual(sanitize("export:complete", { duration_ms: 1234.4, codec: "h264", path: "/Users/me/out.mp4", name: "My launch video" }), { duration_ms: 1234, codec: "h264" });
+  assert.deepEqual(sanitize("export:complete", { duration_ms: 1234.4, codec: "h264", path: "/Users/me/out.mp4", name: "My launch video" }), {
+    duration_ms: 1234,
+    codec: "h264",
+  });
   // Values outside their enum, range or pattern are dropped.
   assert.deepEqual(sanitize("export:complete", { codec: "prores", width: -1, fps: 10_000, quality: "/Users/me" }), {});
   assert.deepEqual(sanitize("export:fail", { code: "ffmpeg couldn't make the video: /Users/me/a.mov" }), {});
   assert.deepEqual(sanitize("agent:fail", { code: "rate-limit", error: "429 from api" }), { code: "rate-limit" });
   // A crash: class name and fingerprint, never a message.
-  assert.deepEqual(sanitize("app:crash", { process: "server", error_name: "TypeError", crash_fingerprint: "0123456789abcdef", message: "x is undefined", stack: "at /Users/me" }), { process: "server", error_name: "TypeError", crash_fingerprint: "0123456789abcdef" });
+  assert.deepEqual(
+    sanitize("app:crash", {
+      process: "server",
+      error_name: "TypeError",
+      crash_fingerprint: "0123456789abcdef",
+      message: "x is undefined",
+      stack: "at /Users/me",
+    }),
+    { process: "server", error_name: "TypeError", crash_fingerprint: "0123456789abcdef" },
+  );
   assert.deepEqual(sanitize("app:crash", { error_name: "Cannot read properties of undefined", crash_fingerprint: "/Users/me/x.js" }), {});
   // Base attributes are checked too.
-  assert.deepEqual(sanitize("app:start", {}, { distinct_id: "me@example.com", session_id: "0b5c3c3e-1111-4222-8333-444455556666", hostname: "Jane's MacBook", os: "darwin", arch: "arm64", app_version: "1.0.0 (/Users/me)" }), { os: "darwin", arch: "arm64" });
+  assert.deepEqual(
+    sanitize(
+      "app:start",
+      {},
+      {
+        distinct_id: "me@example.com",
+        session_id: "0b5c3c3e-1111-4222-8333-444455556666",
+        hostname: "Jane's MacBook",
+        os: "darwin",
+        arch: "arm64",
+        app_version: "1.0.0 (/Users/me)",
+      },
+    ),
+    { os: "darwin", arch: "arm64" },
+  );
   // Nothing in the catalog takes free text.
   for (const [name, validators] of Object.entries(EVENTS)) {
-    for (const key of Object.keys(validators)) assert.equal(sanitize(name, { [key]: "/Users/me/Movies/secret launch.mov" })?.[key], undefined, `${name}.${key}`);
+    for (const key of Object.keys(validators))
+      assert.equal(sanitize(name, { [key]: "/Users/me/Movies/secret launch.mov" })?.[key], undefined, `${name}.${key}`);
   }
 });
 
@@ -96,7 +144,8 @@ test("agent failures become fixed codes", () => {
 // ---- crash fingerprints and the spool ----
 
 test("crash fingerprints ignore folders, the message and the home path", () => {
-  const stack = (home: string, msg: string) => `TypeError: ${msg}\n    at render (${home}/Uncut.app/Contents/Resources/server/server.mjs:120:7)\n    at async run (file://${home}/x/server.mjs:5:1)\n    at node:internal/process/task_queues:95:5`;
+  const stack = (home: string, msg: string) =>
+    `TypeError: ${msg}\n    at render (${home}/Uncut.app/Contents/Resources/server/server.mjs:120:7)\n    at async run (file://${home}/x/server.mjs:5:1)\n    at node:internal/process/task_queues:95:5`;
   const a = crashFingerprint("TypeError", stack("/Users/me", "can't read /Users/me/clip.mov"));
   const b = crashFingerprint("TypeError", stack("/Users/you", "something else"));
   assert.match(a, /^[0-9a-f]{16}$/);
@@ -151,11 +200,20 @@ test("by default app:start is sent with no identifier; old id files are deleted 
   start(localEnv());
   track("agent:turn", { outcome: "done" });
   await settle();
-  assert.deepEqual(records().map((r) => r.body.stringValue), ["app:start", "agent:turn"]);
+  assert.deepEqual(
+    records().map((r) => r.body.stringValue),
+    ["app:start", "agent:turn"],
+  );
   for (const r of records()) {
     const keys = Object.keys(attrs(r.attributes)).sort();
     for (const k of keys) assert.ok(["app_version", "arch", "event.name", "headless", "os", "outcome", "runtime"].includes(k), `unexpected attribute ${k}`);
-    assert.deepEqual(Object.keys(attrs(r.resource.attributes)).filter((k) => !k.startsWith("telemetry.sdk.")).sort(), ["service.name", "service.version"], "no host, instance or process attributes");
+    assert.deepEqual(
+      Object.keys(attrs(r.resource.attributes))
+        .filter((k) => !k.startsWith("telemetry.sdk."))
+        .sort(),
+      ["service.name", "service.version"],
+      "no host, instance or process attributes",
+    );
   }
   assert.equal(existsSync(join(dataDir, ID_FILE)), false, "D278's install id is deleted");
   assert.equal(existsSync(join(dataDir, OLD_ID_FILE)), false, "D223's hardware-derived id is deleted");
@@ -171,7 +229,10 @@ test("turning it off mid-run stops at once; turning it on again sends this run's
   setTelemetryChoice(true);
   track("agent:turn", { outcome: "cancelled" });
   await settle();
-  assert.deepEqual(records().map((r) => r.body.stringValue), ["app:start", "app:start", "agent:turn"]);
+  assert.deepEqual(
+    records().map((r) => r.body.stringValue),
+    ["app:start", "app:start", "agent:turn"],
+  );
   assert.equal(attrs(records()[2]!.attributes).outcome, "cancelled");
 });
 

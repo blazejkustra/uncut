@@ -51,7 +51,14 @@ export type Storyboard = typeof Storyboard.Type;
 /** The critic's scores (U16), 0–10 each. */
 export const REVIEW_SCORES = ["hook", "readability", "motion", "variety", "sound", "brand"] as const;
 // D217: only the categories that apply to the video are scored (a tutorial has no hook score).
-export const ReviewScores = Schema.Struct({ hook: Schema.optional(Schema.Number), readability: Schema.optional(Schema.Number), motion: Schema.optional(Schema.Number), variety: Schema.optional(Schema.Number), sound: Schema.optional(Schema.Number), brand: Schema.optional(Schema.Number) });
+export const ReviewScores = Schema.Struct({
+  hook: Schema.optional(Schema.Number),
+  readability: Schema.optional(Schema.Number),
+  motion: Schema.optional(Schema.Number),
+  variety: Schema.optional(Schema.Number),
+  sound: Schema.optional(Schema.Number),
+  brand: Schema.optional(Schema.Number),
+});
 export type ReviewScores = typeof ReviewScores.Type;
 /** One review round (`<project>/reviews/review-<n>.json`). */
 export const Review = Schema.Struct({
@@ -60,13 +67,37 @@ export const Review = Schema.Struct({
   // id: the critic's defect id (d1, d2, …: what a fix claim names in the next round, D195).
   // D217: kind (a category or a blocker kind the rubric made a finding), source "check" (Uncut's own),
   // rule (a check's finding family, "sound:density"), to (where a check's range ends, seconds).
-  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String), id: Schema.optional(Schema.String), kind: Schema.optional(Schema.String), source: Schema.optional(Schema.String), rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number) })),
+  defects: Schema.Array(
+    Schema.Struct({
+      at: Schema.Number,
+      what: Schema.String,
+      fix: Schema.optional(Schema.String),
+      id: Schema.optional(Schema.String),
+      kind: Schema.optional(Schema.String),
+      source: Schema.optional(Schema.String),
+      rule: Schema.optional(Schema.String),
+      to: Schema.optional(Schema.Number),
+    }),
+  ),
   notes: Schema.optional(Schema.String),
   // D195: who scored it: "critic" (a separate claude process Uncut ran) or "agent" (rounds before D195).
   by: Schema.optional(Schema.Literals(["critic", "agent"])),
   // D195: hard blockers (any one fails the round whatever the scores); source "critic" or "check" (Uncut's layout checks).
   // Round 3: fix, the critic's concrete change at that moment.
-  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String, rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number), fix: Schema.optional(Schema.String) }))),
+  blockers: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.optional(Schema.String),
+        kind: Schema.String,
+        what: Schema.String,
+        at: Schema.optional(Schema.Number),
+        source: Schema.String,
+        rule: Schema.optional(Schema.String),
+        to: Schema.optional(Schema.Number),
+        fix: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
   // D217: the rubric the round was judged by: per category required, optional or na (not scored); the
   // video type and sound profile it came from; how many findings the user marked Intended were left out.
   rubric: Schema.optional(Schema.Record(Schema.String, Schema.Literals(["required", "optional", "na"]))),
@@ -76,7 +107,17 @@ export const Review = Schema.Struct({
   // D195: per score, the frames the critic cites ("f 0, f 45: …").
   evidence: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   // D196: the builder's fix claims and whether the critic saw each fixed on fresh frames.
-  fixes: Schema.optional(Schema.Array(Schema.Struct({ defect: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), verified: Schema.Boolean, note: Schema.optional(Schema.String) }))),
+  fixes: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        defect: Schema.String,
+        what: Schema.String,
+        at: Schema.optional(Schema.Number),
+        verified: Schema.Boolean,
+        note: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
   // D195: why the round has no scores (the critic couldn't run or answered something unreadable).
   error: Schema.optional(Schema.String),
   // The determinism check (U16): graphics drawn twice at the same frame, by name; those that differed.
@@ -173,7 +214,13 @@ export const AgentProvider = Schema.Literals(AGENT_PROVIDERS);
 export type AgentProvider = typeof AgentProvider.Type;
 
 /** The models the composer offers (each CLI's own model ids); none chosen = that CLI's default (for Codex: its config.toml's model). */
-export const AGENT_MODELS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly detail: string; readonly provider: AgentProvider; readonly isNew: boolean }> = [
+export const AGENT_MODELS: ReadonlyArray<{
+  readonly id: string;
+  readonly name: string;
+  readonly detail: string;
+  readonly provider: AgentProvider;
+  readonly isNew: boolean;
+}> = [
   // D209: isNew marks the newest generation (a NEW badge in the model menu).
   { id: "claude-opus-5-5", name: "Opus 5.5", detail: "Most capable", provider: "claude", isNew: true },
   { id: "claude-sonnet-5-5", name: "Sonnet 5.5", detail: "Fast and capable", provider: "claude", isNew: true },
@@ -209,7 +256,13 @@ export type AgentImage = typeof AgentImage.Type;
  * is the index in the turn's items of the step (tool call) that made it, so the thread shows the
  * edit where it happened; `media` the ids of the media it added (an import's thumbnails).
  */
-export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schema.String, lines: Schema.Array(Schema.String), at: Schema.optional(Schema.Number), media: Schema.optional(Schema.Array(Schema.String)) });
+export const AgentEdit = Schema.Struct({
+  revision: Schema.Number,
+  summary: Schema.String,
+  lines: Schema.Array(Schema.String),
+  at: Schema.optional(Schema.Number),
+  media: Schema.optional(Schema.Array(Schema.String)),
+});
 export type AgentEdit = typeof AgentEdit.Type;
 
 export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "cancelled"]);
@@ -269,7 +322,9 @@ export const AgentTurn = Schema.Struct({
   graphics: Schema.optional(Schema.Array(Schema.String)),
   // D206: the turn-end clean-up: unused graphics moved to .cache/trash/<turn>/ and empty tracks the
   // agent made removed (an edit of the turn). restored: the user put the graphics back.
-  cleanup: Schema.optional(Schema.Struct({ graphics: Schema.Array(Schema.String), tracks: Schema.Array(Schema.String), restored: Schema.optional(Schema.Boolean) })),
+  cleanup: Schema.optional(
+    Schema.Struct({ graphics: Schema.Array(Schema.String), tracks: Schema.Array(Schema.String), restored: Schema.optional(Schema.Boolean) }),
+  ),
 });
 export type AgentTurn = typeof AgentTurn.Type;
 
@@ -317,14 +372,21 @@ export const AgentApproval = Schema.Struct({
   storyboard: Schema.optional(Storyboard),
   // D198: the agent wants to change a kit's colours or fonts (brand_write): each field before and
   // after. Apply (allow) or Keep the kit (deny); no answer in 2 minutes keeps it.
-  brand: Schema.optional(Schema.Struct({ kit: Schema.String, changes: Schema.Array(Schema.Struct({ field: Schema.String, before: Schema.Array(Schema.String), after: Schema.Array(Schema.String) })) })),
+  brand: Schema.optional(
+    Schema.Struct({
+      kit: Schema.String,
+      changes: Schema.Array(Schema.Struct({ field: Schema.String, before: Schema.Array(Schema.String), after: Schema.Array(Schema.String) })),
+    }),
+  ),
   // D194: a Claude Code tool asks (Bash, a file write, ...): the tool, what it would run or touch, why
   // it asks, and whether "Always for this session" is offered. Allow once, Always (agent.approve
   // always: true) or Deny.
   permission: Schema.optional(Schema.Struct({ tool: Schema.String, target: Schema.String, why: Schema.optional(Schema.String), always: Schema.Boolean })),
   // D204: the agent asks to boot a simulator or emulator (argent_boot): its name, platform and kind
   // ("iOS simulator", "Android emulator"), the app it would open next. Boot (allow) or Don't.
-  boot: Schema.optional(Schema.Struct({ device: Schema.String, name: Schema.String, platform: Schema.String, kind: Schema.String, bundleId: Schema.optional(Schema.String) })),
+  boot: Schema.optional(
+    Schema.Struct({ device: Schema.String, name: Schema.String, platform: Schema.String, kind: Schema.String, bundleId: Schema.optional(Schema.String) }),
+  ),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 

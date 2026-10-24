@@ -4,7 +4,13 @@ import { actions } from "../../state/store.ts";
 import { baseName } from "./format.ts";
 
 /** D109: a remote export's Download, then where it went (with Finder, since that's on this Mac). */
-export function DownloadButton({ job, state }: { job: ExportJob; state: { readonly state: "running" } | { readonly path: string } | { readonly error: string } | undefined }) {
+export function DownloadButton({
+  job,
+  state,
+}: {
+  job: ExportJob;
+  state: { readonly state: "running" } | { readonly path: string } | { readonly error: string } | undefined;
+}) {
   if (state && "path" in state) {
     return (
       <>

@@ -70,8 +70,24 @@ function writeWav(path: string, out: SynthOut) {
   head.writeUInt32LE(data.length, 40);
   writeFileSync(path, Buffer.concat([head, data]));
 }
-const fs = (id: string, title: string, category: Category, author: string, page: string, tags: Array<string>, max?: number): Freesound => ({ id, title, category, author, page, tags, ...(max ? { max } : {}) });
-const kenney = (id: string, title: string, category: Category, pack: Kenney["pack"], file: string, tags: Array<string>, max?: number): Kenney => ({ id, title, category, pack, file, tags, ...(max ? { max } : {}) });
+const fs = (id: string, title: string, category: Category, author: string, page: string, tags: Array<string>, max?: number): Freesound => ({
+  id,
+  title,
+  category,
+  author,
+  page,
+  tags,
+  ...(max ? { max } : {}),
+});
+const kenney = (id: string, title: string, category: Category, pack: Kenney["pack"], file: string, tags: Array<string>, max?: number): Kenney => ({
+  id,
+  title,
+  category,
+  pack,
+  file,
+  tags,
+  ...(max ? { max } : {}),
+});
 const page = (user: string, n: number) => `https://freesound.org/people/${user}/sounds/${n}/`;
 
 const SOUNDS: ReadonlyArray<Sound> = [
@@ -157,7 +173,13 @@ const SOUNDS: ReadonlyArray<Sound> = [
   fs("typing-fast", "Fast typing", "typing", "Capt.Jack", page("Capt.Jack", 813214), ["typing", "keyboard", "fast", "keys"]),
   fs("typing-keyboard", "Keyboard typing", "typing", "praxis_bard", page("praxis_bard", 380066), ["typing", "keyboard", "computer", "keys"], 3),
   // Meme sound-alikes (only when asked, D207): free recordings, never the copyrighted clips.
-  fs("frustrated-yell", "Frustrated yell", "meme", "myfreesoundaccount1998", page("myfreesoundaccount1998", 543252), ["yell", "shout", "frustrated", "fail", "fahh"]),
+  fs("frustrated-yell", "Frustrated yell", "meme", "myfreesoundaccount1998", page("myfreesoundaccount1998", 543252), [
+    "yell",
+    "shout",
+    "frustrated",
+    "fail",
+    "fahh",
+  ]),
   fs("oof", "Oof", "meme", "unfa", page("unfa", 719053), ["oof", "ouch", "pain", "voice"]),
   fs("wow", "Wow", "meme", "ahab2000", page("ahab2000", 398933), ["wow", "voice", "reaction", "amazed"]),
   fs("rimshot", "Rimshot", "meme", "Sajmund", page("Sajmund", 132418), ["rimshot", "ba dum tss", "joke", "drum"]),
@@ -182,7 +204,8 @@ function ffmpeg(args: Array<string>) {
   if (r.status !== 0) throw new Error(r.stderr);
   return r.stderr;
 }
-const seconds = (path: string) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { encoding: "utf8" }).trim());
+const seconds = (path: string) =>
+  Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { encoding: "utf8" }).trim());
 const freesoundId = (url: string) => /\/sounds\/(\d+)\/?$/.exec(url)![1]!;
 const get = async (url: string) => {
   const res = await fetch(url, { headers: { "User-Agent": "Uncut make-sfx (https://github.com/blazejkustra/uncut)" } });
@@ -193,7 +216,10 @@ const get = async (url: string) => {
 /** The sound's Freesound page links the CC0 1.0 deed as its licence; its hq preview URL. */
 async function checkFreesound(s: Freesound): Promise<string> {
   const html = await (await get(s.page)).text();
-  const licence = /href="https?:\/\/creativecommons\.org\/([^"]+)"[^>]*title="Go to the full license text"|title="Go to the full license text" href="https?:\/\/creativecommons\.org\/([^"]+)"/.exec(html);
+  const licence =
+    /href="https?:\/\/creativecommons\.org\/([^"]+)"[^>]*title="Go to the full license text"|title="Go to the full license text" href="https?:\/\/creativecommons\.org\/([^"]+)"/.exec(
+      html,
+    );
   const deed = licence?.[1] ?? licence?.[2];
   if (deed !== "publicdomain/zero/1.0/") throw new Error(`${s.id}: ${s.page} isn't CC0 (${deed ?? "no licence found"})`);
   const preview = new RegExp(`https://cdn\\.freesound\\.org/previews/\\d+/${freesoundId(s.page)}_\\d+-hq\\.mp3`).exec(html)?.[0];
@@ -247,7 +273,9 @@ function peaksOf(path: string): Array<number> {
 
 const onlySynth = process.argv.includes("--only-synth");
 const given = process.argv.slice(2).find((a) => !a.startsWith("--"));
-const kept = onlySynth ? new Map((JSON.parse(readFileSync(join(OUT, "library.json"), "utf8")) as { sounds: Array<{ id: string; file: string }> }).sounds.map((x) => [x.id, x])) : new Map<string, { id: string; file: string }>();
+const kept = onlySynth
+  ? new Map((JSON.parse(readFileSync(join(OUT, "library.json"), "utf8")) as { sounds: Array<{ id: string; file: string }> }).sounds.map((x) => [x.id, x]))
+  : new Map<string, { id: string; file: string }>();
 const temp = mkdtempSync(join(tmpdir(), "uncut-sfx-"));
 mkdirSync(OUT, { recursive: true });
 if (new Set(SOUNDS.map((s) => s.id)).size !== SOUNDS.length) throw new Error("duplicate ids");
@@ -265,16 +293,33 @@ try {
     if ("make" in s) {
       src = join(temp, `${s.id}.wav`);
       writeWav(src, s.make());
-      meta = { author: "Uncut", provider: "uncut", source: SYNTH_SOURCE, licenseProof: "Synthesised by scripts/sfx-synth.ts from oscillators and seeded noise (no recording or sample in it); made by Uncut and released as CC0 1.0" };
+      meta = {
+        author: "Uncut",
+        provider: "uncut",
+        source: SYNTH_SOURCE,
+        licenseProof:
+          "Synthesised by scripts/sfx-synth.ts from oscillators and seeded noise (no recording or sample in it); made by Uncut and released as CC0 1.0",
+      };
     } else if ("page" in s) {
       const preview = await checkFreesound(s);
       src = given ? join(given, `${freesoundId(s.page)}.mp3`) : join(temp, `${freesoundId(s.page)}.mp3`);
       if (!given) writeFileSync(src, Buffer.from(await (await get(preview)).arrayBuffer()));
-      meta = { author: s.author, provider: "freesound", source: s.page, licenseProof: "The sound's Freesound page links the CC0 1.0 deed (Creative Commons 0)" };
+      meta = {
+        author: s.author,
+        provider: "freesound",
+        source: s.page,
+        licenseProof: "The sound's Freesound page links the CC0 1.0 deed (Creative Commons 0)",
+      };
     } else {
       const dir = await kenneyPack(s.pack, given ?? temp);
       src = join(dir, "Audio", s.file);
-      meta = { author: "Kenney", provider: "kenney", source: KENNEY_PAGES[s.pack], sourceFile: `Audio/${s.file}`, licenseProof: "The pack's License.txt: Creative Commons Zero, CC0 (creativecommons.org/publicdomain/zero/1.0)" };
+      meta = {
+        author: "Kenney",
+        provider: "kenney",
+        source: KENNEY_PAGES[s.pack],
+        sourceFile: `Audio/${s.file}`,
+        licenseProof: "The pack's License.txt: Creative Commons Zero, CC0 (creativecommons.org/publicdomain/zero/1.0)",
+      };
     }
     const length = seconds(src);
     if (!(length >= 0.05)) throw new Error(`${s.id}: ${length} s is too short to use`);
@@ -285,7 +330,24 @@ try {
     const lufs = loudness(src, trim);
     const gain = Math.min(CEILING_DB - peak, TARGET_LUFS - lufs);
     const out = join(OUT, `${s.id}.m4a`);
-    ffmpeg(["-y", "-v", "error", "-i", src, "-af", `${trim}volume=${gain.toFixed(2)}dB,aresample=44100`, "-map_metadata", "-1", "-c:a", "aac", "-b:a", BITRATE, "-movflags", "+faststart", out]);
+    ffmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-i",
+      src,
+      "-af",
+      `${trim}volume=${gain.toFixed(2)}dB,aresample=44100`,
+      "-map_metadata",
+      "-1",
+      "-c:a",
+      "aac",
+      "-b:a",
+      BITRATE,
+      "-movflags",
+      "+faststart",
+      out,
+    ]);
     sounds.push({
       id: s.id,
       file: `${s.id}.m4a`,

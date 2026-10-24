@@ -62,7 +62,7 @@ export class PeakMeter {
   push(chunk: Buffer) {
     let i = 0;
     if (this.carry !== undefined && chunk.length > 0) {
-      this.sample((this.carry | (chunk[0]! << 8)) << 16 >> 16);
+      this.sample(((this.carry | (chunk[0]! << 8)) << 16) >> 16);
       this.carry = undefined;
       i = 1;
     }
@@ -163,7 +163,10 @@ export function makeLimiter(max: number) {
 }
 
 /** The answer for one request: the peaks (and whether they were read or decoded), "none", or "failed". */
-type Generated = { readonly kind: "ok"; readonly bytes: Buffer; readonly from: "cache" | "decode" } | { readonly kind: "none" } | { readonly kind: "failed"; readonly why: string };
+type Generated =
+  | { readonly kind: "ok"; readonly bytes: Buffer; readonly from: "cache" | "decode" }
+  | { readonly kind: "none" }
+  | { readonly kind: "failed"; readonly why: string };
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
@@ -242,8 +245,12 @@ export const layer = Layer.unwrap(
         // 404 means there is nothing to draw (the renderer stops asking); 503 that it may work later.
         if (!result) return notFound();
         if (result.kind === "none") return notFound("No sound");
-        if (result.kind === "failed") return HttpServerResponse.text(`Waveform unavailable: ${result.why}`, { status: 503, headers: { ...CORS, "retry-after": "30" } });
-        return HttpServerResponse.uint8Array(result.bytes, { contentType: "application/json", headers: { ...CORS, "cache-control": "no-store", "x-uncut-waveform": result.from } });
+        if (result.kind === "failed")
+          return HttpServerResponse.text(`Waveform unavailable: ${result.why}`, { status: 503, headers: { ...CORS, "retry-after": "30" } });
+        return HttpServerResponse.uint8Array(result.bytes, {
+          contentType: "application/json",
+          headers: { ...CORS, "cache-control": "no-store", "x-uncut-waveform": result.from },
+        });
       }),
     );
   }),

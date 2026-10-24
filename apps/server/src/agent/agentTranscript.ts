@@ -76,7 +76,15 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
   for (const f of fillers) for (let k = 0; k < f.n; k++) fillerAt.set(f.i + k, f);
   const wordStart = (i: number) => toFrames(heard[i]!.start, Math.floor);
   const wordEnd = (i: number) => Math.max(wordStart(i) + 1, toFrames(heard[i]!.end, Math.ceil));
-  const pauseOut = (p: Pause) => ({ start: toFrames(p.start, Math.ceil), end: toFrames(p.end, Math.floor), startSeconds: p.start, endSeconds: p.end, after: p.after, ...(p.edge ? { edge: p.edge } : {}), ...(p.silent !== undefined ? { silent: p.silent } : {}) });
+  const pauseOut = (p: Pause) => ({
+    start: toFrames(p.start, Math.ceil),
+    end: toFrames(p.end, Math.floor),
+    startSeconds: p.start,
+    endSeconds: p.end,
+    after: p.after,
+    ...(p.edge ? { edge: p.edge } : {}),
+    ...(p.silent !== undefined ? { silent: p.silent } : {}),
+  });
   // The pauses after a listed word, and the one before the first word with it.
   const listedPauses = pauses.filter((p) => shown.has(p.after) || (p.edge === "start" && shown.has(0)));
   const listedFillers = fillers.filter((f) => shown.has(f.i));
@@ -112,7 +120,17 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
     }
     out.text = lines.join("\n");
   }
-  out.fillers = listedFillers.map((f) => ({ i: f.i, n: f.n, text: words.slice(f.i, f.i + f.n).map((w) => w.text).join(" "), start: wordStart(f.i), end: wordEnd(f.i + f.n - 1), kind: f.kind }));
+  out.fillers = listedFillers.map((f) => ({
+    i: f.i,
+    n: f.n,
+    text: words
+      .slice(f.i, f.i + f.n)
+      .map((w) => w.text)
+      .join(" "),
+    start: wordStart(f.i),
+    end: wordEnd(f.i + f.n - 1),
+    kind: f.kind,
+  }));
   out.pauses = listedPauses.map(pauseOut);
   if (more !== undefined) out.next = { from: more, note: `More words follow: call transcript_read again with from ${more} (and the same range).` };
   if (first === undefined) out.note = range ? "No words in that range." : "No words from there.";
@@ -120,7 +138,14 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
 }
 
 /** media_analyze's "transcript": a summary; transcript_read gives the words. */
-export function transcriptSummary(result: TranscriptResult, cached: boolean, sound: { readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined; readonly envelope?: SpeechEnvelope | undefined } = {}) {
+export function transcriptSummary(
+  result: TranscriptResult,
+  cached: boolean,
+  sound: {
+    readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined;
+    readonly envelope?: SpeechEnvelope | undefined;
+  } = {},
+) {
   if (!result.hasAudio) return { state: "done", cached, hasAudio: false, note: "This media has no sound, so there's nothing to transcribe." };
   const words = result.words ?? [];
   const fillers = fillersOf(words, result.language);
@@ -137,6 +162,13 @@ export function transcriptSummary(result: TranscriptResult, cached: boolean, sou
     fillers: { hesitation: fillers.filter((f) => f.kind === "hesitation").length, maybe: fillers.filter((f) => f.kind === "maybe").length },
     pauses: pauses.length,
     pauseSeconds: Math.round(pauses.reduce((s, p) => s + p.end - p.start, 0) * 10) / 10,
-    ...(words.length ? { opening: words.slice(0, 30).map((w) => w.text).join(" ") } : {}),
+    ...(words.length
+      ? {
+          opening: words
+            .slice(0, 30)
+            .map((w) => w.text)
+            .join(" "),
+        }
+      : {}),
   };
 }

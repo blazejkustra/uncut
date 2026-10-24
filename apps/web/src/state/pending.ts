@@ -53,7 +53,8 @@ export function pendingWork(input: PendingInput): Array<PendingItem> {
   const window = app || input.reason === "environment";
   if (input.draft === "rename") out.push({ id: "draft", text: "A name being edited", how: "save", stop: "rename" });
   else if (input.draft === "field") out.push({ id: "draft", text: "A value being typed", how: "save" });
-  if (input.saving > 0) out.push({ id: "saving", text: input.saving === 1 ? "The last change is being saved" : `${plural(input.saving, "change")} being saved`, how: "wait" });
+  if (input.saving > 0)
+    out.push({ id: "saving", text: input.saving === 1 ? "The last change is being saved" : `${plural(input.saving, "change")} being saved`, how: "wait" });
   if (input.recorder === "recording" || input.recorder === "countdown") out.push({ id: "take", text: "A recording on this Mac", how: "save", stop: "take" });
   else if (input.recorder === "saving") out.push({ id: "take", text: "A recording being saved", how: "wait" });
   for (const device of input.devices) out.push({ id: `device:${device}`, text: `Recording ${device}`, how: "save", target: device });

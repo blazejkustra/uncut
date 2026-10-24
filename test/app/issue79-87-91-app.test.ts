@@ -125,7 +125,10 @@ test("#79 #87 #91: Welcome fills the window; closing a project stays in the app;
   assert.equal(region, "drag", "the wordmark is part of the window's drag region");
   await sleep(1800);
   const wordmarkBox = await page.$eval("header.topbar", (el) => el.getBoundingClientRect().toJSON());
-  await page.screenshot({ path: "test-output/issue79-87-91-wordmark.png", clip: { x: 0, y: 0, width: Math.min(560, wordmarkBox.width), height: wordmarkBox.height } });
+  await page.screenshot({
+    path: "test-output/issue79-87-91-wordmark.png",
+    clip: { x: 0, y: 0, width: Math.min(560, wordmarkBox.width), height: wordmarkBox.height },
+  });
   await shot(page, "editor");
   // Reduced motion: no sweep.
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);

@@ -76,7 +76,19 @@ test("projectDirFromOpenedPath: a path inside a project means that project", () 
 });
 
 test("projectDirFromOpenedPath: anything else is not a project", () => {
-  for (const p of ["/Users/me/clip.mp4", "/Users/me/Movies", "/", "", "Launch.uncut", "relative/Launch.uncut", "/Users/me/.uncut", "/x/Launch.uncut.bak", "/x/../Launch.uncut", undefined, 42]) {
+  for (const p of [
+    "/Users/me/clip.mp4",
+    "/Users/me/Movies",
+    "/",
+    "",
+    "Launch.uncut",
+    "relative/Launch.uncut",
+    "/Users/me/.uncut",
+    "/x/Launch.uncut.bak",
+    "/x/../Launch.uncut",
+    undefined,
+    42,
+  ]) {
     assert.equal(projectDirFromOpenedPath(p), undefined, String(p));
   }
 });

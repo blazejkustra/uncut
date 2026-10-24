@@ -36,13 +36,33 @@ test("notary profile: UNCUT_NOTARY_PROFILE, default uncut-notary; CI's keychain 
   const ci = notaryAuth({ UNCUT_NOTARY_PROFILE: "ci", UNCUT_NOTARY_KEYCHAIN: "/tmp/k.keychain-db" });
   assert.deepEqual(ci, { profile: "ci", keychain: "/tmp/k.keychain-db" });
   const local = notaryAuth({});
-  assert.deepEqual(notarySubmitArgs("/x/Uncut.dmg", local), ["notarytool", "submit", "/x/Uncut.dmg", "--keychain-profile", "uncut-notary", "--wait", "--output-format", "json"]);
-  assert.deepEqual(notarySubmitArgs("/x/Uncut.dmg", ci), ["notarytool", "submit", "/x/Uncut.dmg", "--keychain-profile", "ci", "--keychain", "/tmp/k.keychain-db", "--wait", "--output-format", "json"]);
+  assert.deepEqual(notarySubmitArgs("/x/Uncut.dmg", local), [
+    "notarytool",
+    "submit",
+    "/x/Uncut.dmg",
+    "--keychain-profile",
+    "uncut-notary",
+    "--wait",
+    "--output-format",
+    "json",
+  ]);
+  assert.deepEqual(notarySubmitArgs("/x/Uncut.dmg", ci), [
+    "notarytool",
+    "submit",
+    "/x/Uncut.dmg",
+    "--keychain-profile",
+    "ci",
+    "--keychain",
+    "/tmp/k.keychain-db",
+    "--wait",
+    "--output-format",
+    "json",
+  ]);
   assert.deepEqual(notaryLogArgs("abc", local), ["notarytool", "log", "abc", "--keychain-profile", "uncut-notary"]);
   assert.deepEqual(notaryCheckArgs(local).slice(0, 2), ["notarytool", "history"]);
   const hint = storeCredentialsHint(local);
   assert.match(hint, /^xcrun notarytool store-credentials "uncut-notary" --apple-id <[^>]+> --team-id <[^>]+> --password <[^>]+>$/, "placeholders only");
-  assert.equal(isMissingProfile('Error: No Keychain password item found for profile: uncut-notary'), true);
+  assert.equal(isMissingProfile("Error: No Keychain password item found for profile: uncut-notary"), true);
   assert.equal(isMissingProfile("Error: HTTP status code: 401. Unable to authenticate."), false);
 });
 
@@ -68,20 +88,35 @@ Timestamp=16 Oct 2026 at 12:00:00
 TeamIdentifier=ABCDE12345
 Runtime Version=15.0.0`;
   const d = parseCodesignDetails(good);
-  assert.deepEqual(d, { signed: true, adHoc: false, runtime: true, timestamp: true, teamId: "ABCDE12345", authority: "Developer ID Application: Example Developer (ABCDE12345)" });
+  assert.deepEqual(d, {
+    signed: true,
+    adHoc: false,
+    runtime: true,
+    timestamp: true,
+    teamId: "ABCDE12345",
+    authority: "Developer ID Application: Example Developer (ABCDE12345)",
+  });
   assert.deepEqual(signatureProblems(d, "ABCDE12345"), []);
   const adhoc = parseCodesignDetails(`CodeDirectory v=20400 size=1 flags=0x20002(adhoc,linker-signed) hashes=1+0 location=embedded
 Signature=adhoc
 Signed Time=16 Oct 2026
 TeamIdentifier=not set`);
-  assert.deepEqual(signatureProblems(adhoc, "ABCDE12345"), ["ad-hoc signature", "no hardened runtime", "no secure timestamp", "team none, expected ABCDE12345"]);
+  assert.deepEqual(signatureProblems(adhoc, "ABCDE12345"), [
+    "ad-hoc signature",
+    "no hardened runtime",
+    "no secure timestamp",
+    "team none, expected ABCDE12345",
+  ]);
   assert.deepEqual(signatureProblems(parseCodesignDetails("/x: code object is not signed at all"), "ABCDE12345"), ["not signed"]);
   const otherTeam = parseCodesignDetails(good.replace(/ABCDE12345/g, "6HVVJA9KV8"));
   assert.deepEqual(signatureProblems(otherTeam, "ABCDE12345"), ["team 6HVVJA9KV8, expected ABCDE12345"]);
 });
 
 test("spctl's verdict: only accepted + Notarized Developer ID passes", () => {
-  assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Example Developer (ABCDE12345)"), { accepted: true, source: "Notarized Developer ID" });
+  assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Example Developer (ABCDE12345)"), {
+    accepted: true,
+    source: "Notarized Developer ID",
+  });
   assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Developer ID"), { accepted: true, source: "Developer ID" });
   assert.deepEqual(parseSpctl("/x/Uncut.app: rejected\nsource=Unnotarized Developer ID"), { accepted: false, source: "Unnotarized Developer ID" });
   assert.deepEqual(spctlDmgArgs("/x.dmg"), ["-a", "-t", "open", "--context", "context:primary-signature", "-vv", "/x.dmg"]);
@@ -98,8 +133,20 @@ test("Mach-O detection: thin, fat, either byte order; not scripts or text", () =
 
 test("the DMG: compressed HFS+, signed with the identity and a secure timestamp; release name with version and UTC date", () => {
   const args = dmgBuilderArgs("/s/Uncut.app", "/tmp/out");
-  assert.deepEqual(args.slice(0, 7), ["--config", "electron-builder.yml", "--mac", "dmg", "--arm64", "--prepackaged", "/s/Uncut.app"], "the dmg target on the signed app, not a new build");
-  for (const a of ["-c.dmg.sign=false", "-c.dmg.writeUpdateInfo=false", "-c.dmg.format=UDZO", "-c.dmg.filesystem=HFS+", `-c.dmg.artifactName=${BUILT_DMG_NAME}`, "-c.directories.output=/tmp/out"]) assert.ok(args.includes(a), a);
+  assert.deepEqual(
+    args.slice(0, 7),
+    ["--config", "electron-builder.yml", "--mac", "dmg", "--arm64", "--prepackaged", "/s/Uncut.app"],
+    "the dmg target on the signed app, not a new build",
+  );
+  for (const a of [
+    "-c.dmg.sign=false",
+    "-c.dmg.writeUpdateInfo=false",
+    "-c.dmg.format=UDZO",
+    "-c.dmg.filesystem=HFS+",
+    `-c.dmg.artifactName=${BUILT_DMG_NAME}`,
+    "-c.directories.output=/tmp/out",
+  ])
+    assert.ok(args.includes(a), a);
   assert.ok(!args.some((a) => a.startsWith("-c.mac.identity") || a.startsWith("-c.mac.hardenedRuntime")), "nothing that would re-sign the stapled app");
   assert.deepEqual(dmgSignArgs("CC8D", "/o.dmg"), ["--force", "--sign", "CC8D", "--timestamp", "/o.dmg"]);
   assert.equal(releaseDmgName("0.1.0", new Date("2026-10-16T23:30:00Z")), "Uncut-0.1.0-20261016-arm64.dmg");
@@ -121,10 +168,18 @@ test("telemetry token: the environment wins, else the keychain item, else inert;
   }
   for (const r of [env, kc]) assert.doesNotMatch(r.line, /secret/, "the token never printed");
   const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
-  assert.match(script, /spawnSync\("security", \["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"\], \{ encoding: "utf8", stdio: \["ignore", "pipe", "ignore"\] \}\)/, "read piped, never on the terminal");
+  assert.match(
+    script,
+    /spawnSync\("security", \["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"\], \{ encoding: "utf8", stdio: \["ignore", "pipe", "ignore"\] \}\)/,
+    "read piped, never on the terminal",
+  );
   // D266: --skip-build still stages the plugins from the repo (never a stale stage).
   assert.match(script, /if \(skipBuild\) \{[^]*stagePlugins\(undefined, join\(desktop, "stage\/plugins"\)\)[^]*\} else \{/);
-  assert.match(script, /spawnSync\("pnpm", \["build"\], \{ stdio: "inherit", cwd: root, env: \{ \.\.\.process\.env, UNCUT_TELEMETRY_TOKEN: t\.token \?\? "" \} \}\)/, "only in the build's environment");
+  assert.match(
+    script,
+    /spawnSync\("pnpm", \["build"\], \{ stdio: "inherit", cwd: root, env: \{ \.\.\.process\.env, UNCUT_TELEMETRY_TOKEN: t\.token \?\? "" \} \}\)/,
+    "only in the build's environment",
+  );
 });
 
 test("release.yml runs pnpm dist:signed with a temporary keychain and the notary profile in it", () => {
@@ -168,7 +223,8 @@ test("the DMG's installer window: background pair, icon layout, volume name, no 
   const svg = backgroundSvg("AAAA");
   assert.equal(DMG_HEADING, "Drag Uncut into Applications.");
   assert.equal(DMG_FOOTER, "Once copied, open it from Applications.");
-  for (const t of [DMG_HEADING, DMG_FOOTER, ">Uncut</text>", "data:font/woff2;base64,AAAA", `width="${DMG_WINDOW.width}" height="${DMG_WINDOW.height}"`]) assert.ok(svg.includes(t), t);
+  for (const t of [DMG_HEADING, DMG_FOOTER, ">Uncut</text>", "data:font/woff2;base64,AAAA", `width="${DMG_WINDOW.width}" height="${DMG_WINDOW.height}"`])
+    assert.ok(svg.includes(t), t);
   const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
   assert.match(script, /dmgBuilderArgs\(app, out\)/, "makeDmg lays out the DMG with electron-builder");
   assert.doesNotMatch(script, /osascript|"Finder"|hdiutil", \["create"/, "no Finder scripting (hangs on CI) and no plain hdiutil DMG");
@@ -176,15 +232,37 @@ test("the DMG's installer window: background pair, icon layout, volume name, no 
 });
 
 test("the DMG arrow: one curve between the icons, its head on the curve's end and symmetric about the end tangent", () => {
-  const n = arrowPath().match(/-?\d+(\.\d+)?/g)!.map(Number);
-  const [x0, , , , c2x, c2y, x1, y1, b1x, b1y, ax, ay, b2x, b2y] = n as [number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+  const n = arrowPath()
+    .match(/-?\d+(\.\d+)?/g)!
+    .map(Number);
+  const [x0, , , , c2x, c2y, x1, y1, b1x, b1y, ax, ay, b2x, b2y] = n as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
   assert.deepEqual([ax, ay], [x1, y1], "the head's apex is the curve's end");
   assert.ok(x0 - (DMG_ICONS.app.x + 64) >= 24 && DMG_ICONS.applications.x - 64 - x1 >= 24, "clear of both icons");
   assert.ok(Math.abs(x0 + x1 - (DMG_ICONS.app.x + DMG_ICONS.applications.x)) < 1, "centred between them");
   const t = Math.atan2(y1 - c2y, x1 - c2x);
   const angle = (bx: number, by: number) => Math.atan2(y1 - by, x1 - bx) - t;
-  const a1 = angle(b1x, b1y), a2 = angle(b2x, b2y);
+  const a1 = angle(b1x, b1y),
+    a2 = angle(b2x, b2y);
   assert.ok(Math.abs(a1 + a2) < 0.01, "barbs symmetric about the tangent");
   assert.ok(Math.abs(a1) > (28 * Math.PI) / 180 && Math.abs(a1) < (36 * Math.PI) / 180, "30–35° from the line");
-  for (const [bx, by] of [[b1x, b1y], [b2x, b2y]] as const) assert.ok(Math.abs(Math.hypot(x1 - bx, y1 - by) - 11) < 0.05, "11 pt barbs");
+  for (const [bx, by] of [
+    [b1x, b1y],
+    [b2x, b2y],
+  ] as const)
+    assert.ok(Math.abs(Math.hypot(x1 - bx, y1 - by) - 11) < 0.05, "11 pt barbs");
 });

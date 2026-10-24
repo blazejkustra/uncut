@@ -26,11 +26,51 @@ export interface ModelInfo {
 // Sizes and SHA-256 (the LFS object ids) from huggingface.co/api/models/ggerganov/whisper.cpp,
 // 2026-10-12. ggml-org/whisper.cpp answered 401 then; ggerganov/whisper.cpp serves the files.
 export const MODELS: ReadonlyArray<ModelInfo> = [
-  { id: "large-v3-turbo-q5_0", file: "ggml-large-v3-turbo-q5_0.bin", name: "Large v3 Turbo", bytes: 574041195, sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", multilingual: true, offered: true },
-  { id: "small", file: "ggml-small.bin", name: "Small", bytes: 487601967, sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", multilingual: true, offered: true },
-  { id: "base", file: "ggml-base.bin", name: "Base", bytes: 147951465, sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", multilingual: true, offered: true },
-  { id: "base.en", file: "ggml-base.en.bin", name: "Base (English only)", bytes: 147964211, sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002", multilingual: false, offered: false },
-  { id: "tiny.en", file: "ggml-tiny.en.bin", name: "Tiny (English only)", bytes: 77704715, sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f", multilingual: false, offered: false },
+  {
+    id: "large-v3-turbo-q5_0",
+    file: "ggml-large-v3-turbo-q5_0.bin",
+    name: "Large v3 Turbo",
+    bytes: 574041195,
+    sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+    multilingual: true,
+    offered: true,
+  },
+  {
+    id: "small",
+    file: "ggml-small.bin",
+    name: "Small",
+    bytes: 487601967,
+    sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+    multilingual: true,
+    offered: true,
+  },
+  {
+    id: "base",
+    file: "ggml-base.bin",
+    name: "Base",
+    bytes: 147951465,
+    sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+    multilingual: true,
+    offered: true,
+  },
+  {
+    id: "base.en",
+    file: "ggml-base.en.bin",
+    name: "Base (English only)",
+    bytes: 147964211,
+    sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+    multilingual: false,
+    offered: false,
+  },
+  {
+    id: "tiny.en",
+    file: "ggml-tiny.en.bin",
+    name: "Tiny (English only)",
+    bytes: 77704715,
+    sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
+    multilingual: false,
+    offered: false,
+  },
 ];
 /** Multilingual (Polish too) and the best of the three on offer, ~550 MB. */
 export const DEFAULT_MODEL = "large-v3-turbo-q5_0";
@@ -71,7 +111,11 @@ const hashFile = (path: string, hash: ReturnType<typeof createHash>) =>
     stream.on("error", reject);
   });
 
-const sizeOf = (path: string) => stat(path).then((s) => s.size, () => 0);
+const sizeOf = (path: string) =>
+  stat(path).then(
+    (s) => s.size,
+    () => 0,
+  );
 
 /** A file that can't be the model (too big, wrong checksum): its .part is removed. */
 class Mismatch extends Error {}
@@ -212,7 +256,9 @@ async function downloadOnce(options: DownloadOptions): Promise<void> {
         chunk = await reader.read();
       } catch (error) {
         check();
-        throw new Error(`The download stopped${stalled ? ": nothing arrived for a minute" : `: ${(error as Error).message}`}. It resumes where it stopped next time.`);
+        throw new Error(
+          `The download stopped${stalled ? ": nothing arrived for a minute" : `: ${(error as Error).message}`}. It resumes where it stopped next time.`,
+        );
       }
       if (chunk.done) break;
       armStall();
@@ -226,7 +272,8 @@ async function downloadOnce(options: DownloadOptions): Promise<void> {
     await file.close();
     file = undefined;
     check();
-    if (total !== undefined && received !== total) throw new Error(`The download stopped at ${received} of ${total} bytes. It resumes where it stopped next time.`);
+    if (total !== undefined && received !== total)
+      throw new Error(`The download stopped at ${received} of ${total} bytes. It resumes where it stopped next time.`);
     if (sha256 && hash.digest("hex") !== sha256.toLowerCase()) throw new Mismatch("The downloaded model is damaged (its checksum doesn't match). Try again.");
     await rename(part, dest);
     await rm(metaPath, { force: true }).catch(() => {});
@@ -264,7 +311,14 @@ export interface ModelDownload {
 export interface ModelsState {
   readonly selected: string;
   readonly dir: string;
-  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string; readonly bytes: number; readonly multilingual: boolean; readonly offered: boolean; readonly installed: boolean }>;
+  readonly models: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly bytes: number;
+    readonly multilingual: boolean;
+    readonly offered: boolean;
+    readonly installed: boolean;
+  }>;
   readonly downloads: ReadonlyArray<ModelDownload>;
 }
 
@@ -318,7 +372,14 @@ export class ModelStore {
     return {
       selected: this.selected,
       dir: this.options.dir,
-      models: MODELS.map((m) => ({ id: m.id, name: m.name, bytes: m.bytes, multilingual: m.multilingual, offered: m.offered, installed: this.installed.has(m.id) })),
+      models: MODELS.map((m) => ({
+        id: m.id,
+        name: m.name,
+        bytes: m.bytes,
+        multilingual: m.multilingual,
+        offered: m.offered,
+        installed: this.installed.has(m.id),
+      })),
       downloads: this.downloads,
     };
   }
@@ -347,7 +408,12 @@ export class ModelStore {
   }
 
   select(id: string) {
-    if (!modelInfo(id)) throw new Error(`There's no model "${id}". Choose one of ${MODELS.filter((m) => m.offered).map((m) => m.id).join(", ")}.`);
+    if (!modelInfo(id))
+      throw new Error(
+        `There's no model "${id}". Choose one of ${MODELS.filter((m) => m.offered)
+          .map((m) => m.id)
+          .join(", ")}.`,
+      );
     if (id === this.selected) return;
     this.selected = id;
     this.options.onSelect?.(id);
@@ -403,8 +469,16 @@ export class ModelStore {
           // A newer download of this model reports for itself.
           if (mine || !this.running.has(id)) {
             const d = this.downloads.find((x) => x.model === id);
-            if (error instanceof Cancelled) this.setDownload({ model: id, phase: "cancelled", received: 0, ...(d?.total !== undefined ? { total: d.total } : {}) });
-            else this.setDownload({ model: id, phase: "failed", received: d?.received ?? 0, ...(d?.total !== undefined ? { total: d.total } : {}), error: error.message });
+            if (error instanceof Cancelled)
+              this.setDownload({ model: id, phase: "cancelled", received: 0, ...(d?.total !== undefined ? { total: d.total } : {}) });
+            else
+              this.setDownload({
+                model: id,
+                phase: "failed",
+                received: d?.received ?? 0,
+                ...(d?.total !== undefined ? { total: d.total } : {}),
+                error: error.message,
+              });
           }
           throw error;
         },

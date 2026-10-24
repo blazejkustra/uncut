@@ -13,7 +13,8 @@ export const KEEP_REVISIONS = 50;
 export const trashDir = (dir: string, turnId: string) => join(dir, ".cache", "trash", turnId, "graphics");
 
 /** Whether `name` (graphics/<name>) is referenced anywhere in these projects (any field: items, components, keys). */
-const usedIn = (texts: ReadonlyArray<string>, name: string) => texts.some((t) => t.includes(`graphics/${name}"`) || t.includes(`graphics/${name}?`) || t.includes(`graphics/${name}#`));
+const usedIn = (texts: ReadonlyArray<string>, name: string) =>
+  texts.some((t) => t.includes(`graphics/${name}"`) || t.includes(`graphics/${name}?`) || t.includes(`graphics/${name}#`));
 
 /**
  * Of the agent's graphics (`candidates`, file names in graphics/), the ones that exist and that no

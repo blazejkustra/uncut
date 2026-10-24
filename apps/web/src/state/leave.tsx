@@ -42,7 +42,8 @@ function commitDraft() {
 /** Drops it: a rename takes Esc; any other field keeps its typing unsaved (nothing is sent). */
 function dropDraft() {
   const el = document.activeElement;
-  if (el instanceof HTMLElement && el.classList.contains("renaming")) el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  if (el instanceof HTMLElement && el.classList.contains("renaming"))
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
 }
 
 // ---- what's pending now ----
@@ -57,7 +58,9 @@ export function pendingNow(reason: LeaveReason): Array<PendingItem> {
     draft: currentDraft(),
     message: s.snapshot !== null && s.agentDraft.trim() !== "",
     agentRunning: s.agent !== null && s.agent.dir === dir && s.agent.running !== null,
-    exports: s.exportJobs.filter((j) => EXPORT_RUNNING.has(j.phase)).map((j) => ({ id: j.id, name: j.output.slice(j.output.lastIndexOf("/") + 1) || "the video" })),
+    exports: s.exportJobs
+      .filter((j) => EXPORT_RUNNING.has(j.phase))
+      .map((j) => ({ id: j.id, name: j.output.slice(j.output.lastIndexOf("/") + 1) || "the video" })),
     recorder,
     devices: (s.capture?.recording ?? []).map((r) => r.device),
     uploading: s.uploading ? s.uploading.total - s.uploading.done : 0,

@@ -68,7 +68,11 @@ test("every folder a message names: both of two folders, a file's folder, $HOME 
     { dir: b, named: "folder" },
     { dir: join(home, "Downloads"), named: "folder", problem: "it's all of ~/Downloads; paste a folder inside it" },
   ]);
-  assert.deepEqual(mentionedDirs(text, join(root, "project"), kind, home, (p) => p), [a, b], "only the ones that can be roots are offered");
+  assert.deepEqual(
+    mentionedDirs(text, join(root, "project"), kind, home, (p) => p),
+    [a, b],
+    "only the ones that can be roots are offered",
+  );
   const listing = (await listFolder(a))!;
   assert.deepEqual(listing, { files: 4, folders: 1, videos: 1, images: 1, sounds: 1, names: ["notes.txt", "one.mp4", "three.wav", "two.png", "sub/"] });
   assert.equal(listingWords(listing), "4 files (1 video, 1 image, 1 sound) and 1 folder");

@@ -13,8 +13,21 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { animationAt, applyEdit, captionAt, createSession, layout, moveFades, planMakeCaptions, RENDER_CSS, textHtml, visualsAt, type CutTranscript, type Item, type Project } from "../../packages/core/src/index.ts";
-import { planCaptionStyle } from "../../packages/core/src/text/captions.ts";
+import {
+  animationAt,
+  applyEdit,
+  captionAt,
+  createSession,
+  layout,
+  moveFades,
+  planMakeCaptions,
+  RENDER_CSS,
+  textHtml,
+  visualsAt,
+  type CutTranscript,
+  type Item,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { rasterizerCommand, startRasterizer } from "../../apps/server/src/export/rasterizer.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
@@ -22,7 +35,12 @@ import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skipServer = !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP) ? "server, desktop or media core not built (run pnpm build)" : hasFfmpeg ? false : "needs ffmpeg";
+const skipServer =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP)
+    ? "server, desktop or media core not built (run pnpm build)"
+    : hasFfmpeg
+      ? false
+      : "needs ffmpeg";
 
 const W = 1280;
 const H = 720;
@@ -38,11 +56,47 @@ const MOVES = ["move.typewriter", "move.bounce", "move.blur", "move.scale", "mov
 /** Text with each new move (in and out), a looping one, and karaoke captions over a 120-frame clip. */
 function textProject(path: string): Project {
   const texts: Array<Item> = [
-    { id: "blur", type: "text", start: 0, duration: 40, text: "Blur in", transform: { x: 100, y: 80 }, style: { font: "DM Sans", size: 90, weight: 700, color: "#FFFFFF" }, animation: { in: { module: "move.blur", duration: 20 } } },
-    { id: "type", type: "text", start: 40, duration: 40, text: "Typewriter", transform: { x: 100, y: 80 }, style: { font: "DM Mono", size: 90, weight: 500, color: "#FFFFFF", tracking: 0 }, animation: { in: { module: "move.typewriter", duration: 30 } } },
-    { id: "pulse", type: "text", start: 80, duration: 40, text: "Pulse", transform: { x: 100, y: 80 }, style: { font: "DM Sans", size: 90, weight: 700, color: "#FFFFFF" }, animation: { loop: { module: "move.pulse", duration: 10 } } },
+    {
+      id: "blur",
+      type: "text",
+      start: 0,
+      duration: 40,
+      text: "Blur in",
+      transform: { x: 100, y: 80 },
+      style: { font: "DM Sans", size: 90, weight: 700, color: "#FFFFFF" },
+      animation: { in: { module: "move.blur", duration: 20 } },
+    },
+    {
+      id: "type",
+      type: "text",
+      start: 40,
+      duration: 40,
+      text: "Typewriter",
+      transform: { x: 100, y: 80 },
+      style: { font: "DM Mono", size: 90, weight: 500, color: "#FFFFFF", tracking: 0 },
+      animation: { in: { module: "move.typewriter", duration: 30 } },
+    },
+    {
+      id: "pulse",
+      type: "text",
+      start: 80,
+      duration: 40,
+      text: "Pulse",
+      transform: { x: 100, y: 80 },
+      style: { font: "DM Sans", size: 90, weight: 700, color: "#FFFFFF" },
+      animation: { loop: { module: "move.pulse", duration: 10 } },
+    },
   ];
-  const moves: Array<Item> = MOVES.map((module, i) => ({ id: `m${i}`, type: "text", start: i * 20, duration: 20, text: "Moves", transform: { x: 700, y: 300 }, style: { font: "DM Sans", size: 60, weight: 700, color: "#FFFFFF" }, animation: { in: { module, duration: 8 }, out: { module, duration: 8 } } }));
+  const moves: Array<Item> = MOVES.map((module, i) => ({
+    id: `m${i}`,
+    type: "text",
+    start: i * 20,
+    duration: 20,
+    text: "Moves",
+    transform: { x: 700, y: 300 },
+    style: { font: "DM Sans", size: 60, weight: 700, color: "#FFFFFF" },
+    animation: { in: { module, duration: 8 }, out: { module, duration: 8 } },
+  }));
   const base: Project = {
     format: "uncut/0",
     name: "Text moves",
@@ -76,7 +130,12 @@ test("plan: the new moves and a loop are core textHtml per frame; ramps only whe
       assert.equal(layer.kind, "raster");
       if (layer.kind !== "raster") return;
       const start = item.start ?? 0;
-      for (let f = layer.f0; f < layer.f1; f++) assert.equal(layer.states[layer.frames[f - layer.f0]!], textHtml(item, project, { motion: animationAt(item, f - start, project.canvas).motion }), `${id} frame ${f}`);
+      for (let f = layer.f0; f < layer.f1; f++)
+        assert.equal(
+          layer.states[layer.frames[f - layer.f0]!],
+          textHtml(item, project, { motion: animationAt(item, f - start, project.canvas).motion }),
+          `${id} frame ${f}`,
+        );
       const fades = [item.animation?.in, item.animation?.out].filter((m) => m && moveFades(item, m)).length;
       assert.equal(layer.ramps.length, fades, `${id}: ${fades} ramps`);
     }
@@ -86,7 +145,10 @@ test("plan: the new moves and a loop are core textHtml per frame; ramps only whe
   assert.ok(type.kind === "raster" && type.states.length === 11, `typewriter looks ${type.kind === "raster" ? type.states.length : 0}`);
   // A 10-frame loop repeats: at most 10 distinct looks over its 40 frames.
   const pulse = plan.visuals.find((l) => l.item.id === "pulse")!;
-  assert.ok(pulse.kind === "raster" && pulse.states.length <= 10 && pulse.states.length > 2, `pulse looks ${pulse.kind === "raster" ? pulse.states.length : 0}`);
+  assert.ok(
+    pulse.kind === "raster" && pulse.states.length <= 10 && pulse.states.length > 2,
+    `pulse looks ${pulse.kind === "raster" ? pulse.states.length : 0}`,
+  );
   // Karaoke captions: each frame core captionAt (the fill over the words said so far).
   const cap = capOf(project);
   assert.equal(cap.style?.captionStyle, "karaoke");
@@ -110,12 +172,21 @@ let server: Server;
 let client: Client;
 let jobs: ReturnType<Client["subscribe"]>;
 const job = (id: string) => jobs.values.at(-1)?.find((j: { id: string }) => j.id === id);
-const finished = (id: string, timeout = 180000) => jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), timeout).then(() => job(id));
-const frameOf = (file: string, n: number, out: string) => (execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-update", "1", out]), out);
-const rgbFrames = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1024 * 1024 * 1024 });
+const finished = (id: string, timeout = 180000) =>
+  jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), timeout).then(() => job(id));
+const frameOf = (file: string, n: number, out: string) => (
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-update", "1", out]),
+  out
+);
+const rgbFrames = (file: string) =>
+  execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1024 * 1024 * 1024 });
 /** SSIM of two frames, over a crop (w:h:x:y) holding the text so the plain background doesn't dominate. */
 const ssim = (a: string, b: string, crop = `${W}:${H}:0:0`) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", `[0]format=gray,crop=${crop}[a];[1]format=gray,crop=${crop}[b];[a][b]ssim`, "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", `[0]format=gray,crop=${crop}[a];[1]format=gray,crop=${crop}[b];[a][b]ssim`, "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 /** Karaoke-yellow pixels (#FFD23F) in the lower band of frame f. */
@@ -136,7 +207,29 @@ before(async () => {
   if (skipServer) return;
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-fable2-text-export-")));
   mkdirSync(join(root, "out"));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${BG.replace("#", "0x")}:size=640x360:rate=30`, "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "Talk.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=${BG.replace("#", "0x")}:size=640x360:rate=30`,
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=300:sample_rate=48000",
+    "-t",
+    "4",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "Talk.mp4"),
+  ]);
   server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
   client = await connect(server.ready.port, server.ready.token);
   jobs = client.subscribe("export.jobs");
@@ -165,7 +258,11 @@ test("export: blur in, typewriter and karaoke captions are what core says the pr
     // Crops around the text: the top-left titles, the caption band.
     const top = "700:180:60:60";
     const band = `${W}:200:0:${H - 200}`;
-    for (const [f, name, crop] of [[10, "blur", top], [55, "typewriter", top], [25, "karaoke", band]] as const) {
+    for (const [f, name, crop] of [
+      [10, "blur", top],
+      [55, "typewriter", top],
+      [25, "karaoke", band],
+    ] as const) {
       const html = visualsAt(project, layout(project).starts, f)
         .filter((v) => v.item.type === "text" && typeof v.item.text === "string")
         .map(({ item, opacity, motion }) => textHtml(item, project, { opacity, motion }))

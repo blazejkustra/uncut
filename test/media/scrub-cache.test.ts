@@ -5,7 +5,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { cachedSize, decoderColour, FrameLru, liftsTone, mediaIdOf, sameFile, SCRUB_BUDGET, SCRUB_MAX_SIDE, windowRanks } from "../../apps/web/src/preview/scrub.ts";
+import {
+  cachedSize,
+  decoderColour,
+  FrameLru,
+  liftsTone,
+  mediaIdOf,
+  sameFile,
+  SCRUB_BUDGET,
+  SCRUB_MAX_SIDE,
+  windowRanks,
+} from "../../apps/web/src/preview/scrub.ts";
 
 test("D221: the LRU never holds more than its budget, drops the least recently used first and closes it", () => {
   const closed: Array<string> = [];
@@ -81,7 +91,12 @@ test("D221: footage decodes in the colour space the <video> shows it in, and whi
   assert.deepEqual(decoderColour({}, 180), { matrix: "smpte170m", primaries: "smpte170m", transfer: "smpte170m", fullRange: false });
   assert.deepEqual(decoderColour({}, 720), { matrix: "bt709", primaries: "bt709", transfer: "bt709", fullRange: false });
   // Says it: kept, full range too.
-  assert.deepEqual(decoderColour({ primaries: 1, transfer: 1, matrix: 1, fullRange: true }, 360), { matrix: "bt709", primaries: "bt709", transfer: "bt709", fullRange: true });
+  assert.deepEqual(decoderColour({ primaries: 1, transfer: 1, matrix: 1, fullRange: true }, 360), {
+    matrix: "bt709",
+    primaries: "bt709",
+    transfer: "bt709",
+    fullRange: true,
+  });
   assert.deepEqual(decoderColour({ matrix: 5 }, 1080), { matrix: "bt470bg", primaries: "smpte170m", transfer: "bt709", fullRange: false });
   // A code WebCodecs has no name for, or a stream that didn't parse: WebCodecs' own reading.
   assert.equal(decoderColour({ matrix: 4 }, 1080), undefined);

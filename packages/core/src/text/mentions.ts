@@ -18,7 +18,11 @@ export interface Mention {
   readonly area?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | undefined;
 }
 
-const oneLine = (s: string) => s.replace(/\[\[|\]\]|\*\*|`/g, "").replace(/\s+/g, " ").trim();
+const oneLine = (s: string) =>
+  s
+    .replace(/\[\[|\]\]|\*\*|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 const cut = (s: string, n = 40) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** An item in words, without its id: its name, its text, its media's name, or what it is. */
@@ -64,12 +68,18 @@ const MEDIA_ID = /(?<![\w-])m-[a-z0-9][a-z0-9-]*(?![\w-])/g;
 export function friendlyText(project: Project | undefined, text: string): string {
   if (!text) return text;
   const names = project ? namesOf(project) : new Map<string, string>();
-  let out = text.replace(/ \(([A-Za-z0-9_.:-]+)\)/g, (whole, id: string) => (names.has(id) || /^m-/.test(id) ? "" : whole));
+  let out = text.replace(/ \(([A-Za-z0-9_.:-]+)\)/g, (whole, id: string) => (names.has(id) || id.startsWith("m-") ? "" : whole));
   out = out.replace(MEDIA_ID, (id) => names.get(id) ?? id.slice(2));
   if (project) {
     const items = project.tracks.flatMap((t) => t.items.map((i) => i.id)).filter((id) => /[-\d]/.test(id) && !id.startsWith("m-"));
     if (items.length) {
-      const re = new RegExp(`(?<![\\w-])(${items.sort((a, b) => b.length - a.length).map(escape).join("|")})(?![\\w-])`, "g");
+      const re = new RegExp(
+        `(?<![\\w-])(${items
+          .sort((a, b) => b.length - a.length)
+          .map(escape)
+          .join("|")})(?![\\w-])`,
+        "g",
+      );
       out = out.replace(re, (id) => names.get(id) ?? id);
     }
   }
@@ -77,7 +87,12 @@ export function friendlyText(project: Project | undefined, text: string): string
 }
 
 /** A chip's label as it may go into the prompt's <context>: one line, no angle brackets, at most 120 characters. */
-export const mentionLabel = (label: string) => label.replace(/[\r\n<>]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "item";
+export const mentionLabel = (label: string) =>
+  label
+    .replace(/[\r\n<>]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "item";
 
 const secs = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
 
@@ -104,7 +119,10 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     const key = `${m.kind}:${m.id}:${m.label}:${m.range?.start ?? ""}:${m.frame ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const at = m.kind === "moment" || m.kind === "range" || m.kind === "region" ? "" : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
+    const at =
+      m.kind === "moment" || m.kind === "range" || m.kind === "region"
+        ? ""
+        : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
     if (m.kind === "media") {
       const media = project.media.find((x) => x.id === m.id);
       if (!media) {
@@ -112,7 +130,12 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
         continue;
       }
       const used = project.tracks.reduce((n, t) => n + t.items.filter((i) => i.media === media.id).length, 0);
-      const facts = [media.kind, media.probe?.frames ? secs(media.probe.frames, fps) : "", media.probe?.width ? `${media.probe.width}x${media.probe.height}` : "", used ? `used ${used}x on the timeline` : "not on the timeline"].filter(Boolean);
+      const facts = [
+        media.kind,
+        media.probe?.frames ? secs(media.probe.frames, fps) : "",
+        media.probe?.width ? `${media.probe.width}x${media.probe.height}` : "",
+        used ? `used ${used}x on the timeline` : "not on the timeline",
+      ].filter(Boolean);
       lines.push(`@${m.label} = media ${media.id} (${facts.join(", ")})${at}`);
     } else if (m.kind === "item") {
       const track = project.tracks.find((t) => t.items.some((i) => i.id === m.id));
@@ -122,14 +145,20 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
         continue;
       }
       const media = item.media ? project.media.find((x) => x.id === item.media) : undefined;
-      const facts = [`${item.type} on track ${track.id}${track.name && track.name !== track.id ? ` "${track.name}"` : ""}`, media ? `media ${media.id}` : "", typeof item.text === "string" ? `text "${cut(oneLine(item.text), 60)}"` : ""].filter(Boolean);
+      const facts = [
+        `${item.type} on track ${track.id}${track.name && track.name !== track.id ? ` "${track.name}"` : ""}`,
+        media ? `media ${media.id}` : "",
+        typeof item.text === "string" ? `text "${cut(oneLine(item.text), 60)}"` : "",
+      ].filter(Boolean);
       lines.push(`@${m.label} = item ${item.id} (${facts.join(", ")})${at}`);
     } else if (m.kind === "moment") {
       const frame = m.frame ?? 0;
       lines.push(`@${m.label} = the moment at frame ${frame} (${secs(frame, fps)}): ${describeAt(project, frame, frame + 1)}`);
     } else if (m.kind === "range") {
       const r = m.range ?? { start: 0, end: 0 };
-      lines.push(`@${m.label} = the stretch from frame ${r.start} to ${r.end} (${secs(r.start, fps)}–${secs(r.end, fps)}, end not included): ${describeAt(project, r.start, Math.max(r.start + 1, r.end))}`);
+      lines.push(
+        `@${m.label} = the stretch from frame ${r.start} to ${r.end} (${secs(r.start, fps)}–${secs(r.end, fps)}, end not included): ${describeAt(project, r.start, Math.max(r.start + 1, r.end))}`,
+      );
     } else if (m.kind === "region") {
       lines.push(`@${m.label} = ${regionLine(project, m)}`);
     } else if (m.kind === "effect") {
@@ -142,7 +171,9 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
         continue;
       }
       const name = effectInfo(use.module)?.name;
-      lines.push(`@${m.label} = effect ${use.module}${name ? ` "${name}"` : ""} on item ${item.id} (${item.type} "${cut(itemName(project, item), 40)}" on track ${track.id}${use.bypass ? ", switched off" : ""})`);
+      lines.push(
+        `@${m.label} = effect ${use.module}${name ? ` "${name}"` : ""} on item ${item.id} (${item.type} "${cut(itemName(project, item), 40)}" on track ${track.id}${use.bypass ? ", switched off" : ""})`,
+      );
     } else if (m.kind === "transition") {
       const track = project.tracks.find((t) => t.items.some((i) => i.id === m.id));
       const index = track ? track.items.findIndex((i) => i.id === m.id) : -1;
@@ -154,13 +185,21 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
       }
       const prev = track.items[index - 1];
       const start = layout(project).starts.get(item.id) ?? 0;
-      lines.push(`@${m.label} = transition ${tr.module} "${transitionName(tr.module)}" (${tr.duration} frames) into item ${item.id}${prev ? ` from item ${prev.id}` : ""} on track ${track.id}, at frame ${start} (${secs(start, fps)}); change it with set_transition on item ${item.id}`);
+      lines.push(
+        `@${m.label} = transition ${tr.module} "${transitionName(tr.module)}" (${tr.duration} frames) into item ${item.id}${prev ? ` from item ${prev.id}` : ""} on track ${track.id}, at frame ${start} (${secs(start, fps)}); change it with set_transition on item ${item.id}`,
+      );
     } else if (m.kind === "track") {
       const track = project.tracks.find((t) => t.id === m.id);
-      lines.push(track ? `@${m.label} = track ${track.id} (${track.kind}${track.role ? `, ${track.role}` : ""}, ${track.items.length} item${track.items.length === 1 ? "" : "s"})` : `@${m.label} = track ${m.id} (no longer in the project)`);
+      lines.push(
+        track
+          ? `@${m.label} = track ${track.id} (${track.kind}${track.role ? `, ${track.role}` : ""}, ${track.items.length} item${track.items.length === 1 ? "" : "s"})`
+          : `@${m.label} = track ${m.id} (no longer in the project)`,
+      );
     } else {
       const frame = m.frame ?? Number(m.id.replace(/^frame:/, ""));
-      lines.push(Number.isFinite(frame) && frame >= 0 ? `@${m.label} = marker at frame ${frame} (${secs(frame, fps)})` : `@${m.label} = a marker (its frame is unknown)`);
+      lines.push(
+        Number.isFinite(frame) && frame >= 0 ? `@${m.label} = marker at frame ${frame} (${secs(frame, fps)})` : `@${m.label} = a marker (its frame is unknown)`,
+      );
     }
   }
   return `<context>\nWhat the user's @labels point at (use the ids in tools; say the names to the user):\n${lines.join("\n")}\n</context>`;
@@ -201,7 +240,12 @@ export function regionLine(project: Project, m: Pick<Mention, "area" | "frame" |
       if (b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0 && !inside.includes(words)) inside.push(words);
     }
   }
-  const what = [inside.length ? `drawn in it: ${inside.slice(0, 8).join("; ")}` : "no clip's box is in it", shown.length ? `also on screen (texts and graphics, place not measured): ${shown.slice(0, 6).join("; ")}` : ""].filter(Boolean).join("; ");
+  const what = [
+    inside.length ? `drawn in it: ${inside.slice(0, 8).join("; ")}` : "no clip's box is in it",
+    shown.length ? `also on screen (texts and graphics, place not measured): ${shown.slice(0, 6).join("; ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
   return `an area of the picture the user marked: ${where}, ${when}; ${what}. render_frames there shows it; change what's in that area (and only for that time) unless they say otherwise`;
 }
 
@@ -218,7 +262,9 @@ export function describeAt(project: Project, from: number, to: number): string {
       if (start >= to || start + item.duration <= from) continue;
       const words = typeof item.text === "string" && item.text.trim() ? ` "${cut(oneLine(item.text), 60)}"` : "";
       const name = itemName(project, item);
-      found.push(`${item.id} (${item.type}${words || name === item.id ? "" : ` "${cut(name, 40)}"`}${words}, track ${track.id}${track.hidden ? ", hidden" : ""}, frames ${start}–${start + item.duration})`);
+      found.push(
+        `${item.id} (${item.type}${words || name === item.id ? "" : ` "${cut(name, 40)}"`}${words}, track ${track.id}${track.hidden ? ", hidden" : ""}, frames ${start}–${start + item.duration})`,
+      );
     }
   }
   if (!found.length) return "nothing on the timeline there";
@@ -249,15 +295,18 @@ export function parseMoment(text: string, fps: number): number | undefined {
 /** An effect's chip: "Blur on DJI 0042". */
 export const effectLabel = (project: Project, item: Item, name: string) => `${name} on ${itemName(project, item)}`;
 /** A transition's chip: "Crossfade into Harbour". */
-export const transitionLabel = (project: Project, item: Item) => `${item.transitionIn ? transitionName(item.transitionIn.module) : "Cut"} into ${itemName(project, item)}`;
+export const transitionLabel = (project: Project, item: Item) =>
+  `${item.transitionIn ? transitionName(item.transitionIn.module) : "Cut"} into ${itemName(project, item)}`;
 
 /** What @ offers in the composer: media, tracks, timeline items and markers, by name. */
 export function mentionCandidates(project: Project): Array<Mention & { readonly detail: string }> {
   const fps = project.canvas.fps;
   const out: Array<Mention & { detail: string }> = [];
-  for (const m of project.media) out.push({ kind: "media", id: m.id, label: m.name, detail: m.kind === "video" ? "Video" : m.kind === "audio" ? "Sound" : "Image" });
+  for (const m of project.media)
+    out.push({ kind: "media", id: m.id, label: m.name, detail: m.kind === "video" ? "Video" : m.kind === "audio" ? "Sound" : "Image" });
   for (const t of project.tracks) {
-    for (const i of t.items) out.push({ kind: "item", id: i.id, label: itemName(project, i), detail: `${t.name ?? t.id}${i.start !== undefined ? `, ${secs(i.start, fps)}` : ""}` });
+    for (const i of t.items)
+      out.push({ kind: "item", id: i.id, label: itemName(project, i), detail: `${t.name ?? t.id}${i.start !== undefined ? `, ${secs(i.start, fps)}` : ""}` });
   }
   for (const t of project.tracks) out.push({ kind: "track", id: t.id, label: t.name ?? t.id, detail: "Track" });
   // D264 (#77): effects and transitions, as the Inspector's Add to chat names them.
@@ -270,7 +319,8 @@ export function mentionCandidates(project: Project): Array<Mention & { readonly 
       if (i.transitionIn) out.push({ kind: "transition", id: i.id, label: transitionLabel(project, i), detail: "Transition" });
     }
   }
-  for (const mk of project.markers ?? []) out.push({ kind: "marker", id: `frame:${mk.frame}`, label: mk.label ?? `Marker ${secs(mk.frame, fps)}`, frame: mk.frame, detail: "Marker" });
+  for (const mk of project.markers ?? [])
+    out.push({ kind: "marker", id: `frame:${mk.frame}`, label: mk.label ?? `Marker ${secs(mk.frame, fps)}`, frame: mk.frame, detail: "Marker" });
   return out;
 }
 

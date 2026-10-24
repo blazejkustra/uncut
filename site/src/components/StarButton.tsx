@@ -11,12 +11,20 @@ export default function StarButton() {
   const [stars, setStars] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
-    void fetchStars().then((n) => { if (live) setStars(n); });
-    return () => { live = false; };
+    void fetchStars().then((n) => {
+      if (live) setStars(n);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
   const has = stars !== null;
   return (
-    <a className={has ? "nav-stars has-stars" : "nav-stars"} href={REPO_URL} aria-label={has ? `Star Uncut on GitHub, ${stars.toLocaleString("en-US")} stars` : "Star Uncut on GitHub"}>
+    <a
+      className={has ? "nav-stars has-stars" : "nav-stars"}
+      href={REPO_URL}
+      aria-label={has ? `Star Uncut on GitHub, ${stars.toLocaleString("en-US")} stars` : "Star Uncut on GitHub"}
+    >
       <GithubMark />
       <span className="label">Star</span>
       <span className="count" data-stars hidden={!has}>

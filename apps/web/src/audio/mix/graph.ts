@@ -292,7 +292,8 @@ export class MixGraph {
 
   /** Left and right levels of the master and of every track bus (the Mixer's meters), from the last ~43 ms. */
   levels(): Levels {
-    const read = (meters: readonly [AnalyserNode, AnalyserNode] | undefined): StereoLevel => (meters ? { left: levelOf(meters[0]), right: levelOf(meters[1]) } : SILENT);
+    const read = (meters: readonly [AnalyserNode, AnalyserNode] | undefined): StereoLevel =>
+      meters ? { left: levelOf(meters[0]), right: levelOf(meters[1]) } : SILENT;
     const tracks: Record<string, StereoLevel> = {};
     const reduction: Record<string, number> = {};
     for (const [id, bus] of this.buses) {
@@ -331,7 +332,13 @@ export class MixGraph {
         sink.disconnect();
         node.onaudioprocess = null;
         if (this.tap === tap) this.tap = undefined;
-        return { sampleRate: g.ctx.sampleRate, blocks: tap.blocks, marks: this.marks, latency: (g.ctx.outputLatency || 0) + (g.ctx.baseLatency || 0), sink: sinkOf(g.ctx) };
+        return {
+          sampleRate: g.ctx.sampleRate,
+          blocks: tap.blocks,
+          marks: this.marks,
+          latency: (g.ctx.outputLatency || 0) + (g.ctx.baseLatency || 0),
+          sink: sinkOf(g.ctx),
+        };
       },
     };
   }

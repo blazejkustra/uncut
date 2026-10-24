@@ -54,7 +54,9 @@ export const makeCore = (ctx: AgentServices) => {
       return [turnRecord(t, owner.bounds.get(t.id))];
     });
     try {
-      withHistory(owner.dir, (db) => db.saveAgent({ sessionId: owner.sessionId, pendingNote, threadStart: owner.threadStart, turns, order: owner.turns.map((t) => t.id) }));
+      withHistory(owner.dir, (db) =>
+        db.saveAgent({ sessionId: owner.sessionId, pendingNote, threadStart: owner.threadStart, turns, order: owner.turns.map((t) => t.id) }),
+      );
       for (const [id, json] of changed) owner.saved.set(id, json);
     } catch (error) {
       console.error(`[uncut] can't save the agent history of ${owner.dir}: ${(error as Error).message}`);
@@ -116,7 +118,9 @@ export const makeCore = (ctx: AgentServices) => {
       return;
     }
     try {
-      s.child.stdin.write(`${JSON.stringify({ type: "control_request", request_id: `stop-${randomBytes(4).toString("hex")}`, request: { subtype: "interrupt" } })}\n`);
+      s.child.stdin.write(
+        `${JSON.stringify({ type: "control_request", request_id: `stop-${randomBytes(4).toString("hex")}`, request: { subtype: "interrupt" } })}\n`,
+      );
     } catch {
       return closeSession(s, "kill");
     }
@@ -229,7 +233,8 @@ export const makeCore = (ctx: AgentServices) => {
     return a.length === b.length && timingSafeEqual(a, b);
   };
   /** A tool call is taken only for the turn running in that session now. */
-  const tokenOk = (given: string | null, r: Running | undefined): r is Running => !!r && !r.cancelled && sessionTokenOk(given) && r.session === st.session && st.session?.turn === r;
+  const tokenOk = (given: string | null, r: Running | undefined): r is Running =>
+    !!r && !r.cancelled && sessionTokenOk(given) && r.session === st.session && st.session?.turn === r;
 
   return { ensureLoaded, trackPending, publish, killRunning, textResult, persist, closeSession, stop, sessionTokenOk, tokenOk };
 };

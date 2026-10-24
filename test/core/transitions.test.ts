@@ -5,8 +5,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { applyEdit, audibleAt, canvasBox, clipBox, componentBox, componentHtml, createSession, defaultFrames, irisRadius, layout, loadModules, moveBox, spanOf, timelineProblems, transitionAt, TRANSITION_LIMITS, TRANSITIONS, transitionLimits, validateProject, visualsAt, ZOOM_SCALE, type Project } from "../../packages/core/src/index.ts";
-import { modulesList, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import {
+  applyEdit,
+  audibleAt,
+  canvasBox,
+  clipBox,
+  componentBox,
+  componentHtml,
+  createSession,
+  defaultFrames,
+  irisRadius,
+  layout,
+  loadModules,
+  moveBox,
+  spanOf,
+  timelineProblems,
+  transitionAt,
+  TRANSITION_LIMITS,
+  TRANSITIONS,
+  transitionLimits,
+  validateProject,
+  visualsAt,
+  ZOOM_SCALE,
+  type Project,
+} from "../../packages/core/src/index.ts";
+import { modulesList } from "../../apps/server/src/agent/agentTools.ts";
 import { validateOps } from "../../packages/core/src/index.ts";
 import { mainCuts, nearestCut, planDelete, planMove, planSetTransition, planSplit, planTrim } from "../../apps/web/src/timeline/edit.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
@@ -52,12 +75,25 @@ test("the drawn transitions match their manifests; dip to black is a built-in mo
     assert.ok(d >= t.minFrames && d <= t.maxFrames);
   }
   // The first six (D73, D79) keep their order; D133's follow (test/core/transitions-more.test.ts).
-  assert.deepEqual(TRANSITIONS.slice(0, 6).map((t) => t.id), ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"]);
-  assert.deepEqual(TRANSITIONS.slice(0, 6).map((t) => defaultFrames(t, 30)), [15, 24, 15, 15, 15, 15]);
+  assert.deepEqual(
+    TRANSITIONS.slice(0, 6).map((t) => t.id),
+    ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"],
+  );
+  assert.deepEqual(
+    TRANSITIONS.slice(0, 6).map((t) => defaultFrames(t, 30)),
+    [15, 24, 15, 15, 15, 15],
+  );
   // Every built-in transition's limits (drawn or not) are known to the renderer, as the manifests say.
   const builtins = [...modules.values()].filter((m) => m.kind === "transition" && m.builtin);
-  assert.deepEqual(Object.keys(TRANSITION_LIMITS).sort(), builtins.filter((m) => m.transition).map((m) => m.id).sort());
-  for (const m of builtins) if (m.transition) assert.deepEqual(TRANSITION_LIMITS[m.id], { minFrames: m.transition.minFrames, maxFrames: m.transition.maxFrames }, m.id);
+  assert.deepEqual(
+    Object.keys(TRANSITION_LIMITS).sort(),
+    builtins
+      .filter((m) => m.transition)
+      .map((m) => m.id)
+      .sort(),
+  );
+  for (const m of builtins)
+    if (m.transition) assert.deepEqual(TRANSITION_LIMITS[m.id], { minFrames: m.transition.minFrames, maxFrames: m.transition.maxFrames }, m.id);
   assert.equal(defaultFrames(TRANSITIONS[0]!, 30), 15);
   assert.equal(defaultFrames(TRANSITIONS[1]!, 30), 24);
   // The agent's docs list them.
@@ -161,7 +197,13 @@ test("push-left (D79): both clips slide left by the share of the canvas width, s
   const p = twoClips({ module: "transition.push-left", duration: 20 });
   assert.deepEqual(validateProject(p, modules), []);
   assert.deepEqual(ids(p, 50), ["a", "b", "title"]);
-  for (const [f, share] of [[50, 0], [55, 0.25], [60, 0.5], [65, 0.75], [69, 0.95]] as const) {
+  for (const [f, share] of [
+    [50, 0],
+    [55, 0.25],
+    [60, 0.5],
+    [65, 0.75],
+    [69, 0.95],
+  ] as const) {
     const a = of(p, f, "a")!;
     const b = of(p, f, "b")!;
     close(a.opacity, 1);
@@ -222,14 +264,33 @@ test("transitionAt and moveBox: shares at the edges, a boxed clip and a componen
   close(zoomed.content.x, 420 - 384);
   close(zoomed.content.w, 768);
   assert.equal(moveBox(pip), pip);
-  assert.deepEqual(canvasBox(p.canvas), { x: 0, y: 0, w: 1920, h: 1080, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 0, y: 0, w: 1920, h: 1080 } });
+  assert.deepEqual(canvasBox(p.canvas), {
+    x: 0,
+    y: 0,
+    w: 1920,
+    h: 1080,
+    fit: "fill",
+    scale: 1,
+    opacity: 1,
+    radius: 0,
+    content: { x: 0, y: 0, w: 1920, h: 1080 },
+  });
   // A boxed clip on main being pushed in: its box shifts by (1 − p)·W from where it is.
   const boxed = twoClips({ module: "transition.push-left", duration: 20 }, { transform: { x: 100, y: 50, w: 640, h: 360 } });
   close(of(boxed, 60, "b")!.box!.x, 100 + 960);
   // A component pushed in: its box moves, and componentHtml draws it there when given it.
   const comp: Project = {
     ...p,
-    tracks: [p.tracks[0]!, { ...main, items: [main.items[0]!, { id: "card", type: "component", component: "component.end-card", duration: 60, transitionIn: { module: "transition.push-left", duration: 20 } }] }],
+    tracks: [
+      p.tracks[0]!,
+      {
+        ...main,
+        items: [
+          main.items[0]!,
+          { id: "card", type: "component", component: "component.end-card", duration: 60, transitionIn: { module: "transition.push-left", duration: 20 } },
+        ],
+      },
+    ],
   };
   assert.deepEqual(validateProject(comp, modules), []);
   const v = of(comp, 60, "card")!;
@@ -238,7 +299,18 @@ test("transitionAt and moveBox: shares at the edges, a boxed clip and a componen
   assert.match(componentHtml(v.item, comp, 0, { box: v.box }), new RegExp(`left:${Math.round((own.x + 960) * 1000) / 1000}px`));
   assert.match(componentHtml(v.item, comp, 0), new RegExp(`left:${Math.round(own.x * 1000) / 1000}px`));
   // Text on main has no box: shift and zoom only (the preview and export move it as the canvas).
-  const text: Project = { ...p, tracks: [{ ...main, items: [{ id: "t1", type: "text", text: "One", duration: 60 }, { id: "t2", type: "text", text: "Two", duration: 60, transitionIn: { module: "transition.zoom", duration: 20 } }] }] };
+  const text: Project = {
+    ...p,
+    tracks: [
+      {
+        ...main,
+        items: [
+          { id: "t1", type: "text", text: "One", duration: 60 },
+          { id: "t2", type: "text", text: "Two", duration: 60, transitionIn: { module: "transition.zoom", duration: 20 } },
+        ],
+      },
+    ],
+  };
   close(of(text, 60, "t1")!.zoom!, 1.1);
   assert.equal(of(text, 60, "t1")!.box, undefined);
   close(of(text, 60, "t2")!.opacity, 0.5);
@@ -246,19 +318,30 @@ test("transitionAt and moveBox: shares at the edges, a boxed clip and a componen
 
 test("the agent (D79): iris, push and zoom are listed as drawn, documented, and accepted by set_transition", () => {
   const list = modulesList(modules, "transition") as Array<{ id: string; showsInPreview: boolean }>;
-  for (const id of ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"]) assert.equal(list.find((m) => m.id === id)?.showsInPreview, true, id);
+  for (const id of ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"])
+    assert.equal(list.find((m) => m.id === id)?.showsInPreview, true, id);
   assert.equal(list.find((m) => m.id === "transition.cut")?.showsInPreview, false);
   assert.match(AGENT_TEXT, /transition\.iris \(6–30 frames, a circle opening from the centre\), transition\.push-left \(4–30 frames/);
   assert.match(AGENT_TEXT, /transition\.zoom \(4–30 frames/);
   assert.doesNotMatch(AGENT_TEXT, /iris, push-left, zoom\) are saved but draw as a crossfade/);
-  for (const [module, duration] of [["transition.iris", 6], ["transition.push-left", 30], ["transition.zoom", 15]] as const) {
+  for (const [module, duration] of [
+    ["transition.iris", 6],
+    ["transition.push-left", 30],
+    ["transition.zoom", 15],
+  ] as const) {
     const ops = [{ op: "set_transition", item: "b", transition: { module, duration } }];
     assert.deepEqual(validateOps(ops), [], module);
     const s = applyEdit(createSession(twoClips()), { actor: "agent", ops: ops as never }, (p) => validateProject(p, modules));
     assert.deepEqual(s.project.tracks[1]!.items[1]!.transitionIn, { module, duration });
   }
   // Out of the manifest's range: refused.
-  assert.throws(() => applyEdit(createSession(twoClips()), { actor: "agent", ops: [{ op: "set_transition", item: "b", transition: { module: "transition.iris", duration: 4 } }] as never }, (p) => validateProject(p, modules)));
+  assert.throws(() =>
+    applyEdit(
+      createSession(twoClips()),
+      { actor: "agent", ops: [{ op: "set_transition", item: "b", transition: { module: "transition.iris", duration: 4 } }] as never },
+      (p) => validateProject(p, modules),
+    ),
+  );
 });
 
 test("sound: a crossfade, wipe, iris, push or zoom crossfades it; a dip to black dips it (no overlap)", () => {
@@ -290,10 +373,18 @@ test("handles: a crossfade or wipe needs footage past the cut, a dip to black do
   };
   assert.deepEqual(timelineProblems(noHandle("transition.dip-to-black")), []);
   assert.deepEqual(validateProject(noHandle("transition.dip-to-black"), modules), []);
-  for (const module of ["transition.crossfade", "transition.wipe"]) assert.deepEqual(timelineProblems(noHandle(module)).map((e) => e.code), ["transition-handles"], module);
+  for (const module of ["transition.crossfade", "transition.wipe"])
+    assert.deepEqual(
+      timelineProblems(noHandle(module)).map((e) => e.code),
+      ["transition-handles"],
+      module,
+    );
   // Module limits still apply to a dip (4–90 frames), and both clips must be twice it.
   const long = twoClips({ module: "transition.dip-to-black", duration: 40 });
-  assert.deepEqual(timelineProblems(long).map((e) => e.code), ["transition-too-long"]);
+  assert.deepEqual(
+    timelineProblems(long).map((e) => e.code),
+    ["transition-too-long"],
+  );
   assert.ok(validateProject(twoClips({ module: "transition.dip-to-black", duration: 2 }), modules).some((e) => e.code === "transition-length"));
 });
 
@@ -303,14 +394,33 @@ test("transitionLimits: the module's limits, half the shorter clip, the handles;
   assert.deepEqual(transitionLimits(p, "b", "transition.wipe"), { min: 4, max: 30 });
   assert.deepEqual(transitionLimits(p, "b", "transition.dip-to-black"), { min: 4, max: 30 });
   // Shorter handles: b from frame 7 of its media allows 14; a ending 3 frames before the media's end allows 6.
-  const tight = { ...p, tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: [{ ...t.items[0]!, in: 237 }, { ...t.items[1]!, in: 7 }] } : t)) };
+  const tight = {
+    ...p,
+    tracks: p.tracks.map((t) =>
+      t.id === "main"
+        ? {
+            ...t,
+            items: [
+              { ...t.items[0]!, in: 237 },
+              { ...t.items[1]!, in: 7 },
+            ],
+          }
+        : t,
+    ),
+  };
   assert.deepEqual(transitionLimits(tight, "b", "transition.crossfade"), { min: 2, max: 6 });
   assert.deepEqual(transitionLimits(tight, "b", "transition.dip-to-black"), { min: 4, max: 30 });
   const none = { ...p, tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: [t.items[0]!, { ...t.items[1]!, in: 0 }] } : t)) };
-  assert.match((transitionLimits(none, "b", "transition.crossfade") as { problem: string }).problem, /Not enough footage for a crossfade here: "b" starts at the beginning of its footage.*Dip to black/);
+  assert.match(
+    (transitionLimits(none, "b", "transition.crossfade") as { problem: string }).problem,
+    /Not enough footage for a crossfade here: "b" starts at the beginning of its footage.*Dip to black/,
+  );
   // An iris keeps its manifest's limits: 6–30.
   assert.deepEqual(transitionLimits(p, "b", "transition.iris"), { min: 6, max: 30 });
-  assert.deepEqual(planSetTransition(p, "b", { module: "transition.iris", duration: 99 }), { ops: [{ op: "set_transition", item: "b", transition: { module: "transition.iris", duration: 30 } }], summary: "Added iris" });
+  assert.deepEqual(planSetTransition(p, "b", { module: "transition.iris", duration: 99 }), {
+    ops: [{ op: "set_transition", item: "b", transition: { module: "transition.iris", duration: 30 } }],
+    summary: "Added iris",
+  });
   assert.match((transitionLimits(p, "a", "transition.crossfade") as { problem: string }).problem, /first clip/);
   assert.match((transitionLimits(p, "title", "transition.crossfade") as { problem: string }).problem, /main track/);
   const short = { ...p, tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: [{ ...t.items[0]!, duration: 7 }, t.items[1]!] } : t)) };
@@ -326,14 +436,19 @@ test("planSetTransition: one edit each, labelled for history; lengths default, c
   };
   const p0 = twoClips();
   let plan = planSetTransition(p0, "b", { module: "transition.crossfade" });
-  assert.deepEqual(plan, { ops: [{ op: "set_transition", item: "b", transition: { module: "transition.crossfade", duration: 15 } }], summary: "Added crossfade" });
+  assert.deepEqual(plan, {
+    ops: [{ op: "set_transition", item: "b", transition: { module: "transition.crossfade", duration: 15 } }],
+    summary: "Added crossfade",
+  });
   let p = apply(p0, plan);
   plan = planSetTransition(p, "b", { module: "transition.crossfade", duration: 24 });
   assert.equal((plan as { summary: string }).summary, "Changed transition to 0.8 s");
   p = apply(p, plan);
   // Too long for the cut: clamped to 30 (half of each 60-frame clip); the same again is no edit.
   plan = planSetTransition(p, "b", { module: "transition.crossfade", duration: 500 });
-  assert.deepEqual((plan as unknown as { ops: Array<unknown> }).ops, [{ op: "set_transition", item: "b", transition: { module: "transition.crossfade", duration: 30 } }]);
+  assert.deepEqual((plan as unknown as { ops: Array<unknown> }).ops, [
+    { op: "set_transition", item: "b", transition: { module: "transition.crossfade", duration: 30 } },
+  ]);
   assert.equal((plan as { summary: string }).summary, "Changed transition to 1 s");
   p = apply(p, plan);
   assert.deepEqual(planSetTransition(p, "b", { module: "transition.crossfade", duration: 31 }), { ops: [], summary: "" });
@@ -358,7 +473,10 @@ test("planSetTransition: one edit each, labelled for history; lengths default, c
   assert.match((planSetTransition(locked, "b", { module: "transition.crossfade" }) as { problem: string }).problem, /locked/);
   // A locked clip on either side refuses it (the timeline's drop targets use this too).
   for (const i of [0, 1]) {
-    const one = { ...p, tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: t.items.map((it, k) => (k === i ? { ...it, locked: true } : it)) } : t)) };
+    const one = {
+      ...p,
+      tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: t.items.map((it, k) => (k === i ? { ...it, locked: true } : it)) } : t)),
+    };
     assert.match((planSetTransition(one, "b", { module: "transition.crossfade" }) as { problem: string }).problem, /locked/, `locked ${i}`);
   }
   const noHandle = { ...p, tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items: [t.items[0]!, { ...t.items[1]!, in: 0 }] } : t)) };
@@ -368,8 +486,17 @@ test("planSetTransition: one edit each, labelled for history; lengths default, c
 
 test("cuts: listed in order; the nearest one to a frame", () => {
   const p0 = twoClips();
-  const p = { ...p0, tracks: p0.tracks.map((t) => (t.id === "main" ? { ...t, items: [...t.items, { id: "c", type: "clip" as const, media: "m", in: 120, duration: 30 }] } : t)) };
-  assert.deepEqual(mainCuts(p).map((c) => [c.item.id, c.prev.id, c.frame]), [["b", "a", 60], ["c", "b", 120]]);
+  const p = {
+    ...p0,
+    tracks: p0.tracks.map((t) => (t.id === "main" ? { ...t, items: [...t.items, { id: "c", type: "clip" as const, media: "m", in: 120, duration: 30 }] } : t)),
+  };
+  assert.deepEqual(
+    mainCuts(p).map((c) => [c.item.id, c.prev.id, c.frame]),
+    [
+      ["b", "a", 60],
+      ["c", "b", 120],
+    ],
+  );
   assert.equal(nearestCut(p, 0)?.item.id, "b");
   assert.equal(nearestCut(p, 95)?.item.id, "c");
   assert.equal(nearestCut(twoClips(), 1000)?.item.id, "b");
@@ -383,7 +510,20 @@ test("a dip to black at a cut: trims need no handles but keep twice its length, 
   };
   const base = twoClips({ module: "transition.dip-to-black", duration: 20 });
   // b from frame 0 and a to the media's end: no handles at all.
-  const p: Project = { ...base, tracks: base.tracks.map((t) => (t.id === "main" ? { ...t, items: [{ ...t.items[0]!, in: 240 }, { ...t.items[1]!, in: 0 }] } : t)) };
+  const p: Project = {
+    ...base,
+    tracks: base.tracks.map((t) =>
+      t.id === "main"
+        ? {
+            ...t,
+            items: [
+              { ...t.items[0]!, in: 240 },
+              { ...t.items[1]!, in: 0 },
+            ],
+          }
+        : t,
+    ),
+  };
   assert.deepEqual(validateProject(p, modules), []);
   const run = (plan: { ops: ReadonlyArray<unknown> }) => {
     const s = applyEdit(createSession(p), { actor: "user", ops: plan.ops as never });
@@ -404,5 +544,11 @@ test("a dip to black at a cut: trims need no handles but keep twice its length, 
   // Delete a: b is first, its dip goes in the same edit. Move b first: the cut changes, the dip goes.
   assert.equal(run(ok(planDelete(p, "a"))).tracks[1]!.items[0]!.transitionIn, undefined);
   const moved = run(ok(planMove(p, "b", "main", 0)));
-  assert.deepEqual(moved.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]), [["b", false], ["a", false]]);
+  assert.deepEqual(
+    moved.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]),
+    [
+      ["b", false],
+      ["a", false],
+    ],
+  );
 });

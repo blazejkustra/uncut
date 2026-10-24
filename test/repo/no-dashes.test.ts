@@ -14,10 +14,19 @@ import { withoutComments } from "../helpers/withoutComments.ts";
 const DASH = /—|&mdash;|&#8212;|&#x2014;|\\u2014|\s–|–\s|\s&ndash;|&ndash;\s|&#8211;\s|\s&#8211;/i;
 
 const walk = (dir: string, keep: (f: string) => boolean): Array<string> =>
-  existsSync(dir) ? (readdirSync(dir, { recursive: true }) as Array<string>).filter((f) => !f.split("/").includes("node_modules") && keep(f)).map((f) => join(dir, f)) : [];
+  existsSync(dir)
+    ? (readdirSync(dir, { recursive: true }) as Array<string>).filter((f) => !f.split("/").includes("node_modules") && keep(f)).map((f) => join(dir, f))
+    : [];
 
 /** Code: string literals, template text and JSX text, comments left out. */
-const CODE = [...walk("apps/server/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/web/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/desktop/src", (f) => /\.tsx?$/.test(f)), ...walk("packages/core/src", (f) => /\.tsx?$/.test(f)), ...walk("plugins", (f) => /\.tsx?$/.test(f)), ...walk("site/src", (f) => /\.tsx?$/.test(f))];
+const CODE = [
+  ...walk("apps/server/src", (f) => /\.tsx?$/.test(f)),
+  ...walk("apps/web/src", (f) => /\.tsx?$/.test(f)),
+  ...walk("apps/desktop/src", (f) => /\.tsx?$/.test(f)),
+  ...walk("packages/core/src", (f) => /\.tsx?$/.test(f)),
+  ...walk("plugins", (f) => /\.tsx?$/.test(f)),
+  ...walk("site/src", (f) => /\.tsx?$/.test(f)),
+];
 /** Text the model or the user reads as it is. */
 const TEXT = [
   "spec/agent/tools.json",
@@ -25,7 +34,7 @@ const TEXT = [
   ...walk("spec/modules", (f) => f.endsWith(".json")),
   ...walk("plugins", (f) => f.endsWith(".json")),
   "README.md",
-  ...walk("site/content", (f) => /\.md$/.test(f)),
+  ...walk("site/content", (f) => f.endsWith(".md")),
 ];
 
 /** Comment lines withoutComments can miss (after a regex literal with a quote in it, say). */
@@ -47,6 +56,9 @@ test("the guard itself: em dashes and spaced en dashes are caught, ranges and co
 
 test("no em dashes or spaced en dashes in what the model or the user reads", () => {
   assert.ok(CODE.length > 100 && TEXT.length > 100, `scanned ${CODE.length} code and ${TEXT.length} text files`);
-  const found = [...CODE.flatMap((f) => hits(f, withoutComments(readFileSync(f, "utf8")), true)), ...TEXT.filter(existsSync).flatMap((f) => hits(f, readFileSync(f, "utf8")))];
+  const found = [
+    ...CODE.flatMap((f) => hits(f, withoutComments(readFileSync(f, "utf8")), true)),
+    ...TEXT.filter(existsSync).flatMap((f) => hits(f, readFileSync(f, "utf8"))),
+  ];
   assert.deepEqual(found, [], "rewrite each with a comma, colon, period or parentheses");
 });

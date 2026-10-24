@@ -41,8 +41,10 @@ const flowArg = option("--flow");
 const prompt = (flow: string, device: string) =>
   [
     `Record the saved flow "${flow}" on the simulator ${device} with Argent (list the devices first, then argent_record with that flow; the take comes back as media).`,
-    "Then make a 1920×1080 title card that says \"Recorded with Argent\" with generate_media and generator generate.svg, writing the SVG yourself (content); it's free.",
-    withKeys ? "Then generate one picture with generate.gpt-image (a phone on a wooden desk, 1536x1024): it's billed to my OpenAI key, about $0.05." : "Don't use any generator that needs a key.",
+    'Then make a 1920×1080 title card that says "Recorded with Argent" with generate_media and generator generate.svg, writing the SVG yourself (content); it\'s free.',
+    withKeys
+      ? "Then generate one picture with generate.gpt-image (a phone on a wooden desk, 1536x1024): it's billed to my OpenAI key, about $0.05."
+      : "Don't use any generator that needs a key.",
     "Place the title card first and the take after it on the main track with timeline_edit, run project_check and fix every warning.",
   ].join(" ");
 
@@ -118,13 +120,16 @@ if (fake) {
   });
 } else delete process.env.UNCUT_CLAUDE;
 // No keyed provider is reachable unless --with-keys: their base URLs go to a closed local port.
-if (!withKeys || fake) Object.assign(env, { UNCUT_OPENAI_BASE: "http://127.0.0.1:9", UNCUT_GOOGLE_BASE: "http://127.0.0.1:9", UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9" });
+if (!withKeys || fake)
+  Object.assign(env, { UNCUT_OPENAI_BASE: "http://127.0.0.1:9", UNCUT_GOOGLE_BASE: "http://127.0.0.1:9", UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9" });
 
 // A booted simulator, from Argent's own list (read-only). None: refuse. Never boot one.
 const argentBin = (env.ARGENT_BIN as string | undefined) ?? process.env.ARGENT_BIN ?? "argent";
 let devices: Array<{ platform?: string; udid?: string; name?: string; state?: string; runtimeKind?: string; kind?: string }>;
 try {
-  const listed = JSON.parse(execFileSync(argentBin, ["run", "list-devices", "--json"], { encoding: "utf8", env: { ...process.env, ...env } as NodeJS.ProcessEnv, timeout: 60_000 }));
+  const listed = JSON.parse(
+    execFileSync(argentBin, ["run", "list-devices", "--json"], { encoding: "utf8", env: { ...process.env, ...env } as NodeJS.ProcessEnv, timeout: 60_000 }),
+  );
   devices = listed.devices ?? [];
 } catch (error) {
   console.error(`Couldn't ask Argent for its devices (${(error as Error).message.split("\n")[0]}). Is it installed? npm i -g @swmansion/argent@latest`);
@@ -133,13 +138,18 @@ try {
 const booted = devices.filter((d) => d.platform === "ios" && d.state === "Booted" && (d.runtimeKind ?? "mobile") === "mobile" && d.kind !== "device");
 const device = option("--device") ?? (fake ? DEVICE : booted[0]?.udid);
 if (!booted.length || !device || !booted.some((d) => d.udid === device)) {
-  console.error(booted.length ? `${device} isn't a booted iOS simulator Argent lists. Booted: ${booted.map((d) => `${d.name} (${d.udid})`).join(", ")}.` : "No booted iOS simulator in Argent's list. Boot one yourself (Simulator.app or xcrun simctl boot), then run this again; this script never boots one.");
+  console.error(
+    booted.length
+      ? `${device} isn't a booted iOS simulator Argent lists. Booted: ${booted.map((d) => `${d.name} (${d.udid})`).join(", ")}.`
+      : "No booted iOS simulator in Argent's list. Boot one yourself (Simulator.app or xcrun simctl boot), then run this again; this script never boots one.",
+  );
   process.exit(2);
 }
 console.log(`Recording on ${booted.find((d) => d.udid === device)?.name ?? device} (${device}). Output in ${out}`);
 
 const { BUNDLE, MEDIA, connect, startServer } = await import("../test/helpers/server.ts");
-for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), MEDIA]) if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
+for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), MEDIA])
+  if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
 const server = await startServer({ env });
 const client = await connect(server.ready.port, server.ready.token);
 const checks: Array<[string, boolean]> = [];
@@ -167,7 +177,19 @@ try {
         const take = p.media.find((m) => m.source?.module === "argent.capture")!;
         const card = p.media.find((m) => m.source?.module === "generate.svg")!;
         const voice = p.media.find((m) => m.path === files!.voice)!;
-        writeFileSync(place, JSON.stringify(placeSteps({ capture: take.id, captureFrames: take.probe!.frames!, demo: take.id, demoFrames: take.probe!.frames!, card: card.id, voice: voice.id })));
+        writeFileSync(
+          place,
+          JSON.stringify(
+            placeSteps({
+              capture: take.id,
+              captureFrames: take.probe!.frames!,
+              demo: take.id,
+              demoFrames: take.probe!.frames!,
+              card: card.id,
+              voice: voice.id,
+            }),
+          ),
+        );
         return;
       }
     })();
@@ -193,14 +215,20 @@ try {
   const project = (await client.ok("project.get", {})).project as Project;
   const takes = project.media.filter((m) => m.source?.module === "argent.capture");
   const flowTake = takes.find((m) => typeof m.source?.flow === "string" && m.source.flow.startsWith("flows/"));
-  checks.push([`a take recorded with Argent from the flow (${takes.map((m) => m.path).join(", ") || "none"})`, !!flowTake && existsSync(join(snap.dir, flowTake.path))]);
+  checks.push([
+    `a take recorded with Argent from the flow (${takes.map((m) => m.path).join(", ") || "none"})`,
+    !!flowTake && existsSync(join(snap.dir, flowTake.path)),
+  ]);
   const card = project.media.find((m) => m.source?.module === "generate.svg");
   checks.push([`an SVG title card generated (${card?.path ?? "none"})`, !!card]);
   const picture = project.media.find((m) => m.source?.module === "generate.gpt-image");
   checks.push([withKeys ? `a GPT Image picture (${picture?.path ?? "none"})` : "no keyed generator was used", withKeys ? !!picture || fake : !picture]);
   const main = project.tracks.find((t) => t.role === "main")?.items ?? [];
   const order = main.map((i) => i.media);
-  checks.push(["the card, then the take, on the main track", !!card && !!flowTake && order.includes(card.id) && order.includes(flowTake.id) && order.indexOf(card.id) < order.indexOf(flowTake.id)]);
+  checks.push([
+    "the card, then the take, on the main track",
+    !!card && !!flowTake && order.includes(card.id) && order.includes(flowTake.id) && order.indexOf(card.id) < order.indexOf(flowTake.id),
+  ]);
   const warnings = projectChecks(project).filter((c) => c.severity === "warn");
   for (const w of warnings) console.log(`  check: ${w.message}`);
   checks.push([`project_check: no warnings (${warnings.length})`, warnings.length === 0]);
@@ -208,12 +236,21 @@ try {
   // Undo turn: the project before it.
   await client.ok("agent.undoTurn", { turnId }).catch(() => undefined);
   const undone = (await client.ok("project.get", {})).project as Project;
-  checks.push(["Undo turn restores the project before the turn", JSON.stringify(undone.tracks) === JSON.stringify(before.tracks) && undone.media.length === before.media.length]);
+  checks.push([
+    "Undo turn restores the project before the turn",
+    JSON.stringify(undone.tracks) === JSON.stringify(before.tracks) && undone.media.length === before.media.length,
+  ]);
   // Still booted: nothing was stopped.
-  const after = JSON.parse(execFileSync(argentBin, ["run", "list-devices", "--json"], { encoding: "utf8", env: { ...process.env, ...env } as NodeJS.ProcessEnv, timeout: 60_000 })).devices ?? [];
+  const after =
+    JSON.parse(
+      execFileSync(argentBin, ["run", "list-devices", "--json"], { encoding: "utf8", env: { ...process.env, ...env } as NodeJS.ProcessEnv, timeout: 60_000 }),
+    ).devices ?? [];
   checks.push([`${device} is still booted`, after.some((d: any) => d.udid === device && d.state === "Booted")]);
   if (fake) {
-    const log = readFileSync(join(out, "argent.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const log = readFileSync(join(out, "argent.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     checks.push(["the fake argent never saw a server stop, stop-all or boot", !log.some((e) => e.forbidden)]);
   }
   console.log("");

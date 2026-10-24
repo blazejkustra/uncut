@@ -9,7 +9,16 @@
 import type { ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
-import { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec, type ExportEncoder } from "@uncut/core/export";
+import {
+  CODEC_NAMES,
+  defaultEncoder,
+  exportFrameRates,
+  exportShortSides,
+  outputSize,
+  presetBitrateMbps,
+  type ExportCodec,
+  type ExportEncoder,
+} from "@uncut/core/export";
 import { choiceOfTarget, masterLimiter, projectTargetLufs } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
 import { motionBlurDefault, projectMotionBlur } from "@uncut/core/motionBlur";
@@ -25,7 +34,20 @@ import { usePlayback } from "../preview/playback.ts";
 import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
 import { exportSpans } from "./exportSpans.ts";
-import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, preparingStatus, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
+import {
+  loudnessCards,
+  fileName,
+  baseName,
+  dirName,
+  folderName,
+  fpsText,
+  eta,
+  preparingStatus,
+  ACTIVE,
+  QUALITIES,
+  ENCODER_NAMES,
+  RANGE_KINDS,
+} from "./exportDialog/format.ts";
 import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 export { exportRunning, folderName } from "./exportDialog/format.ts";
@@ -104,9 +126,27 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const start = async (overwrite = false) => {
     setBusy(true);
     setError(undefined);
-    const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
-    const video = { ...(codec !== "h264" ? { codec } : {}), ...(encoder !== undefined ? { encoder } : {}), ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}), ...(shortSide !== undefined ? { shortSide } : {}), ...(outFps !== undefined ? { fps: outFps } : {}) };
-    const refused = await actions.startExport({ output, quality, loudness, ...(Object.keys(video).length ? { video } : {}), ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}), ...(hasGraphics ? { motionBlur: blurOn } : {}) });
+    const subtitles: ExportSubtitles | undefined =
+      cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
+    const video = {
+      ...(codec !== "h264" ? { codec } : {}),
+      ...(encoder !== undefined ? { encoder } : {}),
+      ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}),
+      ...(shortSide !== undefined ? { shortSide } : {}),
+      ...(outFps !== undefined ? { fps: outFps } : {}),
+    };
+    const refused = await actions.startExport({
+      output,
+      quality,
+      loudness,
+      ...(Object.keys(video).length ? { video } : {}),
+      ...(loudness === "target" ? { targetLufs: target } : {}),
+      overwrite: overwrite || output === confirmed,
+      ...(subtitles ? { subtitles } : {}),
+      ...(cueCount && !burn ? { burnCaptions: false } : {}),
+      ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}),
+      ...(hasGraphics ? { motionBlur: blurOn } : {}),
+    });
     setBusy(false);
     if (refused) {
       setError(refused);
@@ -167,17 +207,28 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 : `Saved in ${job.elapsedSeconds ?? 0} s, and shown in Finder.`
               : "The export didn't finish.";
     body = (
-      <div data-testid="export-job" data-phase={job.phase} data-progress={job.progress} data-step={job.phase === "preparing" ? job.step?.kind : undefined} data-output={job.output}>
+      <div
+        data-testid="export-job"
+        data-phase={job.phase}
+        data-progress={job.progress}
+        data-step={job.phase === "preparing" ? job.step?.kind : undefined}
+        data-output={job.output}
+      >
         <p className="wiz-lead" data-testid="export-job-where" title={job.output}>
           <b className="mono">{baseName(job.output)}</b> in{" "}
           <b data-testid="export-job-folder" title={dirName(job.output)}>
             {folderName(job.output)}
           </b>
-          , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s{job.motionBlur && hasGraphics ? ", motion blur" : ""}
+          , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s
+          {job.motionBlur && hasGraphics ? ", motion blur" : ""}
         </p>
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
           <p className="wiz-meta" data-testid="export-job-subtitles">
-            {[job.subtitlesFile ? `Subtitles in ${baseName(job.subtitlesFile)}` : "", job.subtitleTrack ? `a soft subtitle track (${SUBTITLE_LANGUAGES.find((l) => l.tag === job.subtitleTrack)?.name ?? job.subtitleTrack})` : "", job.burnCaptions === false ? "captions not drawn into the picture" : ""]
+            {[
+              job.subtitlesFile ? `Subtitles in ${baseName(job.subtitlesFile)}` : "",
+              job.subtitleTrack ? `a soft subtitle track (${SUBTITLE_LANGUAGES.find((l) => l.tag === job.subtitleTrack)?.name ?? job.subtitleTrack})` : "",
+              job.burnCaptions === false ? "captions not drawn into the picture" : "",
+            ]
               .filter(Boolean)
               .join(", ")
               .replace(/^a/, "A")}
@@ -190,7 +241,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           {job.phase === "preparing" && preparing.fraction !== undefined && <span className="muted">{Math.round(preparing.fraction * 100)}%</span>}
         </div>
         <div className="export-bar" data-testid="export-progress">
-          <div style={{ width: `${job.phase === "done" ? 100 : job.phase === "rendering" ? pct : job.phase === "preparing" && preparing.fraction !== undefined ? Math.round(preparing.fraction * 100) : 0}%` }} className={(job.phase === "preparing" && preparing.fraction === undefined) || job.phase === "queued" ? "indeterminate" : ""} />
+          <div
+            style={{
+              width: `${job.phase === "done" ? 100 : job.phase === "rendering" ? pct : job.phase === "preparing" && preparing.fraction !== undefined ? Math.round(preparing.fraction * 100) : 0}%`,
+            }}
+            className={(job.phase === "preparing" && preparing.fraction === undefined) || job.phase === "queued" ? "indeterminate" : ""}
+          />
         </div>
         {job.warnings && job.warnings.length > 0 && job.phase !== "failed" && (
           <div className="export-warnings muted small" data-testid="export-warnings">
@@ -220,7 +276,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 {job.phase === "done" ? "Export again" : "Try again"}
               </button>
               {job.phase === "done" && (
-                <button className="btn ghost" data-testid="export-copy-path" title={job.output} onClick={() => void Promise.resolve(actions.copy(job.output)).then(() => setCopied(true))}>
+                <button
+                  className="btn ghost"
+                  data-testid="export-copy-path"
+                  title={job.output}
+                  onClick={() => void Promise.resolve(actions.copy(job.output)).then(() => setCopied(true))}
+                >
                   {copied ? <Check /> : <Copy />}
                   {copied ? "Copied" : "Copy path"}
                 </button>
@@ -256,10 +317,19 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <div className="wiz-cards">
           {QUALITIES.map((q) => {
             const size = outputSize(project.canvas, q.id, shortSide);
-            const mbps = q.id === quality && bitrate !== undefined ? bitrate : codec === "hevc" ? presetBitrateMbps(q.id, codec, size, outFps ?? fps) : undefined;
+            const mbps =
+              q.id === quality && bitrate !== undefined ? bitrate : codec === "hevc" ? presetBitrateMbps(q.id, codec, size, outFps ?? fps) : undefined;
             const enc = q.id === quality && encoder !== undefined ? encoder : defaultEncoder(q.id);
             return (
-              <button type="button" key={q.id} className={`wiz-card ${q.id === quality ? "active" : ""}`} data-testid={`quality-${q.id}`} data-active={q.id === quality} data-codec={codec} onClick={() => setQuality(q.id)}>
+              <button
+                type="button"
+                key={q.id}
+                className={`wiz-card ${q.id === quality ? "active" : ""}`}
+                data-testid={`quality-${q.id}`}
+                data-active={q.id === quality}
+                data-codec={codec}
+                onClick={() => setQuality(q.id)}
+              >
                 {q.label}
                 <span>
                   {size.width}×{size.height}, {fpsText(outFps ?? fps)}
@@ -275,7 +345,19 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <button type="button" className="export-advanced-toggle" data-testid="export-advanced" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
           {advanced ? <ChevronDown /> : <ChevronRight />}
           Advanced
-          {!advanced && (codec !== "h264" || encoder !== undefined || bitrate !== undefined || shortSide !== undefined || outFps !== undefined) && <span className="muted">{[codec !== "h264" ? CODEC_NAMES[codec] : "", encoder !== undefined ? ENCODER_NAMES[encoder] : "", bitrate !== undefined ? `${bitrate} Mb/s` : "", shortSide !== undefined ? `${shortSide}p` : "", outFps !== undefined ? fpsText(outFps) : ""].filter(Boolean).join(", ")}</span>}
+          {!advanced && (codec !== "h264" || encoder !== undefined || bitrate !== undefined || shortSide !== undefined || outFps !== undefined) && (
+            <span className="muted">
+              {[
+                codec !== "h264" ? CODEC_NAMES[codec] : "",
+                encoder !== undefined ? ENCODER_NAMES[encoder] : "",
+                bitrate !== undefined ? `${bitrate} Mb/s` : "",
+                shortSide !== undefined ? `${shortSide}p` : "",
+                outFps !== undefined ? fpsText(outFps) : "",
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </span>
+          )}
         </button>
         {advanced && (
           <div className="export-advanced" data-testid="export-advanced-body">
@@ -283,7 +365,15 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               <span className="muted">Codec</span>
               <div className="seg" data-testid="export-codec" role="radiogroup" aria-label="Codec">
                 {(["h264", "hevc"] as const).map((c) => (
-                  <button type="button" key={c} role="radio" aria-checked={codec === c} className={codec === c ? "active" : ""} data-testid={`export-codec-${c}`} onClick={() => setCodec(c)}>
+                  <button
+                    type="button"
+                    key={c}
+                    role="radio"
+                    aria-checked={codec === c}
+                    className={codec === c ? "active" : ""}
+                    data-testid={`export-codec-${c}`}
+                    onClick={() => setCodec(c)}
+                  >
                     {c === "h264" ? "H.264" : "HEVC (smaller, Apple devices)"}
                   </button>
                 ))}
@@ -293,7 +383,15 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               <span className="muted">Encoder</span>
               <div className="seg" data-testid="export-encoder" role="radiogroup" aria-label="Encoder">
                 {(["hardware", "software"] as const).map((e) => (
-                  <button type="button" key={e} role="radio" aria-checked={(encoder ?? defaultEncoder(quality)) === e} className={(encoder ?? defaultEncoder(quality)) === e ? "active" : ""} data-testid={`export-encoder-${e}`} onClick={() => setEncoder(e === defaultEncoder(quality) ? undefined : e)}>
+                  <button
+                    type="button"
+                    key={e}
+                    role="radio"
+                    aria-checked={(encoder ?? defaultEncoder(quality)) === e}
+                    className={(encoder ?? defaultEncoder(quality)) === e ? "active" : ""}
+                    data-testid={`export-encoder-${e}`}
+                    onClick={() => setEncoder(e === defaultEncoder(quality) ? undefined : e)}
+                  >
                     {e === "hardware" ? "Hardware (faster)" : "Software (smaller)"}
                   </button>
                 ))}
@@ -301,8 +399,14 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             </div>
             <div className="export-adv-row">
               <span className="muted">Size</span>
-              <select data-testid="export-size" value={shortSide ?? ""} onChange={(e) => setShortSide(e.target.value === "" ? undefined : Number(e.target.value))}>
-                <option value="">{(({ width, height }) => `${width}×${height}`)(outputSize(project.canvas, quality))} ({QUALITIES.find((q) => q.id === quality)!.label})</option>
+              <select
+                data-testid="export-size"
+                value={shortSide ?? ""}
+                onChange={(e) => setShortSide(e.target.value === "" ? undefined : Number(e.target.value))}
+              >
+                <option value="">
+                  {(({ width, height }) => `${width}×${height}`)(outputSize(project.canvas, quality))} ({QUALITIES.find((q) => q.id === quality)!.label})
+                </option>
                 {exportShortSides(project.canvas).map((side) => {
                   const s = outputSize(project.canvas, quality, side);
                   return (
@@ -324,14 +428,29 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             </div>
             <div className="export-adv-row">
               <span className="muted">Bitrate</span>
-              <NumberField label="Mb/s" testId="export-bitrate" value={bitrate} placeholder={codec === "hevc" ? `${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}` : "Auto"} step={1} min={0.1} max={500} onCommit={(v) => setBitrate(v)} />
+              <NumberField
+                label="Mb/s"
+                testId="export-bitrate"
+                value={bitrate}
+                placeholder={codec === "hevc" ? `${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}` : "Auto"}
+                step={1}
+                min={0.1}
+                max={500}
+                onCommit={(v) => setBitrate(v)}
+              />
             </div>
           </div>
         )}
         <div className="wiz-list form-fields export-fields">
           <label className="wiz-field">
             <span>File</span>
-            <input data-testid="export-name" value={name} spellCheck={false} onChange={(e) => (setName(e.target.value), setError(undefined), setConfirmed(undefined))} onBlur={() => setName(fileName(name))} />
+            <input
+              data-testid="export-name"
+              value={name}
+              spellCheck={false}
+              onChange={(e) => (setName(e.target.value), setError(undefined), setConfirmed(undefined))}
+              onBlur={() => setName(fileName(name))}
+            />
           </label>
           <div className="wiz-field">
             <span>Folder</span>
@@ -362,18 +481,45 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         </div>
         {rangeKind === "custom" && (
           <div className="field-row export-custom">
-            <NumberField label="From s" testId="export-range-from" value={Number((custom.from / fps).toFixed(2))} step={0.1} min={0} onCommit={(v) => setCustom({ ...custom, from: Math.max(0, Math.round((v ?? 0) * fps)) })} />
-            <NumberField label="To s" testId="export-range-to" value={Number((custom.to / fps).toFixed(2))} step={0.1} min={0} onCommit={(v) => setCustom({ ...custom, to: Math.min(end, Math.round((v ?? 0) * fps)) })} />
+            <NumberField
+              label="From s"
+              testId="export-range-from"
+              value={Number((custom.from / fps).toFixed(2))}
+              step={0.1}
+              min={0}
+              onCommit={(v) => setCustom({ ...custom, from: Math.max(0, Math.round((v ?? 0) * fps)) })}
+            />
+            <NumberField
+              label="To s"
+              testId="export-range-to"
+              value={Number((custom.to / fps).toFixed(2))}
+              step={0.1}
+              min={0}
+              onCommit={(v) => setCustom({ ...custom, to: Math.min(end, Math.round((v ?? 0) * fps)) })}
+            />
           </div>
         )}
         <p className="wiz-meta" data-testid="export-range-text" data-from={range?.from ?? 0} data-to={range?.to ?? end}>
-          {effective.fellBack && <span data-testid="export-range-fallback">{effective.fellBack === "marks" ? "The In and Out marks are gone: whole timeline. " : "Nothing is selected now: whole timeline. "}</span>}
-          {rangeOk ? `${frameTimecode(range?.from ?? 0, fps)} to ${frameTimecode(range?.to ?? end, fps)}, ${(((range?.to ?? end) - (range?.from ?? 0)) / fps).toFixed(1)} s` : "The end has to come after the start."}
+          {effective.fellBack && (
+            <span data-testid="export-range-fallback">
+              {effective.fellBack === "marks" ? "The In and Out marks are gone: whole timeline. " : "Nothing is selected now: whole timeline. "}
+            </span>
+          )}
+          {rangeOk
+            ? `${frameTimecode(range?.from ?? 0, fps)} to ${frameTimecode(range?.to ?? end, fps)}, ${(((range?.to ?? end) - (range?.from ?? 0)) / fps).toFixed(1)} s`
+            : "The end has to come after the start."}
         </p>
         <div className="group-label export-label">Loudness</div>
         <div className="wiz-cards">
           {LOUDNESS.map((l) => (
-            <button type="button" key={l.id} className={`wiz-card ${l.id === loudness ? "active" : ""}`} data-testid={`loudness-${l.id}`} data-active={l.id === loudness} onClick={() => setLoudness(l.id)}>
+            <button
+              type="button"
+              key={l.id}
+              className={`wiz-card ${l.id === loudness ? "active" : ""}`}
+              data-testid={`loudness-${l.id}`}
+              data-active={l.id === loudness}
+              onClick={() => setLoudness(l.id)}
+            >
               {l.label}
               <span>{l.sub}</span>
             </button>
@@ -381,7 +527,9 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         </div>
         <p className="wiz-meta" data-testid="loudness-hint">
           {look.hint}
-          {limiter ? ` Peaks stay under ${limiter.ceilingDb < 0 ? "−" : ""}${Math.abs(limiter.ceilingDb)} dBTP (the master limiter).` : " The master limiter is off: loud peaks can clip."}
+          {limiter
+            ? ` Peaks stay under ${limiter.ceilingDb < 0 ? "−" : ""}${Math.abs(limiter.ceilingDb)} dBTP (the master limiter).`
+            : " The master limiter is off: loud peaks can clip."}
         </p>
         {note && (
           // D83: the export mixes what the preview plays, so a solo left on exports only those tracks.
@@ -424,7 +572,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               <label className="export-sub-row">
                 <input type="checkbox" data-testid="export-sub-track" checked={subTrack} onChange={(e) => setSubTrack(e.target.checked)} />
                 <span>Soft subtitle track in the video</span>
-                <select data-testid="export-sub-language" value={language} disabled={!subTrack} onChange={(e) => setLanguage(e.target.value)} title="The track's language">
+                <select
+                  data-testid="export-sub-language"
+                  value={language}
+                  disabled={!subTrack}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  title="The track's language"
+                >
                   {SUBTITLE_LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
                       {l.name}
@@ -436,7 +590,14 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 <span className="muted">File format</span>
                 <div className="seg" data-testid="export-sub-format">
                   {(["srt", "vtt"] as const).map((f) => (
-                    <button type="button" key={f} className={f === subFormat ? "active" : ""} data-testid={`export-sub-format-${f}`} data-active={f === subFormat} onClick={() => setSubFormat(f)}>
+                    <button
+                      type="button"
+                      key={f}
+                      className={f === subFormat ? "active" : ""}
+                      data-testid={`export-sub-format-${f}`}
+                      data-active={f === subFormat}
+                      onClick={() => setSubFormat(f)}
+                    >
                       {f === "srt" ? "SRT" : "WebVTT"}
                     </button>
                   ))}
@@ -463,7 +624,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           <div className="inline-error" role="alert" data-testid="export-refused" data-reason={error.reason}>
             {error.message}
             {error.reason === "exists" && (
-              <button type="button" className="btn export-replace" data-testid="export-replace" disabled={busy} onClick={() => void (error.subtitles ? subtitlesOnly(true) : start(true))}>
+              <button
+                type="button"
+                className="btn export-replace"
+                data-testid="export-replace"
+                disabled={busy}
+                onClick={() => void (error.subtitles ? subtitlesOnly(true) : start(true))}
+              >
                 Replace it
               </button>
             )}
@@ -475,7 +642,14 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             Cancel
           </button>
           {cueCount > 0 && (
-            <button type="button" className="btn" data-testid="export-subtitles-only" disabled={busy || !name.trim()} onClick={() => void subtitlesOnly()} title={`Just the subtitles as a .${subFormat} file, no video`}>
+            <button
+              type="button"
+              className="btn"
+              data-testid="export-subtitles-only"
+              disabled={busy || !name.trim()}
+              onClick={() => void subtitlesOnly()}
+              title={`Just the subtitles as a .${subFormat} file, no video`}
+            >
               Subtitles only
             </button>
           )}

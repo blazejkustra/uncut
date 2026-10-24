@@ -59,7 +59,10 @@ import tgpu from "typegpu";
 import * as d from "typegpu/data";
 
 /** Spotlight: darkens and tints the picture away from the middle; with breathe on, the radius swells slowly. */
-export const spotlight = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ strength: d.f32, radius: d.f32, tint: d.vec3f, breathe: d.f32 })], d.vec4f)`(uv, t, size, p) {
+export const spotlight = tgpu.fn(
+  [d.vec2f, d.f32, d.vec2f, d.struct({ strength: d.f32, radius: d.f32, tint: d.vec3f, breathe: d.f32 })],
+  d.vec4f,
+)`(uv, t, size, p) {
   let c = frame(uv).rgb;
   let aspect = vec2f(size.x / size.y, 1.0);
   let dist = length((uv - vec2f(0.5)) * aspect);

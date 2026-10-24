@@ -125,7 +125,15 @@ export interface Item {
   readonly group?: string;
   readonly transform?: Transform;
   /** Clips: keyframes of x, y, scale and opacity (D75, box.ts); ease may name a spring (D192, spring.ts). */
-  readonly keys?: ReadonlyArray<{ readonly frame: Frame; readonly ease?: "linear" | "in" | "out" | "inOut" | "spring" | "spring.snap" | "spring.settle" | "spring.land" | "spring.bounce"; readonly x?: number; readonly y?: number; readonly scale?: number; readonly opacity?: number; readonly [key: string]: unknown }>;
+  readonly keys?: ReadonlyArray<{
+    readonly frame: Frame;
+    readonly ease?: "linear" | "in" | "out" | "inOut" | "spring" | "spring.snap" | "spring.settle" | "spring.land" | "spring.bounce";
+    readonly x?: number;
+    readonly y?: number;
+    readonly scale?: number;
+    readonly opacity?: number;
+    readonly [key: string]: unknown;
+  }>;
   readonly transitionIn?: TimedModule;
   readonly animation?: { readonly in?: TimedModule; readonly out?: TimedModule; readonly loop?: TimedModule };
   readonly effects?: ReadonlyArray<ModuleUse>;
@@ -165,7 +173,13 @@ export interface Item {
   readonly words?: ReadonlyArray<{ readonly text: string; readonly start: number; readonly end: number; readonly filler?: boolean }>;
   readonly edits?: ReadonlyArray<{ readonly word: number; readonly text: string }>;
   readonly breaks?: ReadonlyArray<number>;
-  readonly lines?: { readonly maxChars?: number; readonly maxLines?: number; readonly maxSeconds?: number; readonly maxWords?: number; readonly pause?: number };
+  readonly lines?: {
+    readonly maxChars?: number;
+    readonly maxLines?: number;
+    readonly maxSeconds?: number;
+    readonly maxWords?: number;
+    readonly pause?: number;
+  };
   readonly hideFillers?: boolean;
   /** Captions (D82): draw wherever the source plays on main, whatever start/duration say (set by Make captions). */
   readonly coversMain?: boolean;
@@ -316,7 +330,18 @@ export interface Problem {
   readonly message: string;
 }
 
-export type ModuleKind = "transition" | "move" | "text-style" | "component" | "effect" | "audio-processor" | "analyzer" | "generator" | "capture-source" | "importer" | "pack";
+export type ModuleKind =
+  | "transition"
+  | "move"
+  | "text-style"
+  | "component"
+  | "effect"
+  | "audio-processor"
+  | "analyzer"
+  | "generator"
+  | "capture-source"
+  | "importer"
+  | "pack";
 
 /** A module manifest (*.json in a modules directory). Kind-specific blocks are left open. */
 export interface ModuleManifest {

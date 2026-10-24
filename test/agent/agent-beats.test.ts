@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { clickTrack, writeWav } from "../helpers/beats-audio.ts";
-import { mcpTools, stepLabel, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { mcpTools, stepLabel } from "../../apps/server/src/agent/agentTools.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -28,7 +28,12 @@ const which = (name: string) => {
 };
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
-const skip = !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) ? "server bundle or media core not built (run pnpm build)" : !FFMPEG || !FFPROBE ? "ffmpeg isn't installed" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA)
+    ? "server bundle or media core not built (run pnpm build)"
+    : !FFMPEG || !FFPROBE
+      ? "ffmpeg isn't installed"
+      : false;
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type Client = Awaited<ReturnType<typeof connect>>;
@@ -42,7 +47,12 @@ const plan = () => join(root, "plan.json");
 const resultLog = () => join(root, "results.jsonl");
 const callLog = () => join(shimDir, "calls.log");
 /** ffmpeg runs of the beats analyzer so far (mono PCM at 11025 Hz on stdout). */
-const beatsRuns = () => (existsSync(callLog()) ? readFileSync(callLog(), "utf8").split("\n").filter((l) => l.includes("-ar 11025")) : []);
+const beatsRuns = () =>
+  existsSync(callLog())
+    ? readFileSync(callLog(), "utf8")
+        .split("\n")
+        .filter((l) => l.includes("-ar 11025"))
+    : [];
 
 const turns: Array<unknown> = [];
 async function ask(prompt: string, steps: Array<unknown>) {
@@ -52,7 +62,12 @@ async function ask(prompt: string, steps: Array<unknown>) {
   const { turnId } = await client.ok("agent.send", { prompt });
   await agent.until((s) => s?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 120000);
   const turn = agent.values.at(-1).turns.find((t: any) => t.id === turnId);
-  const results = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).slice(before).map((l) => JSON.parse(l).result as { isError?: boolean; content: Content });
+  const results = readFileSync(resultLog(), "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .slice(before)
+    .map((l) => JSON.parse(l).result as { isError?: boolean; content: Content });
   return { turn, results };
 }
 const textOf = (r: { content: Content }) => r.content.find((c) => c.type === "text")!.text!;
@@ -65,7 +80,22 @@ before(async () => {
   const footage = join(root, "Footage");
   mkdirSync(footage);
   writeWav(join(footage, "Song.wav"), clickTrack(120, 12, 0.2).buf);
-  execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=0x00A000:size=320x180:rate=30", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(footage, "Still.mp4")]);
+  execFileSync(FFMPEG!, [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=0x00A000:size=320x180:rate=30",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(footage, "Still.mp4"),
+  ]);
   shimDir = join(root, "bin");
   mkdirSync(shimDir);
   writeFileSync(join(shimDir, "ffmpeg"), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${callLog()}"\nexec "${FFMPEG}" "$@"\n`);
@@ -143,7 +173,10 @@ test("media_analyze beats: bpm, confidence and the first beats in project frames
   assert.deepEqual(r.beats.frames, [66, 81, 96, 111]);
   assert.equal(r.beats.count, 4);
   assert.equal(r.onsets.count, 4);
-  assert.deepEqual(r.onsets.list.map((o: any) => o.frame), [66, 81, 96, 111]);
+  assert.deepEqual(
+    r.onsets.list.map((o: any) => o.frame),
+    [66, 81, 96, 111],
+  );
   assert.ok(r.onsets.list.every((o: any) => o.strength > 0.5));
 
   // The timeline's read: the cached beats without their onsets (analysis.cached omit), no job.
@@ -162,7 +195,7 @@ test("media_analyze beats: bpm, confidence and the first beats in project frames
 
 test("the tool schema, step labels and system prompt know beats", () => {
   const tool = mcpTools().find((t) => t.name === "media_analyze")!;
-  const items = ((tool.inputSchema.properties as any).analyzers.items.enum as Array<string>);
+  const items = (tool.inputSchema.properties as any).analyzers.items.enum as Array<string>;
   for (const name of ["beats", "rhythm", "onsets", "tempo"]) assert.ok(items.includes(name), name);
   assert.match(tool.description, /'beats' \(also 'rhythm', 'onsets', 'tempo'\)/);
   assert.doesNotMatch(tool.description, /Beats and description come later/);

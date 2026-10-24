@@ -45,7 +45,25 @@ function project(captions: Partial<Item> = {}, fps = 30): Project {
     textLooks: 1,
     media: [{ id: "m-talk", kind: "video", name: "Talk.mp4", path: "/tmp/talk.mp4", probe: { frames: 6 * fps, fps, width: 640, height: 360, hasAudio: true } }],
     tracks: [
-      { id: "captions-track-1", kind: "text", name: "Captions", items: [{ id: "captions-1", type: "captions", source: "m-talk", start: 0, duration: 4 * fps, coversMain: true, mode: "line", words: WORDS, hideFillers: true, ...captions } as Item] },
+      {
+        id: "captions-track-1",
+        kind: "text",
+        name: "Captions",
+        items: [
+          {
+            id: "captions-1",
+            type: "captions",
+            source: "m-talk",
+            start: 0,
+            duration: 4 * fps,
+            coversMain: true,
+            mode: "line",
+            words: WORDS,
+            hideFillers: true,
+            ...captions,
+          } as Item,
+        ],
+      },
       {
         id: "main",
         kind: "video",
@@ -61,7 +79,12 @@ function project(captions: Partial<Item> = {}, fps = 30): Project {
 }
 
 test("cues are the captions' cards in timeline time across a cut, fillers and hidden words out, fixes in", () => {
-  const p = project({ edits: [{ word: 2, text: "Bravissimo" }, { word: 6, text: "" }] });
+  const p = project({
+    edits: [
+      { word: 2, text: "Bravissimo" },
+      { word: 6, text: "" },
+    ],
+  });
   const cards = captionCards(p, p.tracks[0]!.items[0]!);
   const cues = subtitleCues(p);
   assert.deepEqual(
@@ -69,7 +92,10 @@ test("cues are the captions' cards in timeline time across a cut, fillers and hi
     cards.map((c) => [c.from, c.to, c.words.map((w) => w.text).join(" ")]),
     "the same cards the renderer draws",
   );
-  assert.deepEqual(cues.map((c) => c.text), ["Alpha Bravissimo Charlie.", "Echo"]);
+  assert.deepEqual(
+    cues.map((c) => c.text),
+    ["Alpha Bravissimo Charlie.", "Echo"],
+  );
   // Echo is heard at media 4.6 s = 138, played at timeline 78 (clip-2 starts at 60 with in 120).
   assert.equal(cues[1]!.from, 78);
   const srt = writeSrt(cues, 30);
@@ -99,7 +125,10 @@ test("times round to the millisecond at any fps; hours; VTT header and escaping"
     { from: 0, to: 24, text: "Tom & Jerry <3 -> a --> b" },
     { from: 24, to: 48, text: "Line one\n\nLine two" },
   ];
-  assert.equal(writeVtt(cues, 24), "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nTom &amp; Jerry &lt;3 -&gt; a -&gt; b\n\n00:00:01.000 --> 00:00:02.000\nLine one\nLine two\n\n");
+  assert.equal(
+    writeVtt(cues, 24),
+    "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nTom &amp; Jerry &lt;3 -&gt; a -&gt; b\n\n00:00:01.000 --> 00:00:02.000\nLine one\nLine two\n\n",
+  );
   assert.equal(writeSrt(cues, 24), "1\n00:00:00,000 --> 00:00:01,000\nTom & Jerry <3 -> a -> b\n\n2\n00:00:01,000 --> 00:00:02,000\nLine one\nLine two\n");
   assert.equal(writeVtt([], 30), "WEBVTT\n\n");
   assert.equal(subtitleLanguageTag("en-US"), "eng");
@@ -117,7 +146,8 @@ test("parsing SRT and VTT: BOM, CRLF, tags, entities, cue settings, NOTE blocks;
     { start: 1, end: 2.5, text: "Hello there\nsecond line" },
     { start: 3, end: 4, text: "Tom & Jerry" },
   ]);
-  const vtt = "WEBVTT - a title\nKind: captions\n\nNOTE a comment\nover lines\n\nSTYLE\n::cue { color: red }\n\nintro\n00:01.000 --> 00:02.000 align:start line:90%\n<v Ann>Hi &lt;there&gt;</v>\n\n01:00:00.500 --> 01:00:01.000\n<c.yellow>Late</c>\n";
+  const vtt =
+    "WEBVTT - a title\nKind: captions\n\nNOTE a comment\nover lines\n\nSTYLE\n::cue { color: red }\n\nintro\n00:01.000 --> 00:02.000 align:start line:90%\n<v Ann>Hi &lt;there&gt;</v>\n\n01:00:00.500 --> 01:00:01.000\n<c.yellow>Late</c>\n";
   const b = parseSubtitles(vtt, "talk.vtt");
   assert.ok(!("problem" in b), JSON.stringify(b));
   assert.deepEqual(b.cues, [
@@ -218,5 +248,11 @@ test("flattenCues: overlapping cues stacked, split at every edge, equal neighbou
       { from: 50, to: 60, text: "D" },
     ],
   );
-  assert.deepEqual(flattenCues([{ from: 0, to: 10, text: "X" }, { from: 10, to: 20, text: "X" }]), [{ from: 0, to: 20, text: "X" }]);
+  assert.deepEqual(
+    flattenCues([
+      { from: 0, to: 10, text: "X" },
+      { from: 10, to: 20, text: "X" },
+    ]),
+    [{ from: 0, to: 20, text: "X" }],
+  );
 });

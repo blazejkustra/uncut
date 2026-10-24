@@ -116,7 +116,9 @@ export async function visitorOf(salt: string, ip: string): Promise<string> {
 
 /** The JSON payload with visitor_day added to every log record (any client-sent visitor_day replaced). */
 export function withVisitor(bytes: Uint8Array<ArrayBuffer>, visitor: string): Uint8Array<ArrayBuffer> {
-  const data = JSON.parse(new TextDecoder().decode(bytes)) as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ attributes?: Array<KeyValue> }> }> }> };
+  const data = JSON.parse(new TextDecoder().decode(bytes)) as {
+    resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ attributes?: Array<KeyValue> }> }> }>;
+  };
   for (const rl of data.resourceLogs)
     for (const sl of rl.scopeLogs)
       for (const lr of sl.logRecords) {

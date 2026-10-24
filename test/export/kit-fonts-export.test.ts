@@ -21,7 +21,12 @@ import { pixelHash, ssim } from "../helpers/image-compare.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skip = !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP) ? "server, media core or desktop not built (run pnpm build)" : hasFfmpeg ? false : "needs ffmpeg";
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP)
+    ? "server, media core or desktop not built (run pnpm build)"
+    : hasFfmpeg
+      ? false
+      : "needs ffmpeg";
 
 const W = 1920;
 const H = 1080;
@@ -66,7 +71,9 @@ app.whenReady().then(async () => {
 }).catch((e) => { console.error(e); app.exit(1); });
 `;
 // The editor's Preview.tsx stand-in: an <iframe sandbox="allow-scripts"> at canvas size, render asked by postMessage.
-const hostPage = (src: string) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H}px}</style></head><body>
+const hostPage = (
+  src: string,
+) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H}px}</style></head><body>
 <iframe sandbox="allow-scripts" src="${src}"></iframe>
 <script>
 const frame = document.querySelector("iframe");
@@ -111,8 +118,12 @@ after(async () => {
 });
 
 const job = (id: string) => jobs.values.at(-1)?.find((j: { id: string }) => j.id === id);
-const finished = (id: string) => jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), 180000).then(() => job(id));
-const frameOf = (file: string, n: number, out: string) => (execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-update", "1", out]), out);
+const finished = (id: string) =>
+  jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), 180000).then(() => job(id));
+const frameOf = (file: string, n: number, out: string) => (
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-update", "1", out]),
+  out
+);
 
 async function exportTo(name: string) {
   const output = join(root, "out", `${name}.mp4`);
@@ -129,7 +140,16 @@ async function previewFrame(local: number, out: string) {
   const canvas = { width: W, height: H, fps: 30 };
   const route = `http://127.0.0.1:${server.ready.port}/media/graphic/kit.html?token=${encodeURIComponent(graphicToken(server.ready.token))}`;
   const jobsJson = [{ t: local / 30, info: graphicInfo({ duration: 30, props: {} }, canvas, local), out }];
-  const env: NodeJS.ProcessEnv = { ...process.env, UNCUT_PREVIEW_JOBS: JSON.stringify({ url: `http://127.0.0.1:${hostPort}/host.html?src=${encodeURIComponent(route)}`, width: W, height: H, jobs: jobsJson, profile: join(root, "preview-profile") }) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    UNCUT_PREVIEW_JOBS: JSON.stringify({
+      url: `http://127.0.0.1:${hostPort}/host.html?src=${encodeURIComponent(route)}`,
+      width: W,
+      height: H,
+      jobs: jobsJson,
+      profile: join(root, "preview-profile"),
+    }),
+  };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electron, [main], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
@@ -141,53 +161,78 @@ async function previewFrame(local: number, out: string) {
   assert.equal(code, 0, `preview run failed: ${output}`);
 }
 
-test("a graphic and a text in the kit's font: the export draws the kit's file (not the fallback) and the graphic matches the preview", { skip, timeout: 300000 }, async (t) => {
-  const snap = await client.ok("project.create", { parentDir: join(root, "projects"), name: "Fonts" });
-  const dir = snap.dir as string;
-  mkdirSync(join(dir, "graphics"), { recursive: true });
-  writeFileSync(join(dir, "graphics", "kit.html"), GRAPHIC);
-  // The kit: its font with its file, chosen for the project.
-  await client.ok("brand.saveKit", { kit: { id: "acme", name: "Acme", scope: "global", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] } });
-  const fontFile = join(root, "KitMono.woff2");
-  copyFileSync(resolve("assets/fonts/DMMono-Regular.woff2"), fontFile);
-  const added = await client.ok("brand.addFile", { kit: "acme", scope: "global", path: fontFile });
-  const withFile = { id: "acme", name: "Acme", scope: "global", logos: {}, colors: [], fonts: [{ family: FAMILY, role: "headline", file: added.name }], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
-  await client.ok("brand.saveKit", { kit: withFile });
-  await client.ok("brand.setActive", { kit: "acme", skills: [] });
-  await client.ok("project.edit", {
-    baseRevision: snap.revision,
-    summary: "A graphic and a text in the kit's font",
-    ops: [
-      { op: "add_track", track: { id: "g", kind: "video", name: "Graphics", items: [] }, index: 0 },
-      { op: "insert_item", track: "g", item: { id: "kit", type: "graphic", src: "graphics/kit.html", start: 0, duration: 30 } },
-      { op: "insert_item", track: "text", item: { id: "title", type: "text", text: "Argent iii WWW 0123", start: 30, duration: 30, style: { font: FAMILY, size: 110, color: "#ffffff" } } },
-    ],
-  });
+test(
+  "a graphic and a text in the kit's font: the export draws the kit's file (not the fallback) and the graphic matches the preview",
+  { skip, timeout: 300000 },
+  async (t) => {
+    const snap = await client.ok("project.create", { parentDir: join(root, "projects"), name: "Fonts" });
+    const dir = snap.dir as string;
+    mkdirSync(join(dir, "graphics"), { recursive: true });
+    writeFileSync(join(dir, "graphics", "kit.html"), GRAPHIC);
+    // The kit: its font with its file, chosen for the project.
+    await client.ok("brand.saveKit", {
+      kit: { id: "acme", name: "Acme", scope: "global", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] },
+    });
+    const fontFile = join(root, "KitMono.woff2");
+    copyFileSync(resolve("assets/fonts/DMMono-Regular.woff2"), fontFile);
+    const added = await client.ok("brand.addFile", { kit: "acme", scope: "global", path: fontFile });
+    const withFile = {
+      id: "acme",
+      name: "Acme",
+      scope: "global",
+      logos: {},
+      colors: [],
+      fonts: [{ family: FAMILY, role: "headline", file: added.name }],
+      tone: "",
+      taglines: [],
+      urls: [],
+      dos: [],
+      donts: [],
+      examples: [],
+    };
+    await client.ok("brand.saveKit", { kit: withFile });
+    await client.ok("brand.setActive", { kit: "acme", skills: [] });
+    await client.ok("project.edit", {
+      baseRevision: snap.revision,
+      summary: "A graphic and a text in the kit's font",
+      ops: [
+        { op: "add_track", track: { id: "g", kind: "video", name: "Graphics", items: [] }, index: 0 },
+        { op: "insert_item", track: "g", item: { id: "kit", type: "graphic", src: "graphics/kit.html", start: 0, duration: 30 } },
+        {
+          op: "insert_item",
+          track: "text",
+          item: { id: "title", type: "text", text: "Argent iii WWW 0123", start: 30, duration: 30, style: { font: FAMILY, size: 110, color: "#ffffff" } },
+        },
+      ],
+    });
 
-  const kitOut = await exportTo("kit");
-  // The fallback: the same kit without the font's file (what every graphic did before D198).
-  await client.ok("brand.saveKit", { kit: { ...withFile, fonts: [{ family: FAMILY, role: "headline" }] } });
-  const fallbackOut = await exportTo("fallback");
+    const kitOut = await exportTo("kit");
+    // The fallback: the same kit without the font's file (what every graphic did before D198).
+    await client.ok("brand.saveKit", { kit: { ...withFile, fonts: [{ family: FAMILY, role: "headline" }] } });
+    const fallbackOut = await exportTo("fallback");
 
-  mkdirSync("test-output", { recursive: true });
-  const g = frameOf(kitOut, 10, resolve("test-output/issue34-export-graphic-kit-font.png"));
-  const gFallback = frameOf(fallbackOut, 10, resolve("test-output/issue34-export-graphic-fallback.png"));
-  const txt = frameOf(kitOut, 40, resolve("test-output/issue34-export-text-kit-font.png"));
-  const txtFallback = frameOf(fallbackOut, 40, resolve("test-output/issue34-export-text-fallback.png"));
-  assert.notEqual(pixelHash(g), pixelHash(gFallback), "the graphic's text is drawn in the kit's font, not the fallback");
-  assert.notEqual(pixelHash(txt), pixelHash(txtFallback), "the text item is drawn in the kit's font, not the fallback");
-  const apart = ssim(g, gFallback, W, H);
-  const textApart = ssim(txt, txtFallback, W, H);
+    mkdirSync("test-output", { recursive: true });
+    const g = frameOf(kitOut, 10, resolve("test-output/issue34-export-graphic-kit-font.png"));
+    const gFallback = frameOf(fallbackOut, 10, resolve("test-output/issue34-export-graphic-fallback.png"));
+    const txt = frameOf(kitOut, 40, resolve("test-output/issue34-export-text-kit-font.png"));
+    const txtFallback = frameOf(fallbackOut, 40, resolve("test-output/issue34-export-text-fallback.png"));
+    assert.notEqual(pixelHash(g), pixelHash(gFallback), "the graphic's text is drawn in the kit's font, not the fallback");
+    assert.notEqual(pixelHash(txt), pixelHash(txtFallback), "the text item is drawn in the kit's font, not the fallback");
+    const apart = ssim(g, gFallback, W, H);
+    const textApart = ssim(txt, txtFallback, W, H);
 
-  // The preview's way: the server's graphic route (with the kit's font, as the export) in a sandboxed iframe.
-  await client.ok("brand.saveKit", { kit: withFile });
-  const preview = join(root, "preview.png");
-  await previewFrame(10, preview);
-  copyFileSync(preview, resolve("test-output/issue34-preview-graphic-kit-font.png"));
-  const same = ssim(preview, g, W, H);
-  t.diagnostic(`graphic: export vs preview SSIM ${same.toFixed(4)}, kit font vs fallback ${apart.toFixed(4)}; text item: kit font vs fallback ${textApart.toFixed(4)}`);
-  assert.ok(same >= 0.99, `the export's graphic is what the preview draws: SSIM ${same}`);
-  // Most of the frame is the plain background, so a whole-frame SSIM of the fallback stays high; it's still well apart.
-  assert.ok(apart <= 0.98 && textApart <= 0.98, `the fallback is another picture (graphic SSIM ${apart}, text ${textApart})`);
-  assert.ok(readFileSync(preview).length > 1000);
-});
+    // The preview's way: the server's graphic route (with the kit's font, as the export) in a sandboxed iframe.
+    await client.ok("brand.saveKit", { kit: withFile });
+    const preview = join(root, "preview.png");
+    await previewFrame(10, preview);
+    copyFileSync(preview, resolve("test-output/issue34-preview-graphic-kit-font.png"));
+    const same = ssim(preview, g, W, H);
+    t.diagnostic(
+      `graphic: export vs preview SSIM ${same.toFixed(4)}, kit font vs fallback ${apart.toFixed(4)}; text item: kit font vs fallback ${textApart.toFixed(4)}`,
+    );
+    assert.ok(same >= 0.99, `the export's graphic is what the preview draws: SSIM ${same}`);
+    // Most of the frame is the plain background, so a whole-frame SSIM of the fallback stays high; it's still well apart.
+    assert.ok(apart <= 0.98 && textApart <= 0.98, `the fallback is another picture (graphic SSIM ${apart}, text ${textApart})`);
+    assert.ok(readFileSync(preview).length > 1000);
+  },
+);

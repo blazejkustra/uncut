@@ -13,7 +13,19 @@ import type { BrandKit } from "@uncut/contracts";
 import { TemplateError, type TemplateFilled, type TemplateInfo } from "@uncut/contracts";
 import { projectDuration, type PluginSkill } from "@uncut/core";
 import { durationSeconds } from "@uncut/core/skills";
-import { BUILTIN_TEMPLATE_IDS, BUILTIN_TEMPLATES, fillTemplate, formatTemplate, parseTemplate, TEMPLATE_BODY_MAX, TEMPLATE_ID, templateValues, type Template, type TemplateFacts, type TemplateMedia } from "@uncut/core/templates";
+import {
+  BUILTIN_TEMPLATE_IDS,
+  BUILTIN_TEMPLATES,
+  fillTemplate,
+  formatTemplate,
+  parseTemplate,
+  TEMPLATE_BODY_MAX,
+  TEMPLATE_ID,
+  templateValues,
+  type Template,
+  type TemplateFacts,
+  type TemplateMedia,
+} from "@uncut/core/templates";
 import * as Effect from "effect/Effect";
 
 import { downbeatsOf } from "../agent/agentPlan.ts";
@@ -57,14 +69,19 @@ export async function listTemplates(dataDir: string): Promise<Array<TemplateInfo
 
 export async function saveTemplate(dataDir: string, t: TemplateInfo): Promise<void> {
   if (!TEMPLATE_ID.test(t.id)) throw new TemplateError({ reason: "invalid", message: "A template's id is lowercase letters, digits and dashes." });
-  if (BUILTIN_TEMPLATE_IDS.has(t.id)) throw new TemplateError({ reason: "builtin", message: "That's one of Uncut's templates, which can't be changed; duplicate it to make your own." });
+  if (BUILTIN_TEMPLATE_IDS.has(t.id))
+    throw new TemplateError({ reason: "builtin", message: "That's one of Uncut's templates, which can't be changed; duplicate it to make your own." });
   if (!t.name.trim()) throw new TemplateError({ reason: "invalid", message: "Give the template a name." });
   if (t.body.length > TEMPLATE_BODY_MAX) throw new TemplateError({ reason: "invalid", message: `A template is at most ${TEMPLATE_BODY_MAX} characters.` });
   await mkdir(templatesDir(dataDir), { recursive: true });
   const file = join(templatesDir(dataDir), `${t.id}.md`);
   // writeAtomic writes through a symlink to its target: a template is never a link to somewhere else.
   const st = await lstat(file).catch(() => undefined);
-  if (st && !st.isFile()) throw new TemplateError({ reason: "invalid", message: "A file with that template's name isn't a plain file; rename or remove it in the templates folder first." });
+  if (st && !st.isFile())
+    throw new TemplateError({
+      reason: "invalid",
+      message: "A file with that template's name isn't a plain file; rename or remove it in the templates folder first.",
+    });
   await writeAtomic(file, formatTemplate({ name: t.name.slice(0, 80), description: t.description.slice(0, 300), body: t.body }));
 }
 
@@ -100,7 +117,9 @@ const kitFacts = (kit: BrandKit, files: Record<string, string>): NonNullable<Tem
     name: kit.name,
     logos: [...new Set(logos)],
     fonts: fontWords,
-    files: Object.keys(files).filter((n) => !used.has(n)).sort(),
+    files: Object.keys(files)
+      .filter((n) => !used.has(n))
+      .sort(),
     colors: kit.colors.map((c) => ({ hex: c.hex, role: c.role, ...(c.name ? { name: c.name } : {}) })),
     ...(kit.about ? { about: kit.about } : {}),
     ...(kit.tone ? { tone: kit.tone } : {}),
@@ -128,13 +147,31 @@ const typefacesOf = (kit: BrandKit) => {
 };
 
 /** What the open project says, as TemplateFacts (none open: no facts). */
-export async function projectFacts(dataDir: string, open: OpenProjectLike | undefined, skills: ReadonlyArray<PluginSkill> = [], readBeats: BeatsReader = cachedBeats): Promise<TemplateFacts> {
+export async function projectFacts(
+  dataDir: string,
+  open: OpenProjectLike | undefined,
+  skills: ReadonlyArray<PluginSkill> = [],
+  readBeats: BeatsReader = cachedBeats,
+): Promise<TemplateFacts> {
   if (!open) return { media: [] };
-  const p = open.project as { name?: string; canvas?: { width: number; height: number; fps: number }; media?: ReadonlyArray<MediaEntry>; tracks?: ReadonlyArray<unknown> };
+  const p = open.project as {
+    name?: string;
+    canvas?: { width: number; height: number; fps: number };
+    media?: ReadonlyArray<MediaEntry>;
+    tracks?: ReadonlyArray<unknown>;
+  };
   const fps = p.canvas?.fps ?? 30;
   const all = (p.media ?? []).filter((m) => m && typeof m.name === "string" && (m.kind === "video" || m.kind === "image" || m.kind === "audio"));
   const secondsOf = (m: MediaEntry) => (m.probe?.frames ? m.probe.frames / fps : undefined);
-  const media: Array<TemplateMedia> = all.map((m) => ({ name: m.name, kind: m.kind as TemplateMedia["kind"], seconds: secondsOf(m), fps: m.probe?.fps, width: m.probe?.width, height: m.probe?.height, hasAudio: m.probe?.hasAudio }));
+  const media: Array<TemplateMedia> = all.map((m) => ({
+    name: m.name,
+    kind: m.kind as TemplateMedia["kind"],
+    seconds: secondsOf(m),
+    fps: m.probe?.fps,
+    width: m.probe?.width,
+    height: m.probe?.height,
+    hasAudio: m.probe?.hasAudio,
+  }));
 
   const brand = await activeBrand({ dataDir, projectDir: open.dir, skills }).catch(() => undefined);
   const plan = await readPlan(open.dir).catch(() => undefined);
@@ -153,7 +190,13 @@ export async function projectFacts(dataDir: string, open: OpenProjectLike | unde
     if (!song) song = { media: m, ...(beats ? { beats } : {}) };
   }
   const songS = song ? secondsOf(song.media) : undefined;
-  const length = briefS ? ({ seconds: briefS, from: "brief" } as const) : timelineS > 0 ? ({ seconds: timelineS, from: "timeline" } as const) : songS ? ({ seconds: songS, from: "song" } as const) : undefined;
+  const length = briefS
+    ? ({ seconds: briefS, from: "brief" } as const)
+    : timelineS > 0
+      ? ({ seconds: timelineS, from: "timeline" } as const)
+      : songS
+        ? ({ seconds: songS, from: "song" } as const)
+        : undefined;
 
   let music: TemplateFacts["music"];
   if (song) {
@@ -185,7 +228,13 @@ export async function projectFacts(dataDir: string, open: OpenProjectLike | unde
 }
 
 /** A template filled from the open project. */
-export async function fillFor(dataDir: string, id: string, open: OpenProjectLike | undefined, skills: ReadonlyArray<PluginSkill> = [], readBeats?: BeatsReader): Promise<TemplateFilled> {
+export async function fillFor(
+  dataDir: string,
+  id: string,
+  open: OpenProjectLike | undefined,
+  skills: ReadonlyArray<PluginSkill> = [],
+  readBeats?: BeatsReader,
+): Promise<TemplateFilled> {
   const t = (await listTemplates(dataDir)).find((x) => x.id === id);
   if (!t) throw new TemplateError({ reason: "not-found", message: "That template isn't there any more." });
   const filled = fillTemplate(t.body, templateValues(await projectFacts(dataDir, open, skills, readBeats)));
@@ -194,7 +243,8 @@ export async function fillFor(dataDir: string, id: string, open: OpenProjectLike
 
 // ---- the RPCs ----
 
-const failed = (error: unknown) => (error instanceof TemplateError ? error : new TemplateError({ reason: "failed", message: error instanceof Error ? error.message : String(error) }));
+const failed = (error: unknown) =>
+  error instanceof TemplateError ? error : new TemplateError({ reason: "failed", message: error instanceof Error ? error.message : String(error) });
 
 export function templatesRpc(dataDir: string, current: Effect.Effect<OpenProjectLike | undefined>, skills: () => ReadonlyArray<PluginSkill> = () => []) {
   const run = <A>(f: () => Promise<A>) => Effect.tryPromise({ try: f, catch: failed });

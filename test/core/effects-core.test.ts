@@ -40,7 +40,17 @@ import {
   type Track,
 } from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
-import { planAddEffect, planBypassEffect, planDuck, planEffectParams, planLoudnessTarget, planMasterLimiter, planMoveEffect, planRemoveEffect, planVoicePreset } from "../../apps/web/src/audio/sound.ts";
+import {
+  planAddEffect,
+  planBypassEffect,
+  planDuck,
+  planEffectParams,
+  planLoudnessTarget,
+  planMasterLimiter,
+  planMoveEffect,
+  planRemoveEffect,
+  planVoicePreset,
+} from "../../apps/web/src/audio/sound.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const FPS = 30;
@@ -56,7 +66,13 @@ const project = (voice: Partial<Track> = {}, music: Partial<Track> = {}, voiceIt
   ],
   tracks: [
     { id: "main", kind: "video", role: "main", name: "Main", items: [] },
-    { id: "voice", kind: "audio", name: "Voice", ...voice, items: voiceItems ?? [{ id: "v", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }] },
+    {
+      id: "voice",
+      kind: "audio",
+      name: "Voice",
+      ...voice,
+      items: voiceItems ?? [{ id: "v", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }],
+    },
     { id: "music", kind: "audio", name: "Music", ...music, items: [{ id: "s", type: "audio", media: "m-song", in: 0, start: 0, duration: 450 }] },
   ],
   ...(master ? { master } : {}),
@@ -84,33 +100,62 @@ test("manifests: the six audio processors validate, their params check projects 
     assert.deepEqual(validateModule(m), [], id);
     assert.ok(typeof m.description === "string" && m.description.length > 20, `${id} describes itself`);
   }
-  const good = project({ mixer: { effects: [...VOICE_PRESET, { module: "audio.denoise", params: { amount: 0.4 } }, { module: "audio.voice-enhance", params: { amount: 1 } }] } }, duck({ amountDb: -15, attackMs: 100, releaseMs: 900, thresholdDb: -40 }), undefined, { loudness: { targetLufs: -23 }, effects: [{ module: "audio.limiter", params: { ceilingDb: -2 } }] });
+  const good = project(
+    { mixer: { effects: [...VOICE_PRESET, { module: "audio.denoise", params: { amount: 0.4 } }, { module: "audio.voice-enhance", params: { amount: 1 } }] } },
+    duck({ amountDb: -15, attackMs: 100, releaseMs: 900, thresholdDb: -40 }),
+    undefined,
+    { loudness: { targetLufs: -23 }, effects: [{ module: "audio.limiter", params: { ceilingDb: -2 } }] },
+  );
   assert.deepEqual(validateProject(good, modules), []);
-  const bad = (t: Partial<Track>) => validateProject(project(t), modules).map((p) => p.message).join(" | ");
+  const bad = (t: Partial<Track>) =>
+    validateProject(project(t), modules)
+      .map((p) => p.message)
+      .join(" | ");
   // New params have ranges; params that existed before v0.2 keep their old (loose) schema and are clamped at use.
   assert.match(bad({ mixer: { effects: [{ module: "audio.compressor", params: { releaseMs: 1500 } }] } }), /audio\.compressor: must be <= 1000/);
   assert.match(bad({ mixer: { effects: [{ module: "audio.compressor", params: { attackMs: 0 } }] } }), /audio\.compressor: must be >= 1/);
   assert.match(bad({ mixer: { effects: [{ module: "audio.eq", params: { lowGainDb: 30 } }] } }), /audio\.eq: must be <= 24/);
   assert.match(bad({ mixer: { effects: [{ module: "audio.eq", params: { nope: 1 } }] } }), /must NOT have additional properties: nope/);
-  assert.match(bad({ mixer: { effects: [{ module: "audio.duck", params: { under: ["nope"] } }] } }), /track "Voice" \(voice\) ducks under track "nope", which doesn't exist: remove or retarget its audio\.duck entry/);
+  assert.match(
+    bad({ mixer: { effects: [{ module: "audio.duck", params: { under: ["nope"] } }] } }),
+    /track "Voice" \(voice\) ducks under track "nope", which doesn't exist: remove or retarget its audio\.duck entry/,
+  );
   assert.match(bad({ mixer: { effects: [{ module: "audio.duck", params: { under: ["music"], amountDb: 3 } }] } }), /audio\.duck: must be <= 0/);
   // Projects from before v0.2 open: old EQ bands, any cut frequency, an unbounded ratio and threshold, a
   // limiter under −12, a duck deeper than −40 or under nothing. Each is clamped where it's used.
   const old = project(
-    { mixer: { effects: [{ module: "audio.eq", params: { lowCutHz: 5, highCutHz: 40000, bands: [{ f: 1000, g: 3 }] } }, { module: "audio.compressor", params: { ratio: 30, thresholdDb: -80 } }] } },
+    {
+      mixer: {
+        effects: [
+          { module: "audio.eq", params: { lowCutHz: 5, highCutHz: 40000, bands: [{ f: 1000, g: 3 }] } },
+          { module: "audio.compressor", params: { ratio: 30, thresholdDb: -80 } },
+        ],
+      },
+    },
     { mixer: { effects: [{ module: "audio.duck", params: { under: [], amountDb: -60 } }] } },
     undefined,
     { effects: [{ module: "audio.limiter", params: { ceilingDb: -20 } }] },
   );
   assert.deepEqual(validateProject(old, modules), []);
-  assert.deepEqual(trackStages(track(old, "voice")).map((st) => (st.kind === "biquad" ? [st.type, st.freq] : st.kind === "compressor" ? [st.ratio, st.thresholdDb] : [])), [["highpass", 20], ["lowpass", 20000], [20, -60]]);
+  assert.deepEqual(
+    trackStages(track(old, "voice")).map((st) => (st.kind === "biquad" ? [st.type, st.freq] : st.kind === "compressor" ? [st.ratio, st.thresholdDb] : [])),
+    [
+      ["highpass", 20],
+      ["lowpass", 20000],
+      [20, -60],
+    ],
+  );
   assert.deepEqual(masterLimiter(old), { ceilingDb: -12 });
   assert.deepEqual(duckCurve(old, track(old, "music"), new Map())!.keys, [], "a duck under nothing ducks nothing");
   // The spec's example projects (they used EQ, ducking, voice, compressor and the limiter before D84) still validate.
   for (const name of ["close-the-loop", "drone-weekend"]) {
     const example = JSON.parse(readFileSync(`spec/examples/${name}.uncut/project.json`, "utf8"));
     // Only plugin modules that aren't installed here (argent.capture) may be reported; nothing about the mix.
-    assert.deepEqual(validateProject(example, modules).filter((p) => /mixer|master|effects/.test(p.path) || p.code === "params"), [], name);
+    assert.deepEqual(
+      validateProject(example, modules).filter((p) => /mixer|master|effects/.test(p.path) || p.code === "params"),
+      [],
+      name,
+    );
   }
 });
 
@@ -126,13 +171,35 @@ test("stages: EQ bands (a 0 dB band is none), the voice chain = the voice preset
   assert.deepEqual(effectStages({ module: "audio.duck", params: { under: ["voice"] } }), []);
   assert.deepEqual(effectStages({ module: "audio.limiter" }), [], "a limiter on a track does nothing (the master's)");
   const t: Track = { id: "t", kind: "audio", name: "T", mixer: { effects: [{ module: "audio.denoise" }, { module: "audio.compressor" }] }, items: [] };
-  assert.deepEqual(trackStages(t).map((s) => s.kind), ["denoise", "compressor"]);
+  assert.deepEqual(
+    trackStages(t).map((s) => s.kind),
+    ["denoise", "compressor"],
+  );
   // With envelopes (the preview and the export alike, D246): the track's measured floor, the quietest of its media's.
-  const tm: Track = { ...t, items: [{ id: "a", type: "audio", media: "m1", in: 0, start: 0, duration: 30 }, { id: "b", type: "audio", media: "m2", in: 0, start: 30, duration: 30 }] };
-  const media = [{ id: "m1", kind: "audio", name: "1", path: "/1" }, { id: "m2", kind: "audio", name: "2", path: "/2" }] as unknown as Project["media"];
+  const tm: Track = {
+    ...t,
+    items: [
+      { id: "a", type: "audio", media: "m1", in: 0, start: 0, duration: 30 },
+      { id: "b", type: "audio", media: "m2", in: 0, start: 30, duration: 30 },
+    ],
+  };
+  const media = [
+    { id: "m1", kind: "audio", name: "1", path: "/1" },
+    { id: "m2", kind: "audio", name: "2", path: "/2" },
+  ] as unknown as Project["media"];
   assert.equal(trackNoiseFloorDb({ media }, tm, new Map()), -40);
   assert.equal(trackNoiseFloorDb({ media }, tm, new Map([["m1", envelope([[0, 5]])]])), -64);
-  assert.deepEqual(trackStages(tm, { media }, new Map([["m1", envelope([[0, 5]])], ["m2", null]]))[0], { kind: "denoise", amount: 0.5, floorDb: -64 });
+  assert.deepEqual(
+    trackStages(
+      tm,
+      { media },
+      new Map([
+        ["m1", envelope([[0, 5]])],
+        ["m2", null],
+      ]),
+    )[0],
+    { kind: "denoise", amount: 0.5, floorDb: -64 },
+  );
   // The noise floor from an envelope: its quiet windows (+6 dB for the 16 kHz decode).
   near(noiseFloorDb(envelope([[0, 5]])), -64, 1e-9, "floor");
 });
@@ -169,7 +236,22 @@ test("ducking: from a synthetic envelope — down `attack` before the speech, th
   // It is the item gain's extra dB on the ducked track (the preview's and the export's maths).
   near(itemGain(track(p, "music"), 0, 2.5 * FPS, duckDbAt(c.keys, 2.5 * FPS)), dbToGain(-12), 1e-12);
   // A 0.2 s gap is held (< DUCK_HOLD_S); a 30 ms blip doesn't duck; runs closer than attack + release join.
-  const gaps = duckCurve(p, track(p, "music"), new Map([["m-voice", envelope([[1, 2], [2.2, 3], [6, 6.03], [7, 7.5], [8, 8.5]])]]))!;
+  const gaps = duckCurve(
+    p,
+    track(p, "music"),
+    new Map([
+      [
+        "m-voice",
+        envelope([
+          [1, 2],
+          [2.2, 3],
+          [6, 6.03],
+          [7, 7.5],
+          [8, 8.5],
+        ]),
+      ],
+    ]),
+  )!;
   assert.deepEqual(secs(gaps.keys), [
     [0.75, 0],
     [1, -12],
@@ -290,7 +372,10 @@ test("Mixer planners: add, voice preset, reorder (past ducking), bypass, params,
   const moved = planMoveEffect(p, "voice", 1, -1);
   assert.equal((moved as { summary: string }).summary, "Move Compressor up on Voice");
   p = apply(p, moved);
-  assert.deepEqual(track(p, "voice").mixer?.effects?.map((f) => f.module), ["audio.compressor", "audio.eq"]);
+  assert.deepEqual(
+    track(p, "voice").mixer?.effects?.map((f) => f.module),
+    ["audio.compressor", "audio.eq"],
+  );
   assert.deepEqual((planMoveEffect(p, "voice", 0, -1) as { ops: ReadonlyArray<unknown> }).ops, [], "the first can't go up");
   const bypass = planBypassEffect(p, "voice", 1, true);
   assert.equal((bypass as { summary: string }).summary, "Bypass EQ on Voice");
@@ -310,7 +395,10 @@ test("Mixer planners: add, voice preset, reorder (past ducking), bypass, params,
   assert.deepEqual(track(p, "music").mixer?.effects, [{ module: "audio.duck", params: { under: ["voice"], amountDb: -10, attackMs: 250, releaseMs: 600 } }]);
   p = apply(p, planAddEffect(p, "music", "audio.eq", { highGainDb: -3 }));
   p = apply(p, planDuck(p, "music", { under: ["voice"], releaseMs: 900 }));
-  assert.deepEqual(track(p, "music").mixer?.effects?.map((f) => f.module), ["audio.duck", "audio.eq"]);
+  assert.deepEqual(
+    track(p, "music").mixer?.effects?.map((f) => f.module),
+    ["audio.duck", "audio.eq"],
+  );
   assert.equal(track(p, "music").mixer?.effects?.[0]?.params?.releaseMs, 900);
   assert.equal(track(p, "music").mixer?.effects?.[0]?.params?.amountDb, -10, "kept");
   assert.deepEqual((planMoveEffect(p, "music", 1, -1) as { ops: ReadonlyArray<unknown> }).ops, [], "nothing to pass but the duck");
@@ -328,17 +416,48 @@ test("Mixer planners: add, voice preset, reorder (past ducking), bypass, params,
   const duckAt = track(offDuck, "music").mixer!.effects!.findIndex((f) => f.module === "audio.duck");
   const bypassedDuck = apply(offDuck, planBypassEffect(offDuck, "music", duckAt, true, "audio.duck"));
   const edited = apply(bypassedDuck, planDuck(bypassedDuck, "music", { under: ["voice"], amountDb: -20 }));
-  assert.deepEqual(track(edited, "music").mixer?.effects?.[duckAt], { module: "audio.duck", params: { under: ["voice"], amountDb: -20, attackMs: 250, releaseMs: 600 }, bypass: true });
+  assert.deepEqual(track(edited, "music").mixer?.effects?.[duckAt], {
+    module: "audio.duck",
+    params: { under: ["voice"], amountDb: -20, attackMs: 250, releaseMs: 600 },
+    bypass: true,
+  });
   // History words: the summary in the past tense; the agent's edits (no summary) list the chain.
-  const op: Op = { op: "update_track", track: "music", set: { mixer: { gainDb: -8, effects: [{ module: "audio.duck", params: { under: ["voice"], amountDb: -12 } }, { module: "audio.eq", params: { lowCutHz: 80 } }] } } };
+  const op: Op = {
+    op: "update_track",
+    track: "music",
+    set: {
+      mixer: {
+        gainDb: -8,
+        effects: [
+          { module: "audio.duck", params: { under: ["voice"], amountDb: -12 } },
+          { module: "audio.eq", params: { lowCutHz: 80 } },
+        ],
+      },
+    },
+  };
   assert.equal(describeOp(op, p), "Set effects of track music: ducking under voice, −12 dB, EQ (low cut 80 Hz); volume −8 dB");
   assert.equal(describeOp(op, p, "Duck Music under Voice by −12 dB"), "Ducked Music under Voice by −12 dB");
   assert.equal(describeOp(op, p, "Add EQ to Music"), "Added EQ to Music");
   assert.equal(describeOp(op, p, "Turn on EQ on Music"), "Turned on EQ on Music");
-  assert.equal(describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -23 } } } }, p), "Set the master: loudness target Broadcast (−23 LUFS)");
-  assert.equal(describeOp({ op: "update_project", set: { master: { effects: [{ module: "audio.limiter", bypass: true }] } } }, p), "Set the master: limiter off");
-  assert.equal(describeOp({ op: "update_project", set: { master: { gainDb: -3, effects: [] } } }, p, "Turn off the master limiter"), "Turned off the master limiter");
+  assert.equal(
+    describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -23 } } } }, p),
+    "Set the master: loudness target Broadcast (−23 LUFS)",
+  );
+  assert.equal(
+    describeOp({ op: "update_project", set: { master: { effects: [{ module: "audio.limiter", bypass: true }] } } }, p),
+    "Set the master: limiter off",
+  );
+  assert.equal(
+    describeOp({ op: "update_project", set: { master: { gainDb: -3, effects: [] } } }, p, "Turn off the master limiter"),
+    "Turned off the master limiter",
+  );
   assert.equal(describeOp({ op: "update_project", set: { master: { gainDb: -3 } } }, p), "Set master volume to −3 dB");
   // Every part of the master is said: a volume doesn't hide a target or a limiter change.
-  assert.equal(describeOp({ op: "update_project", set: { master: { gainDb: -3, loudness: { targetLufs: -16 }, effects: [{ module: "audio.limiter", bypass: true }] } } }, p), "Set the master: volume −3 dB, loudness target Quieter (−16 LUFS), limiter off");
+  assert.equal(
+    describeOp(
+      { op: "update_project", set: { master: { gainDb: -3, loudness: { targetLufs: -16 }, effects: [{ module: "audio.limiter", bypass: true }] } } },
+      p,
+    ),
+    "Set the master: volume −3 dB, loudness target Quieter (−16 LUFS), limiter off",
+  );
 });

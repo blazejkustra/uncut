@@ -44,11 +44,44 @@ function denoise(x: Float32Array, amount: number, floorDb: number) {
 // Noise-only 0.5–1.8 s, signal 2–4 s.
 const FIXTURES = {
   // White noise at −40.8 dBFS RMS under a 440 Hz tone (D88's measurement).
-  "white+tone": ["-f", "lavfi", "-i", "anoisesrc=d=6:c=white:r=48000:a=0.0158:seed=3", "-f", "lavfi", "-i", "aevalsrc='0.18*sin(2*PI*440*t)*between(t,2,4)':s=48000:d=6", "-filter_complex", "[0][1]amix=inputs=2:normalize=0"],
+  "white+tone": [
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=6:c=white:r=48000:a=0.0158:seed=3",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc='0.18*sin(2*PI*440*t)*between(t,2,4)':s=48000:d=6",
+    "-filter_complex",
+    "[0][1]amix=inputs=2:normalize=0",
+  ],
   // Pink noise under a voice-like harmonic tone.
-  "pink+voice": ["-f", "lavfi", "-i", "anoisesrc=d=6:c=pink:r=48000:a=0.03:seed=4", "-f", "lavfi", "-i", "aevalsrc='0.2*(sin(2*PI*220*t)+0.4*sin(2*PI*660*t)+0.2*sin(2*PI*1760*t))*between(t,2,4)':s=48000:d=6", "-filter_complex", "[0][1]amix=inputs=2:normalize=0"],
+  "pink+voice": [
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=6:c=pink:r=48000:a=0.03:seed=4",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc='0.2*(sin(2*PI*220*t)+0.4*sin(2*PI*660*t)+0.2*sin(2*PI*1760*t))*between(t,2,4)':s=48000:d=6",
+    "-filter_complex",
+    "[0][1]amix=inputs=2:normalize=0",
+  ],
   // Quiet white hiss under loud broadband (pink) "music".
-  "hiss+music": ["-f", "lavfi", "-i", "anoisesrc=d=6:c=white:r=48000:a=0.004:seed=3", "-f", "lavfi", "-i", "anoisesrc=d=6:c=pink:r=48000:a=0.2:seed=9", "-filter_complex", "[1]volume='between(t,2,4)':eval=frame[s];[0][s]amix=inputs=2:normalize=0"],
+  "hiss+music": [
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=6:c=white:r=48000:a=0.004:seed=3",
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=6:c=pink:r=48000:a=0.2:seed=9",
+    "-filter_complex",
+    "[1]volume='between(t,2,4)':eval=frame[s];[0][s]amix=inputs=2:normalize=0",
+  ],
 } as const;
 
 before(() => {
@@ -86,7 +119,9 @@ test("noise removal: the preview's denoiser ≈ the export's afftdn (noise left 
         const signal = { preview: rmsDb(pre, 2.5, 3.5, DENOISE_FFT), export: rmsDb(ex, 2.5, 3.5) };
         worstNoise = Math.max(worstNoise, Math.abs(noise.preview - noise.export));
         worstSignal = Math.max(worstSignal, Math.abs(signal.preview - signal.export));
-        rows.push(`${name} amount ${amount} floor ${floorDb}: noise ${noise.input.toFixed(1)} → preview ${noise.preview.toFixed(2)} / export ${noise.export.toFixed(2)} dB; signal ${signal.preview.toFixed(2)} / ${signal.export.toFixed(2)} dB`);
+        rows.push(
+          `${name} amount ${amount} floor ${floorDb}: noise ${noise.input.toFixed(1)} → preview ${noise.preview.toFixed(2)} / export ${noise.export.toFixed(2)} dB; signal ${signal.preview.toFixed(2)} / ${signal.export.toFixed(2)} dB`,
+        );
         assert.ok(Math.abs(noise.preview - noise.export) <= 2.5, rows.at(-1));
         assert.ok(Math.abs(signal.preview - signal.export) <= 0.3, rows.at(-1));
         // White noise with the floor at or over it: both take at least 4 dB off (pink noise's low end sits over a flat floor).
@@ -117,14 +152,19 @@ test("At target: loudnessGain (what the preview plays) brings the export's mix t
     assert.equal(r.status, 0, r.stderr.slice(-400));
     return r.stderr;
   };
-  for (const [name, master] of [["limiter on", undefined], ["limiter off", { effects: [{ module: "audio.limiter", bypass: true }] }]] as const) {
+  for (const [name, master] of [
+    ["limiter on", undefined],
+    ["limiter off", { effects: [{ module: "audio.limiter", bypass: true }] }],
+  ] as const) {
     const plan = planExport(project(master), { mediaPath: (m) => m.path, width: 640, height: 360 });
     assert.ok(!("problem" in plan));
     const target = -23;
     const { gainDb, lufs } = await loudnessGain(plan, target, measure);
     assert.ok(gainDb !== undefined && lufs !== undefined);
     const g = audioGraph(plan, 0, { gainDb, tail: "ebur128=peak=true:framelog=quiet" });
-    const got = parseEbur128(await measure({ inputs: g.inputs, graph: g.filters.join(";\n"), outputArgs: ["-map", "[aout]", "-f", "null", "-"] }, `${name}-check.txt`));
+    const got = parseEbur128(
+      await measure({ inputs: g.inputs, graph: g.filters.join(";\n"), outputArgs: ["-map", "[aout]", "-f", "null", "-"] }, `${name}-check.txt`),
+    );
     console.log(`${name}: mix ${lufs} LUFS, gain ${gainDb} dB → ${got?.lufs} LUFS`);
     assert.ok(got && Math.abs(got.lufs - target) <= 0.5, `${name}: ${got?.lufs} LUFS at the target ${target}`);
   }

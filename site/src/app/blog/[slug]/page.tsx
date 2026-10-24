@@ -28,7 +28,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     alternates: alternates(`/blog/${post.slug}/`),
     // A draft is only ever built for the preview branch (UNCUT_DRAFTS=1): never indexed.
     ...(post.draft ? { robots: { index: false, follow: false } } : {}),
-    openGraph: { type: "article", title: post.title, description: post.description, url, siteName: SITE_NAME, publishedTime: post.date, modifiedTime: post.updated ?? post.date, images: [{ url: image, width: 1200, height: 750, alt: post.imageAlt ?? post.title }] },
+    openGraph: {
+      type: "article",
+      title: post.title,
+      description: post.description,
+      url,
+      siteName: SITE_NAME,
+      publishedTime: post.date,
+      modifiedTime: post.updated ?? post.date,
+      images: [{ url: image, width: 1200, height: 750, alt: post.imageAlt ?? post.title }],
+    },
     twitter: { card: "summary_large_image", title: post.title, description: post.description, images: [image] },
   };
 }
@@ -57,9 +66,17 @@ export default async function PostPage({ params }: Props) {
       <SiteHeader />
       <main className="wrap">
         <article className="post">
-          <p className="back"><a href="/blog/">All posts</a></p>
-          {post.draft ? <p className="draft-note"><span className="draft-tag">Draft</span>Not published yet: this preview is for review and isn't in the feed or the sitemap.</p> : null}
-          <p className="meta"><time dateTime={post.date}>{formatDate(post.date)}</time>, {post.readingTime}</p>
+          <p className="back">
+            <a href="/blog/">All posts</a>
+          </p>
+          {post.draft ? (
+            <p className="draft-note">
+              <span className="draft-tag">Draft</span>Not published yet: this preview is for review and isn't in the feed or the sitemap.
+            </p>
+          ) : null}
+          <p className="meta">
+            <time dateTime={post.date}>{formatDate(post.date)}</time>, {post.readingTime}
+          </p>
           <h1>{post.title}</h1>
           <p className="lead">{post.description}</p>
           {post.image ? <img className="lead-img" src={post.image} width={2400} height={1500} fetchPriority="high" alt={post.imageAlt ?? ""} /> : null}

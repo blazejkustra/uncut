@@ -24,7 +24,8 @@ export function useAgentFlash(project: ProjectModel, revision: number | undefine
     const now = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, JSON.stringify(i)] as const)));
     const before = seen.current;
     seen.current = now;
-    if (before && revision !== undefined) diff.current = { revision, ids: [...now].filter(([id, json]) => before.get(id) !== json).map(([id]) => id), shown: false };
+    if (before && revision !== undefined)
+      diff.current = { revision, ids: [...now].filter(([id, json]) => before.get(id) !== json).map(([id]) => id), shown: false };
   }, [project, revision]);
   useEffect(() => {
     const d = diff.current;

@@ -36,7 +36,7 @@ const empty = (): Project =>
   }) as unknown as Project;
 
 // A small deterministic PRNG, so a failure can be replayed.
-const rng = (seed: number) => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+const rng = (seed: number) => () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32;
 
 /** A random valid edit against `p`: add, retitle, move or delete a text item, rename, add a track. */
 function randomOps(p: Project, rand: () => number, i: number): Array<Op> {
@@ -138,7 +138,10 @@ test("revisions, states, the cursor and logs survive closing and reopening histo
   const { log, initial } = again.logAt(head);
   assert.equal(initial, 0);
   assert.equal(log.length, again.resolve(head), "every edit since the start, in order");
-  assert.deepEqual(log.map((e) => e.revision), Array.from({ length: log.length }, (_, i) => i + 1));
+  assert.deepEqual(
+    log.map((e) => e.revision),
+    Array.from({ length: log.length }, (_, i) => i + 1),
+  );
   assert.ok(log.every((e) => e.actor === (e.revision % 3 ? "user" : "agent")));
   again.close();
 });
@@ -149,11 +152,21 @@ test("an undone turn leaves the log; an external revision is a boundary the log 
   d.edit([{ op: "insert_item", track: "text", item: { id: "a", type: "text", start: 0, duration: 30, text: "A" } } as Op], "agent", "T1");
   d.edit([{ op: "insert_item", track: "text", item: { id: "b", type: "text", start: 30, duration: 30, text: "B" } } as Op], "user");
   const without = { ...d.session.project, tracks: d.session.project.tracks.map((t) => ({ ...t, items: t.items.filter((i) => i.id !== "a") })) } as Project;
-  d.cursor = d.history.record({ kind: "undo-turn", author: "user", revision: 3, label: "Undid T1", undoTurn: "T1", project: without }, { past: [...d.cursor.past, 2], future: [] });
-  assert.deepEqual(d.history.logAt(3).log.map((e) => e.revision), [2], "T1's edit is left out");
+  d.cursor = d.history.record(
+    { kind: "undo-turn", author: "user", revision: 3, label: "Undid T1", undoTurn: "T1", project: without },
+    { past: [...d.cursor.past, 2], future: [] },
+  );
+  assert.deepEqual(
+    d.history.logAt(3).log.map((e) => e.revision),
+    [2],
+    "T1's edit is left out",
+  );
   assert.ok(sameJson(d.history.stateAt(3), without));
   const outside = { ...without, name: "Changed by git" } as Project;
-  d.cursor = d.history.record({ kind: "external", author: "external", revision: 4, label: "Changed outside Uncut", project: outside }, { past: [], future: [] });
+  d.cursor = d.history.record(
+    { kind: "external", author: "external", revision: 4, label: "Changed outside Uncut", project: outside },
+    { past: [], future: [] },
+  );
   assert.deepEqual(d.history.logAt(4), { log: [], initial: 4 });
   assert.equal(d.history.boundaryOf(4).kind, "external");
   assert.deepEqual(d.history.cursor, { past: [], future: [] });
@@ -201,7 +214,13 @@ test("2000 edits: compaction keeps the last 1000 revisions, the file stays small
 test("the agent's turns, session and pending note are stored and come back; withHistory shares the open connection", () => {
   const dir = folder();
   const h = HistoryDb.open(dir);
-  const turn = (id: string, status: string) => ({ id, prompt: `do ${id}`, status, startedAt: new Date().toISOString(), data: { id, prompt: `do ${id}`, status, items: [], edits: [] } });
+  const turn = (id: string, status: string) => ({
+    id,
+    prompt: `do ${id}`,
+    status,
+    startedAt: new Date().toISOString(),
+    data: { id, prompt: `do ${id}`, status, items: [], edits: [] },
+  });
   h.saveAgent({ sessionId: "s1", pendingNote: "note", turns: [turn("a", "done"), turn("b", "running")] });
   withHistory(dir, (shared) => {
     assert.equal(shared, h, "the open connection is used");
@@ -211,7 +230,13 @@ test("the agent's turns, session and pending note are stored and come back; with
   const back = withHistory(dir, (other) => other.agent());
   assert.equal(back.sessionId, "s1");
   assert.equal(back.pendingNote, undefined);
-  assert.deepEqual(back.turns.map((t: any) => [t.id, t.status]), [["a", "done"], ["b", "done"]]);
+  assert.deepEqual(
+    back.turns.map((t: any) => [t.id, t.status]),
+    [
+      ["a", "done"],
+      ["b", "done"],
+    ],
+  );
   const db = new DatabaseSync(join(dir, HISTORY_FILE));
   assert.deepEqual({ ...(db.prepare("SELECT start_revision, ord FROM turns WHERE id = 'b'").get() as object) }, { start_revision: 3, ord: 1 });
   db.close();
@@ -249,7 +274,14 @@ test("a history.db from a newer Uncut isn't touched: in memory, with why", () =>
 
 /** Another process holding history.db's write lock until told to let go. */
 async function holdLock(file: string) {
-  const child = spawn(process.execPath, ["-e", `const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(${JSON.stringify(file)});d.exec("PRAGMA journal_mode=WAL");d.exec("BEGIN IMMEDIATE");console.log("locked");process.stdin.on("data",()=>{d.exec("COMMIT");d.close();process.exit(0)})`], { stdio: ["pipe", "pipe", "inherit"] });
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(${JSON.stringify(file)});d.exec("PRAGMA journal_mode=WAL");d.exec("BEGIN IMMEDIATE");console.log("locked");process.stdin.on("data",()=>{d.exec("COMMIT");d.close();process.exit(0)})`,
+    ],
+    { stdio: ["pipe", "pipe", "inherit"] },
+  );
   await new Promise<void>((resolve) => child.stdout.once("data", () => resolve()));
   return { release: () => new Promise<void>((resolve) => (child.once("exit", () => resolve()), child.stdin.write("x\n"))) };
 }
@@ -322,7 +354,10 @@ test("an external revision keeps its parent: lineage (History's 'current') runs 
   const dir = folder();
   const d = new Driver(dir);
   d.edit([{ op: "update_project", set: { name: "Mine" } } as Op]);
-  d.cursor = d.history.record({ kind: "external", author: "external", revision: 2, label: "Changed outside Uncut", project: { ...d.session.project, name: "Git" } as Project }, { past: [], future: [] });
+  d.cursor = d.history.record(
+    { kind: "external", author: "external", revision: 2, label: "Changed outside Uncut", project: { ...d.session.project, name: "Git" } as Project },
+    { past: [], future: [] },
+  );
   assert.deepEqual([...d.history.lineage(2)].sort(), [0, 1, 2]);
   assert.deepEqual(d.history.logAt(2), { log: [], initial: 2 });
   assert.equal(d.history.boundaryOf(2).kind, "external");

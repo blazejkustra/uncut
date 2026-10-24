@@ -39,7 +39,25 @@ export type GeneratedTileInfo = {
 /** D240 (#73): the Analyze button's tooltip; it used to be an unexplained speedometer. */
 export const ANALYZE_TITLE = "Analyse the sound: find its silences and loudness (used for silence cuts and auto-ducking)";
 
-export function MediaTile({ item, fps, online, used, selected, onSelect, onRemove, generated }: { item: MediaItem; fps: number; online: boolean; used: boolean; selected: boolean; onSelect: () => void; onRemove: () => void; generated?: GeneratedTileInfo }) {
+export function MediaTile({
+  item,
+  fps,
+  online,
+  used,
+  selected,
+  onSelect,
+  onRemove,
+  generated,
+}: {
+  item: MediaItem;
+  fps: number;
+  online: boolean;
+  used: boolean;
+  selected: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+  generated?: GeneratedTileInfo;
+}) {
   const app = useApp();
   const { thumbIds } = app;
   // G4: renamed in place (double-click the name, or Rename in its menu).
@@ -68,26 +86,41 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
     const local = !isRemote();
     // The frame (canvas fps) skimmed on the thumbnail when the menu opened: where a replacement starts.
     const at = scrub !== undefined && seconds ? Math.round(scrub * seconds * fps) : 0;
-    openMenu(e.clientX, e.clientY, [
-      // D264 (#77): the media (or a generated picture) as a chip in the Agent tab's composer.
-      { id: "media-add-to-chat", label: "Add to chat", run: () => void actions.addMediaToChat(item.id) },
-      "-",
-      ...(generated
-        ? [
-            { id: "generated-add", label: "Add at playhead", disabled: !online, run: () => void actions.addAtPlayhead(item.id) },
-            { id: "generated-again", label: "Make again", disabled: !online || !generated.canAgain, run: generated.again },
-            { id: "generated-edit", label: "Edit prompt", disabled: !online, run: generated.edit },
-          ]
-        : [
-            { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
-            // Issue #118: an overwrite of In to Out (nothing after it moves), from the frame skimmed on the thumbnail.
-            ...(item.kind !== "audio" ? [{ id: "media-replace-range", label: "Replace In to Out with this", disabled: !online, run: () => void replaceMarks(at) }] : []),
-          ]),
-      { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
-      ...(local ? [{ id: "media-reveal", label: "Reveal in Finder", run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`) }] : []),
-      "-",
-      { id: "media-remove", label: "Remove from project", shortcut: "⌫", danger: true, disabled: !online, run: onRemove },
-    ], "Media");
+    openMenu(
+      e.clientX,
+      e.clientY,
+      [
+        // D264 (#77): the media (or a generated picture) as a chip in the Agent tab's composer.
+        { id: "media-add-to-chat", label: "Add to chat", run: () => void actions.addMediaToChat(item.id) },
+        "-",
+        ...(generated
+          ? [
+              { id: "generated-add", label: "Add at playhead", disabled: !online, run: () => void actions.addAtPlayhead(item.id) },
+              { id: "generated-again", label: "Make again", disabled: !online || !generated.canAgain, run: generated.again },
+              { id: "generated-edit", label: "Edit prompt", disabled: !online, run: generated.edit },
+            ]
+          : [
+              { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
+              // Issue #118: an overwrite of In to Out (nothing after it moves), from the frame skimmed on the thumbnail.
+              ...(item.kind !== "audio"
+                ? [{ id: "media-replace-range", label: "Replace In to Out with this", disabled: !online, run: () => void replaceMarks(at) }]
+                : []),
+            ]),
+        { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
+        ...(local
+          ? [
+              {
+                id: "media-reveal",
+                label: "Reveal in Finder",
+                run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`),
+              },
+            ]
+          : []),
+        "-",
+        { id: "media-remove", label: "Remove from project", shortcut: "⌫", danger: true, disabled: !online, run: onRemove },
+      ],
+      "Media",
+    );
   };
   // Analysis (D66) runs on demand: the Analyze button, or the agent's media_analyze.
   const analysis = activeAnalyses(app, item.id)[0];
@@ -95,7 +128,11 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
   const [broken, setBroken] = useState(false);
   const Icon = item.kind === "audio" ? AudioLines : item.kind === "image" ? ImageIcon : Film;
   // An SVG has no poster (ffmpeg can't read it): the tile shows the file itself (D76).
-  const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : item.kind === "image" && /\.svg$/i.test(item.path) ? mediaUrl(item.id, item.path) : undefined;
+  const src = thumbIds.has(item.id)
+    ? thumbUrl(item.id, item.path)
+    : item.kind === "image" && /\.svg$/i.test(item.path)
+      ? mediaUrl(item.id, item.path)
+      : undefined;
   const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
   // D212: the preview proxy of heavy footage (made in the background after import).
   const proxy = proxyOf(app, item.id);
@@ -170,7 +207,15 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
         {canScrub && scrub !== undefined && (
           <>
-            <video ref={scrubRef} className="thumb-scrub" data-testid="thumb-scrub" src={proxiesOn && proxy?.phase === "done" && proxy.key ? proxyUrl(item.id, proxy.key) : mediaUrl(item.id, item.path)} muted playsInline preload="auto" />
+            <video
+              ref={scrubRef}
+              className="thumb-scrub"
+              data-testid="thumb-scrub"
+              src={proxiesOn && proxy?.phase === "done" && proxy.key ? proxyUrl(item.id, proxy.key) : mediaUrl(item.id, item.path)}
+              muted
+              playsInline
+              preload="auto"
+            />
             <span className="thumb-scrub-bar" style={{ left: `${scrub * 100}%` }} />
           </>
         )}
@@ -189,8 +234,22 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             className={`tile-proxy ${proxy.phase}`}
             data-testid="media-proxy"
             data-phase={proxy.phase}
-            title={proxy.phase === "done" ? (proxiesOn ? "The preview plays a proxy of this file; export uses the original." : "Proxy made; the preview plays the original (Settings).") : proxy.phase === "running" ? "Making a proxy for the preview" : proxy.waiting ? "Proxy waits for the export to finish" : "Proxy queued"}
-            style={proxy.phase === "running" ? { backgroundImage: `linear-gradient(90deg, rgb(255 255 255 / 22%) ${Math.round((proxy.progress ?? 0) * 100)}%, transparent 0)` } : undefined}
+            title={
+              proxy.phase === "done"
+                ? proxiesOn
+                  ? "The preview plays a proxy of this file; export uses the original."
+                  : "Proxy made; the preview plays the original (Settings)."
+                : proxy.phase === "running"
+                  ? "Making a proxy for the preview"
+                  : proxy.waiting
+                    ? "Proxy waits for the export to finish"
+                    : "Proxy queued"
+            }
+            style={
+              proxy.phase === "running"
+                ? { backgroundImage: `linear-gradient(90deg, rgb(255 255 255 / 22%) ${Math.round((proxy.progress ?? 0) * 100)}%, transparent 0)` }
+                : undefined
+            }
           >
             {proxy.phase === "running" ? `Proxy ${Math.round((proxy.progress ?? 0) * 100)}%` : "Proxy"}
           </span>
@@ -200,7 +259,9 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
           </span>
         )}
-        <Tooltip label={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}>
+        <Tooltip
+          label={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}
+        >
           <button
             className="tile-add"
             data-testid={generated ? "generated-add" : "add-to-timeline"}
@@ -260,13 +321,24 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
           </Tooltip>
         )}
         {analysis && (
-          <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} data-analyzer={analysis.analyzer} title={analysisText(analysis)}>
+          <div
+            className="tile-analysis"
+            data-testid="analysis-progress"
+            data-phase={analysis.phase}
+            data-analyzer={analysis.analyzer}
+            title={analysisText(analysis)}
+          >
             <AudioWaveform />
             <div className="bar">
               <span style={{ width: `${Math.round((analysis.phase === "running" ? analysis.progress : 0) * 100)}%` }} />
             </div>
             <Tooltip label="Stop the analysis">
-              <button className="tile-analysis-cancel" data-testid="analysis-cancel" disabled={!online} onClick={() => void actions.cancelAnalysis(analysis.id)}>
+              <button
+                className="tile-analysis-cancel"
+                data-testid="analysis-cancel"
+                disabled={!online}
+                onClick={() => void actions.cancelAnalysis(analysis.id)}
+              >
                 <X />
               </button>
             </Tooltip>
@@ -274,7 +346,15 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         )}
       </div>
       <div className="tile-name" data-testid="tile-name" title={item.name} onDoubleClick={() => online && setRenaming(true)}>
-        {renaming ? <RenameField testId="media-rename" value={item.name} onDone={(name) => (name !== undefined && name.trim() && name !== item.name && void actions.renameMedia(item.id, name), setRenaming(false))} /> : item.name}
+        {renaming ? (
+          <RenameField
+            testId="media-rename"
+            value={item.name}
+            onDone={(name) => (name !== undefined && name.trim() && name !== item.name && void actions.renameMedia(item.id, name), setRenaming(false))}
+          />
+        ) : (
+          item.name
+        )}
       </div>
       <div className="tile-sub" data-testid="tile-meta">
         {generated ? <span className="gen-by">{generated.by}</span> : mediaMeta(item)}

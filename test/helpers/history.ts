@@ -20,7 +20,10 @@ export function readAgentHistory(dir: string): { sessionId?: string; pendingNote
 }
 
 /** Every revision row (no states), oldest first, and the meta table. */
-export function readRevisions(dir: string): { rows: Array<{ revision: number; kind: string; author: string; label: string; turn_id: string | null; parent: number | null; boundary: number }>; meta: Map<string, string> } {
+export function readRevisions(dir: string): {
+  rows: Array<{ revision: number; kind: string; author: string; label: string; turn_id: string | null; parent: number | null; boundary: number }>;
+  meta: Map<string, string>;
+} {
   const db = new DatabaseSync(historyFile(dir), { readOnly: true });
   try {
     const rows = db.prepare("SELECT revision, kind, author, label, turn_id, parent, boundary FROM revisions ORDER BY revision").all() as Array<any>;

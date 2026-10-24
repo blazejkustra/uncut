@@ -100,7 +100,11 @@ const hwaccels = new Map<string, Promise<boolean>>();
 const canVideotoolbox = (ffmpeg: string) => {
   let known = hwaccels.get(ffmpeg);
   if (!known) {
-    known = new Promise((resolve) => execFile(ffmpeg, ["-hide_banner", "-hwaccels"], { timeout: 10_000, env: withoutApiKey(process.env) }, (error, stdout) => resolve(!error && /^videotoolbox$/m.test(String(stdout)))));
+    known = new Promise((resolve) =>
+      execFile(ffmpeg, ["-hide_banner", "-hwaccels"], { timeout: 10_000, env: withoutApiKey(process.env) }, (error, stdout) =>
+        resolve(!error && /^videotoolbox$/m.test(String(stdout))),
+      ),
+    );
     hwaccels.set(ffmpeg, known);
   }
   return known;
@@ -135,7 +139,13 @@ const ffmpegError = (stderr: string) =>
 export async function analyzeVideo(
   ffmpeg: string,
   path: string,
-  options: { readonly signal: AbortSignal; readonly runner?: Runner; readonly seconds?: number | undefined; readonly onProgress?: (fraction: number) => void; readonly hwaccel?: boolean },
+  options: {
+    readonly signal: AbortSignal;
+    readonly runner?: Runner;
+    readonly seconds?: number | undefined;
+    readonly onProgress?: (fraction: number) => void;
+    readonly hwaccel?: boolean;
+  },
 ): Promise<VideoResult> {
   const log = new VideoLog();
   const correlator = new PhaseCorrelator();
@@ -194,7 +204,11 @@ export async function analyzeVideo(
   log.closeFreeze(end);
   // Dropped frames (DJI files have them): a gap of more than DROP_GAP frames before a frame. The
   // picture jumps there, so it's neither a cut nor one frame's motion.
-  const dts = times.slice(1).map((t, i) => t - times[i]!).filter((d) => d > 0).sort((x, y) => x - y);
+  const dts = times
+    .slice(1)
+    .map((t, i) => t - times[i]!)
+    .filter((d) => d > 0)
+    .sort((x, y) => x - y);
   const typical = dts.length ? dts[dts.length >> 1]! : frameDur;
   const dropFrames = new Set<number>();
   const drops: Array<{ time: number; missing: number }> = [];

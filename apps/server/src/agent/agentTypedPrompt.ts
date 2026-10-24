@@ -11,7 +11,8 @@ import type { CriticFinding } from "./agentCritic.ts";
 import { clauses, NEGATED } from "./criticMotion.ts";
 
 /** The user's own words as an object of typing: "this prompt", "my request", "the prompt I typed", "what I wrote". */
-const OWN = /\b(?:this|my|that|these|the same)\s+(?:exact\s+|very\s+|own\s+|actual\s+|same\s+)?(?:prompts?|requests?|messages?|words|brief|instructions?)\b|\bthe\s+(?:prompt|request|message|words|text)\s+(?:i|i've|i have)\s+(?:just\s+)?(?:typed|wrote|written|sent|gave|entered|pasted)\b|\bwhat\s+i\s+(?:just\s+)?(?:typed|wrote|sent|asked)\b/gi;
+const OWN =
+  /\b(?:this|my|that|these|the same)\s+(?:exact\s+|very\s+|own\s+|actual\s+|same\s+)?(?:prompts?|requests?|messages?|words|brief|instructions?)\b|\bthe\s+(?:prompt|request|message|words|text)\s+(?:i|i've|i have)\s+(?:just\s+)?(?:typed|wrote|written|sent|gave|entered|pasted)\b|\bwhat\s+i\s+(?:just\s+)?(?:typed|wrote|sent|asked)\b/gi;
 /** A typing word near it. */
 const TYPING = /\b(?:typ(?:e|es|ed|ing)|enter(?:s|ed|ing)?|writ(?:e|es|ing)|written|wrote|past(?:e|es|ed|ing))\b/i;
 /** How far (characters) the typing word may stand from the words it types. */
@@ -64,7 +65,8 @@ export const MIN_KEPT_WORDS = 6;
 
 /** Whether the typed text is the request: the same words, or its start cut with an ellipsis. */
 export function typedMatches(typed: string, request: string): boolean {
-  const t = normText(typed), r = normText(request);
+  const t = normText(typed),
+    r = normText(request);
   if (!t || !r) return false;
   if (t === r) return true;
   if (!ELLIPSIS.test(typed.trim())) return false;
@@ -74,7 +76,21 @@ export function typedMatches(typed: string, request: string): boolean {
 const LIT = String.raw`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\x60(?:[^\x60\\$]|\\.|\$(?!\{))*\x60`;
 const IDENT = String.raw`[A-Za-z_$][\w$]*`;
 /** A literal's text as the page shows it: JS escapes (\\n, \\u2019, \\x27) and HTML entities and line-break tags read, so typography isn't a mismatch. */
-const ENTITY: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "\u2019", lsquo: "\u2018", rdquo: "\u201d", ldquo: "\u201c", hellip: "\u2026", mdash: "-", ndash: "-" };
+const ENTITY: Readonly<Record<string, string>> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  rsquo: "\u2019",
+  lsquo: "\u2018",
+  rdquo: "\u201d",
+  ldquo: "\u201c",
+  hellip: "\u2026",
+  mdash: "-",
+  ndash: "-",
+};
 const unquote = (lit: string) =>
   lit
     .slice(1, -1)
@@ -82,7 +98,9 @@ const unquote = (lit: string) =>
     .replace(/\\([nrt])/g, " ")
     .replace(/\\(.)/g, "$1")
     .replace(/<br\s*\/?>/gi, " ")
-    .replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, d, h, n) => (d || h ? String.fromCodePoint(parseInt(d ?? h, d ? 10 : 16)) : (ENTITY[n.toLowerCase()] ?? m)));
+    .replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, d, h, n) =>
+      d || h ? String.fromCodePoint(parseInt(d ?? h, d ? 10 : 16)) : (ENTITY[n.toLowerCase()] ?? m),
+    );
 /** A literal or literals joined with + ("…for Uncut, " + "this app…"): its text; undefined when a + joins something else. */
 const LITS = String.raw`(?:${LIT})(?:\s*\+\s*(?:${LIT}))*(?!\s*\+)`;
 const unquoteAll = (lits: string) => [...lits.matchAll(new RegExp(LIT, "g"))].map((m) => unquote(m[0])).join("");
@@ -94,7 +112,11 @@ const unquoteAll = (lits: string) => [...lits.matchAll(new RegExp(LIT, "g"))].ma
  * was found (only those are quoted when there are any); `named` keeps the prompt-named consts beside
  * composer texts (a hand-typed opening and a composer piece's follow-up), which may still match.
  */
-export function composerTexts(sources: Iterable<string>): { readonly texts: ReadonlyArray<string>; readonly composer: boolean; readonly named?: ReadonlyArray<string> } {
+export function composerTexts(sources: Iterable<string>): {
+  readonly texts: ReadonlyArray<string>;
+  readonly composer: boolean;
+  readonly named?: ReadonlyArray<string>;
+} {
   const fromComposer = new Set<string>();
   const named = new Set<string>();
   for (const src of sources) {
@@ -112,7 +134,9 @@ export function composerTexts(sources: Iterable<string>): { readonly texts: Read
       }
     for (const [name, v] of consts) if (/prompt|typed/i.test(name) && v.trim().length >= 12 && /\s/.test(v.trim())) named.add(v.trim());
   }
-  return fromComposer.size ? { texts: [...fromComposer], composer: true, ...(named.size ? { named: [...named] } : {}) } : { texts: [...named], composer: false };
+  return fromComposer.size
+    ? { texts: [...fromComposer], composer: true, ...(named.size ? { named: [...named] } : {}) }
+    : { texts: [...named], composer: false };
 }
 
 /** The request as the fix quotes it: whole up to 160 characters, else its start to a word and an ellipsis. */
@@ -134,23 +158,46 @@ const short = (s: string) => {
  * with the exact fix. Nothing when no message asks. With no composer text found in the source, the
  * fact says so and the critic reads the typed words on the frames.
  */
-export function typedPromptCheck(prompts: ReadonlyArray<string | undefined>, sources: ReadonlyArray<string>): { readonly facts: ReadonlyArray<string>; readonly findings: ReadonlyArray<CriticFinding> } {
+export function typedPromptCheck(
+  prompts: ReadonlyArray<string | undefined>,
+  sources: ReadonlyArray<string>,
+): { readonly facts: ReadonlyArray<string>; readonly findings: ReadonlyArray<CriticFinding> } {
   const ask = typedPromptAsk(prompts);
   if (!ask) return { facts: [], findings: [] };
   const words = quotedAsk(ask);
   const fix = `type the user's own words in the composer: "${words}"${words.endsWith("…") ? " (shortened with an ellipsis, or all of it)" : ""}, the same words in the sent message, never another prompt`;
   const head = `The request asks to show its own prompt being typed, so the words typed in the film must be the user's message (cut with an ellipsis if long, never replaced)`;
-  if (!sources.length) return { facts: [`${head}; Uncut found no graphic source to measure it: read the typed words on the frames and compare them with <request>.`], findings: [] };
+  if (!sources.length)
+    return {
+      facts: [`${head}; Uncut found no graphic source to measure it: read the typed words on the frames and compare them with <request>.`],
+      findings: [],
+    };
   const { texts, composer, named = [] } = composerTexts(sources);
   if (!texts.length) {
     const r = normText(ask);
     const found = sources.some((s) => normText(s.replace(/\\(.)/g, "$1")).includes(r.split(" ").slice(0, MIN_KEPT_WORDS).join(" ")));
-    return { facts: [`${head}; Uncut found no composer text in the graphics' source${found ? " (the request's words are in it)" : " and not the request's words either"}: read the typed words on the frames and compare them with <request>.`], findings: [] };
+    return {
+      facts: [
+        `${head}; Uncut found no composer text in the graphics' source${found ? " (the request's words are in it)" : " and not the request's words either"}: read the typed words on the frames and compare them with <request>.`,
+      ],
+      findings: [],
+    };
   }
-  if (texts.some((t) => typedMatches(t, ask)) || named.some((t) => typedMatches(t, ask))) return { facts: [`${head}; measured in the graphics' source: the ${composer ? "composer" : "prompt"} text is the user's message.`], findings: [] };
-  const typed = texts.slice(0, 2).map((t) => `"${short(t)}"`).join(" and ");
+  if (texts.some((t) => typedMatches(t, ask)) || named.some((t) => typedMatches(t, ask)))
+    return { facts: [`${head}; measured in the graphics' source: the ${composer ? "composer" : "prompt"} text is the user's message.`], findings: [] };
+  const typed = texts
+    .slice(0, 2)
+    .map((t) => `"${short(t)}"`)
+    .join(" and ");
   return {
     facts: [],
-    findings: [{ rule: "typed-prompt", key: "typed-prompt:source", hard: true, message: `The request asks to show its own prompt being typed, but the ${composer ? "composer" : "prompt"} in the graphics' source types ${typed}, not the user's words (measured in the source). Fix: ${fix}.` }],
+    findings: [
+      {
+        rule: "typed-prompt",
+        key: "typed-prompt:source",
+        hard: true,
+        message: `The request asks to show its own prompt being typed, but the ${composer ? "composer" : "prompt"} in the graphics' source types ${typed}, not the user's words (measured in the source). Fix: ${fix}.`,
+      },
+    ],
   };
 }

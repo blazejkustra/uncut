@@ -35,7 +35,19 @@ import { type AnalysisTarget, type AnalysisResult, targetOf, cachedFor } from ".
 import { type RequestOptions, type Requested, AnalysisQueue } from "./queue/queue.ts";
 export { SILENCE_DB, SILENCE_MIN_S, NO_AUDIO, loudnessArgs, RmsEnvelope, LoudnessLog, analyzeLoudness, isResult } from "./loudness/loudness.ts";
 export type { SilenceRange, LoudnessResult } from "./loudness/loudness.ts";
-export { ANALYSIS_FORMAT, LOUDNESS_VERSION, SAMPLE_BYTES, analysisDir, cacheFile, fingerprint, readCached, cachedFor, removeCached, writeCached, targetOf } from "./queue/cache.ts";
+export {
+  ANALYSIS_FORMAT,
+  LOUDNESS_VERSION,
+  SAMPLE_BYTES,
+  analysisDir,
+  cacheFile,
+  fingerprint,
+  readCached,
+  cachedFor,
+  removeCached,
+  writeCached,
+  targetOf,
+} from "./queue/cache.ts";
 export type { AnalysisResult, AnalysisTarget } from "./queue/cache.ts";
 export { AnalysisQueue } from "./queue/queue.ts";
 export type { RequestOptions, Outcome, Requested, QueueOptions } from "./queue/queue.ts";
@@ -46,7 +58,20 @@ export const LATER_ANALYZERS: Readonly<Record<string, string>> = {
 };
 
 /** Names that mean the same job: one pass finds both silences and loudness, or all of the picture's signals. */
-export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video", transcript: "transcript", transcription: "transcript", beats: "beats", rhythm: "beats", onsets: "beats", tempo: "beats" };
+export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = {
+  loudness: "loudness",
+  silence: "loudness",
+  video: "video",
+  shots: "video",
+  motion: "video",
+  stability: "video",
+  transcript: "transcript",
+  transcription: "transcript",
+  beats: "beats",
+  rhythm: "beats",
+  onsets: "beats",
+  tempo: "beats",
+};
 const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same), video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same) transcript (the speech, transcribed on this Mac) and beats (tempo, beats and onsets; "rhythm", "onsets" and "tempo" mean the same).`;
 
 /**
@@ -57,7 +82,8 @@ const AVAILABLE = `Available now: loudness (also gives the silences; "silence" m
  */
 export function parseAnalyzers(value: unknown): { readonly analyzers: ReadonlyArray<Analyzer> } | { readonly refused: string } {
   if (value === undefined) return { analyzers: ["loudness"] };
-  if (!Array.isArray(value) || !value.length || !value.every((v) => typeof v === "string")) return { refused: `analyzers must be a non-empty list, e.g. ["loudness"].` };
+  if (!Array.isArray(value) || !value.length || !value.every((v) => typeof v === "string"))
+    return { refused: `analyzers must be a non-empty list, e.g. ["loudness"].` };
   const out = new Set<Analyzer>();
   for (const name of value as Array<string>) {
     const alias = Object.hasOwn(ANALYZER_ALIASES, name) ? ANALYZER_ALIASES[name] : undefined;
@@ -77,14 +103,21 @@ export { Cancelled, spawnRunner, type RunOptions, type Runner } from "./analysis
 export interface AnalysisShape {
   readonly jobs: Stream.Stream<ReadonlyArray<AnalysisJob>>;
   /** analysis.start: analyse a media item of the open project (the Library's Analyze: the sound, unless analyzers say otherwise). */
-  readonly start: (mediaId: string, analyzers?: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>, AnalysisError>;
+  readonly start: (
+    mediaId: string,
+    analyzers?: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>, AnalysisError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
   /** For the agent's media_analyze: start or join, then follow `done`. */
   readonly request: (target: AnalysisTarget, analyzer: Analyzer, options?: RequestOptions) => Promise<Requested>;
   /** A job as it is now. */
   readonly job: (jobId: string) => AnalysisJob | undefined;
   /** analysis.cached: a media item's cached result, without a job (null: none yet). */
-  readonly cached: (mediaId: string, analyzer: Analyzer, omit?: ReadonlyArray<string>) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
+  readonly cached: (
+    mediaId: string,
+    analyzer: Analyzer,
+    omit?: ReadonlyArray<string>,
+  ) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
 }
 
 export class Analysis extends Context.Service<Analysis, AnalysisShape>()("uncut/Analysis") {}
@@ -112,7 +145,9 @@ export const layer = Layer.effect(
       whisper: whisper.resolve,
       // Speech to words through the bundled Whisper plugin (D26, D100), with the job's own signal:
       // a transcript outlives the agent turn that asked for it.
-      transcribe: pluginTranscribe((args, { signal, timeoutMs, onProgress }) => Effect.runPromise(plugins.callPlugin(WHISPER_PLUGIN, WHISPER_TOOL, args, { signal, timeoutMs, onProgress }))),
+      transcribe: pluginTranscribe((args, { signal, timeoutMs, onProgress }) =>
+        Effect.runPromise(plugins.callPlugin(WHISPER_PLUGIN, WHISPER_TOOL, args, { signal, timeoutMs, onProgress })),
+      ),
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => queue.shutdown()));
     // Exports come first (D55): no analysis starts while one is queued or running.
@@ -124,7 +159,10 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new AnalysisError({ reason: "no-project", message: "Open a project first." });
-        const project = open.project as { canvas: { fps: number }; media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }> };
+        const project = open.project as {
+          canvas: { fps: number };
+          media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }>;
+        };
         const media = project.media.find((m) => m.id === mediaId);
         if (!media) return yield* new AnalysisError({ reason: "unknown-media", message: `There's no media "${mediaId}" in this project.` });
         // The Library's Analyze button is about the sound (D66), which is also the default.
@@ -138,7 +176,9 @@ export const layer = Layer.effect(
               if (r.job) return { analyzer, state: r.job.phase === "running" ? ("running" as const) : ("queued" as const), jobId: r.job.id };
               // Answered at once: a cached result, or why it can't run (a missing file, a closed project).
               const outcome = await r.done;
-              return outcome.state === "done" ? { analyzer, state: "done" as const } : { analyzer, failed: outcome.state === "failed" ? outcome.error : "The project closed before the analysis could start." };
+              return outcome.state === "done"
+                ? { analyzer, state: "done" as const }
+                : { analyzer, failed: outcome.state === "failed" ? outcome.error : "The project closed before the analysis could start." };
             }),
           ),
         );
@@ -151,7 +191,10 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new AnalysisError({ reason: "no-project", message: "Open a project first." });
-        const project = open.project as { canvas: { fps: number }; media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }> };
+        const project = open.project as {
+          canvas: { fps: number };
+          media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }>;
+        };
         const media = project.media.find((m) => m.id === mediaId);
         if (!media) return yield* new AnalysisError({ reason: "unknown-media", message: `There's no media "${mediaId}" in this project.` });
         const result = yield* Effect.promise(() => cachedFor(targetOf(open.dir, media, project.canvas.fps), analyzer));

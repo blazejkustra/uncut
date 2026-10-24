@@ -48,15 +48,17 @@ export function TextContent({ project, item, disabled }: { project: ProjectModel
     const pending = dirty.current;
     dirty.current = false;
     if (!pending || text === was) return dropDraft(d);
-    void actions.itemEdit((p) => planText(p, id, text), from).finally(() => {
-      dropDraft(d);
-      // Saved or refused (a conflict shows in the banner): show what's saved now, unless the user
-      // has typed on meanwhile.
-      if (dirty.current) return;
-      const snapshot = getState().snapshot;
-      const now = snapshot ? findItem(projectOf(snapshot), id)?.item.text : undefined;
-      if (now !== undefined) resync(now);
-    });
+    void actions
+      .itemEdit((p) => planText(p, id, text), from)
+      .finally(() => {
+        dropDraft(d);
+        // Saved or refused (a conflict shows in the banner): show what's saved now, unless the user
+        // has typed on meanwhile.
+        if (dirty.current) return;
+        const snapshot = getState().snapshot;
+        const now = snapshot ? findItem(projectOf(snapshot), id)?.item.text : undefined;
+        if (now !== undefined) resync(now);
+      });
   };
   // Leaving the item (another selection, the Inspector closing) saves what was typed.
   useEffect(
@@ -90,7 +92,14 @@ export function TextContent({ project, item, disabled }: { project: ProjectModel
     <div className="group">
       <div className="group-label row">
         <span>Text</span>
-        <button className="btn ghost small-btn" data-testid="insp-accent" title="Accent the selected words ([[ ]] in the text)" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={accent}>
+        <button
+          className="btn ghost small-btn"
+          data-testid="insp-accent"
+          title="Accent the selected words ([[ ]] in the text)"
+          disabled={disabled}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={accent}
+        >
           <Highlighter />
           Accent
         </button>

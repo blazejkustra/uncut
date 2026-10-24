@@ -62,7 +62,9 @@ export function uniqueId(project: ProjectModel, base: string, taken = new Set<st
 }
 
 /** `show`: where the playhead goes after the add (default `start`), e.g. past a text's in-move so it's on screen (F20). */
-export type Planned = { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number; readonly show?: number } | { readonly problem: string };
+export type Planned =
+  | { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number; readonly show?: number }
+  | { readonly problem: string };
 
 /**
  * "Add to timeline" for a library tile. Video and images are appended to the end of the magnetic
@@ -174,7 +176,14 @@ export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, 
   let media: Media | undefined = libraryMediaOf(project, sound.libraryId);
   if (!media) {
     if (!sound.path) return { problem: `${sound.name} isn't in the project yet.` };
-    media = { id: mediaIdFor(sound.name, projectIds(project)), kind: "audio", name: sound.name, path: sound.path, ...(sound.source ? { source: sound.source as Media["source"] } : {}), probe: { frames: Math.max(1, Math.floor(sound.seconds * fps)), hasAudio: true } };
+    media = {
+      id: mediaIdFor(sound.name, projectIds(project)),
+      kind: "audio",
+      name: sound.name,
+      path: sound.path,
+      ...(sound.source ? { source: sound.source as Media["source"] } : {}),
+      probe: { frames: Math.max(1, Math.floor(sound.seconds * fps)), hasAudio: true },
+    };
     taken.add(media.id);
     ops.push({ op: "add_media", media });
   }
@@ -185,7 +194,12 @@ export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, 
   if (sound.music && end > 0) {
     duration = Math.min(frames, end - start);
     if (duration < MIN_MUSIC_SECONDS * fps) {
-      return { problem: start >= end ? "The playhead is at the end of the video. Move it to where the music should start, then add it." : `Only ${((end - start) / fps).toFixed(1)} s of the video are left after the playhead. Move it earlier to add music there.` };
+      return {
+        problem:
+          start >= end
+            ? "The playhead is at the end of the video. Move it to where the music should start, then add it."
+            : `Only ${((end - start) / fps).toFixed(1)} s of the video are left after the playhead. Move it earlier to add music there.`,
+      };
     }
   }
   const freeOn = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
@@ -200,7 +214,11 @@ export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, 
   const fadeIn = sound.music ? Math.min(fps, Math.floor(duration / 4)) : 0;
   const fadeOut = sound.music ? Math.min(2 * fps, Math.floor(duration / 4)) : 0;
   const itemId = uniqueId(project, sound.music ? "audio" : "sound", taken);
-  ops.push({ op: "insert_item", track: target.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration, start, ...(fadeIn > 0 ? { fadeIn } : {}), ...(fadeOut > 0 ? { fadeOut } : {}) } });
+  ops.push({
+    op: "insert_item",
+    track: target.id,
+    item: { id: itemId, type: "audio", media: media.id, in: 0, duration, start, ...(fadeIn > 0 ? { fadeIn } : {}), ...(fadeOut > 0 ? { fadeOut } : {}) },
+  });
   return { ops, summary: `Add ${sound.name} from the ${sound.music ? "music" : "sound"} library`, itemId, start };
 }
 
@@ -225,7 +243,18 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
   const look = TEXT_STYLES[preset.module] ?? preset.look;
   const y = at && look ? Math.round(at.y - (project.canvas.height * look.size * look.lineHeight) / 2) : undefined;
   const transform = at && look ? (look.span ? { y: y! } : { x: Math.round(at.x), y: y! }) : undefined;
-  const plan = planInsertText(project, { look: preset.module, text: preset.text, start, duration, idBase: preset.look ? preset.id.split(".").at(-1)! : preset.id, ...(transform ? { transform } : {}) }, preset.look ? { [preset.module]: preset.look } : {});
+  const plan = planInsertText(
+    project,
+    {
+      look: preset.module,
+      text: preset.text,
+      start,
+      duration,
+      idBase: preset.look ? preset.id.split(".").at(-1)! : preset.id,
+      ...(transform ? { transform } : {}),
+    },
+    preset.look ? { [preset.module]: preset.look } : {},
+  );
   if ("problem" in plan) return plan;
   // F20 (D158): the playhead goes where the new text is fully on screen (after its in-move).
   const added = plan.ops.find((o) => o.op === "insert_item" && o.item.id === plan.itemId) as { item: Item } | undefined;
@@ -236,7 +265,9 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
 /** A background's colours in words: "Background #0B1D3A", "Gradient #0B1D3A → #3B1E54". */
 const colourName = (value: unknown) => (typeof value === "string" ? value : "default");
 export const backgroundLabel = (item: Item) =>
-  item.props?.to !== undefined ? `${item.props?.gradient === "radial" ? "Radial gradient" : "Gradient"} ${colourName(item.props?.color)} → ${colourName(item.props.to)}` : `Background ${colourName(item.props?.color)}`;
+  item.props?.to !== undefined
+    ? `${item.props?.gradient === "radial" ? "Radial gradient" : "Gradient"} ${colourName(item.props?.color)} → ${colourName(item.props.to)}`
+    : `Background ${colourName(item.props?.color)}`;
 
 /** What a timeline item is called: its text, a background's colour, its media's name, or its id. */
 export function itemLabel(project: ProjectModel, item: Item) {
@@ -246,7 +277,9 @@ export function itemLabel(project: ProjectModel, item: Item) {
   const component = item.type === "component" && !item.name ? componentInfo(item.component) : undefined;
   if (component) {
     const p = item.props ?? {};
-    const words = [p.title, p.code, Array.isArray(p.lines) ? (p.lines[0] as { text?: unknown } | undefined)?.text : undefined, p.device].find((v): v is string => typeof v === "string" && v.trim() !== "");
+    const words = [p.title, p.code, Array.isArray(p.lines) ? (p.lines[0] as { text?: unknown } | undefined)?.text : undefined, p.device].find(
+      (v): v is string => typeof v === "string" && v.trim() !== "",
+    );
     return words ? `${component.name}: ${words}` : component.name;
   }
   if (item.type === "graphic" && !item.name && item.src) return `Graphic: ${item.src.replace(/^graphics\//, "")}`;

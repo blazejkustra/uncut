@@ -185,7 +185,13 @@ export const presentedFrames = new WeakMap<HTMLVideoElement, number>();
 
 /** What a source shows now: a <video>'s presented frame (or its time), an <img>'s file; undefined for a canvas. */
 export const frameKeyOf = (source: TexImageSource): string | undefined =>
-  source instanceof HTMLVideoElement ? (presentedFrames.get(source) ? `p${presentedFrames.get(source)}` : `v${source.currentTime}`) : source instanceof HTMLImageElement ? `i${source.currentSrc}` : undefined;
+  source instanceof HTMLVideoElement
+    ? presentedFrames.get(source)
+      ? `p${presentedFrames.get(source)}`
+      : `v${source.currentTime}`
+    : source instanceof HTMLImageElement
+      ? `i${source.currentSrc}`
+      : undefined;
 
 type Program = { readonly program: WebGLProgram; readonly uniforms: Map<string, WebGLUniformLocation | null> };
 type Target = { readonly tex: WebGLTexture; readonly fbo: WebGLFramebuffer; w: number; h: number };
@@ -378,8 +384,8 @@ export class FxRenderer {
   }
 
   /**
-  *Draws `source` (a <video> or <img>) with `fx` into the canvas at w × h (whole px). `k` is px
-  *per canvas px (1 in the preview; less in a thumbnail), `t` the moment (s) from the clip's start.
+   *Draws `source` (a <video> or <img>) with `fx` into the canvas at w × h (whole px). `k` is px
+   *per canvas px (1 in the preview; less in a thumbnail), `t` the moment (s) from the clip's start.
    */
   render(source: TexImageSource, fx: ClipFx, w: number, h: number, t: number, k = 1, key?: string, output: WebGLFramebuffer | null = null): boolean {
     const gl = this.gl;
@@ -410,16 +416,16 @@ export class FxRenderer {
     let zoomed = [w, h];
     let win = [0, 0];
     if (fx.shake) {
-      const z = shakeZoom(fx.shake.amount*k, w, h);
-      const zw = Math.max(w, Math.round(w*z));
-      const zh = Math.max(h, Math.round(h*z));
+      const z = shakeZoom(fx.shake.amount * k, w, h);
+      const zw = Math.max(w, Math.round(w * z));
+      const zh = Math.max(h, Math.round(h * z));
       const o = shakeWindow(fx.shake, t, w, h, zw, zh, k);
       zoomed = [zw, zh];
       win = [o.x, o.y];
     }
     const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true };
     // Pixelate: block averages first.
-    const block = fx.pixelate ? Math.max(1, Math.round(fx.pixelate*k)) : 1;
+    const block = fx.pixelate ? Math.max(1, Math.round(fx.pixelate * k)) : 1;
     let blocks: Target | undefined;
     if (block > 1) {
       blocks = this.target("blocks", Math.ceil(w / block), Math.ceil(h / block), gl.NEAREST);
@@ -436,11 +442,19 @@ export class FxRenderer {
     let img = this.target("colour", w, h, gl.NEAREST);
     if (blocks) this.bind(1, blocks.tex);
     this.bind(0, this.src);
-    this.use(this.program("colour", COLOUR), { ...pictureUniforms, uBlocks: { int: 1 }, uBlock: { int: block }, uLut: { int: 2 }, uLutN: { int: lut ? lut.size : 0 }, uLevels: fx.posterize ?? 0, uFlipY: false });
+    this.use(this.program("colour", COLOUR), {
+      ...pictureUniforms,
+      uBlocks: { int: 1 },
+      uBlock: { int: block },
+      uLut: { int: 2 },
+      uLutN: { int: lut ? lut.size : 0 },
+      uLevels: fx.posterize ?? 0,
+      uFlipY: false,
+    });
     // Targets hold rows from the top (texImage2D puts the image's first row at t = 0); FINAL flips them onto the canvas.
     this.draw(img, w, h);
-    const split = fx.rgbSplit ? Math.round(fx.rgbSplit*k) : 0;
-    const sharp = fx.sharpen ? Math.round(fx.sharpen*16) : 0;
+    const split = fx.rgbSplit ? Math.round(fx.rgbSplit * k) : 0;
+    const sharp = fx.sharpen ? Math.round(fx.sharpen * 16) : 0;
     if (split > 0 || sharp > 0) {
       const out = this.target("spatial", w, h, gl.NEAREST);
       this.bind(0, img.tex);
@@ -451,7 +465,7 @@ export class FxRenderer {
     let glow: Target | undefined;
     if (fx.glow) {
       // Blurred at a reduced size when it's wide (the blur hides the difference), then screened on.
-      const sigma = Math.max(0.5, fx.glow.radius*k);
+      const sigma = Math.max(0.5, fx.glow.radius * k);
       const s = Math.max(1, Math.floor(sigma / 4));
       const gw = Math.max(1, Math.ceil(w / s));
       const gh = Math.max(1, Math.ceil(h / s));
@@ -460,10 +474,28 @@ export class FxRenderer {
       this.bind(0, img.tex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      this.use(this.program("glow", GLOW), { uImg: { int: 0 }, uImgSize: [w, h], uOut: [gw, gh], uDir: [1, 0], uSigma: sigma / s, uThreshold: true, uLow: fx.glow.threshold, uAmount: fx.glow.amount });
+      this.use(this.program("glow", GLOW), {
+        uImg: { int: 0 },
+        uImgSize: [w, h],
+        uOut: [gw, gh],
+        uDir: [1, 0],
+        uSigma: sigma / s,
+        uThreshold: true,
+        uLow: fx.glow.threshold,
+        uAmount: fx.glow.amount,
+      });
       this.draw(a, gw, gh);
       this.bind(0, a.tex);
-      this.use(this.program("glow", GLOW), { uImg: { int: 0 }, uImgSize: [gw, gh], uOut: [gw, gh], uDir: [0, 1], uSigma: sigma / s, uThreshold: false, uLow: 0, uAmount: 1 });
+      this.use(this.program("glow", GLOW), {
+        uImg: { int: 0 },
+        uImgSize: [gw, gh],
+        uOut: [gw, gh],
+        uDir: [0, 1],
+        uSigma: sigma / s,
+        uThreshold: false,
+        uLow: 0,
+        uAmount: 1,
+      });
       this.draw(b, gw, gh);
       this.bind(0, img.tex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);

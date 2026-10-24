@@ -71,7 +71,11 @@ export interface ExportInput {
 /** D292: a frame session's renders (exporter/frames.ts openFrameSession), as effects. */
 export interface FrameSessionShape {
   /** As renderFrames; `until` is asked before each frame and, once true, the rest are left out. */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly motionBlur?: boolean; readonly census?: boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  readonly render: (
+    frames: ReadonlyArray<number>,
+    width: number,
+    o?: { readonly until?: () => boolean; readonly motionBlur?: boolean; readonly census?: boolean },
+  ) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
   /** As sheetImage, drawn by the session's rasteriser. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
   /** The export's graphics rehearsed on the session's rasteriser (exporter/rehearse.ts), within `budgetMs`. */
@@ -93,7 +97,10 @@ export interface ExporterShape {
    * D292: `use` with one frame session of the open project (one rasteriser, one temp folder, the
    * plan once per width), closed when it ends: many renders without a rasteriser start each.
    */
-  readonly frameSession: <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options?: FrameSessionOptions) => Effect.Effect<A, E | ExportError, R>;
+  readonly frameSession: <A, E, R>(
+    use: (session: FrameSessionShape) => Effect.Effect<A, E, R>,
+    options?: FrameSessionOptions,
+  ) => Effect.Effect<A, E | ExportError, R>;
   /** contact_sheet (D65): the first video stream of `path` at each of `seconds`, `width` px wide, as JPEGs. */
   readonly mediaFrames: (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) => Effect.Effect<ReadonlyArray<MediaFrame>, ExportError>;
   /** contact_sheet (D65): the cells in a grid with their captions, drawn by the rasteriser, as one JPEG. */
@@ -168,39 +175,72 @@ export const layer = Layer.effect(
         const project = sliced;
         const range = input.range ? clampRange(whole, input.range) : undefined;
         const output = input.output.trim();
-        if (!isAbsolute(output) || !/\.mp4$/i.test(output)) return yield* new ExportError({ reason: "invalid-path", message: "Choose where to save the video: a .mp4 file." });
-        const folder = yield* Effect.promise(() => stat(dirname(output)).then((s) => s.isDirectory(), () => false));
+        if (!isAbsolute(output) || !/\.mp4$/i.test(output))
+          return yield* new ExportError({ reason: "invalid-path", message: "Choose where to save the video: a .mp4 file." });
+        const folder = yield* Effect.promise(() =>
+          stat(dirname(output)).then(
+            (s) => s.isDirectory(),
+            () => false,
+          ),
+        );
         if (!folder) return yield* new ExportError({ reason: "invalid-path", message: `The folder ${dirname(output)} doesn't exist.` });
-        const writable = yield* Effect.promise(() => access(dirname(output), constants.W_OK).then(() => undefined, (error: unknown) => error));
+        const writable = yield* Effect.promise(() =>
+          access(dirname(output), constants.W_OK).then(
+            () => undefined,
+            (error: unknown) => error,
+          ),
+        );
         if (writable) return yield* new ExportError({ reason: "invalid-path", message: plainFsError(writable, dirname(output)) });
         const target = yield* Effect.promise(() => canonical(output));
         const media = yield* Effect.promise(() => Promise.all(project.media.map((m) => canonical(mediaPath(m)))));
-        if (media.includes(target)) return yield* new ExportError({ reason: "source-media", message: `Saving as ${basename(output)} would replace footage this project uses. Choose another name or folder.` });
+        if (media.includes(target))
+          return yield* new ExportError({
+            reason: "source-media",
+            message: `Saving as ${basename(output)} would replace footage this project uses. Choose another name or folder.`,
+          });
         const busy = yield* Effect.promise(async () => {
-          for (const j of Effect.runSync(SubscriptionRef.get(jobsRef))) if (["queued", "preparing", "rendering"].includes(j.phase) && (await canonical(j.output)) === target) return true;
+          for (const j of Effect.runSync(SubscriptionRef.get(jobsRef)))
+            if (["queued", "preparing", "rendering"].includes(j.phase) && (await canonical(j.output)) === target) return true;
           return false;
         });
-        if (busy) return yield* new ExportError({ reason: "busy", message: `Another export is already saving to ${basename(output)}. Wait for it, or choose another name.` });
-        if (!input.overwrite && (yield* Effect.promise(() => exists(output)))) return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
+        if (busy)
+          return yield* new ExportError({
+            reason: "busy",
+            message: `Another export is already saving to ${basename(output)}. Wait for it, or choose another name.`,
+          });
+        if (!input.overwrite && (yield* Effect.promise(() => exists(output))))
+          return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
         // Subtitles (D105): a file next to the video (same name, .srt / .vtt) and / or a soft track.
         const subtitlesFile = input.subtitles?.file ? output.replace(/\.mp4$/i, `.${input.subtitles.file}`) : undefined;
-        if ((subtitlesFile || input.subtitles?.track) && !subtitleCues(project).length) return yield* new ExportError({ reason: "empty", message: NO_SUBTITLES });
+        if ((subtitlesFile || input.subtitles?.track) && !subtitleCues(project).length)
+          return yield* new ExportError({ reason: "empty", message: NO_SUBTITLES });
         if (subtitlesFile) {
           const sideTarget = yield* Effect.promise(() => canonical(subtitlesFile));
-          if (media.includes(sideTarget)) return yield* new ExportError({ reason: "source-media", message: `Saving as ${basename(subtitlesFile)} would replace a file this project uses. Choose another name or folder.` });
+          if (media.includes(sideTarget))
+            return yield* new ExportError({
+              reason: "source-media",
+              message: `Saving as ${basename(subtitlesFile)} would replace a file this project uses. Choose another name or folder.`,
+            });
           const imported = yield* Effect.promise(() => overwritesImported(dir, subtitlesFile));
           if (imported) return yield* new ExportError({ reason: "source-media", message: imported });
-          if (!input.overwrite && (yield* Effect.promise(() => exists(subtitlesFile)))) return yield* new ExportError({ reason: "exists", message: `${basename(subtitlesFile)} already exists in that folder.` });
+          if (!input.overwrite && (yield* Effect.promise(() => exists(subtitlesFile))))
+            return yield* new ExportError({ reason: "exists", message: `${basename(subtitlesFile)} already exists in that folder.` });
         }
-        if (!(yield* Effect.promise(ffmpegBin))) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
+        if (!(yield* Effect.promise(ffmpegBin)))
+          return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
         // F4 (D171): H.264 unless HEVC is asked for; the Advanced size, rate and bitrate when given.
         const video = input.video ?? {};
         const codec = video.codec ?? "h264";
         const bad = (x: number | undefined, lo: number, hi: number) => x !== undefined && !(Number.isFinite(x) && x >= lo && x <= hi);
-        if (bad(video.bitrateMbps, 0.1, 500) || bad(video.shortSide, 16, 8192) || bad(video.fps, 1, 120)) return yield* new ExportError({ reason: "invalid-settings", message: "Those video settings can't be used: a bitrate of 0.1 to 500 Mb/s, a size of 16 to 8192 px and 1 to 120 fps." });
+        if (bad(video.bitrateMbps, 0.1, 500) || bad(video.shortSide, 16, 8192) || bad(video.fps, 1, 120))
+          return yield* new ExportError({
+            reason: "invalid-settings",
+            message: "Those video settings can't be used: a bitrate of 0.1 to 500 Mb/s, a size of 16 to 8192 px and 1 to 120 fps.",
+          });
         const size = outputSize(project.canvas, input.quality, video.shortSide);
         const bin = (yield* Effect.promise(ffmpegBin))!;
-        if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin)))) return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
+        if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin))))
+          return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
         // D198: graphics with the fonts and logos they name; the kit's faces for texts and components.
         const { graphics, fonts } = yield* Effect.promise(() => projectGraphics(config, dir, project));
@@ -209,7 +249,8 @@ export const layer = Layer.effect(
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
         const burnCaptions = input.burnCaptions !== false;
         const motionBlur = input.motionBlur ?? motionBlurDefault(project, input.quality);
-        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur });
+        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) =>
+          planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur });
         const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
@@ -249,14 +290,16 @@ export const layer = Layer.effect(
           return [...jobs.filter((j) => !finished.includes(j)), ...finished.slice(-MAX_JOBS_KEPT), job];
         });
         // One at a time, outside the request: a dropped connection doesn't stop it.
-        queue = queue.then(async () => {
-          if (controller.signal.aborted) return; // cancelled while queued: already marked
-          // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
-          patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
-          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes, RASTER_CSS + fonts.kitCss);
-          await running;
-          running = undefined;
-        }).finally(() => controllers.delete(id));
+        queue = queue
+          .then(async () => {
+            if (controller.signal.aborted) return; // cancelled while queued: already marked
+            // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
+            patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
+            running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes, RASTER_CSS + fonts.kitCss);
+            await running;
+            running = undefined;
+          })
+          .finally(() => controllers.delete(id));
         return { jobId: id };
       });
 
@@ -308,7 +351,8 @@ export const layer = Layer.effect(
             use({
               render: (frames, width, o) => Effect.tryPromise({ try: (signal) => session.render(frames, width, { ...o, signal }), catch: failed }),
               // A sheet the session can't draw gets the sheet's own rasteriser.
-              sheet: (cells, layout) => Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
+              sheet: (cells, layout) =>
+                Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
               rehearse: (budgetMs) => Effect.tryPromise({ try: (signal) => session.rehearse(budgetMs, { signal }), catch: failed }),
             }),
           ({ session, life }) =>
@@ -360,6 +404,18 @@ export const layer = Layer.effect(
       });
 
     const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), jobList: SubscriptionRef.get(jobsRef), busy, renderFrames, frameSession, mediaFrames, sheetImage, saveSubtitles, previewLoudness });
+    return Exporter.of({
+      start,
+      cancel,
+      jobs: SubscriptionRef.changes(jobsRef),
+      jobList: SubscriptionRef.get(jobsRef),
+      busy,
+      renderFrames,
+      frameSession,
+      mediaFrames,
+      sheetImage,
+      saveSubtitles,
+      previewLoudness,
+    });
   }),
 );

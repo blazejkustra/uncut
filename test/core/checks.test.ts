@@ -7,14 +7,42 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { planInsertText, type Op } from "../../packages/core/src/index.ts";
-import { applyEdit, CHECK_IDS, CHECK_RULES, checkRule, createSession, loadModules, planDisableCheck, projectChecks, validateOps, validateProject, type Check, type CheckRule, type Item, type Project, type Track } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  CHECK_IDS,
+  CHECK_RULES,
+  checkRule,
+  createSession,
+  loadModules,
+  planDisableCheck,
+  projectChecks,
+  validateOps,
+  validateProject,
+  type Check,
+  type CheckRule,
+  type Item,
+  type Project,
+  type Track,
+} from "../../packages/core/src/index.ts";
 import { budget, slowdown } from "../helpers/timing.ts";
 
 const modules = await loadModules("spec/modules/builtin", "spec/examples/plugins");
 const FPS = 30;
 
 /** A 10 s 1080×1350 project: footage on main, a text track and an audio track (music) with the given items. */
-function make({ texts = [], main, audio = [], extra = [], canvas }: { texts?: Array<Partial<Item>>; main?: Array<Partial<Item>>; audio?: Array<Partial<Item>>; extra?: Array<Track>; canvas?: Project["canvas"] } = {}): Project {
+function make({
+  texts = [],
+  main,
+  audio = [],
+  extra = [],
+  canvas,
+}: {
+  texts?: Array<Partial<Item>>;
+  main?: Array<Partial<Item>>;
+  audio?: Array<Partial<Item>>;
+  extra?: Array<Track>;
+  canvas?: Project["canvas"];
+} = {}): Project {
   return {
     format: "uncut/0",
     name: "Checks",
@@ -25,10 +53,30 @@ function make({ texts = [], main, audio = [], extra = [], canvas }: { texts?: Ar
       { id: "m-voice", kind: "audio", name: "Voice.m4a", path: "/tmp/voice.m4a", probe: { frames: 3000 } },
     ],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: texts.map((t, i) => ({ id: `t${i + 1}`, type: "text", start: 0, duration: 150, text: "Hi", style: { preset: "text.title", size: 96 }, ...t }) as Item) },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: texts.map(
+          (t, i) => ({ id: `t${i + 1}`, type: "text", start: 0, duration: 150, text: "Hi", style: { preset: "text.title", size: 96 }, ...t }) as Item,
+        ),
+      },
       ...extra,
-      { id: "main", kind: "video", role: "main", name: "Main", items: (main ?? [{ duration: 300 }]).map((c, i) => ({ id: `c${i + 1}`, type: "clip", media: "m-clip", in: 0, ...c }) as Item) },
-      { id: "music", kind: "audio", name: "Music", items: audio.map((a, i) => ({ id: `a${i + 1}`, type: "audio", media: "m-song", in: 0, start: 0, duration: 300, fadeIn: 30, fadeOut: 60, ...a }) as Item) },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: (main ?? [{ duration: 300 }]).map((c, i) => ({ id: `c${i + 1}`, type: "clip", media: "m-clip", in: 0, ...c }) as Item),
+      },
+      {
+        id: "music",
+        kind: "audio",
+        name: "Music",
+        items: audio.map(
+          (a, i) => ({ id: `a${i + 1}`, type: "audio", media: "m-song", in: 0, start: 0, duration: 300, fadeIn: 30, fadeOut: 60, ...a }) as Item,
+        ),
+      },
     ],
   };
 }
@@ -49,14 +97,24 @@ test("the registry: unique ids, titles and descriptions; a clean project has onl
     assert.ok(r.title && r.description, r.id);
     assert.ok(!/[·•]|\s\*\s/.test(`${r.title} ${r.description}`.replace(/No ·, • or \*/, "")), `${r.id} doesn't put dots between words`);
   }
-  const clean = make({ texts: [{ text: "We built it 7 times", duration: 150 }, { text: "One sentence here", start: 150, duration: 150 }] });
+  const clean = make({
+    texts: [
+      { text: "We built it 7 times", duration: 150 },
+      { text: "One sentence here", start: 150, duration: 150 },
+    ],
+  });
   assert.deepEqual(validateProject(clean, modules), []);
   assert.deepEqual(ids(projectChecks(clean)), [], JSON.stringify(projectChecks(clean)));
 });
 
 test("read time: words ÷ 3 s (2 s minimum) after the in move; the fix lengthens it when the track has room", () => {
   // 9 words need 3 s; 2 s with a 0.5 s fade in = 1.5 s fully shown.
-  const p = make({ texts: [{ text: "This is a line with nine words on it", duration: 60, animation: { in: { module: "move.fade", duration: 15 } } }, { text: "Later", start: 200, duration: 90 }] });
+  const p = make({
+    texts: [
+      { text: "This is a line with nine words on it", duration: 60, animation: { in: { module: "move.fade", duration: 15 } } },
+      { text: "Later", start: 200, duration: 90 },
+    ],
+  });
   const [c] = only(p, "text-read-time");
   assert.ok(c);
   assert.deepEqual(c.itemIds, ["t1"]);
@@ -65,25 +123,90 @@ test("read time: words ÷ 3 s (2 s minimum) after the in move; the fix lengthens
   assert.equal(fixed.tracks[0]!.items[0]!.duration, 105);
   assert.deepEqual(only(fixed, "text-read-time"), []);
   // Short text: 2 s minimum. 1.9 s warns, 2 s doesn't.
-  assert.equal(only(make({ texts: [{ text: "Hi", duration: 57 }, { text: "x y", start: 100, duration: 120 }] }), "text-read-time").length, 1);
-  assert.equal(only(make({ texts: [{ text: "Hi", duration: 60 }, { text: "x y", start: 100, duration: 120 }] }), "text-read-time").length, 0);
+  assert.equal(
+    only(
+      make({
+        texts: [
+          { text: "Hi", duration: 57 },
+          { text: "x y", start: 100, duration: 120 },
+        ],
+      }),
+      "text-read-time",
+    ).length,
+    1,
+  );
+  assert.equal(
+    only(
+      make({
+        texts: [
+          { text: "Hi", duration: 60 },
+          { text: "x y", start: 100, duration: 120 },
+        ],
+      }),
+      "text-read-time",
+    ).length,
+    0,
+  );
   // No room before the next text: a hint, no fix.
-  const tight = only(make({ texts: [{ text: "This is a line with nine words on it", duration: 60 }, { text: "Next", start: 60, duration: 120 }] }), "text-read-time")[0]!;
+  const tight = only(
+    make({
+      texts: [
+        { text: "This is a line with nine words on it", duration: 60 },
+        { text: "Next", start: 60, duration: 120 },
+      ],
+    }),
+    "text-read-time",
+  )[0]!;
   assert.equal(tight.fix, undefined);
   assert.ok(tight.hint);
 });
 
 test("the last text holds 3 s; no new text in the final 2 s", () => {
-  const p = make({ texts: [{ text: "First", duration: 90 }, { text: "Bye", start: 230, duration: 70 }] });
+  const p = make({
+    texts: [
+      { text: "First", duration: 90 },
+      { text: "Bye", start: 230, duration: 70 },
+    ],
+  });
   const last = only(p, "last-text-hold");
   assert.equal(last.length, 1);
   assert.deepEqual(last[0]!.itemIds, ["t2"]);
   assert.equal(last[0]!.fix, undefined, "it already ends with the video: nothing to lengthen into");
-  assert.deepEqual(only(make({ texts: [{ text: "First", duration: 90 }, { text: "Bye", start: 200, duration: 100 }] }), "last-text-hold"), []);
-  const late = only(make({ texts: [{ text: "First", duration: 90 }, { text: "Bye", start: 250, duration: 50 }] }), "late-text");
+  assert.deepEqual(
+    only(
+      make({
+        texts: [
+          { text: "First", duration: 90 },
+          { text: "Bye", start: 200, duration: 100 },
+        ],
+      }),
+      "last-text-hold",
+    ),
+    [],
+  );
+  const late = only(
+    make({
+      texts: [
+        { text: "First", duration: 90 },
+        { text: "Bye", start: 250, duration: 50 },
+      ],
+    }),
+    "late-text",
+  );
   assert.equal(late.length, 1);
   assert.match(late[0]!.message, /starts 1\.7 s before the end/);
-  assert.deepEqual(only(make({ texts: [{ text: "First", duration: 90 }, { text: "Bye", start: 240, duration: 60 }] }), "late-text"), []);
+  assert.deepEqual(
+    only(
+      make({
+        texts: [
+          { text: "First", duration: 90 },
+          { text: "Bye", start: 240, duration: 60 },
+        ],
+      }),
+      "late-text",
+    ),
+    [],
+  );
   // The last text's hold is lengthened when there's room.
   const room = make({ texts: [{ text: "Last one", start: 100, duration: 60 }] });
   const fixed = applyFix(room, only(room, "last-text-hold")[0]!);
@@ -98,7 +221,11 @@ test("trailing periods, dots between words and filler phrases", () => {
   const dots = only(p, "dot-separators")[0]!;
   assert.equal(applyFix(p, dots).tracks[0]!.items[1]!.text, "Swift, Kotlin, Dart, TS");
   // Per line, after closing markup; an ellipsis, a period inside, **bold** and a decimal are fine.
-  assert.equal(applyFix(make({ texts: [{ text: "One thing.\n[[Another.]]" }] }), only(make({ texts: [{ text: "One thing.\n[[Another.]]" }] }), "trailing-period")[0]!).tracks[0]!.items[0]!.text, "One thing\n[[Another]]");
+  assert.equal(
+    applyFix(make({ texts: [{ text: "One thing.\n[[Another.]]" }] }), only(make({ texts: [{ text: "One thing.\n[[Another.]]" }] }), "trailing-period")[0]!)
+      .tracks[0]!.items[0]!.text,
+    "One thing\n[[Another]]",
+  );
   for (const text of ["Wait for it...", "v1.2 is out", "**Fast** and *small*", "3.5 s faster"]) {
     const q = make({ texts: [{ text }] });
     assert.deepEqual([...only(q, "trailing-period"), ...only(q, "dot-separators")], [], text);
@@ -124,25 +251,69 @@ test("frame 1: empty or fading in from black warns; the fix drops the fade", () 
 });
 
 test("crowded text, typefaces, small text and the safe area", () => {
-  const crowded = make({ texts: [{ text: "One" }, { text: "Two", style: { preset: "text.header", size: 60 } }] , extra: [{ id: "text-2", kind: "text", name: "Text 2", items: [{ id: "x3", type: "text", start: 30, duration: 60, text: "Three", style: { preset: "text.header", size: 60 } }] }] });
+  const crowded = make({
+    texts: [{ text: "One" }, { text: "Two", style: { preset: "text.header", size: 60 } }],
+    extra: [
+      {
+        id: "text-2",
+        kind: "text",
+        name: "Text 2",
+        items: [{ id: "x3", type: "text", start: 30, duration: 60, text: "Three", style: { preset: "text.header", size: 60 } }],
+      },
+    ],
+  });
   // Two on one free track can't overlap; the third is on another track.
   const p = { ...crowded, tracks: crowded.tracks.map((t) => (t.id === "text" ? { ...t, items: [t.items[0]!] } : t)) };
   assert.deepEqual(only(p, "crowded-text"), []);
-  const three = { ...crowded, tracks: [...crowded.tracks.map((t) => (t.id === "text" ? { ...t, items: [t.items[0]!] } : t)), { id: "text-3", kind: "text", name: "Text 3", items: [{ id: "x4", type: "text", start: 45, duration: 60, text: "Four", style: { preset: "text.header", size: 60 } }] } as Track] };
+  const three = {
+    ...crowded,
+    tracks: [
+      ...crowded.tracks.map((t) => (t.id === "text" ? { ...t, items: [t.items[0]!] } : t)),
+      {
+        id: "text-3",
+        kind: "text",
+        name: "Text 3",
+        items: [{ id: "x4", type: "text", start: 45, duration: 60, text: "Four", style: { preset: "text.header", size: 60 } }],
+      } as Track,
+    ],
+  };
   const c = only(three, "crowded-text")[0]!;
   assert.equal(c.itemIds!.length, 3);
   assert.equal(c.frame, 45);
   // A footnote in the Footnote look (the disclosure line) doesn't count toward crowding (D96); a third text of any other look does.
-  const withFootnote = (preset: string) => ({ ...three, tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset, size: 28 } })) } : t)) });
+  const withFootnote = (preset: string) => ({
+    ...three,
+    tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset, size: 28 } })) } : t)),
+  });
   assert.deepEqual(only(withFootnote("text.footnote"), "crowded-text"), []);
   assert.equal(only(withFootnote("text.caption"), "crowded-text").length, 1);
   // A "footnote" blown up past the look's own size (3 % of the canvas height) is a headline again: it counts.
-  const big = { ...three, tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset: "text.footnote", size: 80 } })) } : t)) };
+  const big = {
+    ...three,
+    tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset: "text.footnote", size: 80 } })) } : t)),
+  };
   assert.equal(only(big, "crowded-text").length, 1);
 
   // The built-in looks mix the system sans and DM Sans: one family for the rule (D90). Another family isn't.
-  assert.deepEqual(only(make({ texts: [{ text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } }, { text: "System", start: 150, style: { preset: "text.title", size: 96 } }] }), "one-typeface"), []);
-  const fonts = make({ texts: [{ text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } }, { text: "Serif", start: 150, style: { preset: "text.title", size: 96, font: "Georgia" } }, { text: "System", start: 300, duration: 100, style: { preset: "text.title", size: 96 } }] });
+  assert.deepEqual(
+    only(
+      make({
+        texts: [
+          { text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } },
+          { text: "System", start: 150, style: { preset: "text.title", size: 96 } },
+        ],
+      }),
+      "one-typeface",
+    ),
+    [],
+  );
+  const fonts = make({
+    texts: [
+      { text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } },
+      { text: "Serif", start: 150, style: { preset: "text.title", size: 96, font: "Georgia" } },
+      { text: "System", start: 300, duration: 100, style: { preset: "text.title", size: 96 } },
+    ],
+  });
   const tf = only(fonts, "one-typeface")[0]!;
   assert.match(tf.message, /2 typefaces \(DM Sans and Georgia\)/);
   assert.deepEqual(tf.itemIds, ["t2"]);
@@ -150,9 +321,29 @@ test("crowded text, typefaces, small text and the safe area", () => {
   assert.deepEqual(same.tracks[0]!.items[1]!.style, { preset: "text.title", size: 96, font: "DM Sans" });
   assert.deepEqual(only(same, "one-typeface"), []);
   // A theme that names its sans makes it a family of its own.
-  const themed = { ...make({ texts: [{ text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } }, { text: "System", start: 150, style: { preset: "text.title", size: 96 } }] }), theme: { fonts: { sans: "Inter" } } };
+  const themed = {
+    ...make({
+      texts: [
+        { text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } },
+        { text: "System", start: 150, style: { preset: "text.title", size: 96 } },
+      ],
+    }),
+    theme: { fonts: { sans: "Inter" } },
+  };
   assert.match(only(themed, "one-typeface")[0]!.message, /Inter and DM Sans|DM Sans and Inter/);
-  assert.deepEqual(only(make({ texts: [{ text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } }, { text: "npx it", start: 150, style: { preset: "text.title", size: 40, font: "DM Mono" } }] }), "one-typeface"), [], "a mono face doesn't count");
+  assert.deepEqual(
+    only(
+      make({
+        texts: [
+          { text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } },
+          { text: "npx it", start: 150, style: { preset: "text.title", size: 40, font: "DM Mono" } },
+        ],
+      }),
+      "one-typeface",
+    ),
+    [],
+    "a mono face doesn't count",
+  );
 
   const small = make({ texts: [{ text: "Tiny footnote", style: { preset: "text.footnote", size: 20, color: "mute" } }] });
   const s = only(small, "small-text")[0]!;
@@ -160,11 +351,22 @@ test("crowded text, typefaces, small text and the safe area", () => {
   const fixed = applyFix(small, s);
   assert.deepEqual(fixed.tracks[0]!.items[0]!.style, { preset: "text.footnote", size: 28, color: "mute" }, "the rest of the style is kept");
   // Scaled to the canvas: 20 px is fine on a 720-tall canvas? 28 × 720/1080 = 18.7.
-  assert.deepEqual(only(make({ canvas: { width: 1280, height: 720, fps: 30 }, texts: [{ text: "Small", style: { preset: "text.title", size: 20 } }] }), "small-text"), []);
+  assert.deepEqual(
+    only(make({ canvas: { width: 1280, height: 720, fps: 30 }, texts: [{ text: "Small", style: { preset: "text.title", size: 20 } }] }), "small-text"),
+    [],
+  );
 
-  const edge = make({ texts: [{ text: "Edge", transform: { x: 10, y: 600 } }, { text: "Bottom", start: 150, transform: { x: 100, y: 1300 } }] });
+  const edge = make({
+    texts: [
+      { text: "Edge", transform: { x: 10, y: 600 } },
+      { text: "Bottom", start: 150, transform: { x: 100, y: 1300 } },
+    ],
+  });
   const e = only(edge, "text-edge");
-  assert.deepEqual(e.map((x) => x.itemIds![0]), ["t1", "t2"]);
+  assert.deepEqual(
+    e.map((x) => x.itemIds![0]),
+    ["t1", "t2"],
+  );
   assert.match(e[0]!.message, /left edge/);
   assert.match(e[1]!.message, /bottom edge/);
   assert.deepEqual(only(make({ texts: [{ text: "Fine", transform: { x: 100, y: 600 } }] }), "text-edge"), []);
@@ -175,21 +377,60 @@ test("one footage speed, same entrance, long transitions, blank stretches", () =
   const s = only(speeds, "one-speed")[0]!;
   assert.match(s.message, /1× and 3×/);
   assert.deepEqual(s.itemIds, ["c2"]);
-  assert.deepEqual(only(make({ main: [{ duration: 150, speed: 2 }, { duration: 150, in: 400, speed: 2 }] }), "one-speed"), [], "one speed, even if not 1×");
+  assert.deepEqual(
+    only(
+      make({
+        main: [
+          { duration: 150, speed: 2 },
+          { duration: 150, in: 400, speed: 2 },
+        ],
+      }),
+      "one-speed",
+    ),
+    [],
+    "one speed, even if not 1×",
+  );
 
   const fade = { module: "move.rise", duration: 9 };
-  const same = make({ texts: [{ text: "A b", animation: { in: fade } }, { text: "C d", start: 100, animation: { in: fade } }, { text: "E f", start: 200, duration: 100, animation: { in: fade } }] });
+  const same = make({
+    texts: [
+      { text: "A b", animation: { in: fade } },
+      { text: "C d", start: 100, animation: { in: fade } },
+      { text: "E f", start: 200, duration: 100, animation: { in: fade } },
+    ],
+  });
   assert.equal(only(same, "same-entrance")[0]!.severity, "info");
-  assert.deepEqual(only(make({ texts: [{ text: "A b", animation: { in: fade } }, { text: "C d", start: 100 }, { text: "E f", start: 200, duration: 100, animation: { in: fade } }] }), "same-entrance"), []);
+  assert.deepEqual(
+    only(
+      make({
+        texts: [
+          { text: "A b", animation: { in: fade } },
+          { text: "C d", start: 100 },
+          { text: "E f", start: 200, duration: 100, animation: { in: fade } },
+        ],
+      }),
+      "same-entrance",
+    ),
+    [],
+  );
 
   const long = make({ main: [{ duration: 150 }, { duration: 150, in: 600, transitionIn: { module: "transition.crossfade", duration: 45 } }] });
   const l = only(long, "long-transition")[0]!;
   const fixed = applyFix(long, l);
   assert.equal(fixed.tracks.find((t) => t.id === "main")!.items[1]!.transitionIn!.duration, 9);
-  assert.deepEqual(only(make({ main: [{ duration: 150 }, { duration: 150, in: 600, transitionIn: { module: "transition.crossfade", duration: 15 } }] }), "long-transition"), []);
+  assert.deepEqual(
+    only(make({ main: [{ duration: 150 }, { duration: 150, in: 600, transitionIn: { module: "transition.crossfade", duration: 15 } }] }), "long-transition"),
+    [],
+  );
 
   // Free tracks only (main empty): a text 0–3 s, then another at 5 s: 3–5 s is black.
-  const gap = make({ main: [], texts: [{ text: "Start here", duration: 90 }, { text: "Later on", start: 150, duration: 150 }] });
+  const gap = make({
+    main: [],
+    texts: [
+      { text: "Start here", duration: 90 },
+      { text: "Later on", start: 150, duration: 150 },
+    ],
+  });
   const g = only(gap, "blank-gap")[0]!;
   assert.deepEqual(g.range, { start: 90, end: 150 });
   assert.deepEqual(only(make(), "blank-gap"), []);
@@ -211,21 +452,38 @@ test("sound: silent export, music fades, ducking under speech; the fixes", () =>
   assert.equal(a.fadeOut, 60);
   assert.deepEqual(only(faded, "music-fades"), []);
   // Not music (a voice track): no fades asked for.
-  const voice = make({ extra: [{ id: "voice", kind: "audio", name: "Voice", items: [{ id: "v1", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }] }] });
+  const voice = make({
+    extra: [{ id: "voice", kind: "audio", name: "Voice", items: [{ id: "v1", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }] }],
+  });
   assert.deepEqual(only(voice, "music-fades"), []);
 
   // Music under the voice, not ducked: info with a duck fix under it. Main's sound counts only when it's known speech.
-  const under = make({ audio: [{}], extra: [{ id: "voice", kind: "audio", name: "Voice", items: [{ id: "v1", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }] }] });
+  const under = make({
+    audio: [{}],
+    extra: [{ id: "voice", kind: "audio", name: "Voice", items: [{ id: "v1", type: "audio", media: "m-voice", in: 0, start: 0, duration: 300 }] }],
+  });
   const d = only(under, "music-ducking")[0]!;
   assert.equal(d.severity, "info");
   assert.match(d.message, /Music plays under Voice at full level/);
   const ducked = applyFix(under, d);
-  assert.deepEqual(ducked.tracks.find((t) => t.id === "music")!.mixer!.effects![0], { module: "audio.duck", params: { under: ["voice"], amountDb: -12, attackMs: 250, releaseMs: 600 } });
+  assert.deepEqual(ducked.tracks.find((t) => t.id === "music")!.mixer!.effects![0], {
+    module: "audio.duck",
+    params: { under: ["voice"], amountDb: -12, attackMs: 250, releaseMs: 600 },
+  });
   const speech = projectChecks(under, { speechMedia: ["m-clip"] }).find((c) => c.id === "music-ducking")!;
   assert.match(speech.message, /Music plays under Voice and Main/);
-  assert.deepEqual((speech.fix!.ops[0] as unknown as { set: { mixer: { effects: Array<{ params: { under: Array<string> } }> } } }).set.mixer.effects[0]!.params.under, ["voice", "main"]);
+  assert.deepEqual(
+    (speech.fix!.ops[0] as unknown as { set: { mixer: { effects: Array<{ params: { under: Array<string> } }> } } }).set.mixer.effects[0]!.params.under,
+    ["voice", "main"],
+  );
   // Captions made from main's footage mean it's speech too.
-  const captioned = { ...under, tracks: [{ id: "caps", kind: "text", name: "Captions", items: [{ id: "cap", type: "captions", source: "m-clip", start: 0, duration: 300, words: [] }] } as Track, ...under.tracks] };
+  const captioned = {
+    ...under,
+    tracks: [
+      { id: "caps", kind: "text", name: "Captions", items: [{ id: "cap", type: "captions", source: "m-clip", start: 0, duration: 300, words: [] }] } as Track,
+      ...under.tracks,
+    ],
+  };
   assert.match(only(captioned, "music-ducking")[0]!.message, /Voice and Main/);
   assert.deepEqual(only(ducked, "music-ducking"), []);
   // Music alone (main footage without sound): nothing to duck under.
@@ -246,7 +504,10 @@ test("checks.disabled, planDisableCheck, extra rules, a broken rule, old project
   assert.ok(ids(projectChecks(p)).includes("trailing-period"));
   // Warnings come before info notes.
   const sev = projectChecks(p).map((c) => c.severity);
-  assert.deepEqual(sev, [...sev].sort((a, b) => (a === b ? 0 : a === "warn" ? -1 : 1)));
+  assert.deepEqual(
+    sev,
+    [...sev].sort((a, b) => (a === b ? 0 : a === "warn" ? -1 : 1)),
+  );
   const off = planDisableCheck(p, "trailing-period");
   assert.deepEqual(validateOps(off.ops), []);
   assert.equal(off.summary, 'Turn off the check "No trailing period"');
@@ -260,8 +521,22 @@ test("checks.disabled, planDisableCheck, extra rules, a broken rule, old project
   const on = applyEdit(createSession(next), { actor: "user", ops: planDisableCheck(next, "trailing-period", false).ops }).project;
   assert.equal(on.checks, undefined);
   // A module's rule joins in; a throwing one is skipped.
-  const extra: CheckRule = { id: "demo.always", title: "Demo", description: "Always says hi.", severity: "info", check: () => [{ key: "demo", message: "Hi." }] };
-  const broken: CheckRule = { id: "demo.broken", title: "Broken", description: "Throws.", severity: "warn", check: () => { throw new Error("boom"); } };
+  const extra: CheckRule = {
+    id: "demo.always",
+    title: "Demo",
+    description: "Always says hi.",
+    severity: "info",
+    check: () => [{ key: "demo", message: "Hi." }],
+  };
+  const broken: CheckRule = {
+    id: "demo.broken",
+    title: "Broken",
+    description: "Throws.",
+    severity: "warn",
+    check: () => {
+      throw new Error("boom");
+    },
+  };
   const all = projectChecks(p, { rules: [broken, extra] });
   assert.ok(ids(all).includes("demo.always") && ids(all).includes("trailing-period"), "added to the built-in rules");
   assert.equal(checkRule("demo.always", [extra])?.title, "Demo");
@@ -276,7 +551,13 @@ test("checks.disabled, planDisableCheck, extra rules, a broken rule, old project
     assert.equal(example.checks, undefined);
     assert.deepEqual(validateProject(example, modules), [], name);
     // The shipped examples follow the house style: no warnings, only notes.
-    assert.deepEqual(projectChecks(example).filter((c) => c.severity === "warn").map((c) => c.message), [], name);
+    assert.deepEqual(
+      projectChecks(example)
+        .filter((c) => c.severity === "warn")
+        .map((c) => c.message),
+      [],
+      name,
+    );
     for (const c of projectChecks(example)) {
       assert.ok(c.message.length > 10 && !/[·•]/.test(c.message), `${name}: ${c.message}`);
       if (c.fix) applyFix(example, c);
@@ -307,16 +588,27 @@ test("History and the agent's note word turning checks off", async () => {
   const p = make();
   // The whole list, not a guess at what changed (turning one back on leaves others in it).
   assert.equal(describeOp({ op: "update_project", set: { checks: { disabled: ["canvas-format"] } } }, p), "Set the checks turned off to canvas-format");
-  assert.equal(describeOp({ op: "update_project", set: { checks: { disabled: ["canvas-format", "silent"] } } }, p), "Set the checks turned off to canvas-format, silent");
+  assert.equal(
+    describeOp({ op: "update_project", set: { checks: { disabled: ["canvas-format", "silent"] } } }, p),
+    "Set the checks turned off to canvas-format, silent",
+  );
   // The editor's summary names the rule switched: the note says that.
-  assert.equal(describeOp({ op: "update_project", set: { checks: { disabled: ["silent"] } } }, p, 'Turn on the check "Canvas for the feed"'), 'Turned on the check "Canvas for the feed"');
-  assert.equal(describeOp({ op: "update_project", set: { checks: { disabled: ["silent"] } } }, p, 'Turn off the check "Has sound"'), 'Turned off the check "Has sound"');
+  assert.equal(
+    describeOp({ op: "update_project", set: { checks: { disabled: ["silent"] } } }, p, 'Turn on the check "Canvas for the feed"'),
+    'Turned on the check "Canvas for the feed"',
+  );
+  assert.equal(
+    describeOp({ op: "update_project", set: { checks: { disabled: ["silent"] } } }, p, 'Turn off the check "Has sound"'),
+    'Turned off the check "Has sound"',
+  );
   assert.equal(describeOp({ op: "update_project", set: { checks: null } }, p), "Turned every check back on");
 });
 
 test("dots: code, maths and bullets; periods: abbreviations (review)", () => {
-  const dots = (text: string, style: Record<string, unknown> = {}) => only(make({ texts: [{ text, style: { preset: "text.title", size: 96, ...style } }] }), "dot-separators")[0];
-  for (const text of ["`SELECT * FROM users`", "import * as fs", "SELECT * FROM users", "2 * 3 = 6", "**Bold** text", "Use `a · b` here"]) assert.equal(dots(text), undefined, text);
+  const dots = (text: string, style: Record<string, unknown> = {}) =>
+    only(make({ texts: [{ text, style: { preset: "text.title", size: 96, ...style } }] }), "dot-separators")[0];
+  for (const text of ["`SELECT * FROM users`", "import * as fs", "SELECT * FROM users", "2 * 3 = 6", "**Bold** text", "Use `a · b` here"])
+    assert.equal(dots(text), undefined, text);
   assert.equal(dots("a * b", { font: "DM Mono" }), undefined, "a star on a mono text is code");
   const fix = (text: string) => (dots(text)!.fix!.ops[0] as unknown as { set: { text: string } }).set.text;
   assert.equal(fix("• Fast\n• Simple"), "Fast\nSimple", "a bullet list keeps its lines");
@@ -324,14 +616,21 @@ test("dots: code, maths and bullets; periods: abbreviations (review)", () => {
   assert.equal(fix("Swift · Kotlin\nRust • Go"), "Swift, Kotlin\nRust, Go", "never across lines");
   assert.equal(fix("fast * small"), "fast, small");
   const period = (text: string) => only(make({ texts: [{ text }] }), "trailing-period")[0];
-  for (const text of ["Works with Expo, RN, etc.", "Swift vs.", "Made by Acme Inc.", "Pick one, e.g.", "Built with Node.js", "Done. [[Really]]"]) assert.equal(period(text), undefined, text);
+  for (const text of ["Works with Expo, RN, etc.", "Swift vs.", "Made by Acme Inc.", "Pick one, e.g.", "Built with Node.js", "Done. [[Really]]"])
+    assert.equal(period(text), undefined, text);
   assert.equal((period("Version 2.0.")!.fix!.ops[0] as unknown as { set: { text: string } }).set.text, "Version 2.0");
   assert.equal((period("Use `npm i` today.")!.fix!.ops[0] as unknown as { set: { text: string } }).set.text, "Use `npm i` today");
 });
 
 test("the built-in looks together raise no typeface warning (review)", () => {
   let p = make({ main: [{ duration: 600 }] });
-  for (const [look, start] of [["text.title", 0], ["text.kicker-title", 150], ["text.header", 300], ["text.big-title", 450], ["text.footnote", 470]] as const) {
+  for (const [look, start] of [
+    ["text.title", 0],
+    ["text.kicker-title", 150],
+    ["text.header", 300],
+    ["text.big-title", 450],
+    ["text.footnote", 470],
+  ] as const) {
     const plan = planInsertText(p, { look, start, duration: 120, text: "Words here" }) as { ops: Array<Op> };
     p = applyEdit(createSession(p), { actor: "user", ops: plan.ops }).project;
   }
@@ -341,23 +640,82 @@ test("the built-in looks together raise no typeface warning (review)", () => {
 test("music: a volume-key fade counts; effects and ambient footage aren't speech (review)", () => {
   const p = make({
     main: [{ duration: 300 }],
-    audio: [{ fadeIn: undefined, fadeOut: 60, gainKeys: [{ frame: 0, db: -60 }, { frame: 30, db: 0 }] }],
+    audio: [
+      {
+        fadeIn: undefined,
+        fadeOut: 60,
+        gainKeys: [
+          { frame: 0, db: -60 },
+          { frame: 30, db: 0 },
+        ],
+      },
+    ],
     extra: [{ id: "sfx", kind: "audio", name: "SFX", items: [{ id: "s1", type: "audio", media: "m-clip", in: 0, start: 100, duration: 9 }] }],
   });
   assert.deepEqual(only(p, "music-fades"), [], "the keys fade it in");
   assert.deepEqual(only(p, "music-ducking"), [], "an effect and the footage's own sound aren't a voice");
   // A fade-out made with keys counts too; a key that isn't near silence doesn't.
-  const out = make({ audio: [{ fadeOut: undefined, gainKeys: [{ frame: 240, db: 0 }, { frame: 299, db: -50 }] }] });
+  const out = make({
+    audio: [
+      {
+        fadeOut: undefined,
+        gainKeys: [
+          { frame: 240, db: 0 },
+          { frame: 299, db: -50 },
+        ],
+      },
+    ],
+  });
   assert.deepEqual(only(out, "music-fades"), []);
-  const dip = make({ audio: [{ fadeOut: undefined, gainKeys: [{ frame: 240, db: 0 }, { frame: 299, db: -12 }] }] });
+  const dip = make({
+    audio: [
+      {
+        fadeOut: undefined,
+        gainKeys: [
+          { frame: 240, db: 0 },
+          { frame: 299, db: -12 },
+        ],
+      },
+    ],
+  });
   assert.equal(only(dip, "music-fades").length, 1);
 });
 
 test("fast with many tracks and media: 40 audio tracks, 500 media, 1,000 texts (review)", () => {
-  const media = Array.from({ length: 500 }, (_, i) => ({ id: `m${i}`, kind: "audio" as const, name: `clip${i}.wav`, path: `/tmp/${i}.wav`, probe: { frames: 3000, hasAudio: true } }));
+  const media = Array.from({ length: 500 }, (_, i) => ({
+    id: `m${i}`,
+    kind: "audio" as const,
+    name: `clip${i}.wav`,
+    path: `/tmp/${i}.wav`,
+    probe: { frames: 3000, hasAudio: true },
+  }));
   const tracks: Array<Track> = [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }];
-  for (let t = 0; t < 40; t++) tracks.push({ id: `a${t}`, kind: "audio", name: t === 0 ? "Music" : t === 1 ? "Voice" : `Track ${t}`, items: Array.from({ length: 25 }, (_, i) => ({ id: `a${t}-${i}`, type: "audio" as const, media: `m${(t * 25 + i) % 500}`, in: 0, start: i * 100, duration: 90 })) });
-  tracks.push({ id: "tx", kind: "text", name: "Text", items: Array.from({ length: 1000 }, (_, i) => ({ id: `t${i}`, type: "text" as const, text: "a b c d e f g h i j k l m n o p", start: i * 100, duration: 30 })) });
+  for (let t = 0; t < 40; t++)
+    tracks.push({
+      id: `a${t}`,
+      kind: "audio",
+      name: t === 0 ? "Music" : t === 1 ? "Voice" : `Track ${t}`,
+      items: Array.from({ length: 25 }, (_, i) => ({
+        id: `a${t}-${i}`,
+        type: "audio" as const,
+        media: `m${(t * 25 + i) % 500}`,
+        in: 0,
+        start: i * 100,
+        duration: 90,
+      })),
+    });
+  tracks.push({
+    id: "tx",
+    kind: "text",
+    name: "Text",
+    items: Array.from({ length: 1000 }, (_, i) => ({
+      id: `t${i}`,
+      type: "text" as const,
+      text: "a b c d e f g h i j k l m n o p",
+      start: i * 100,
+      duration: 30,
+    })),
+  });
   const p = { format: "uncut/0", name: "x", canvas: { width: 1080, height: 1350, fps: 30 as const }, media, tracks } as Project;
   projectChecks(p);
   // CPU time of this process, best of three: the full suite runs many files in parallel, so wall

@@ -9,7 +9,13 @@ import { crashFingerprint } from "../../server/src/telemetry/fingerprint.ts";
 import { crashOf, spoolCrash, type SpooledCrash } from "../../server/src/telemetry/spool.ts";
 
 /** A process that went away: no stack, so the fingerprint is that of the process kind and reason. */
-const gone = (process: string, reason: string, code: string | undefined): SpooledCrash => ({ process, error_name: reason, crash_fingerprint: crashFingerprint(`${process}/${reason}`, undefined), ...(code ? { code } : {}), fatal: true });
+const gone = (process: string, reason: string, code: string | undefined): SpooledCrash => ({
+  process,
+  error_name: reason,
+  crash_fingerprint: crashFingerprint(`${process}/${reason}`, undefined),
+  ...(code ? { code } : {}),
+  fatal: true,
+});
 
 /** Reasons a Chromium child process leaves that aren't crashes. */
 const NOT_CRASHES = new Set(["clean-exit", "killed"]);

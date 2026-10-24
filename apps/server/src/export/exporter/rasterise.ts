@@ -47,7 +47,20 @@ const diskFull = (folder: string) => `The disk filled up in ${folder} while the 
  * context, 16 slices (encoded in parallel; ~11 ms a 1080×1350 footage frame on an M-series Mac,
  * under the rasteriser's ~15 ms) or one for a picture too small for 16.
  */
-export const ffv1Args = (width: number, height: number) => ["-c:v", "ffv1", "-level", "3", "-coder", "1", "-context", "1", "-g", "1", "-slices", Math.min(width, height) >= 64 ? "16" : "1"];
+export const ffv1Args = (width: number, height: number) => [
+  "-c:v",
+  "ffv1",
+  "-level",
+  "3",
+  "-coder",
+  "1",
+  "-context",
+  "1",
+  "-g",
+  "1",
+  "-slices",
+  Math.min(width, height) >= 64 ? "16" : "1",
+];
 
 /** A thrown value's message; one that isn't an Error (or has none) said as what it is, never "undefined". */
 const messageOf = (error: unknown): string => {
@@ -76,12 +89,25 @@ export const streamsLayer = (layer: VisualLayer) => {
  * each frame sent to be drawn (a look, a streamed frame, a graphic's PNG) as done of total: a heavy
  * graphic takes minutes here, before the encode starts, and the dialog says how far it is.
  */
-export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal, css: string = RASTER_CSS, ff?: SequenceFfmpeg, onFrame?: (done: number, total: number) => void) => {
+export const rasterise = async (
+  r: Rasterizer,
+  plan: ExportPlan,
+  project: Project,
+  mediaPath: (m: Media) => string,
+  dir: string,
+  signal: AbortSignal,
+  css: string = RASTER_CSS,
+  ff?: SequenceFfmpeg,
+  onFrame?: (done: number, total: number) => void,
+) => {
   const { width, height } = plan.canvas;
   // Without an ffmpeg to stream into (render_frames' few frames), every layer is drawn as PNGs.
   const streamed = (layer: VisualLayer) => !!ff && streamsLayer(layer);
   // D291: the streamed layers stay on disk until the final encode; refused before anything is drawn when they can't fit.
-  const need = plan.visuals.reduce((sum, l) => (streamed(l) ? sum + (l.f1 - l.f0) * width * height * 4 * (l.kind === "graphic" ? STREAM_RATIO.graphic : STREAM_RATIO.raster) : sum), 0);
+  const need = plan.visuals.reduce(
+    (sum, l) => (streamed(l) ? sum + (l.f1 - l.f0) * width * height * 4 * (l.kind === "graphic" ? STREAM_RATIO.graphic : STREAM_RATIO.raster) : sum),
+    0,
+  );
   if (need > 0) {
     const free = await (ff!.freeBytes ?? freeBytesOf)(dir);
     if (free < need) throw new Error(`This export needs about ${gb(need)} free in ${dirname(dir)} for its graphics; there's ${gb(free)}.`);
@@ -93,7 +119,13 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
   // Every distinct look of the layers not streamed drawn once (D79 review: slices and layers share looks), then linked per layer.
   const drawnLooks = new Map<string, string>();
   const looks = [...new Set(plan.visuals.flatMap((l) => (l.kind === "raster" && !streamed(l) ? l.states : [])))];
-  const total = looks.length + plan.visuals.reduce((n, l) => (l.kind === "graphic" ? n + (streamed(l) ? l.frames.length : new Set(l.frames).size) : l.kind === "raster" && streamed(l) ? n + l.frames.length : n), 0);
+  const total =
+    looks.length +
+    plan.visuals.reduce(
+      (n, l) =>
+        l.kind === "graphic" ? n + (streamed(l) ? l.frames.length : new Set(l.frames).size) : l.kind === "raster" && streamed(l) ? n + l.frames.length : n,
+      0,
+    );
   let done = 0;
   const tick = () => onFrame?.(++done, total);
   for (const [j, html] of looks.entries()) {
@@ -107,31 +139,48 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
   const graphicError = (layer: VisualLayer, local: number) => (error: unknown) => {
     if (error instanceof Cancelled) throw error;
     // Its own name comes first in the rasteriser's message ("film" (graphics/x.html): …): said once.
-    const why = messageOf(error).replace(/^The text renderer failed: /, "").replace(`${graphicName(layer)}: `, "");
-    throw new Error(`The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s (its frame ${local}): ${why}`);
+    const why = messageOf(error)
+      .replace(/^The text renderer failed: /, "")
+      .replace(`${graphicName(layer)}: `, "");
+    throw new Error(
+      `The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s (its frame ${local}): ${why}`,
+    );
   };
   for (const [k, layer] of plan.visuals.entries()) {
     if (signal.aborted) throw new Cancelled();
     if (layer.kind !== "raster" && layer.kind !== "graphic") continue;
     if (streamed(layer)) {
-      rasters.set(layer, await streamLayer(r, ff!, layer, { dir, k, width, height, fps: plan.fps, css, signal }, async (send) => {
-        if (layer.kind === "graphic") {
-          // A graphic (D78): render(t) at each of the frame's moments (one, or motion blur's sub-frames).
-          for (const [i, local] of layer.frames.entries()) {
-            const ts = layer.motion?.ts[i] ?? [local / plan.fps];
-            const prev = i > 0 ? (layer.motion?.ts[i - 1] ?? [layer.frames[i - 1]! / plan.fps]) : undefined;
-            if (prev && prev.length === ts.length && prev.every((t, j) => t === ts[j])) await send({ kind: "seq-hold", count: 1 });
-            else await send({ kind: "seq-graphic", doc: layer.doc, ts, info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local), name: graphicName(layer) }, graphicError(layer, local));
-            tick();
+      rasters.set(
+        layer,
+        await streamLayer(r, ff!, layer, { dir, k, width, height, fps: plan.fps, css, signal }, async (send) => {
+          if (layer.kind === "graphic") {
+            // A graphic (D78): render(t) at each of the frame's moments (one, or motion blur's sub-frames).
+            for (const [i, local] of layer.frames.entries()) {
+              const ts = layer.motion?.ts[i] ?? [local / plan.fps];
+              const prev = i > 0 ? (layer.motion?.ts[i - 1] ?? [layer.frames[i - 1]! / plan.fps]) : undefined;
+              if (prev && prev.length === ts.length && prev.every((t, j) => t === ts[j])) await send({ kind: "seq-hold", count: 1 });
+              else
+                await send(
+                  {
+                    kind: "seq-graphic",
+                    doc: layer.doc,
+                    ts,
+                    info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local),
+                    name: graphicName(layer),
+                  },
+                  graphicError(layer, local),
+                );
+              tick();
+            }
+          } else {
+            for (const [i, s] of layer.frames.entries()) {
+              if (i > 0 && s === layer.frames[i - 1]) await send({ kind: "seq-hold", count: 1 });
+              else await send({ kind: "seq-html", css, html: await withMedia(layer.states[s]!, project, mediaPath, urls) });
+              tick();
+            }
           }
-        } else {
-          for (const [i, s] of layer.frames.entries()) {
-            if (i > 0 && s === layer.frames[i - 1]) await send({ kind: "seq-hold", count: 1 });
-            else await send({ kind: "seq-html", css, html: await withMedia(layer.states[s]!, project, mediaPath, urls) });
-            tick();
-          }
-        }
-      }));
+        }),
+      );
       continue;
     }
     const states: Array<string> = [];
@@ -151,7 +200,18 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
           continue;
         }
         const out = join(dir, `l${k}-g${local}.png`);
-        await r.render({ kind: "graphic", width, height, doc: layer.doc, t: local / plan.fps, info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local), out, name: graphicName(layer) }).catch(graphicError(layer, local));
+        await r
+          .render({
+            kind: "graphic",
+            width,
+            height,
+            doc: layer.doc,
+            t: local / plan.fps,
+            info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local),
+            out,
+            name: graphicName(layer),
+          })
+          .catch(graphicError(layer, local));
         drawn.set(local, states.length);
         states.push(out);
         drawnLooks.set(`graphic:${local}:${layer.doc}`, out);
@@ -185,7 +245,13 @@ type SeqFrame = Extract<RasterJob, { kind: "seq-graphic" | "seq-html" | "seq-hol
  * sub-frames already averaged by the rasteriser; ffmpeg 8's unpremultiply filter can't be relied
  * on for it). Memory stays bounded: the FIFO blocks the rasteriser while ffmpeg catches up.
  */
-async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer, o: { dir: string; k: number; width: number; height: number; fps: number; css: string; signal: AbortSignal }, draw: (send: (job: SeqFrame, onError?: (e: Error) => never) => Promise<void>) => Promise<void>): Promise<RasterOutput> {
+async function streamLayer(
+  r: Rasterizer,
+  ff: SequenceFfmpeg,
+  layer: VisualLayer,
+  o: { dir: string; k: number; width: number; height: number; fps: number; css: string; signal: AbortSignal },
+  draw: (send: (job: SeqFrame, onError?: (e: Error) => never) => Promise<void>) => Promise<void>,
+): Promise<RasterOutput> {
   const frames = layer.f1 - layer.f0;
   const name = `"${layer.item.name ?? layer.item.id}"`;
   const fifo = join(o.dir, `l${o.k}.fifo`);
@@ -196,10 +262,40 @@ async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer
   o.signal.addEventListener("abort", onAbort, { once: true });
   const passthrough = ff.major !== undefined && ff.major < 5 ? ["-vsync", "passthrough"] : ["-fps_mode", "passthrough"];
   let ended = false;
-  const encoding = run(ff.bin, ["-hide_banner", "-nostdin", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", `${o.width}x${o.height}`, "-framerate", String(o.fps), "-i", fifo, ...passthrough, ...ffv1Args(o.width, o.height), "-pix_fmt", "bgra", "-f", "matroska", file], stop.signal).finally(() => {
+  const encoding = run(
+    ff.bin,
+    [
+      "-hide_banner",
+      "-nostdin",
+      "-v",
+      "error",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "bgra",
+      "-s",
+      `${o.width}x${o.height}`,
+      "-framerate",
+      String(o.fps),
+      "-i",
+      fifo,
+      ...passthrough,
+      ...ffv1Args(o.width, o.height),
+      "-pix_fmt",
+      "bgra",
+      "-f",
+      "matroska",
+      file,
+    ],
+    stop.signal,
+  ).finally(() => {
     // An ffmpeg gone before the rasteriser opened the FIFO would leave it waiting for a reader:
     // open and close the read side, so its next write fails instead (EPIPE).
-    if (!ended) void open(fifo, constants.O_RDONLY | constants.O_NONBLOCK).then((fh) => fh.close(), () => {});
+    if (!ended)
+      void open(fifo, constants.O_RDONLY | constants.O_NONBLOCK).then(
+        (fh) => fh.close(),
+        () => {},
+      );
   });
   encoding.catch(() => {});
   const pending: Array<Promise<unknown>> = [];
@@ -231,10 +327,16 @@ async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer
     o.signal.removeEventListener("abort", onAbort);
   }
   const done = await encoding;
-  if (done.code !== 0) throw new Error(NO_SPACE.test(done.stderr) ? diskFull(dirname(o.dir)) : `ffmpeg couldn't take the frames of ${name}: ${ffmpegError(done.stderr)}`);
+  if (done.code !== 0)
+    throw new Error(NO_SPACE.test(done.stderr) ? diskFull(dirname(o.dir)) : `ffmpeg couldn't take the frames of ${name}: ${ffmpegError(done.stderr)}`);
   // Its frames counted from the file (one packet each, intra-only: copied, not decoded).
-  const counted = await run(ff.bin, ["-hide_banner", "-nostdin", "-v", "error", "-nostats", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-progress", "pipe:1", "-"], o.signal);
+  const counted = await run(
+    ff.bin,
+    ["-hide_banner", "-nostdin", "-v", "error", "-nostats", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-progress", "pipe:1", "-"],
+    o.signal,
+  );
   const written = Number([...counted.stdout.matchAll(/^frame=(\d+)/gm)].pop()?.[1] ?? NaN);
-  if (counted.code !== 0 || written !== frames) throw new Error(`The frames of ${name} came out ${Number.isNaN(written) ? "unreadable" : written}, not ${frames}.`);
+  if (counted.code !== 0 || written !== frames)
+    throw new Error(`The frames of ${name} came out ${Number.isNaN(written) ? "unreadable" : written}, not ${frames}.`);
   return { kind: "video", file, frames };
 }

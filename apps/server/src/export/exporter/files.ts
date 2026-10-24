@@ -61,7 +61,17 @@ export async function sweepStaleTemp(dir = tmpdir(), now = Date.now()) {
       if (!m) return;
       const pid = m[1] ? Number(m[1]) : undefined;
       if (pid === process.pid) return;
-      if (pid !== undefined ? pidAlive(pid) : now - (await stat(join(dir, name)).then((s) => s.mtimeMs, () => now)) < 3600_000) return;
+      if (
+        pid !== undefined
+          ? pidAlive(pid)
+          : now -
+              (await stat(join(dir, name)).then(
+                (s) => s.mtimeMs,
+                () => now,
+              )) <
+            3600_000
+      )
+        return;
       await rm(join(dir, name), { recursive: true, force: true }).catch(() => {});
     }),
   );
@@ -98,7 +108,11 @@ export const canonical = async (path: string) => {
   }
 };
 
-export const exists = (path: string) => access(path, constants.F_OK).then(() => true, () => false);
+export const exists = (path: string) =>
+  access(path, constants.F_OK).then(
+    () => true,
+    () => false,
+  );
 
 /** Move a finished file into place: a rename on the same volume, else copy and delete. */
 export async function moveInto(from: string, to: string) {

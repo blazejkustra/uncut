@@ -107,7 +107,8 @@ export function shaderParamProblems(params: ReadonlyArray<ShaderParam>): Array<s
     if (p.type === "number") {
       if (!finite(p.min) || !finite(p.max) || !(p.min < p.max)) problems.push(`${name} needs a min below its max.`);
       else if (!finite(p.default) || p.default < p.min || p.default > p.max) problems.push(`${name}'s default must be a number from ${p.min} to ${p.max}.`);
-      if (p.step !== undefined && (!finite(p.step) || p.step <= 0 || (finite(p.min) && finite(p.max) && p.step > p.max - p.min))) problems.push(`${name}'s step must be above 0 and fit its range.`);
+      if (p.step !== undefined && (!finite(p.step) || p.step <= 0 || (finite(p.min) && finite(p.max) && p.step > p.max - p.min)))
+        problems.push(`${name}'s step must be above 0 and fit its range.`);
     } else if (p.type === "color") {
       if (typeof p.default !== "string" || !HEX.test(p.default)) problems.push(`${name}'s default must be a colour like #ff8800.`);
     } else if (p.type === "bool") {
@@ -127,8 +128,15 @@ export const wgslTypeOf = (type: ShaderParamType) => (type === "color" ? "vec3f"
 export function shaderWgslProblems(wgsl: string, params: ReadonlyArray<ShaderParam>): Array<string> {
   const problems: Array<string> = [];
   if (wgsl.length > MAX_SHADER_WGSL) problems.push(`The shader is ${Math.round(wgsl.length / 1024)} KB; at most ${MAX_SHADER_WGSL / 1024} KB.`);
-  const sig = params.length ? /\bfn\s+effect\s*\(\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*f32\s*,\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*Params\s*,?\s*\)\s*->\s*vec4<?f(?:32>)?/ : /\bfn\s+effect\s*\(\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*f32\s*,\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,?\s*\)\s*->\s*vec4<?f(?:32>)?/;
-  if (!sig.test(wgsl)) problems.push(params.length ? "The shader needs fn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f." : "The shader needs fn effect(uv: vec2f, t: f32, size: vec2f) -> vec4f.");
+  const sig = params.length
+    ? /\bfn\s+effect\s*\(\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*f32\s*,\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*Params\s*,?\s*\)\s*->\s*vec4<?f(?:32>)?/
+    : /\bfn\s+effect\s*\(\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,\s*\w+\s*:\s*f32\s*,\s*\w+\s*:\s*vec2<?f(?:32>)?\s*,?\s*\)\s*->\s*vec4<?f(?:32>)?/;
+  if (!sig.test(wgsl))
+    problems.push(
+      params.length
+        ? "The shader needs fn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f."
+        : "The shader needs fn effect(uv: vec2f, t: f32, size: vec2f) -> vec4f.",
+    );
   if (params.length) {
     const struct = /\bstruct\s+Params\s*\{([^}]*)\}/.exec(wgsl);
     if (!struct) problems.push("The shader needs struct Params with its params.");
@@ -161,7 +169,9 @@ export function shaderWgslProblems(wgsl: string, params: ReadonlyArray<ShaderPar
   const fors = [...wgsl.matchAll(/\bfor\s*\(/g)];
   if (fors.length > MAX_LOOPS) problems.push(`A shader has at most ${MAX_LOOPS} for loops.`);
   for (const m of fors) {
-    const head = /^for\s*\(\s*var\s+(\w+)\s*(?::\s*[iu]32\s*)?=\s*(-?\d+)[iu]?\s*;\s*(\w+)\s*(<=?)\s*(-?\d+)[iu]?\s*;\s*(\w+)\s*(\+\+|\+=\s*1[iu]?)\s*\)/.exec(wgsl.slice(m.index));
+    const head = /^for\s*\(\s*var\s+(\w+)\s*(?::\s*[iu]32\s*)?=\s*(-?\d+)[iu]?\s*;\s*(\w+)\s*(<=?)\s*(-?\d+)[iu]?\s*;\s*(\w+)\s*(\+\+|\+=\s*1[iu]?)\s*\)/.exec(
+      wgsl.slice(m.index),
+    );
     if (!head || head[1] !== head[3] || head[1] !== head[6]) {
       problems.push("Each for loop must count a var up by one between two whole-number literals: for (var i = 0; i < 8; i++).");
       continue;
@@ -260,7 +270,10 @@ export function shaderUseOf(e: Pick<ModuleUse, "params">): ShaderUse | undefined
 
 /** The effect.shader entry that draws `def` with `values` (missing ones at their defaults). */
 export function shaderEntry(def: ShaderDef, values: Readonly<Record<string, ShaderValue>> = {}): ModuleUse {
-  return { module: SHADER, params: { shader: def.id, name: def.name, wgsl: def.wgsl, fields: def.params.map((p) => ({ ...p })), values: shaderValues(def.params, values) } };
+  return {
+    module: SHADER,
+    params: { shader: def.id, name: def.name, wgsl: def.wgsl, fields: def.params.map((p) => ({ ...p })), values: shaderValues(def.params, values) },
+  };
 }
 
 // ---- the GPU side's shared parts ----
@@ -337,10 +350,15 @@ export const shaderTime = (frame: number, start: number, fps: number) => (Math.f
 
 // ---- edits ----
 
-type Plan = { readonly ops: ReadonlyArray<{ op: "update_item"; item: string; set: Record<string, unknown> }>; readonly summary: string } | { readonly problem: string };
+type Plan =
+  | { readonly ops: ReadonlyArray<{ op: "update_item"; item: string; set: Record<string, unknown> }>; readonly summary: string }
+  | { readonly problem: string };
 
 interface Target {
-  readonly tracks: ReadonlyArray<{ readonly locked?: boolean; readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name">> }>;
+  readonly tracks: ReadonlyArray<{
+    readonly locked?: boolean;
+    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name">>;
+  }>;
   readonly media?: ReadonlyArray<{ readonly id: string; readonly kind: string; readonly name?: string; readonly path?: string }>;
 }
 
@@ -358,7 +376,8 @@ export function planShader(project: Target, itemId: string, def: ShaderDef | und
     }
   if (!found) return { problem: "Pick a clip first." };
   const list = (found.item.effects ?? []).filter((e) => e.module !== SHADER);
-  if (!def) return { ops: [{ op: "update_item", item: itemId, set: { effects: list.length ? list : null } }], summary: `Removed the shader effect from ${found.name}` };
+  if (!def)
+    return { ops: [{ op: "update_item", item: itemId, set: { effects: list.length ? list : null } }], summary: `Removed the shader effect from ${found.name}` };
   const problems = [...shaderDefProblems(def), ...shaderValueProblems(def.params, values)];
   if (problems.length) return { problem: problems.join(" ") };
   return { ops: [{ op: "update_item", item: itemId, set: { effects: [...list, shaderEntry(def, values)] } }], summary: `${def.name} on ${found.name}` };
@@ -378,7 +397,9 @@ export function planShaderValues(project: Target, itemId: string, values: Readon
       if (problems.length) return { problem: problems.join(" ") };
       const p = list[at]!.params as Record<string, unknown>;
       list[at] = { ...list[at]!, params: { ...p, values: shaderValues(use.def.params, { ...use.values, ...values }) } };
-      const changed = Object.keys(values).map((k) => use.def.params.find((x) => x.key === k)?.label ?? k).join(", ");
+      const changed = Object.keys(values)
+        .map((k) => use.def.params.find((x) => x.key === k)?.label ?? k)
+        .join(", ");
       return { ops: [{ op: "update_item", item: itemId, set: { effects: list } }], summary: `${use.def.name}: ${changed} on ${it.name ?? it.id}` };
     }
   return { problem: "Pick a clip first." };
@@ -414,8 +435,10 @@ export function expandShaderEffects(ops: ReadonlyArray<unknown>, defs: ReadonlyM
   const out = ops.map((op) => {
     if (!op || typeof op !== "object") return op;
     const o = op as Record<string, unknown>;
-    if (o.op === "update_item" && o.set && typeof o.set === "object" && "effects" in (o.set as object)) return { ...o, set: { ...(o.set as object), effects: fill((o.set as { effects: unknown }).effects) } };
-    if (o.op === "insert_item" && o.item && typeof o.item === "object" && "effects" in (o.item as object)) return { ...o, item: { ...(o.item as object), effects: fill((o.item as { effects: unknown }).effects) } };
+    if (o.op === "update_item" && o.set && typeof o.set === "object" && "effects" in (o.set as object))
+      return { ...o, set: { ...(o.set as object), effects: fill((o.set as { effects: unknown }).effects) } };
+    if (o.op === "insert_item" && o.item && typeof o.item === "object" && "effects" in (o.item as object))
+      return { ...o, item: { ...(o.item as object), effects: fill((o.item as { effects: unknown }).effects) } };
     return op;
   });
   return problem ? { problem } : { ops: out };

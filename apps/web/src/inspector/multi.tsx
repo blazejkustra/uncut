@@ -5,7 +5,20 @@
 import { SPEED_PRESETS, SPEED_RANGE, speedLabel } from "@uncut/core/arrange";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 import { fxSkips } from "@uncut/core/fx";
-import { ADJUST, ADJUST_INFO, adjustOf, effectInfo, effectParams, LOOK, lookInfo, planAdjust, planEffect, planRemoveEffect, planSetLook, type AdjustKey } from "@uncut/core/fx";
+import {
+  ADJUST,
+  ADJUST_INFO,
+  adjustOf,
+  effectInfo,
+  effectParams,
+  LOOK,
+  lookInfo,
+  planAdjust,
+  planEffect,
+  planRemoveEffect,
+  planSetLook,
+  type AdjustKey,
+} from "@uncut/core/fx";
 import type { Item } from "@uncut/core/types";
 import { AtSign, Layers, RotateCcw, X } from "lucide-react";
 
@@ -53,20 +66,25 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
   const soundItems = editable.filter((i) => hasSound(project, i));
   const boxItems = editable.filter((i) => isBoxed(project, i));
   /** One edit over `targets`; `plan` per item, `label` for the joined edit. */
-  const all = (targets: ReadonlyArray<Item>, plan: (p: ProjectModel, id: string) => Plan | { readonly problem: string }, label: (n: number) => string) => (p: ProjectModel): PlanResult =>
-    planForAll(
-      p,
-      targets.map((i) => i.id),
-      plan,
-      label,
-    );
+  const all =
+    (targets: ReadonlyArray<Item>, plan: (p: ProjectModel, id: string) => Plan | { readonly problem: string }, label: (n: number) => string) =>
+    (p: ProjectModel): PlanResult =>
+      planForAll(
+        p,
+        targets.map((i) => i.id),
+        plan,
+        label,
+      );
   const shared = <T,>(list: ReadonlyArray<Item>, of: (i: Item) => T): { value: T; same: boolean } => {
     const values = list.map(of);
     return { value: values[0]!, same: values.every((v) => JSON.stringify(v) === JSON.stringify(values[0])) };
   };
 
   // Filter: the same look on every clip (its strength editable), or mixed.
-  const lookOf = (i: Item) => ((i.effects ?? []).find((e) => e.module === LOOK)?.params ?? undefined) as { look?: string; intensity?: number; label?: string; custom?: object } | undefined;
+  const lookOf = (i: Item) =>
+    ((i.effects ?? []).find((e) => e.module === LOOK)?.params ?? undefined) as
+      | { look?: string; intensity?: number; label?: string; custom?: object }
+      | undefined;
   const looks = fxClips.length ? shared(fxClips, (i) => lookOf(i)?.look ?? null) : undefined;
   const anyLook = fxClips.some((i) => lookOf(i));
   const firstLook = fxClips.map(lookOf).find((l) => l);
@@ -111,7 +129,19 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
             action={
               anyLook ? (
                 <Tooltip label="Remove the filter from all">
-                  <button className="icon-btn" data-testid="multi-filter-remove" onClick={() => send(all(fxClips.filter((i) => lookOf(i)), (p, id) => planSetLook(p, id, undefined), (k) => `Remove the filter from ${k} clips`))}>
+                  <button
+                    className="icon-btn"
+                    data-testid="multi-filter-remove"
+                    onClick={() =>
+                      send(
+                        all(
+                          fxClips.filter((i) => lookOf(i)),
+                          (p, id) => planSetLook(p, id, undefined),
+                          (k) => `Remove the filter from ${k} clips`,
+                        ),
+                      )
+                    }
+                  >
                     <X />
                   </button>
                 </Tooltip>
@@ -129,7 +159,17 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
                   unit="%"
                   testId="multi-filter-amount"
                   disabled={false}
-                  plan={(p, v) => all(fxClips, (q, id) => planSetLook(q, id, firstLook.look, { intensity: v / 100, ...(firstLook.custom ? { custom: firstLook.custom as never, label: lookName ?? "" } : {}) }), (k) => `Set ${lookName} on ${k} clips to ${v}%`)(p)}
+                  plan={(p, v) =>
+                    all(
+                      fxClips,
+                      (q, id) =>
+                        planSetLook(q, id, firstLook.look, {
+                          intensity: v / 100,
+                          ...(firstLook.custom ? { custom: firstLook.custom as never, label: lookName ?? "" } : {}),
+                        }),
+                      (k) => `Set ${lookName} on ${k} clips to ${v}%`,
+                    )(p)
+                  }
                 />
               </Prop>
             ) : (
@@ -145,7 +185,19 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
             action={
               adjusted ? (
                 <Tooltip label="Reset all">
-                  <button className="icon-btn" data-testid="multi-adjust-reset" onClick={() => send(all(fxClips, (p, id) => planAdjust(p, id, "reset"), (k) => `Reset the adjustments of ${k} clips`))}>
+                  <button
+                    className="icon-btn"
+                    data-testid="multi-adjust-reset"
+                    onClick={() =>
+                      send(
+                        all(
+                          fxClips,
+                          (p, id) => planAdjust(p, id, "reset"),
+                          (k) => `Reset the adjustments of ${k} clips`,
+                        ),
+                      )
+                    }
+                  >
                     <RotateCcw />
                   </button>
                 </Tooltip>
@@ -163,7 +215,13 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
                   {...(a.key === "exposure" ? { unit: "EV" } : {})}
                   testId={`multi-adjust-${a.key}-value`}
                   disabled={false}
-                  plan={(p, v) => all(fxClips, (q, id) => planAdjust(q, id, { [a.key]: a.key === "exposure" ? v : v / 100 }), (k) => `Set ${a.name.toLowerCase()} of ${k} clips`)(p)}
+                  plan={(p, v) =>
+                    all(
+                      fxClips,
+                      (q, id) => planAdjust(q, id, { [a.key]: a.key === "exposure" ? v : v / 100 }),
+                      (k) => `Set ${a.name.toLowerCase()} of ${k} clips`,
+                    )(p)
+                  }
                 />
               </Prop>
             ))}
@@ -181,14 +239,42 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
                         {info.name} <span className="muted small">{having.length === fxClips.length ? "all" : `${having.length} of ${fxClips.length}`}</span>
                       </span>
                       <Tooltip label={`Remove ${info.name.toLowerCase()} from all`}>
-                        <button className="icon-btn" data-testid="multi-effect-remove" onClick={() => send(all(having, (p, id) => planRemoveEffect(p, id, module), (k) => `Remove ${info.name.toLowerCase()} from ${k} clips`))}>
+                        <button
+                          className="icon-btn"
+                          data-testid="multi-effect-remove"
+                          onClick={() =>
+                            send(
+                              all(
+                                having,
+                                (p, id) => planRemoveEffect(p, id, module),
+                                (k) => `Remove ${info.name.toLowerCase()} from ${k} clips`,
+                              ),
+                            )
+                          }
+                        >
                           <X />
                         </button>
                       </Tooltip>
                     </div>
                     {info.params.map((d) => (
                       <Prop key={d.key} label={d.name} testId={`multi-effect-${d.key}`}>
-                        <Live project={project} value={round(params[d.key]!, d.step)} min={d.min} max={d.max} step={d.step} {...(d.unit ? { unit: d.unit } : {})} testId={`multi-effect-${d.key}-value`} disabled={false} plan={(p, v) => all(having, (q, id) => planEffect(q, id, module, { [d.key]: v }), (k) => `Set ${info.name.toLowerCase()} ${d.name.toLowerCase()} on ${k} clips`)(p)} />
+                        <Live
+                          project={project}
+                          value={round(params[d.key]!, d.step)}
+                          min={d.min}
+                          max={d.max}
+                          step={d.step}
+                          {...(d.unit ? { unit: d.unit } : {})}
+                          testId={`multi-effect-${d.key}-value`}
+                          disabled={false}
+                          plan={(p, v) =>
+                            all(
+                              having,
+                              (q, id) => planEffect(q, id, module, { [d.key]: v }),
+                              (k) => `Set ${info.name.toLowerCase()} ${d.name.toLowerCase()} on ${k} clips`,
+                            )(p)
+                          }
+                        />
                       </Prop>
                     ))}
                   </div>
@@ -202,27 +288,90 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
         <Group label={`Speed (${n(speedItems, "1 item", "items")})`}>
           <div className="speed-row" role="group" aria-label="Speed" data-testid="multi-speed">
             {SPEED_PRESETS.map((s) => (
-              <button key={s} className={`small-btn ${speed.same && Math.abs(s - speed.value) < 1e-6 ? "active" : ""}`} data-testid={`multi-speed-${s}`} onClick={() => send(all(speedItems, (p, id) => speedPlan(p, id, s), (k) => `Speed ${speedLabel(s)} on ${k} items`))}>
+              <button
+                key={s}
+                className={`small-btn ${speed.same && Math.abs(s - speed.value) < 1e-6 ? "active" : ""}`}
+                data-testid={`multi-speed-${s}`}
+                onClick={() =>
+                  send(
+                    all(
+                      speedItems,
+                      (p, id) => speedPlan(p, id, s),
+                      (k) => `Speed ${speedLabel(s)} on ${k} items`,
+                    ),
+                  )
+                }
+              >
                 {speedLabel(s)}
               </button>
             ))}
           </div>
           <div className="field-row">
-            <NumberField label="×" testId="multi-speed-custom" value={speed.same ? Math.round(speed.value * 1000) / 1000 : undefined} placeholder="Mixed" step={0.05} min={SPEED_RANGE.min} max={SPEED_RANGE.max} onCommit={(v) => v !== undefined && send(all(speedItems, (p, id) => speedPlan(p, id, v), (k) => `Speed ${speedLabel(v)} on ${k} items`))} />
+            <NumberField
+              label="×"
+              testId="multi-speed-custom"
+              value={speed.same ? Math.round(speed.value * 1000) / 1000 : undefined}
+              placeholder="Mixed"
+              step={0.05}
+              min={SPEED_RANGE.min}
+              max={SPEED_RANGE.max}
+              onCommit={(v) =>
+                v !== undefined &&
+                send(
+                  all(
+                    speedItems,
+                    (p, id) => speedPlan(p, id, v),
+                    (k) => `Speed ${speedLabel(v)} on ${k} items`,
+                  ),
+                )
+              }
+            />
           </div>
         </Group>
       )}
       {gain && (
         <Group label={`Volume (${n(soundItems, "1 item", "items")})`}>
           <Prop label="dB" testId="multi-volume">
-            <Live project={project} value={gain.value} min={SILENCE_DB} max={MAX_DB} step={0.5} unit="dB" testId="multi-volume-value" disabled={false} plan={(p, v) => all(soundItems, (q, id) => planGain(q, id, v), (k) => `Set volume of ${k} items to ${v} dB`)(p)} />
+            <Live
+              project={project}
+              value={gain.value}
+              min={SILENCE_DB}
+              max={MAX_DB}
+              step={0.5}
+              unit="dB"
+              testId="multi-volume-value"
+              disabled={false}
+              plan={(p, v) =>
+                all(
+                  soundItems,
+                  (q, id) => planGain(q, id, v),
+                  (k) => `Set volume of ${k} items to ${v} dB`,
+                )(p)
+              }
+            />
           </Prop>
         </Group>
       )}
       {opacity && (
         <Group label={`Opacity (${n(boxItems, "1 item", "items")})`}>
           <Prop label="%" testId="multi-opacity">
-            <Live project={project} value={opacity.value} min={0} max={100} step={1} unit="%" testId="multi-opacity-value" disabled={false} plan={(p, v) => all(boxItems, (q, id) => planClipBox(q, id, { opacity: v / 100 }, getPlayback().frame), (k) => `Set opacity of ${k} items to ${v}%`)(p)} />
+            <Live
+              project={project}
+              value={opacity.value}
+              min={0}
+              max={100}
+              step={1}
+              unit="%"
+              testId="multi-opacity-value"
+              disabled={false}
+              plan={(p, v) =>
+                all(
+                  boxItems,
+                  (q, id) => planClipBox(q, id, { opacity: v / 100 }, getPlayback().frame),
+                  (k) => `Set opacity of ${k} items to ${v}%`,
+                )(p)
+              }
+            />
           </Prop>
         </Group>
       )}

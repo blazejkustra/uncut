@@ -20,8 +20,15 @@ const number = (v: string | undefined) => {
 export function svgSize(text: string): { width: number; height: number } | undefined {
   const root = /<svg\b([^>]*)>/i.exec(text);
   if (!root) return undefined;
-  const attr = (name: string) => new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(root[1]!)?.slice(2).find((v) => v !== undefined);
-  const box = attr("viewBox")?.trim().split(/[\s,]+/).map(Number);
+  const attr = (name: string) =>
+    new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i")
+      .exec(root[1]!)
+      ?.slice(2)
+      .find((v) => v !== undefined);
+  const box = attr("viewBox")
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number);
   const w = number(attr("width"));
   const h = number(attr("height"));
   if (box && box.length === 4 && box[2]! > 0 && box[3]! > 0) {

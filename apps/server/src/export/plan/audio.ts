@@ -87,7 +87,8 @@ export function audioGraph(plan: ExportPlan, first: number, options?: string | A
     if (layer.cycle) inputs.push("-t", n(layer.cycle.samples / 48000 + 0.5), "-i", layer.file);
     else inputs.push(...(layer.loop ? ["-stream_loop", "-1"] : []), "-ss", n(layer.source), "-t", n(seconds * layer.speed + 0.05), "-i", layer.file);
     const constant = constantGain(layer.gain);
-    const volume = constant !== undefined ? `volume=${n(constant)}` : `asetnsamples=n=${AUDIO_BLOCK}:p=0,volume=eval=frame:volume='${gainExpr(layer.gain, plan.fps)}'`;
+    const volume =
+      constant !== undefined ? `volume=${n(constant)}` : `asetnsamples=n=${AUDIO_BLOCK}:p=0,volume=eval=frame:volume='${gainExpr(layer.gain, plan.fps)}'`;
     const delay = Math.round((layer.from / plan.fps) * 48000);
     const bus = busOf.get(layer.track);
     filters.push(
@@ -109,7 +110,9 @@ export function audioGraph(plan: ExportPlan, first: number, options?: string | A
           : [`atrim=duration=${n(seconds * layer.speed)}`]),
         "asetpts=PTS-STARTPTS",
         // keepPitch false (D125): resampled like tape (the pitch follows the speed), else atempo keeps it.
-        ...(layer.item.keepPitch === false && Math.abs(layer.speed - 1) > 1e-9 ? [`asetrate=${n(48000 * layer.speed)}`, "aresample=48000"] : atempo(layer.speed)),
+        ...(layer.item.keepPitch === false && Math.abs(layer.speed - 1) > 1e-9
+          ? [`asetrate=${n(48000 * layer.speed)}`, "aresample=48000"]
+          : atempo(layer.speed)),
         volume,
         `adelay=delays=${delay}S:all=1`,
       ].join(",") + `[a${k}]`,
@@ -130,10 +133,7 @@ export function audioGraph(plan: ExportPlan, first: number, options?: string | A
     filters.push(`${chain.join(",")}[t${j}]`);
     labels.push(`[t${j}]`);
   });
-  const mix =
-    labels.length === 1
-      ? `[asil]anull`
-      : `${labels.join("")}amix=inputs=${labels.length}:duration=first:dropout_transition=0:normalize=0`;
+  const mix = labels.length === 1 ? `[asil]anull` : `${labels.join("")}amix=inputs=${labels.length}:duration=first:dropout_transition=0:normalize=0`;
   // The master volume after the sum (D83), before loudness normalising (which would undo it).
   const master = plan.masterGain !== 1 && labels.length > 1 ? `,volume=${n(plan.masterGain)}` : "";
   const after = [

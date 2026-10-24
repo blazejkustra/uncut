@@ -21,7 +21,21 @@ const dirs = (): Required<Omit<BrandDirs, "skills">> => {
   mkdirSync(join(base, "project"), { recursive: true });
   return { dataDir: join(base, "data"), projectDir: join(base, "project") };
 };
-const kit = (id: string, scope: BrandKit["scope"], extra: Partial<BrandKit> = {}): BrandKit => ({ id, name: id, scope, logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [], ...extra });
+const kit = (id: string, scope: BrandKit["scope"], extra: Partial<BrandKit> = {}): BrandKit => ({
+  id,
+  name: id,
+  scope,
+  logos: {},
+  colors: [],
+  fonts: [],
+  tone: "",
+  taglines: [],
+  urls: [],
+  dos: [],
+  donts: [],
+  examples: [],
+  ...extra,
+});
 
 test("normKit drops bad colours, files and fonts, and refuses a bad id", () => {
   const k = normKit(
@@ -29,7 +43,11 @@ test("normKit drops bad colours, files and fonts, and refuses a bad id", () => {
       id: "acme",
       name: "  Acme ",
       colors: [{ hex: "#ABC", role: "primary" }, { hex: "red", role: "accent" }, { hex: "#12345", role: "x" }, { hex: "#00FF00" }],
-      fonts: [{ family: "Inter", role: "headline", weight: 750 }, { family: "  ", role: "body" }, { family: "Mono", weight: 50 }],
+      fonts: [
+        { family: "Inter", role: "headline", weight: 750 },
+        { family: "  ", role: "body" },
+        { family: "Mono", weight: 50 },
+      ],
       logos: { light: "logo.svg", dark: "../escape.svg", mark: 42 },
       examples: ["a.png", "/abs/b.png", "noext"],
       taglines: ["Ship it", "", 3],
@@ -37,8 +55,14 @@ test("normKit drops bad colours, files and fonts, and refuses a bad id", () => {
     "global",
   )!;
   assert.equal(k.name, "Acme");
-  assert.deepEqual(k.colors, [{ hex: "#aabbcc", role: "primary" }, { hex: "#00ff00", role: "accent" }]);
-  assert.deepEqual(k.fonts, [{ family: "Inter", role: "headline", weight: 750 }, { family: "Mono", role: "body" }]);
+  assert.deepEqual(k.colors, [
+    { hex: "#aabbcc", role: "primary" },
+    { hex: "#00ff00", role: "accent" },
+  ]);
+  assert.deepEqual(k.fonts, [
+    { family: "Inter", role: "headline", weight: 750 },
+    { family: "Mono", role: "body" },
+  ]);
   assert.deepEqual(k.logos, { light: "logo.svg" });
   assert.deepEqual(k.examples, ["a.png"]);
   assert.deepEqual(k.taglines, ["Ship it"]);
@@ -65,9 +89,18 @@ test("a project kit and skill win over the user's with the same id", async () =>
   await saveSkill(d, { id: "promo", name: "Global promo", scope: "global", description: "", body: "g" });
   await saveSkill(d, { id: "promo", name: "Project promo", scope: "project", description: "", body: "p" });
   const state = await readBrand(d);
-  assert.deepEqual(state.kits.map((k) => [k.id, k.name, k.scope]), [["acme", "Project Acme", "project"], ["other", "Zed", "global"]]);
+  assert.deepEqual(
+    state.kits.map((k) => [k.id, k.name, k.scope]),
+    [
+      ["acme", "Project Acme", "project"],
+      ["other", "Zed", "global"],
+    ],
+  );
   // D207: Uncut's built-in skills are listed too (read-only, their own ids).
-  assert.deepEqual(state.skills.filter((s) => !s.builtin).map((s) => [s.id, s.scope, s.body]), [["promo", "project", "p"]]);
+  assert.deepEqual(
+    state.skills.filter((s) => !s.builtin).map((s) => [s.id, s.scope, s.body]),
+    [["promo", "project", "p"]],
+  );
   // Without the project only the user's are seen.
   const alone = await readBrand({ dataDir: d.dataDir });
   assert.equal(alone.kits.find((k) => k.id === "acme")!.name, "Global Acme");
@@ -121,7 +154,10 @@ test("moving a kit's scope: saved in the new place, deleted from the old, its fi
   await saveKit(d, kit("acme", "project", { logos: { mark: copied } }));
   await deleteKit(d, "acme", "global");
   const state = await readBrand(d);
-  assert.deepEqual(state.kits.map((k) => [k.id, k.scope, k.logos.mark]), [["acme", "project", copied]]);
+  assert.deepEqual(
+    state.kits.map((k) => [k.id, k.scope, k.logos.mark]),
+    [["acme", "project", copied]],
+  );
   assert.equal(state.files.acme![copied], join(d.projectDir, "brand", "kits", "acme", copied));
   assert.ok(!existsSync(join(d.dataDir, "brand", "kits", "acme")));
 });

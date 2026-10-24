@@ -48,7 +48,12 @@ const layerReadyLine = Layer.effectDiscard(
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
     // A headless server's token goes to stderr only (with the pairing text), never stdout (D106).
-    const line = { ready: true, port, ...(config.tokenGenerated && !config.headless ? { token: config.token } : {}), ...(config.headless ? { host: config.host } : {}) };
+    const line = {
+      ready: true,
+      port,
+      ...(config.tokenGenerated && !config.headless ? { token: config.token } : {}),
+      ...(config.headless ? { host: config.host } : {}),
+    };
     process.stdout.write(`${JSON.stringify(line)}\n`);
     // A headless server (D106) says where it is and how to pair, for whoever started it.
     if (config.headless) process.stderr.write(pairingText(config.host, port, config.token, config.tokenFile));
@@ -87,7 +92,21 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, Thumbs.recentLayer, MediaFiles.layer, GraphicFiles.layer, GraphicMedia.layer, Waveforms.layer, Filmstrips.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(
+    Layer.mergeAll(
+      Ws.layer,
+      Thumbs.layer,
+      Thumbs.recentLayer,
+      MediaFiles.layer,
+      GraphicFiles.layer,
+      GraphicMedia.layer,
+      Waveforms.layer,
+      Filmstrips.layer,
+      AgentBridge.layer,
+      Remote.layer,
+    ),
+    { disableLogger: true, disableListenLog: true },
+  );
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),

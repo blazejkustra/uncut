@@ -18,9 +18,32 @@ export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders, claudeConfigDirs } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
-export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, notReadOnly, nonReads, allowlisted, copyIntoProject, quotedBlanked, pinnedToProject } from "./permissions/shell.ts";
+export {
+  shellSegments,
+  shellWords,
+  destructive,
+  simpleCommand,
+  readOnlyLine,
+  notReadOnly,
+  nonReads,
+  allowlisted,
+  copyIntoProject,
+  quotedBlanked,
+  pinnedToProject,
+} from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, appDataAskRules, ownFileRules, ownFileAskRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
+export {
+  SECRET_DIRS,
+  SECRET_FILES,
+  denyRules,
+  appDataRules,
+  appDataAskRules,
+  ownFileRules,
+  ownFileAskRules,
+  autoAskRules,
+  sessionSettings,
+  LOOK_DISALLOWED,
+} from "./permissions/settings.ts";
 
 export type Decision =
   // `updatedInput`: the input claude runs instead (a read-only line pinned to the project).
@@ -28,7 +51,14 @@ export type Decision =
   | { readonly kind: "deny"; readonly message: string }
   // A card: `title` ("Run a command"), `target` (the command or path), `grant`: the key "Always for
   // this session" remembers (undefined: it can't be granted, a destructive command always asks).
-  | { readonly kind: "ask"; readonly title: string; readonly target: string; readonly why?: string; readonly grant?: string; readonly updatedInput?: Record<string, unknown> };
+  | {
+      readonly kind: "ask";
+      readonly title: string;
+      readonly target: string;
+      readonly why?: string;
+      readonly grant?: string;
+      readonly updatedInput?: Record<string, unknown>;
+    };
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
@@ -39,7 +69,19 @@ const shownCommand = (s: string) => (s.length > 4000 ? `${s.slice(0, 3997)}...` 
 // ---- the allowlist (D194, after the security review) ----
 
 /** Tools that touch nothing on disk or the network by themselves: allowed in every mode. */
-const SAFE_TOOLS = new Set(["TodoWrite", "TodoRead", "Task", "Agent", "Skill", "BashOutput", "KillShell", "KillBash", "ExitPlanMode", "EnterPlanMode", "ToolSearch"]);
+const SAFE_TOOLS = new Set([
+  "TodoWrite",
+  "TodoRead",
+  "Task",
+  "Agent",
+  "Skill",
+  "BashOutput",
+  "KillShell",
+  "KillBash",
+  "ExitPlanMode",
+  "EnterPlanMode",
+  "ToolSearch",
+]);
 const READ_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
 const WEB_TOOLS = new Set(["WebSearch", "WebFetch"]);
 
@@ -74,7 +116,8 @@ export interface PermissionContext {
 }
 
 /** D219: a command naming apps' data (~/Library/Application Support, as typed or escaped) or Uncut's data folder. */
-export const namesAppData = (command: string, dataDir?: string) => /Application\\?\s+Support/i.test(command) || (!!dataDir && command.includes(dataDir.replace(/\/+$/, "")));
+export const namesAppData = (command: string, dataDir?: string) =>
+  /Application\\?\s+Support/i.test(command) || (!!dataDir && command.includes(dataDir.replace(/\/+$/, "")));
 /** A command (or word) naming ~/.claude. */
 const CLAUDE_NAMED = /(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/;
 
@@ -95,7 +138,12 @@ function claudePaths(command: string, named: (word: string) => boolean): Array<s
   return shellSegments(command)
     .flatMap((seg) => shellWords(seg))
     .filter(named)
-    .map((w) => w.replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "").split(/[$*?[{]/)[0]!.replace(/\/+$/, ""))
+    .map((w) =>
+      w
+        .replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "")
+        .split(/[$*?[{]/)[0]!
+        .replace(/\/+$/, ""),
+    )
     .filter((p) => p.length > 0);
 }
 
@@ -104,8 +152,80 @@ const NAMES_OWN = /project\.json|history\.db|brand\/active\.json|agent\/turns/i;
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
-const FILE_TOOLS = new Set(["ffmpeg", "ffprobe", "ffplay", "file", "wc", "tar", "zip", "unzip", "cp", "mv", "ln", "rsync", "curl", "wget", "tee", "dd", "install", "sips", "convert", "magick"]);
-const WRAPPERS = new Set(["env", "time", "command", "exec", "nice", "nohup", "timeout", "builtin", "xargs", "sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "source", ".", "eval", "python", "python3", "node", "perl", "ruby", "php", "osascript", "open", "deno", "bun", "npx", "pnpm", "npm", "yarn", "make", "awk", "sed", "find", "git", "sudo", "su", "doas", "watch", "parallel", "script", "expect", "tclsh", "lua", "swift", "java"]);
+const FILE_TOOLS = new Set([
+  "ffmpeg",
+  "ffprobe",
+  "ffplay",
+  "file",
+  "wc",
+  "tar",
+  "zip",
+  "unzip",
+  "cp",
+  "mv",
+  "ln",
+  "rsync",
+  "curl",
+  "wget",
+  "tee",
+  "dd",
+  "install",
+  "sips",
+  "convert",
+  "magick",
+]);
+const WRAPPERS = new Set([
+  "env",
+  "time",
+  "command",
+  "exec",
+  "nice",
+  "nohup",
+  "timeout",
+  "builtin",
+  "xargs",
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "fish",
+  "ksh",
+  "csh",
+  "tcsh",
+  "source",
+  ".",
+  "eval",
+  "python",
+  "python3",
+  "node",
+  "perl",
+  "ruby",
+  "php",
+  "osascript",
+  "open",
+  "deno",
+  "bun",
+  "npx",
+  "pnpm",
+  "npm",
+  "yarn",
+  "make",
+  "awk",
+  "sed",
+  "find",
+  "git",
+  "sudo",
+  "su",
+  "doas",
+  "watch",
+  "parallel",
+  "script",
+  "expect",
+  "tclsh",
+  "lua",
+  "swift",
+  "java",
+]);
 
 /** D194: allow, deny or ask, for one built-in tool call in this chat's access mode. */
 export function decide(tool: string, rawInput: unknown, ctx: PermissionContext): Decision {
@@ -114,7 +234,15 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   const real = (p: string, base = ctx.project) => realPath(p, base, home, ctx.realpath);
   const project = ctx.project;
   const zone = (r: string): Zone =>
-    inside(r, join(project, ".cache")) ? "cache" : inside(r, project) ? "project" : ctx.roots.some((d) => r !== d && inside(r, d)) ? "root" : (ctx.sanctioned ?? []).some((d) => inside(r, d)) ? "sanctioned" : "outside";
+    inside(r, join(project, ".cache"))
+      ? "cache"
+      : inside(r, project)
+        ? "project"
+        : ctx.roots.some((d) => r !== d && inside(r, d))
+          ? "root"
+          : (ctx.sanctioned ?? []).some((d) => inside(r, d))
+            ? "sanctioned"
+            : "outside";
   const mode = ACCESS_NAME[ctx.access];
   // D214 (user): the web taint (after WebSearch/WebFetch, confirmed folders and every command ask)
   // is Ask first's and Look only's; in Auto, Claude Code's auto mode handles those actions.
@@ -123,8 +251,21 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   const candidateOf = (r: string) => (ctx.candidates ?? []).find((d) => r !== d && inside(r, d) && !ctx.roots.includes(d));
   const outsideCard = (title: string, r: string, grant: string | undefined): Decision => {
     const cand = candidateOf(r);
-    if (cand) return { kind: "ask", title: "Use a folder you mentioned", target: shownPath(cand, project, home), why: `${title}: ${shownPath(r, project, home)}. Always lets this chat read files in that folder (writing there still asks).`, grant: `Root:${cand}` };
-    return { kind: "ask", title, target: shownPath(r, project, home), why: webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.", ...(grant ? { grant } : {}) };
+    if (cand)
+      return {
+        kind: "ask",
+        title: "Use a folder you mentioned",
+        target: shownPath(cand, project, home),
+        why: `${title}: ${shownPath(r, project, home)}. Always lets this chat read files in that folder (writing there still asks).`,
+        grant: `Root:${cand}`,
+      };
+    return {
+      kind: "ask",
+      title,
+      target: shownPath(r, project, home),
+      why: webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.",
+      ...(grant ? { grant } : {}),
+    };
   };
   // Claude Code's own folder (CLAUDE_DIR): only this project's saved tool output is read (claude
   // saves a large result there and tells the agent to read it); the rest is other conversations and
@@ -142,7 +283,10 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       return segs.length >= 2 && segs[1] === "tool-results" && !segs.includes("..");
     });
   const configNamed = (command: string) => [...(ctx.claudeConfig ?? []), ...configDirs].some((d) => command.includes(d.replace(/\/+$/, "")));
-  const claudeRefusal: Decision = { kind: "deny", message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.` };
+  const claudeRefusal: Decision = {
+    kind: "deny",
+    message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.`,
+  };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -150,7 +294,13 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (tool === "WebSearch") {
       const q = str(input.query);
       const leak = [...(ctx.tainted ?? [])].find((t) => q.includes(t)) ?? q.match(SECRETISH)?.[0];
-      if (q.length > 200 || leak) return { kind: "ask", title: "Search the web", target: q.slice(0, 2000), why: leak ? "The search carries a secret-looking string." : "The search is very long." };
+      if (q.length > 200 || leak)
+        return {
+          kind: "ask",
+          title: "Search the web",
+          target: q.slice(0, 2000),
+          why: leak ? "The search carries a secret-looking string." : "The search is very long.",
+        };
     }
     if (tool === "WebFetch") {
       const url = str(input.url);
@@ -190,16 +340,32 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   }
 
   if (WRITE_TOOLS.has(tool)) {
-    if (ctx.access === "look") return { kind: "deny", message: `Not done: this chat is set to "${mode}", so files can't be written or edited. Say what you would change; the user can switch the access in the composer.` };
+    if (ctx.access === "look")
+      return {
+        kind: "deny",
+        message: `Not done: this chat is set to "${mode}", so files can't be written or edited. Say what you would change; the user can switch the access in the composer.`,
+      };
     const p = toolPath(input);
     if (!p) return { kind: "deny", message: "Not done: no file path." };
     const r = real(p);
-    if (owned(r, project)) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is Uncut's own file; writing it by hand would fight the open project. Change the project with timeline_edit and the other Uncut tools.` };
-    if (inClaude(r)) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is in Claude Code's own folder (settings and other conversations), which is never written.` };
+    if (owned(r, project))
+      return {
+        kind: "deny",
+        message: `Not done: ${shownPath(r, project, home)} is Uncut's own file; writing it by hand would fight the open project. Change the project with timeline_edit and the other Uncut tools.`,
+      };
+    if (inClaude(r))
+      return {
+        kind: "deny",
+        message: `Not done: ${shownPath(r, project, home)} is in Claude Code's own folder (settings and other conversations), which is never written.`,
+      };
     const z = zone(r);
     if (z === "cache") return { kind: "allow" };
     // The active kit's folder and the bundled libraries are only read (D296): never written, not even on a card.
-    if (z === "sanctioned") return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder or Uncut's graphic libraries, which are only read. Change a kit with brand_write; write your own files in the project.` };
+    if (z === "sanctioned")
+      return {
+        kind: "deny",
+        message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder or Uncut's graphic libraries, which are only read. Change a kit with brand_write; write your own files in the project.`,
+      };
     const title = tool === "Write" ? "Write a file" : "Edit a file";
     // "Always" covers this exact file, and only inside the project.
     if (z === "project") {
@@ -212,7 +378,11 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const root = ctx.roots.find((d) => inside(r, d));
     if (root) {
       const segs = relative(root, r).split(sep);
-      if (segs.some((seg) => seg.startsWith(".") || /\.uncut$/i.test(seg))) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is inside a hidden folder or another Uncut project; files there aren't written.` };
+      if (segs.some((seg) => seg.startsWith(".") || /\.uncut$/i.test(seg)))
+        return {
+          kind: "deny",
+          message: `Not done: ${shownPath(r, project, home)} is inside a hidden folder or another Uncut project; files there aren't written.`,
+        };
       return { kind: "ask", title, target: shownPath(r, project, home), why: "It's in a folder you mentioned, outside the project." };
     }
     return outsideCard(title, r, undefined);
@@ -220,42 +390,81 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
 
   if (SHELL_TOOLS.has(tool)) {
     const command = str(input.command);
-    if (ctx.access === "look") return { kind: "deny", message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read, Glob, Grep and the web tools instead, or say what you would run; the user can switch the access in the composer.` };
+    if (ctx.access === "look")
+      return {
+        kind: "deny",
+        message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read, Glob, Grep and the web tools instead, or say what you would run; the user can switch the access in the composer.`,
+      };
     const target = shownCommand(command);
     // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
     // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
     // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
-    const notRead = tool === "Bash" ? nonReads(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput, list: ctx.readdir ?? ((dir) => readdirSync(dir)) }) : ["the line"];
+    const notRead =
+      tool === "Bash"
+        ? nonReads(command, (p, base) => real(p, base), {
+            project,
+            sanctioned: webUsed ? [] : (ctx.sanctioned ?? []),
+            readable: toolOutput,
+            list: ctx.readdir ?? ((dir) => readdirSync(dir)),
+          })
+        : ["the line"];
     const reads = notRead.length === 0;
     // Round 3: the refusals below name the pieces that kept the line from being a plain read (round 9: every one, not just the first).
-    const PLAIN = "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null";
+    const PLAIN =
+      "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null";
     const offending = offendingText(notRead);
     const grant = `Bash:${command.trim()}`;
     // It was judged from the project; claude's shell may sit in another folder (a cd into an added
     // folder stays between calls), so it runs from the project (review of 0039421).
     if (reads) {
       const updatedInput = { ...input, command: pinnedToProject(command, project) };
-      return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow", updatedInput } : { kind: "ask", title: "Run a command", target, grant, updatedInput };
+      return ctx.access === "auto" || ctx.grants.has(grant)
+        ? { kind: "allow", updatedInput }
+        : { kind: "ask", title: "Run a command", target, grant, updatedInput };
     }
     // Anything else naming Claude Code's folder: refused (its deny rules did that before they became ask rules).
     // Round 9's A2: a python run on this project's saved contact sheets got the refusal that says
     // they are read; when every path there is this project's saved output, say how they can be used.
     if (CLAUDE_NAMED.test(command) || configNamed(command)) {
       const named = claudePaths(command, (w) => CLAUDE_NAMED.test(w) || configNamed(w));
-      if (named.length && named.every((p) => toolOutput(real(p)))) return { kind: "deny", message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .cache/work/…) and run other programs on the copies.` };
+      if (named.length && named.every((p) => toolOutput(real(p))))
+        return {
+          kind: "deny",
+          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .cache/work/…) and run other programs on the copies.`,
+        };
       return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
     }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
-    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of the active brand kit's files and Uncut's graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.` };
+    if (namesAppData(command, ctx.dataDir))
+      return {
+        kind: "deny",
+        message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of the active brand kit's files and Uncut's graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.`,
+      };
     // D214: in Auto, a command naming Uncut's own files that isn't a plain read is refused (it would fight the open project).
-    if (ctx.access === "auto" && NAMES_OWN.test(command)) return { kind: "deny", message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; change the project with timeline_edit and the other Uncut tools.` };
+    if (ctx.access === "auto" && NAMES_OWN.test(command))
+      return {
+        kind: "deny",
+        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; change the project with timeline_edit and the other Uncut tools.`,
+      };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);
     if ("complex" in parsed) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It can't be checked: ${parsed.complex}.` };
     const [name = ""] = parsed.words;
-    if (FILE_TOOLS.has(name)) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `${name} can read and write files anywhere through its options; media work goes through Uncut's tools.` };
-    if (name.includes("/") || WRAPPERS.has(name)) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It runs ${name.includes("/") ? "a program by its path" : name}, which can do anything.` };
+    if (FILE_TOOLS.has(name))
+      return {
+        kind: "ask",
+        title: "Run a command",
+        target,
+        why: hint ? `It ${hint}.` : `${name} can read and write files anywhere through its options; media work goes through Uncut's tools.`,
+      };
+    if (name.includes("/") || WRAPPERS.has(name))
+      return {
+        kind: "ask",
+        title: "Run a command",
+        target,
+        why: hint ? `It ${hint}.` : `It runs ${name.includes("/") ? "a program by its path" : name}, which can do anything.`,
+      };
     if (hint) return { kind: "ask", title: "Run a command", target, why: `It ${hint}.` };
     if (ctx.grants.has(grant)) return { kind: "allow" };
     return { kind: "ask", title: "Run a command", target, grant };

@@ -15,7 +15,21 @@ import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
 const TOKEN_PARAM = "token";
-const HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "origin", "referer", "cookie", "authorization"]);
+const HOP = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "origin",
+  "referer",
+  "cookie",
+  "authorization",
+]);
 
 export interface Relay {
   readonly port: number;
@@ -44,7 +58,8 @@ export function problemFor(status: number | undefined, error?: NodeJS.ErrnoExcep
   return `Can't reach the server${where}${error?.message ? `: ${error.message}` : ""}.`;
 }
 
-const originOk = (origin: string | undefined, extra: ReadonlyArray<string>) => origin === undefined || origin === "" || origin === "null" || origin === "file://" || extra.includes(origin);
+const originOk = (origin: string | undefined, extra: ReadonlyArray<string>) =>
+  origin === undefined || origin === "" || origin === "null" || origin === "file://" || extra.includes(origin);
 
 export function startRelay(options: { readonly target: string; readonly token: string; readonly allowedOrigins?: ReadonlyArray<string> }): Promise<Relay> {
   const target = new URL(options.target);
@@ -82,7 +97,14 @@ export function startRelay(options: { readonly target: string; readonly token: s
       return;
     }
     if (req.method === "OPTIONS") {
-      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type, range", "access-control-max-age": "600" }).end();
+      res
+        .writeHead(204, {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, POST",
+          "access-control-allow-headers": "content-type, range",
+          "access-control-max-age": "600",
+        })
+        .end();
       return;
     }
     const { path, headers, authorised } = outgoing(req);
@@ -169,7 +191,11 @@ export function startRelay(options: { readonly target: string; readonly token: s
 }
 
 /** GET <url>/api/ping with the token (Settings' Test connection): the server's version and name, or why not. */
-export function pingServer(base: string, token: string, timeoutMs = 5000): Promise<{ readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string }> {
+export function pingServer(
+  base: string,
+  token: string,
+  timeoutMs = 5000,
+): Promise<{ readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string }> {
   return new Promise((resolve) => {
     let url: URL;
     try {

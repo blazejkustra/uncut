@@ -26,7 +26,15 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { shaderEntry, shaderFrameBytes, shaderModuleCode, shaderParamBytes, type Project, type ShaderDef, type ShaderParam } from "../../packages/core/src/index.ts";
+import {
+  shaderEntry,
+  shaderFrameBytes,
+  shaderModuleCode,
+  shaderParamBytes,
+  type Project,
+  type ShaderDef,
+  type ShaderParam,
+} from "../../packages/core/src/index.ts";
 import { exportCommand, planExport, silentFailure, type ExportPlan } from "../../apps/server/src/export/exportPlan.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../../apps/server/src/export/rasterizer.ts";
 import { checkShaders, shadeLayers } from "../../apps/server/src/export/shaderPass.ts";
@@ -71,8 +79,18 @@ const project = (): Project => ({
   format: "uncut/0",
   name: "Shader",
   canvas: { width: W, height: H, fps: FPS, background: "#000000" },
-  media: [{ id: "m-c", kind: "video", name: "Colours.mp4", path: join(root, "Colours.mp4"), probe: { frames: 60, fps: FPS, width: W, height: H, hasAudio: false } }],
-  tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m-c", in: 0, duration: LENGTH, effects: [shaderEntry(def, { amplitude: 0.02, speed: 8 })] }] }],
+  media: [
+    { id: "m-c", kind: "video", name: "Colours.mp4", path: join(root, "Colours.mp4"), probe: { frames: 60, fps: FPS, width: W, height: H, hasAudio: false } },
+  ],
+  tracks: [
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "c1", type: "clip", media: "m-c", in: 0, duration: LENGTH, effects: [shaderEntry(def, { amplitude: 0.02, speed: 8 })] }],
+    },
+  ],
 });
 
 before(async () => {
@@ -132,7 +150,10 @@ async function shade(name: string): Promise<{ plan: ExportPlan; file: string; sh
   return { plan: p, file: [...shaded.values()][0]!, shaded: shaded as Map<never, string> };
 }
 
-const framesHash = (file: string) => createHash("sha256").update(execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 256 << 20 })).digest("hex");
+const framesHash = (file: string) =>
+  createHash("sha256")
+    .update(execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 256 << 20 }))
+    .digest("hex");
 
 /** The whole export (H.264 4:2:0, as a user gets it), its frames at MOMENTS as PNGs. */
 async function exportFrames(): Promise<Array<string>> {
@@ -214,7 +235,17 @@ async function preview(jobs: ReadonlyArray<{ args: unknown; out: string }>, noGp
   const electron = createRequire(import.meta.url)("electron") as unknown as string;
   const main = join(root, "preview-main.cjs");
   writeFileSync(main, PREVIEW_MAIN);
-  const env: NodeJS.ProcessEnv = { ...process.env, UNCUT_PREVIEW_JOBS: JSON.stringify({ url: `http://127.0.0.1:${port}/preview.html`, width: W, height: H, jobs, profile: join(root, `preview-profile-${noGpu ? "nogpu" : "gpu"}`), noGpu }) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    UNCUT_PREVIEW_JOBS: JSON.stringify({
+      url: `http://127.0.0.1:${port}/preview.html`,
+      width: W,
+      height: H,
+      jobs,
+      profile: join(root, `preview-profile-${noGpu ? "nogpu" : "gpu"}`),
+      noGpu,
+    }),
+  };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electron, [main], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
@@ -231,9 +262,19 @@ test("D213: the shader pass draws the same pixels twice, and it moves with t", {
   const a = await shade("pass-a");
   const b = await shade("pass-b");
   assert.equal(framesHash(a.file), framesHash(b.file), "two passes, the same frames");
-  const frame = (file: string, n: number) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 64 << 20 });
+  const frame = (file: string, n: number) =>
+    execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], {
+      maxBuffer: 64 << 20,
+    });
   assert.notDeepEqual(frame(a.file, 0), frame(a.file, 12), "t moves the ripple");
-  assert.equal(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames,width,height", "-of", "csv=p=0", a.file], { encoding: "utf8" }).trim(), `${W},${H},${LENGTH}`);
+  assert.equal(
+    execFileSync(
+      "ffprobe",
+      ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames,width,height", "-of", "csv=p=0", a.file],
+      { encoding: "utf8" },
+    ).trim(),
+    `${W},${H},${LENGTH}`,
+  );
 });
 
 test("D213: preview vs export, SSIM ≥ 0.98 at three moments (and the ripple is drawn)", { skip, timeout: 180000 }, async () => {
@@ -242,7 +283,10 @@ test("D213: preview vs export, SSIM ≥ 0.98 at three moments (and the ripple is
   const values = project().tracks[0]!.items[0]!.effects![0]!.params!.values as Record<string, number | string>;
   const params = [...new Float32Array(shaderParamBytes(def.params, values)!)];
   // The source frame shown at frame f (Colours.mp4 is a still picture: any moment of it is the same).
-  const jobs = MOMENTS.map((f) => ({ args: { code, frame: [...new Float32Array(shaderFrameBytes(W, H, f / FPS, true))], params, width: W, height: H, source: (f + 0.5) / FPS }, out: join(root, `preview-${f}.png`) }));
+  const jobs = MOMENTS.map((f) => ({
+    args: { code, frame: [...new Float32Array(shaderFrameBytes(W, H, f / FPS, true))], params, width: W, height: H, source: (f + 0.5) / FPS },
+    out: join(root, `preview-${f}.png`),
+  }));
   await preview(jobs);
   const plain = join(root, "plain.png");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", join(root, "Colours.mp4"), "-frames:v", "1", plain]);
@@ -255,7 +299,18 @@ test("D213: preview vs export, SSIM ≥ 0.98 at three moments (and the ripple is
     assert.ok(unshaded < s - 0.01, `frame ${f}: the ripple is drawn (plain clip vs export ${unshaded.toFixed(4)}, preview ${s.toFixed(4)})`);
   }
   console.log(`  preview vs export SSIM: ${scores.join(", ")}`);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", jobs[1]!.out, "-i", exported[1]!, "-filter_complex", "hstack", resolve("test-output/issue20-preview-vs-export.png")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    jobs[1]!.out,
+    "-i",
+    exported[1]!,
+    "-filter_complex",
+    "hstack",
+    resolve("test-output/issue20-preview-vs-export.png"),
+  ]);
 });
 
 test("D213: without WebGPU the export refuses with why, and the runner says there's none", { skip, timeout: 120000 }, async () => {
@@ -265,7 +320,10 @@ test("D213: without WebGPU the export refuses with why, and the runner says ther
   const blind = await startRasterizer(command);
   try {
     await assert.rejects(checkShaders(blind, plan()), (error: Error) => {
-      assert.match(error.message, /^Can't export: the clip "c1" uses the shader effect Ripple, which needs WebGPU, and the export's renderer has none \(.+\)\. Remove the effect, or export on a Mac with WebGPU\.$/);
+      assert.match(
+        error.message,
+        /^Can't export: the clip "c1" uses the shader effect Ripple, which needs WebGPU, and the export's renderer has none \(.+\)\. Remove the effect, or export on a Mac with WebGPU\.$/,
+      );
       return true;
     });
     // The same through the pass itself: nothing drawn, the same sentence.
@@ -278,7 +336,9 @@ test("D213: without WebGPU the export refuses with why, and the runner says ther
 });
 
 test("D213: the catalog's effects and the shader template compile and draw on the GPU", { skip, timeout: 120000 }, async () => {
-  const manifests = ["plugins/catalog/typegpu-effects/uncut.module.json", "plugins/catalog/_shader-template/uncut.module.json"].map((f) => JSON.parse(readFileSync(f, "utf8")));
+  const manifests = ["plugins/catalog/typegpu-effects/uncut.module.json", "plugins/catalog/_shader-template/uncut.module.json"].map((f) =>
+    JSON.parse(readFileSync(f, "utf8")),
+  );
   const input = join(root, "catalog-in.rgba");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", join(root, "Colours.mp4"), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", input]);
   const source = readFileSync(input);
@@ -287,7 +347,18 @@ test("D213: the catalog's effects and the shader template compile and draw on th
     for (const e of m.contributes.shaders as Array<ShaderDef & { export: string }>) {
       const values = Object.fromEntries(e.params.map((p) => [p.key, p.default]));
       const params = shaderParamBytes(e.params, values);
-      const job = (out: string) => raster.render({ kind: "shader", width: W, height: H, code: shaderModuleCode(e), frame: [...new Float32Array(shaderFrameBytes(W, H, 0.7, false))], ...(params ? { params: [...new Float32Array(params)] } : {}), input, out, name: e.id });
+      const job = (out: string) =>
+        raster.render({
+          kind: "shader",
+          width: W,
+          height: H,
+          code: shaderModuleCode(e),
+          frame: [...new Float32Array(shaderFrameBytes(W, H, 0.7, false))],
+          ...(params ? { params: [...new Float32Array(params)] } : {}),
+          input,
+          out,
+          name: e.id,
+        });
       const a = join(root, `${e.id}-a.rgba`);
       const b = join(root, `${e.id}-b.rgba`);
       await job(a);
@@ -295,45 +366,67 @@ test("D213: the catalog's effects and the shader template compile and draw on th
       assert.deepEqual(readFileSync(a), readFileSync(b), `${e.id}: the same pixels twice`);
       let changed = 0;
       const px = readFileSync(a);
-      for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i]! - source[i]!) + Math.abs(px[i + 1]! - source[i + 1]!) + Math.abs(px[i + 2]! - source[i + 2]!) > 12) changed++;
+      for (let i = 0; i < px.length; i += 4)
+        if (Math.abs(px[i]! - source[i]!) + Math.abs(px[i + 1]! - source[i + 1]!) + Math.abs(px[i + 2]! - source[i + 2]!) > 12) changed++;
       assert.ok(changed / (W * H) > 0.05, `${e.id} changes the picture (${((100 * changed) / (W * H)).toFixed(1)}% of pixels)`);
       const png = join(root, `${e.id}.png`);
       await job(png);
       pngs.push(png);
     }
   assert.equal(pngs.length, 5);
-  execFileSync("ffmpeg", ["-v", "error", "-y", ...pngs.flatMap((p) => ["-i", p]), "-filter_complex", `${pngs.map((_, i) => `[${i}:v]scale=320:180[s${i}]`).join(";")};${pngs.map((_, i) => `[s${i}]`).join("")}xstack=inputs=${pngs.length}:layout=0_0|320_0|640_0|0_180|320_180:fill=black`, resolve("test-output/issue20-catalog.png")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    ...pngs.flatMap((p) => ["-i", p]),
+    "-filter_complex",
+    `${pngs.map((_, i) => `[${i}:v]scale=320:180[s${i}]`).join(";")};${pngs.map((_, i) => `[s${i}]`).join("")}xstack=inputs=${pngs.length}:layout=0_0|320_0|640_0|0_180|320_180:fill=black`,
+    resolve("test-output/issue20-catalog.png"),
+  ]);
 });
 
-test("D213: shader_write builds with TypeGPU, tries it on the GPU and keeps it; refuses what the GPU refuses; without WebGPU it says so", { skip, timeout: 120000 }, async () => {
-  const project = join(root, "Written.uncut");
-  mkdirSync(project);
-  const env = { ...process.env, UNCUT_RENDER_ENTRY: DESKTOP };
-  const ok = await writeProjectShader(project, { name: "scan-wave", title: "Scan wave", params: [{ key: "amount", label: "Amount", type: "number", min: 0, max: 0.05, default: 0.01 }], body: "(uv, t, size, p) { let c = frame(uv + vec2f(sin(uv.y * 40.0 + t * 4.0) * p.amount, 0.0)); return vec4f(c.rgb, 1.0); }" }, env);
-  assert.ok(ok.ok, JSON.stringify(ok));
-  assert.equal(ok.def.id, "project.scan-wave");
-  assert.equal(ok.file, "shaders/scan-wave.json");
-  assert.ok(ok.png && ok.png.subarray(1, 4).toString() === "PNG", "a picture of it on the sample");
-  writeFileSync(resolve("test-output/issue20-shader-write.png"), ok.png!);
-  const saved = JSON.parse(readFileSync(join(project, "shaders", "scan-wave.json"), "utf8"));
-  assert.equal(saved.wgsl, ok.def.wgsl);
-  assert.equal(ok.replaced, false);
-  // The GPU's own compiler: a call to nothing passes the checks but not WebGPU.
-  const bad = await writeProjectShader(project, { name: "broken", body: "(uv, t, size) { return nothing(uv); }" }, env);
-  assert.ok(!bad.ok);
-  assert.match(bad.problems[0]!, /^It doesn't run on the GPU: .*nothing/);
-  assert.ok(!existsSync(join(project, "shaders", "broken.json")), "nothing kept");
-  // The checks before the GPU: a loop.
-  const looped = await writeProjectShader(project, { name: "looped", body: "(uv, t, size) { loop { } }" }, env);
-  assert.ok(!looped.ok);
-  assert.match(looped.problems.join(" "), /can't use loop/);
-  const badName = await writeProjectShader(project, { name: "Bad Name", body: "(uv, t, size) { return frame(uv); }" }, env);
-  assert.ok(!badName.ok);
-  assert.match(badName.problems[0]!, /lowercase letters/);
-  // No WebGPU: kept, with a note that says so (it can't be previewed or exported here).
-  const blind = await writeProjectShader(project, { name: "scan-wave", body: "(uv, t, size) { return frame(uv); }" }, { ...env, UNCUT_TEST_NO_GPU: "1" });
-  assert.ok(blind.ok);
-  assert.equal(blind.replaced, true);
-  assert.equal(blind.png, undefined);
-  assert.match(blind.note!, /^Saved, but not tried: this Mac has no WebGPU \(.+\), so it can't be previewed or exported here\.$/);
-});
+test(
+  "D213: shader_write builds with TypeGPU, tries it on the GPU and keeps it; refuses what the GPU refuses; without WebGPU it says so",
+  { skip, timeout: 120000 },
+  async () => {
+    const project = join(root, "Written.uncut");
+    mkdirSync(project);
+    const env = { ...process.env, UNCUT_RENDER_ENTRY: DESKTOP };
+    const ok = await writeProjectShader(
+      project,
+      {
+        name: "scan-wave",
+        title: "Scan wave",
+        params: [{ key: "amount", label: "Amount", type: "number", min: 0, max: 0.05, default: 0.01 }],
+        body: "(uv, t, size, p) { let c = frame(uv + vec2f(sin(uv.y * 40.0 + t * 4.0) * p.amount, 0.0)); return vec4f(c.rgb, 1.0); }",
+      },
+      env,
+    );
+    assert.ok(ok.ok, JSON.stringify(ok));
+    assert.equal(ok.def.id, "project.scan-wave");
+    assert.equal(ok.file, "shaders/scan-wave.json");
+    assert.ok(ok.png && ok.png.subarray(1, 4).toString() === "PNG", "a picture of it on the sample");
+    writeFileSync(resolve("test-output/issue20-shader-write.png"), ok.png!);
+    const saved = JSON.parse(readFileSync(join(project, "shaders", "scan-wave.json"), "utf8"));
+    assert.equal(saved.wgsl, ok.def.wgsl);
+    assert.equal(ok.replaced, false);
+    // The GPU's own compiler: a call to nothing passes the checks but not WebGPU.
+    const bad = await writeProjectShader(project, { name: "broken", body: "(uv, t, size) { return nothing(uv); }" }, env);
+    assert.ok(!bad.ok);
+    assert.match(bad.problems[0]!, /^It doesn't run on the GPU: .*nothing/);
+    assert.ok(!existsSync(join(project, "shaders", "broken.json")), "nothing kept");
+    // The checks before the GPU: a loop.
+    const looped = await writeProjectShader(project, { name: "looped", body: "(uv, t, size) { loop { } }" }, env);
+    assert.ok(!looped.ok);
+    assert.match(looped.problems.join(" "), /can't use loop/);
+    const badName = await writeProjectShader(project, { name: "Bad Name", body: "(uv, t, size) { return frame(uv); }" }, env);
+    assert.ok(!badName.ok);
+    assert.match(badName.problems[0]!, /lowercase letters/);
+    // No WebGPU: kept, with a note that says so (it can't be previewed or exported here).
+    const blind = await writeProjectShader(project, { name: "scan-wave", body: "(uv, t, size) { return frame(uv); }" }, { ...env, UNCUT_TEST_NO_GPU: "1" });
+    assert.ok(blind.ok);
+    assert.equal(blind.replaced, true);
+    assert.equal(blind.png, undefined);
+    assert.match(blind.note!, /^Saved, but not tried: this Mac has no WebGPU \(.+\), so it can't be previewed or exported here\.$/);
+  },
+);

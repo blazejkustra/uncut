@@ -35,7 +35,11 @@ export async function activeConnection() {
     if (!secret) throw new Error(`${env.name} isn't in the environments list any more`);
     relay = { id: env.id, relay: await startRelay({ target: secret.url, token: secret.token, allowedOrigins: devOrigins }) };
   }
-  return { url: relay.relay.wsUrl, token: relay.relay.token, environment: { id: env.id, name: env.name, kind: "remote" as const, ...(env.url ? { url: env.url } : {}) } };
+  return {
+    url: relay.relay.wsUrl,
+    token: relay.relay.token,
+    environment: { id: env.id, name: env.name, kind: "remote" as const, ...(env.url ? { url: env.url } : {}) },
+  };
 }
 
 // Downloads this window asked for (D109), by URL: where each goes and who's waiting.

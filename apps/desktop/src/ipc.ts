@@ -58,7 +58,20 @@ export interface EnvironmentInfo {
 export type EnvironmentTest = { readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string };
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "open-settings" | "shortcuts" | "export" | "open-environments" | "import-link" }
+  | {
+      readonly type:
+        | "new-project"
+        | "open-project"
+        | "close-project"
+        | "undo"
+        | "redo"
+        | "open-setup"
+        | "open-settings"
+        | "shortcuts"
+        | "export"
+        | "open-environments"
+        | "import-link";
+    }
   | { readonly type: "open-recent"; readonly dir: string }
   // #76 (D256): View › hide or show a part of the editor, focus mode.
   | { readonly type: "toggle-panel"; readonly panel: "lib" | "side" | "bottom" }

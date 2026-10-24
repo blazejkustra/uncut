@@ -71,7 +71,11 @@ export function makeEnvironmentStore(dataDir: string, crypt: Crypt) {
   const read = (): Stored => {
     try {
       const value = JSON.parse(readFileSync(file, "utf8")) as Partial<Stored>;
-      const remotes = Array.isArray(value.remotes) ? value.remotes.filter((r): r is StoredRemote => typeof r?.id === "string" && typeof r.name === "string" && typeof r.url === "string" && typeof r.token === "string") : [];
+      const remotes = Array.isArray(value.remotes)
+        ? value.remotes.filter(
+            (r): r is StoredRemote => typeof r?.id === "string" && typeof r.name === "string" && typeof r.url === "string" && typeof r.token === "string",
+          )
+        : [];
       const active = typeof value.active === "string" && (value.active === LOCAL_ID || remotes.some((r) => r.id === value.active)) ? value.active : LOCAL_ID;
       return { active, remotes };
     } catch {
@@ -88,7 +92,13 @@ export function makeEnvironmentStore(dataDir: string, crypt: Crypt) {
   return {
     list(): { readonly active: string; readonly environments: ReadonlyArray<EnvironmentInfo> } {
       const stored = read();
-      return { active: stored.active, environments: [{ id: LOCAL_ID, name: LOCAL_NAME, kind: "local" }, ...stored.remotes.map((r) => ({ id: r.id, name: r.name, kind: "remote" as const, url: r.url }))] };
+      return {
+        active: stored.active,
+        environments: [
+          { id: LOCAL_ID, name: LOCAL_NAME, kind: "local" },
+          ...stored.remotes.map((r) => ({ id: r.id, name: r.name, kind: "remote" as const, url: r.url })),
+        ],
+      };
     },
     active(): EnvironmentInfo {
       const { active, environments } = this.list();

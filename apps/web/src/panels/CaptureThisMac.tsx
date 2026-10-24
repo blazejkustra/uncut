@@ -14,7 +14,20 @@ import { Mic, Monitor, Speaker, Video } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { type MultiLayoutName, MULTI_LAYOUTS } from "@uncut/core/place";
 
-import { loadInputs, refreshAccess, refreshSystemAudio, loadSources, openPreview, closePreview, startTake, clock, useRecorder, type PartKind, type Resolution, type TakeOptions } from "../capture/recorder.ts";
+import {
+  loadInputs,
+  refreshAccess,
+  refreshSystemAudio,
+  loadSources,
+  openPreview,
+  closePreview,
+  startTake,
+  clock,
+  useRecorder,
+  type PartKind,
+  type Resolution,
+  type TakeOptions,
+} from "../capture/recorder.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { useApp } from "../state/store.ts";
 import { Composite } from "./capture/Composite.tsx";
@@ -46,13 +59,23 @@ interface Settings {
   readonly place: boolean;
 }
 const KEY = "uncut.capture.recorder";
-const DEFAULTS: Settings = { on: { screen: true, voiceover: false, camera: false, system: false }, source: "", camera: "", mic: "", resolution: "1080p", layout: "br", play: true, mute: true, place: false };
+const DEFAULTS: Settings = {
+  on: { screen: true, voiceover: false, camera: false, system: false },
+  source: "",
+  camera: "",
+  mic: "",
+  resolution: "1080p",
+  layout: "br",
+  play: true,
+  mute: true,
+  place: false,
+};
 let remembered: Settings | undefined;
 function loadSettings(): Settings {
   if (remembered) return remembered;
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Settings>;
-    remembered = { ...DEFAULTS, ...raw, on: { ...DEFAULTS.on, ...(raw.on ?? {}) } };
+    remembered = { ...DEFAULTS, ...raw, on: { ...DEFAULTS.on, ...raw.on } };
   } catch {
     remembered = DEFAULTS;
   }
@@ -94,12 +117,18 @@ export function CaptureThisMac() {
   // Mid-take (back on the tab, or the agent's take) the toggles show what's recording.
   const runningParts = useRecorder((s) => s.parts);
   const runningMode = useRecorder((s) => s.mode);
-  const running: Record<PartKind, boolean> | undefined = busy && runningMode
-    ? (() => {
-        const kinds: ReadonlyArray<PartKind> = runningParts ?? [runningMode === "multi" ? "screen" : runningMode];
-        return { screen: kinds.includes("screen"), voiceover: kinds.includes("voiceover"), camera: kinds.includes("camera"), system: kinds.includes("system") };
-      })()
-    : undefined;
+  const running: Record<PartKind, boolean> | undefined =
+    busy && runningMode
+      ? (() => {
+          const kinds: ReadonlyArray<PartKind> = runningParts ?? [runningMode === "multi" ? "screen" : runningMode];
+          return {
+            screen: kinds.includes("screen"),
+            voiceover: kinds.includes("voiceover"),
+            camera: kinds.includes("camera"),
+            system: kinds.includes("system"),
+          };
+        })()
+      : undefined;
   const on = running ?? settings.on;
   const can: Record<PartKind, boolean> = { screen: ok(access?.screen), voiceover: ok(access?.microphone), camera: ok(access?.camera), system: system.can };
   const parts = PART_ORDER.filter((k) => on[k]);
@@ -135,11 +164,23 @@ export function CaptureThisMac() {
     else if (single === "camera") options = { mode: "camera", camera: common.camera, resolution: settings.resolution, withMic: false, place: settings.place };
     else if (single === "voiceover") options = { mode: "voiceover", mic: common.mic, playTimeline: settings.play, muteTimeline: settings.mute };
     else if (single === "system") options = { mode: "system", playTimeline: settings.play, muteTimeline: settings.mute };
-    else if (!video) options = { mode: on.voiceover ? "voiceover" : "system", parts, mic: common.mic, playTimeline: settings.play, muteTimeline: settings.mute };
+    else if (!video)
+      options = { mode: on.voiceover ? "voiceover" : "system", parts, mic: common.mic, playTimeline: settings.play, muteTimeline: settings.mute };
     else options = { mode: "multi", parts, ...common, layout: settings.layout };
     void startTake(options);
   };
-  const label = single === "screen" ? "Record screen" : single === "voiceover" ? "Record voiceover" : single === "camera" ? "Record camera" : single === "system" ? "Record sound" : parts.length ? `Record ${parts.length} sources` : "Record";
+  const label =
+    single === "screen"
+      ? "Record screen"
+      : single === "voiceover"
+        ? "Record voiceover"
+        : single === "camera"
+          ? "Record camera"
+          : single === "system"
+            ? "Record sound"
+            : parts.length
+              ? `Record ${parts.length} sources`
+              : "Record";
   const where = !parts.length
     ? "Turn on what to record."
     : single === "voiceover"
@@ -153,7 +194,14 @@ export function CaptureThisMac() {
           : `Each source is its own file and track, starting together at the playhead (${at})${on.screen && on.camera ? "; the camera stays movable" : ""}.`;
 
   return (
-    <div className="lib-section capture-this-mac" data-testid="capture-this-mac" data-phase={phase} data-parts={parts.join(",")} {...(recordedMs !== undefined ? { "data-recorded-ms": recordedMs } : {})} {...(offsets ? { "data-offsets": JSON.stringify(offsets) } : {})}>
+    <div
+      className="lib-section capture-this-mac"
+      data-testid="capture-this-mac"
+      data-phase={phase}
+      data-parts={parts.join(",")}
+      {...(recordedMs !== undefined ? { "data-recorded-ms": recordedMs } : {})}
+      {...(offsets ? { "data-offsets": JSON.stringify(offsets) } : {})}
+    >
       <div className="lib-label">This Mac</div>
       {/* D267: Record first, then what it records. */}
       <RecordBar label={label} meter={micOn} disabled={!canRecord} onRecord={record} />
@@ -188,7 +236,14 @@ export function CaptureThisMac() {
       {on.screen && (
         <SourceCard kind="screen">
           <Access kind="screen">
-            <button className="capture-chosen" data-testid="capture-pick-source" data-id={source?.id ?? ""} disabled={busy} title="Choose a screen or window" onClick={() => setPicking(true)}>
+            <button
+              className="capture-chosen"
+              data-testid="capture-pick-source"
+              data-id={source?.id ?? ""}
+              disabled={busy}
+              title="Choose a screen or window"
+              onClick={() => setPicking(true)}
+            >
               <Monitor />
               <span className="capture-chosen-name">{source ? source.name : "Choose a screen or window"}</span>
               <span className="capture-chosen-change">{source ? "Change" : "Choose"}</span>
@@ -218,7 +273,14 @@ export function CaptureThisMac() {
             {screenOn && (
               <div className="seg capture-layouts" data-testid="capture-layout" title="Where the camera sits over the screen">
                 {MULTI_LAYOUTS.map((l) => (
-                  <button key={l} className={settings.layout === l ? "active" : ""} data-value={l} title={LAYOUT_NAMES[l]} disabled={busy} onClick={() => set({ layout: l })}>
+                  <button
+                    key={l}
+                    className={settings.layout === l ? "active" : ""}
+                    data-value={l}
+                    title={LAYOUT_NAMES[l]}
+                    disabled={busy}
+                    onClick={() => set({ layout: l })}
+                  >
                     <span className={`layout-glyph ${l}`} />
                   </button>
                 ))}
@@ -241,7 +303,8 @@ export function CaptureThisMac() {
             <div className="small muted">Checking this Mac…</div>
           ) : !support.supported ? (
             <div className="small" data-testid="capture-system-unsupported">
-              Recording this Mac's sound needs macOS 13 or later{support.macos ? `; this Mac has macOS ${support.macos}` : ""}. The microphone, camera and screen still work.
+              Recording this Mac's sound needs macOS 13 or later{support.macos ? `; this Mac has macOS ${support.macos}` : ""}. The microphone, camera and
+              screen still work.
             </div>
           ) : (
             <Access kind="screen" sound>
@@ -254,16 +317,34 @@ export function CaptureThisMac() {
         <div className="opt-row" data-testid="capture-options-this-mac">
           {!video && (
             <>
-              <Option testId="capture-play-timeline" checked={settings.play} disabled={busy} onChange={(v) => set({ play: v })} title="Play the timeline from the playhead while recording">
+              <Option
+                testId="capture-play-timeline"
+                checked={settings.play}
+                disabled={busy}
+                onChange={(v) => set({ play: v })}
+                title="Play the timeline from the playhead while recording"
+              >
                 Play timeline
               </Option>
-              <Option testId="capture-mute-timeline" checked={settings.mute} disabled={busy || !settings.play} onChange={(v) => set({ mute: v })} title="Mute it, so the microphone only hears you">
+              <Option
+                testId="capture-mute-timeline"
+                checked={settings.mute}
+                disabled={busy || !settings.play}
+                onChange={(v) => set({ mute: v })}
+                title="Mute it, so the microphone only hears you"
+              >
                 Muted
               </Option>
             </>
           )}
           {single && video && (
-            <Option testId="capture-place" checked={settings.place} disabled={busy} onChange={(v) => set({ place: v })} title="Also put it on the timeline at the playhead">
+            <Option
+              testId="capture-place"
+              checked={settings.place}
+              disabled={busy}
+              onChange={(v) => set({ place: v })}
+              title="Also put it on the timeline at the playhead"
+            >
               On the timeline
             </Option>
           )}

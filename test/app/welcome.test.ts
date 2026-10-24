@@ -75,7 +75,10 @@ before(async () => {
   broken = join(root, "Broken.uncut");
   mkdirSync(projects);
   mkdirSync(broken);
-  writeFileSync(join(broken, "project.json"), JSON.stringify({ format: "uncut/0", name: "Broken", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [] }));
+  writeFileSync(
+    join(broken, "project.json"),
+    JSON.stringify({ format: "uncut/0", name: "Broken", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [] }),
+  );
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -108,8 +111,14 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   assert.equal(await page.title(), "First Cut");
   assert.equal(await text(page, "canvas-info"), "1920×1080, 30 fps");
   assert.equal(await text(page, "timecode"), "00:00:00:00 / 00:00:00:00");
-  const tracks = await page.$$eval("[data-testid=track]", (els) => (els as Array<HTMLElement>).map((e) => [e.textContent.trim(), e.dataset.kind, e.dataset.main ?? null]));
-  assert.deepEqual(tracks, [["Text", "text", null], ["Main", "video", "true"], ["Audio", "audio", null]]);
+  const tracks = await page.$$eval("[data-testid=track]", (els) =>
+    (els as Array<HTMLElement>).map((e) => [e.textContent.trim(), e.dataset.kind, e.dataset.main ?? null]),
+  );
+  assert.deepEqual(tracks, [
+    ["Text", "text", null],
+    ["Main", "video", "true"],
+    ["Audio", "audio", null],
+  ]);
   await waitFor(page, "[data-testid=timeline-empty]");
   assert.match(await text(page, "media-empty"), /No media yet/);
   assert.equal(await page.$eval("[data-testid=import]", (b) => (b as HTMLButtonElement).disabled), false);
@@ -138,7 +147,8 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   // ⌘Z outside a text field undoes the project change; ⇧⌘Z redoes it.
   // Each key once the editor has heard of the last change: the file is written before the editor's
   // undo/redo state follows, and a key pressed in between does nothing (a 3-core CI runner, #89).
-  const ready = (id: "undo" | "redo") => page.waitForFunction((b: string) => document.querySelector<HTMLButtonElement>(`[data-testid=${b}]`)?.disabled === false, { timeout: 10000 }, id);
+  const ready = (id: "undo" | "redo") =>
+    page.waitForFunction((b: string) => document.querySelector<HTMLButtonElement>(`[data-testid=${b}]`)?.disabled === false, { timeout: 10000 }, id);
   await page.click("[data-testid=timeline]");
   await ready("undo");
   await meta(page, "KeyZ");
@@ -209,7 +219,10 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   // After a restart the recents are still there, newest first.
   app = await launch();
   await waitFor(app.page, "[data-testid=recent]");
-  assert.deepEqual(await app.page.$$eval("[data-testid=recent] .wiz-name", (e) => (e as Array<HTMLElement>).map((x) => x.textContent)), ["Tall", "Edited By Hand"]);
+  assert.deepEqual(await app.page.$$eval("[data-testid=recent] .wiz-name", (e) => (e as Array<HTMLElement>).map((x) => x.textContent)), [
+    "Tall",
+    "Edited By Hand",
+  ]);
   await shot(app, "welcome-after-restart");
   await close(app);
 });

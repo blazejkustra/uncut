@@ -13,7 +13,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,7 +39,9 @@ after(() => dir && rmSync(dir, { recursive: true, force: true }));
 
 /** Frame n of a file as RGB 0–1 floats (W × H × 3). */
 function readRgb(file: string, n: number, vf: string): Float64Array {
-  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),${vf}`, "-frames:v", "1", "-f", "rawvideo", "-"], { maxBuffer: 64 << 20 });
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),${vf}`, "-frames:v", "1", "-f", "rawvideo", "-"], {
+    maxBuffer: 64 << 20,
+  });
   const out = new Float64Array(W * H * 3);
   for (let i = 0; i < out.length; i++) out[i] = raw.readUInt16LE(i * 2) / 65535;
   return out;
@@ -48,14 +50,28 @@ function readRgb(file: string, n: number, vf: string): Float64Array {
 function project(effects: Item["effects"], still?: string): Project {
   if (still) {
     const p = project(effects);
-    return { ...p, media: [{ id: "m-c", kind: "image", name: still, path: join(dir, still), probe: { width: W, height: H } }], tracks: [{ ...p.tracks[0]!, items: [{ id: "c1", type: "clip", media: "m-c", duration: 30, ...(effects ? { effects } : {}) }] }] };
+    return {
+      ...p,
+      media: [{ id: "m-c", kind: "image", name: still, path: join(dir, still), probe: { width: W, height: H } }],
+      tracks: [{ ...p.tracks[0]!, items: [{ id: "c1", type: "clip", media: "m-c", duration: 30, ...(effects ? { effects } : {}) }] }],
+    };
   }
   return {
     format: "uncut/0",
     name: "Fx",
     canvas: { width: W, height: H, fps: 30, background: "#808080" },
-    media: [{ id: "m-c", kind: "video", name: "Colours.mp4", path: join(dir, "Colours.mp4"), probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false } }],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m-c", in: 0, duration: 30, ...(effects ? { effects } : {}) }] }],
+    media: [
+      { id: "m-c", kind: "video", name: "Colours.mp4", path: join(dir, "Colours.mp4"), probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false } },
+    ],
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "c1", type: "clip", media: "m-c", in: 0, duration: 30, ...(effects ? { effects } : {}) }],
+      },
+    ],
   };
 }
 
@@ -71,11 +87,42 @@ function exported(name: string, effects: Item["effects"], still?: string): Float
   }
   const bg = join(dir, "bg.png");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=0x808080:s=${W}x${H}`, "-frames:v", "1", bg]);
-  const cmd = exportCommand(plan, { background: bg, rasters: new Map(), caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 }, quality: "high", output: join(dir, `${name}.mp4`), luts });
+  const cmd = exportCommand(plan, {
+    background: bg,
+    rasters: new Map(),
+    caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 },
+    quality: "high",
+    output: join(dir, `${name}.mp4`),
+    luts,
+  });
   const graph = cmd.graph.replace(/format=yuv420p,fps=30,trim=end_frame=(\d+)\[vout\]/, "format=yuv444p,fps=30,trim=end_frame=$1[vout]");
   writeFileSync(join(dir, `${name}.txt`), graph);
   const png = join(dir, `${name}.mkv`);
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-y", ...cmd.inputs, "-/filter_complex", join(dir, `${name}.txt`), "-map", "[vout]", "-c:v", "ffv1", "-pix_fmt", "yuv444p", "-frames:v", String(FRAME + 1), png, "-map", "[aout]", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-y",
+      ...cmd.inputs,
+      "-/filter_complex",
+      join(dir, `${name}.txt`),
+      "-map",
+      "[vout]",
+      "-c:v",
+      "ffv1",
+      "-pix_fmt",
+      "yuv444p",
+      "-frames:v",
+      String(FRAME + 1),
+      png,
+      "-map",
+      "[aout]",
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
+  );
   assert.equal(r.status, 0, `${name}: ${r.stderr.slice(-1200)}`);
   assert.equal(silentFailure(r.stderr), undefined);
   return readRgb(png, FRAME, "scale=out_range=pc:in_color_matrix=bt709:in_range=tv,format=rgb48le");
@@ -101,7 +148,8 @@ const mapRgb = (img: Float64Array, f: (r: number, g: number, b: number) => reado
 /** Mean and 99th percentile of |a − b| in 0–255 (a 4 px border left out: edge handling differs by design). */
 function diff(a: Float64Array, b: Float64Array) {
   const d: Array<number> = [];
-  for (let y = 4; y < H - 4; y++) for (let x = 4; x < W - 4; x++) for (let c = 0; c < 3; c++) d.push(Math.abs(a[(y * W + x) * 3 + c]! - b[(y * W + x) * 3 + c]!) * 255);
+  for (let y = 4; y < H - 4; y++)
+    for (let x = 4; x < W - 4; x++) for (let c = 0; c < 3; c++) d.push(Math.abs(a[(y * W + x) * 3 + c]! - b[(y * W + x) * 3 + c]!) * 255);
   d.sort((p, q) => p - q);
   return { mean: d.reduce((s, v) => s + v, 0) / d.length, p99: d[Math.floor(d.length * 0.99)]!, over10: d.filter((v) => v > 10).length / d.length };
 }
@@ -127,20 +175,70 @@ test("D136: every look, and Adjust, export as core's colour table (lut3d triline
   for (const l of LOOKS) {
     const effects: Item["effects"] = [{ module: "effect.look", params: { look: l.id, intensity: 1 } }];
     const lut = colourLut(clipFx({ type: "clip", effects })!.colour!);
-    check(`look ${l.id}`, exported(`look-${l.id}`, effects), mapRgb(source, (r, g, b) => lutAt(lut, r, g, b)), 2, 9);
+    check(
+      `look ${l.id}`,
+      exported(`look-${l.id}`, effects),
+      mapRgb(source, (r, g, b) => lutAt(lut, r, g, b)),
+      2,
+      9,
+    );
   }
-  const adjust: Item["effects"] = [{ module: "effect.look", params: { look: "film", intensity: 0.6 } }, { module: "effect.color", params: { exposure: 0.4, contrast: 0.2, saturation: -0.3, temperature: 0.5, tint: -0.2, highlights: -0.4, shadows: 0.5, vibrance: 0.6 } }, { module: "effect.invert" }];
+  const adjust: Item["effects"] = [
+    { module: "effect.look", params: { look: "film", intensity: 0.6 } },
+    {
+      module: "effect.color",
+      params: { exposure: 0.4, contrast: 0.2, saturation: -0.3, temperature: 0.5, tint: -0.2, highlights: -0.4, shadows: 0.5, vibrance: 0.6 },
+    },
+    { module: "effect.invert" },
+  ];
   const lut = colourLut(clipFx({ type: "clip", effects: adjust })!.colour!);
-  check("adjust+invert", exported("adjust", adjust), mapRgb(source, (r, g, b) => lutAt(lut, r, g, b)), 2, 9);
+  check(
+    "adjust+invert",
+    exported("adjust", adjust),
+    mapRgb(source, (r, g, b) => lutAt(lut, r, g, b)),
+    2,
+    9,
+  );
 });
 
 test("D136: posterize, mirror, RGB split, sharpen and pixelate export as core defines them", { skip, timeout: 300000 }, () => {
-  checkBands("posterize", exported("posterize", [{ module: "effect.posterize", params: { levels: 4 } }]), mapRgb(source, (r, g, b) => [posterize(r, 4), posterize(g, 4), posterize(b, 4)]), 0.03);
-  check("mirror", exported("mirror", [{ module: "effect.mirror" }]), make((x, y, c) => px(source, W - 1 - x, y, c)), 1.5, 9);
-  check("rgb-split", exported("rgb-split", [{ module: "effect.rgb-split", params: { amount: 7 } }]), make((x, y, c) => px(source, c === 0 ? x - 7 : c === 2 ? x + 7 : x, y, c)), 1.5, 9);
+  checkBands(
+    "posterize",
+    exported("posterize", [{ module: "effect.posterize", params: { levels: 4 } }]),
+    mapRgb(source, (r, g, b) => [posterize(r, 4), posterize(g, 4), posterize(b, 4)]),
+    0.03,
+  );
+  check(
+    "mirror",
+    exported("mirror", [{ module: "effect.mirror" }]),
+    make((x, y, c) => px(source, W - 1 - x, y, c)),
+    1.5,
+    9,
+  );
+  check(
+    "rgb-split",
+    exported("rgb-split", [{ module: "effect.rgb-split", params: { amount: 7 } }]),
+    make((x, y, c) => px(source, c === 0 ? x - 7 : c === 2 ? x + 7 : x, y, c)),
+    1.5,
+    9,
+  );
   // Sharpen: 1 + 4a in the middle, −a on four sides (a in 16ths), mirrored edges.
   const a = 10 / 16;
-  check("sharpen", exported("sharpen", [{ module: "effect.sharpen", params: { amount: 0.6 } }]), make((x, y, c) => Math.min(1, Math.max(0, (1 + 4 * a) * px(source, x, y, c) - a * (px(source, x - 1, y, c) + px(source, x + 1, y, c) + px(source, x, y - 1, c) + px(source, x, y + 1, c))))), 2.5, 18);
+  check(
+    "sharpen",
+    exported("sharpen", [{ module: "effect.sharpen", params: { amount: 0.6 } }]),
+    make((x, y, c) =>
+      Math.min(
+        1,
+        Math.max(
+          0,
+          (1 + 4 * a) * px(source, x, y, c) - a * (px(source, x - 1, y, c) + px(source, x + 1, y, c) + px(source, x, y - 1, c) + px(source, x, y + 1, c)),
+        ),
+      ),
+    ),
+    2.5,
+    18,
+  );
   const B = 12;
   check(
     "pixelate",
@@ -150,7 +248,7 @@ test("D136: posterize, mirror, RGB split, sharpen and pixelate export as core de
       const y0 = Math.floor(y / B) * B;
       let s = 0;
       let k = 0;
-      for (let j = y0; j < Math.min(H, y0 + B); j++) for (let i = x0; i < Math.min(W, x0 + B); i++) (s += px(source, i, j, c)), k++;
+      for (let j = y0; j < Math.min(H, y0 + B); j++) for (let i = x0; i < Math.min(W, x0 + B); i++) ((s += px(source, i, j, c)), k++);
       return s / k;
     }),
     1.5,
@@ -158,36 +256,70 @@ test("D136: posterize, mirror, RGB split, sharpen and pixelate export as core de
   );
 });
 
-test("D136: glow (a thresholded copy, Gaussian-blurred, screened) and shake (a moved window of the zoomed picture) export close to core's maths", { skip, timeout: 300000 }, () => {
-  const g = { amount: 0.8, threshold: 0.5, radius: 6 };
-  const thr = make((x, y, c) => Math.min(1, Math.max(0, (px(source, x, y, c) - g.threshold) / (1 - g.threshold))) * g.amount);
-  const r = Math.ceil(3 * g.radius);
-  const w = Array.from({ length: 2 * r + 1 }, (_, i) => Math.exp(-0.5 * ((i - r) / g.radius) ** 2));
-  const ws = w.reduce((s, v) => s + v, 0);
-  const blurH = make((x, y, c) => w.reduce((s, v, i) => s + v * px(thr, x + i - r, y, c), 0) / ws);
-  const blurred = make((x, y, c) => w.reduce((s, v, i) => s + v * px(blurH, x, y + i - r, c), 0) / ws);
-  check("glow", exported("glow", [{ module: "effect.glow", params: g }]), make((x, y, c) => 1 - (1 - px(source, x, y, c)) * (1 - px(blurred, x, y, c))), 3, 14);
-  const shake = { amount: 10, speed: 2 };
-  const z = shakeZoom(shake.amount, W, H);
-  const zw = Math.round(W * z);
-  const zh = Math.round(H * z);
-  const o = shakeWindow(shake, FRAME / 30, W, H, zw, zh);
-  const bilinear = (u: number, v: number, c: number) => {
-    const x = u - 0.5;
-    const y = v - 0.5;
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    const fx = x - x0;
-    const fy = y - y0;
-    return (px(source, x0, y0, c) * (1 - fx) + px(source, x0 + 1, y0, c) * fx) * (1 - fy) + (px(source, x0, y0 + 1, c) * (1 - fx) + px(source, x0 + 1, y0 + 1, c) * fx) * fy;
-  };
-  check("shake", exported("shake", [{ module: "effect.shake", params: shake }]), make((x, y, c) => bilinear(((x + o.x + 0.5) * W) / zw, ((y + o.y + 0.5) * H) / zh, c)), 4, 40);
-});
+test(
+  "D136: glow (a thresholded copy, Gaussian-blurred, screened) and shake (a moved window of the zoomed picture) export close to core's maths",
+  { skip, timeout: 300000 },
+  () => {
+    const g = { amount: 0.8, threshold: 0.5, radius: 6 };
+    const thr = make((x, y, c) => Math.min(1, Math.max(0, (px(source, x, y, c) - g.threshold) / (1 - g.threshold))) * g.amount);
+    const r = Math.ceil(3 * g.radius);
+    const w = Array.from({ length: 2 * r + 1 }, (_, i) => Math.exp(-0.5 * ((i - r) / g.radius) ** 2));
+    const ws = w.reduce((s, v) => s + v, 0);
+    const blurH = make((x, y, c) => w.reduce((s, v, i) => s + v * px(thr, x + i - r, y, c), 0) / ws);
+    const blurred = make((x, y, c) => w.reduce((s, v, i) => s + v * px(blurH, x, y + i - r, c), 0) / ws);
+    check(
+      "glow",
+      exported("glow", [{ module: "effect.glow", params: g }]),
+      make((x, y, c) => 1 - (1 - px(source, x, y, c)) * (1 - px(blurred, x, y, c))),
+      3,
+      14,
+    );
+    const shake = { amount: 10, speed: 2 };
+    const z = shakeZoom(shake.amount, W, H);
+    const zw = Math.round(W * z);
+    const zh = Math.round(H * z);
+    const o = shakeWindow(shake, FRAME / 30, W, H, zw, zh);
+    const bilinear = (u: number, v: number, c: number) => {
+      const x = u - 0.5;
+      const y = v - 0.5;
+      const x0 = Math.floor(x);
+      const y0 = Math.floor(y);
+      const fx = x - x0;
+      const fy = y - y0;
+      return (
+        (px(source, x0, y0, c) * (1 - fx) + px(source, x0 + 1, y0, c) * fx) * (1 - fy) +
+        (px(source, x0, y0 + 1, c) * (1 - fx) + px(source, x0 + 1, y0 + 1, c) * fx) * fy
+      );
+    };
+    check(
+      "shake",
+      exported("shake", [{ module: "effect.shake", params: shake }]),
+      make((x, y, c) => bilinear(((x + o.x + 0.5) * W) / zw, ((y + o.y + 0.5) * H) / zh, c)),
+      4,
+      40,
+    );
+  },
+);
 
 test("D136 review: a half-transparent still keeps its alpha through the effects (16-bit RGB with alpha)", { skip, timeout: 120000 }, () => {
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", join(dir, "Colours.mp4"), "-vf", "select=eq(n\\,10),scale=in_color_matrix=bt709:in_range=tv,format=rgba,colorchannelmixer=aa=0.5", "-frames:v", "1", join(dir, "Half.png")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    join(dir, "Colours.mp4"),
+    "-vf",
+    "select=eq(n\\,10),scale=in_color_matrix=bt709:in_range=tv,format=rgba,colorchannelmixer=aa=0.5",
+    "-frames:v",
+    "1",
+    join(dir, "Half.png"),
+  ]);
   const raw = execFileSync("ffmpeg", ["-v", "error", "-i", join(dir, "Half.png"), "-vf", "format=rgba64le", "-f", "rawvideo", "-"], { maxBuffer: 64 << 20 });
-  const effects: Item["effects"] = [{ module: "effect.look", params: { look: "teal-orange", intensity: 1 } }, { module: "effect.sharpen", params: { amount: 0.4 } }, { module: "effect.glow" }];
+  const effects: Item["effects"] = [
+    { module: "effect.look", params: { look: "teal-orange", intensity: 1 } },
+    { module: "effect.sharpen", params: { amount: 0.4 } },
+    { module: "effect.glow" },
+  ];
   const lut = colourLut(clipFx({ type: "clip", effects })!.colour!);
   const got = exported("half", [{ module: "effect.look", params: { look: "teal-orange", intensity: 1 } }], "Half.png");
   // Over the grey canvas: half the look's colour, half grey (and nowhere near the opaque colour).

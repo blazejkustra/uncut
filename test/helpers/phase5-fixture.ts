@@ -85,7 +85,8 @@ export interface Fixture {
 }
 
 const run = (ffmpeg: string, args: Array<string>) => execFileSync(ffmpeg, ["-v", "error", "-y", ...args]);
-const durationOf = (ffprobe: string, file: string) => Number(execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }).trim());
+const durationOf = (ffprobe: string, file: string) =>
+  Number(execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }).trim());
 
 /**
  * Makes the talk and the three takes in `folder` (created; a `work` folder next to them is used and
@@ -119,17 +120,62 @@ export function makeFixture(folder: string, { ffmpeg = "ffmpeg", ffprobe = "ffpr
     });
     // Joined sample-exactly (the concat filter), then over bars as a talk-like mp4.
     const audio = join(work, "talk.wav");
-    run(ffmpeg, [...files.flatMap((f) => ["-i", f]), "-filter_complex", `${files.map((_, i) => `[${i}:a]`).join("")}concat=n=${files.length}:v=0:a=1`, "-c:a", "pcm_s16le", audio]);
+    run(ffmpeg, [
+      ...files.flatMap((f) => ["-i", f]),
+      "-filter_complex",
+      `${files.map((_, i) => `[${i}:a]`).join("")}concat=n=${files.length}:v=0:a=1`,
+      "-c:a",
+      "pcm_s16le",
+      audio,
+    ]);
     const seconds = durationOf(ffprobe, audio);
     const talk = join(folder, "Talk.mp4");
-    run(ffmpeg, ["-f", "lavfi", "-i", `smptehdbars=size=640x360:rate=${FPS}`, "-i", audio, "-t", String(seconds), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", "-b:a", "128k", talk]);
+    run(ffmpeg, [
+      "-f",
+      "lavfi",
+      "-i",
+      `smptehdbars=size=640x360:rate=${FPS}`,
+      "-i",
+      audio,
+      "-t",
+      String(seconds),
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-g",
+      "30",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      talk,
+    ]);
 
     // The takes: a 6 s pan over a textured still, 640×360 at 30 fps.
     const still = join(work, "still.png");
     run(ffmpeg, ["-f", "lavfi", "-i", "testsrc2=s=1600x900:d=1", "-frames:v", "1", still]);
     const pan = (name: string, x: string, y: string, extra = "") => {
       const out = join(folder, name);
-      run(ffmpeg, ["-loop", "1", "-framerate", String(FPS), "-i", still, "-t", "6", "-vf", `crop=640:360:x='${x}':y='${y}'${extra}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", out]);
+      run(ffmpeg, [
+        "-loop",
+        "1",
+        "-framerate",
+        String(FPS),
+        "-i",
+        still,
+        "-t",
+        "6",
+        "-vf",
+        `crop=640:360:x='${x}':y='${y}'${extra}`,
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-g",
+        "30",
+        out,
+      ]);
       return out;
     };
     const takes = {
@@ -175,7 +221,17 @@ export function talkTranscript(fixture: Fixture) {
  * test has it) those margins don't reach into removed words' sound; the clip's edges go entirely;
  * touching cuts are one. Returns the cuts as [from, to) frames of the talk.
  */
-export function expectedCuts(fixture: Fixture, { sentence = CUT_SENTENCE, minPause = 0.5, head = 2, tail = 5, measured = true, frames }: { sentence?: string; minPause?: number; head?: number; tail?: number; measured?: boolean; frames: number }) {
+export function expectedCuts(
+  fixture: Fixture,
+  {
+    sentence = CUT_SENTENCE,
+    minPause = 0.5,
+    head = 2,
+    tail = 5,
+    measured = true,
+    frames,
+  }: { sentence?: string; minPause?: number; head?: number; tail?: number; measured?: boolean; frames: number },
+) {
   const all = fixture.layout;
   const removed = (p: Placed) => p.kind === "filler" || (p.kind === "sentence" && p.text === sentence);
   const spokenBefore = (i: number) => all.slice(0, i).findLast((p) => p.kind !== "silence");

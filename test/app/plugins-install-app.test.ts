@@ -100,13 +100,22 @@ test("Add plugin from a folder, allow it in the dialog, then the agent sees and 
     await page.type("[data-testid=agent-input]", "Use the plugin I installed");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 60000 });
-    const lists = readFileSync(join(root, "tools.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Array<string>);
+    const lists = readFileSync(join(root, "tools.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Array<string>);
     for (const t of ["fake_echo", "fake_env", "fake_crash", "fake_sleep"]) assert.ok(lists[0]!.includes(t), `the agent sees ${t}`);
     const steps = await page.$$eval("[data-testid=agent-step]", (els) => els.map((e) => [e.textContent, (e as HTMLElement).dataset.status]));
     assert.deepEqual(steps, [["Used fake_echo from Fake capture", "done"]]);
-    const results = readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const results = readFileSync(join(root, "results.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(results[0].result.content[0].text, "fake_echo: installed");
-    const started = readFileSync(join(root, "plugin.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const started = readFileSync(join(root, "plugin.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(started[0].cwd, installed, "it runs from the installed copy");
     assert.deepEqual(app.errors, []);
   } catch (error) {

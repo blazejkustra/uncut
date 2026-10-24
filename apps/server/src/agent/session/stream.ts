@@ -57,8 +57,7 @@ export const makeStream = (ctx: RunCtx) => {
         r.turn.items.splice(i, 1);
         // D203: the edits' steps move up with it.
         r.turn.edits.forEach((e, k) => e.at !== undefined && e.at > i && (r.turn.edits[k] = { ...e, at: e.at - 1 }));
-      }
-      else if (item.kind !== "step") item.text = item.text.trim();
+      } else if (item.kind !== "step") item.text = item.text.trim();
     }
     const now = view();
     if (now && now.openId === r.openId) r.owner.bounds.set(r.turn.id, { ...r.owner.bounds.get(r.turn.id), end: now.session.revision });
@@ -71,7 +70,12 @@ export const makeStream = (ctx: RunCtx) => {
     publishNow();
     // Telemetry (D223): the turn's outcome and size; a failure as a fixed code, never its words.
     const outcome = patch.status === "done" || patch.status === "cancelled" ? patch.status : "error";
-    track("agent:turn", { outcome, duration_ms: Date.now() - Date.parse(r.turn.startedAt), edits: r.turn.edits.length, steps: r.turn.items.filter((i) => i.kind === "step").length });
+    track("agent:turn", {
+      outcome,
+      duration_ms: Date.now() - Date.parse(r.turn.startedAt),
+      edits: r.turn.edits.length,
+      steps: r.turn.items.filter((i) => i.kind === "step").length,
+    });
     if (outcome === "error") track("agent:fail", { code: agentFailCode(r.turn.error) });
   };
 
@@ -86,8 +90,10 @@ export const makeStream = (ctx: RunCtx) => {
     persist(r.owner);
   };
 
-  const label = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
-  const doing = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
+  const label = (tool: string, input: unknown) =>
+    friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
+  const doing = (tool: string, input: unknown) =>
+    friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
 
   /** Live output (D139): a stream_event of the message claude is writing. */
   const onStream = (r: Running, event: Record<string, any>) => {
@@ -171,7 +177,13 @@ export const makeStream = (ctx: RunCtx) => {
     if (usage) {
       const model = usage.model ?? s.initModel ?? s.model;
       const window = knownWindow({ ...ids, learned: learnedWindows }) ?? (last && last.model === model ? last.window : undefined);
-      owner.context = contextOf({ used: usage.used, window, systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0), message: messageContextEstimate(r.message, r.turn.prompt), model });
+      owner.context = contextOf({
+        used: usage.used,
+        window,
+        systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
+        message: messageContextEstimate(r.message, r.turn.prompt),
+        model,
+      });
       return;
     }
     const window = last ? resultWindow(msg, last.model ?? s.initModel ?? s.model) : undefined;
@@ -198,13 +210,15 @@ export const makeStream = (ctx: RunCtx) => {
         if (item) {
           item.text = c.text.trim();
           delete item.live;
-        } else if (c.text.trim() && !items.some((i) => i.kind === "text" && !i.live && i.text.trim() === c.text.trim())) items.push({ kind: "text", text: c.text.trim() });
+        } else if (c.text.trim() && !items.some((i) => i.kind === "text" && !i.live && i.text.trim() === c.text.trim()))
+          items.push({ kind: "text", text: c.text.trim() });
       } else if (c.type === "thinking" && isString(c.thinking)) {
         const item = take("thinking");
         if (item) {
           if (c.thinking.trim()) item.text = c.thinking.trim();
           delete item.live;
-        } else if (c.thinking.trim() && !items.some((i) => i.kind === "thinking" && i.text.trim() === c.thinking.trim())) items.push({ kind: "thinking", text: c.thinking.trim() });
+        } else if (c.thinking.trim() && !items.some((i) => i.kind === "thinking" && i.text.trim() === c.thinking.trim()))
+          items.push({ kind: "thinking", text: c.thinking.trim() });
       } else if (c.type === "tool_use" && isString(c.name)) {
         const tool = c.name.replace(/^mcp__uncut__/, "");
         r.announced.push({ name: tool, args: canonical(c.input ?? {}), used: false });

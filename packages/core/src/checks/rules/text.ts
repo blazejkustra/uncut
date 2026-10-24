@@ -2,7 +2,23 @@ import { textLook } from "../../text/looks.ts";
 import { wordCount, textPlacement, safeMargin } from "../../visual/render.ts";
 import { visualsAt } from "../../timeline/timeline.ts";
 import type { Op } from "../../timeline/types.ts";
-import { type CheckRule, readFrames, holdOf, textLabel, lengthen, secs, fixPeriods, locked, fixDots, familyOf, FILLER_PHRASES, FILLER_RE, startOf, isFootnote, type Placed } from "../context.ts";
+import {
+  type CheckRule,
+  readFrames,
+  holdOf,
+  textLabel,
+  lengthen,
+  secs,
+  fixPeriods,
+  locked,
+  fixDots,
+  familyOf,
+  FILLER_PHRASES,
+  FILLER_RE,
+  startOf,
+  isFootnote,
+  type Placed,
+} from "../context.ts";
 
 // ---- the rules ----
 
@@ -38,7 +54,10 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
     description: "The last text of the video stays fully on screen for at least 3 seconds.",
     severity: "warn",
     check: (ctx) => {
-      const last = ctx.texts.filter((p) => textLabel(p.item.text)).sort((a, b) => a.start + a.item.duration - (b.start + b.item.duration)).at(-1);
+      const last = ctx.texts
+        .filter((p) => textLabel(p.item.text))
+        .sort((a, b) => a.start + a.item.duration - (b.start + b.item.duration))
+        .at(-1);
       if (!last) return [];
       const need = 3 * ctx.fps;
       const hold = holdOf(last.item);
@@ -91,7 +110,14 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
             message: `"${textLabel(text)}" ends with a period; on screen it reads better without.`,
             itemIds: [p.item.id],
             frame: p.start,
-            ...(locked(p) ? { hint: "Unlock it to drop the period." } : { fix: { summary: `Remove the period from "${textLabel(fixed)}"`, ops: [{ op: "update_item" as const, item: p.item.id, set: { text: fixed } }] } }),
+            ...(locked(p)
+              ? { hint: "Unlock it to drop the period." }
+              : {
+                  fix: {
+                    summary: `Remove the period from "${textLabel(fixed)}"`,
+                    ops: [{ op: "update_item" as const, item: p.item.id, set: { text: fixed } }],
+                  },
+                }),
           },
         ];
       }),
@@ -112,7 +138,9 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
             message: `"${textLabel(text)}" separates words with dots, which reads as generated; use commas or line breaks.`,
             itemIds: [p.item.id],
             frame: p.start,
-            ...(locked(p) ? { hint: "Unlock it to swap the dots for commas." } : { fix: { summary: `Use commas in "${textLabel(fixed)}"`, ops: [{ op: "update_item" as const, item: p.item.id, set: { text: fixed } }] } }),
+            ...(locked(p)
+              ? { hint: "Unlock it to swap the dots for commas." }
+              : { fix: { summary: `Use commas in "${textLabel(fixed)}"`, ops: [{ op: "update_item" as const, item: p.item.id, set: { text: fixed } }] } }),
           },
         ];
       }),
@@ -148,7 +176,11 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
       const best = Math.max(0, ...shown.map((v) => v.opacity));
       if (best >= 0.5) return [];
       // Items at frame 0 that fade in: dropping their in move starts on a full frame.
-      const fading = ctx.project.tracks.flatMap((track) => (track.hidden || track.kind === "audio" ? [] : track.items.filter((i) => startOf(ctx, i) === 0 && i.animation?.in && !locked({ item: i, track, start: 0 })).map((i) => ({ i }))));
+      const fading = ctx.project.tracks.flatMap((track) =>
+        track.hidden || track.kind === "audio"
+          ? []
+          : track.items.filter((i) => startOf(ctx, i) === 0 && i.animation?.in && !locked({ item: i, track, start: 0 })).map((i) => ({ i })),
+      );
       const ops: Array<Op> = fading.map(({ i }) => {
         const { in: _, ...rest } = i.animation!;
         return { op: "update_item", item: i.id, set: { animation: Object.keys(rest).length ? rest : null } };
@@ -156,10 +188,14 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
       return [
         {
           key: "frame-one",
-          message: shown.length ? "Frame 1 fades in from black, so the thumbnail and the muted autoplay start on an empty frame." : "Frame 1 is empty, so the thumbnail and the muted autoplay start on black.",
+          message: shown.length
+            ? "Frame 1 fades in from black, so the thumbnail and the muted autoplay start on an empty frame."
+            : "Frame 1 is empty, so the thumbnail and the muted autoplay start on black.",
           itemIds: fading.map(({ i }) => i.id),
           frame: 0,
-          ...(ops.length ? { fix: { summary: "Start on a full frame (no fade in)", ops } } : { hint: "Start on the claim: put footage or the first line on frame 1." }),
+          ...(ops.length
+            ? { fix: { summary: "Start on a full frame (no fade in)", ops } }
+            : { hint: "Start on the claim: put footage or the first line on frame 1." }),
         },
       ];
     },
@@ -173,10 +209,12 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
       // Sweep the text spans: the first stretch where three or more overlap, once. A footnote
       // (text.footnote) is the small print best practice asks for ("sped up 8×", how it was
       // measured), not a competing idea, so it doesn't count (D96).
-      const events = ctx.texts.filter((p) => !isFootnote(ctx, p.item)).flatMap((p) => [
-        { at: p.start, d: 1, p },
-        { at: p.start + p.item.duration, d: -1, p },
-      ]);
+      const events = ctx.texts
+        .filter((p) => !isFootnote(ctx, p.item))
+        .flatMap((p) => [
+          { at: p.start, d: 1, p },
+          { at: p.start + p.item.duration, d: -1, p },
+        ]);
       events.sort((a, b) => a.at - b.at || a.d - b.d);
       const on = new Set<Placed>();
       for (const e of events) {
@@ -222,14 +260,18 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
       const [majorKey, major] = groups[0]!;
       const token = majorKey === "sans" ? "DM Sans" : [...major.tokens.entries()].sort((a, b) => b[1] - a[1])[0]![0];
       const others = groups.slice(1).flatMap(([, g]) => g.placed);
-      const ops: Array<Op> = others.filter((p) => !locked(p)).map((p) => ({ op: "update_item", item: p.item.id, set: { style: { ...(p.item.style ?? {}), font: token } } }));
+      const ops: Array<Op> = others
+        .filter((p) => !locked(p))
+        .map((p) => ({ op: "update_item", item: p.item.id, set: { style: { ...p.item.style, font: token } } }));
       return [
         {
           key: "one-typeface",
           message: `Text uses ${names.length} typefaces (${names.slice(0, -1).join(", ")} and ${names.at(-1)}); one family with a real size scale looks designed.`,
           itemIds: others.map((p) => p.item.id),
           frame: Math.min(...others.map((p) => p.start)),
-          ...(ops.length ? { fix: { summary: `Set ${ops.length === 1 ? "1 text" : `${ops.length} texts`} in ${major.name}`, ops } } : { hint: "Pick one in the Style tab's font list and use it for every text." }),
+          ...(ops.length
+            ? { fix: { summary: `Set ${ops.length === 1 ? "1 text" : `${ops.length} texts`} in ${major.name}`, ops } }
+            : { hint: "Pick one in the Style tab's font list and use it for every text." }),
         },
       ];
     },
@@ -250,7 +292,14 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
             message: `"${textLabel(p.item.text)}" is ${Math.round(size)} px, below the ${min} px that still reads on a phone.`,
             itemIds: [p.item.id],
             frame: p.start,
-            ...(locked(p) ? { hint: "Unlock it to make it bigger." } : { fix: { summary: `Make "${textLabel(p.item.text)}" ${min} px`, ops: [{ op: "update_item" as const, item: p.item.id, set: { style: { ...(p.item.style ?? {}), size: min } } }] } }),
+            ...(locked(p)
+              ? { hint: "Unlock it to make it bigger." }
+              : {
+                  fix: {
+                    summary: `Make "${textLabel(p.item.text)}" ${min} px`,
+                    ops: [{ op: "update_item" as const, item: p.item.id, set: { style: { ...p.item.style, size: min } } }],
+                  },
+                }),
           },
         ];
       }),
@@ -270,7 +319,12 @@ export const TEXT_RULES: ReadonlyArray<CheckRule> = [
         const align = p.item.style?.align ?? look.align ?? "left";
         const lines = (p.item.text ?? "").split("\n").length;
         const bottom = y + lines * size * (p.item.style?.lineHeight ?? look.lineHeight);
-        const sides = [x < m && (align === "left" || w === undefined) ? "left" : "", y < m ? "top" : "", w !== undefined && x + w > width - m && align === "right" ? "right" : "", bottom > height - m ? "bottom" : ""].filter(Boolean);
+        const sides = [
+          x < m && (align === "left" || w === undefined) ? "left" : "",
+          y < m ? "top" : "",
+          w !== undefined && x + w > width - m && align === "right" ? "right" : "",
+          bottom > height - m ? "bottom" : "",
+        ].filter(Boolean);
         if (!sides.length) return [];
         return [
           {

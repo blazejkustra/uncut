@@ -24,7 +24,15 @@ import {
   type KeyLike,
 } from "../../apps/web/src/editor/keymap.ts";
 
-const ev = (key: string, code: string, mods: Partial<KeyLike> = {}): KeyLike => ({ key, code, metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...mods });
+const ev = (key: string, code: string, mods: Partial<KeyLike> = {}): KeyLike => ({
+  key,
+  code,
+  metaKey: false,
+  shiftKey: false,
+  altKey: false,
+  ctrlKey: false,
+  ...mods,
+});
 
 test("Uncut preset: the keys the app always had", () => {
   const b = presetBindings("uncut");
@@ -82,7 +90,12 @@ test("rebinding: free key, taken key (replace or swap), menu key refused, clear,
   assert.equal(checkKey(bindingsOf(s), "split", "⌘Q").kind, "reserved");
   assert.equal(assignKey(s, "split", "⌘Z", 0), s);
   // D256: the View menu's layout keys are menu keys too.
-  for (const [k, by] of [["⇧⌘L", "Hide or show the left panel"], ["⇧⌘I", "Hide or show the right panel"], ["⇧⌘T", "Hide or show the timeline"], ["⇧⌘F", "Focus mode: only the preview and the agent"]] as const) {
+  for (const [k, by] of [
+    ["⇧⌘L", "Hide or show the left panel"],
+    ["⇧⌘I", "Hide or show the right panel"],
+    ["⇧⌘T", "Hide or show the timeline"],
+    ["⇧⌘F", "Focus mode: only the preview and the agent"],
+  ] as const) {
     assert.deepEqual(checkKey(bindingsOf(s), "split", k), { kind: "reserved", by });
     assert.equal(assignKey(s, "split", k, 0), s);
   }
@@ -125,7 +138,11 @@ test("keys from events: letters, shifted characters, named keys, ⌥ by physical
 
 test("persistence: remembered in storage, read back, defaults stored as nothing, junk ignored", () => {
   const data = new Map<string, string>();
-  const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v), removeItem: (k: string) => void data.delete(k) };
+  const storage = {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, v),
+    removeItem: (k: string) => void data.delete(k),
+  };
   const a = makeKeymapStore(storage);
   let heard = 0;
   a.subscribe(() => heard++);
@@ -139,7 +156,10 @@ test("persistence: remembered in storage, read back, defaults stored as nothing,
   b.set(DEFAULT_KEYMAP);
   assert.equal(data.has(STORAGE_KEY), false);
   assert.deepEqual(parseKeymap("{nope"), DEFAULT_KEYMAP);
-  assert.deepEqual(parseKeymap(JSON.stringify({ preset: "avid", overrides: { split: ["X", "X"], bogus: ["Y"], fit: [3] } })), { preset: "uncut", overrides: { split: ["X"] } });
+  assert.deepEqual(parseKeymap(JSON.stringify({ preset: "avid", overrides: { split: ["X", "X"], bogus: ["Y"], fit: [3] } })), {
+    preset: "uncut",
+    overrides: { split: ["X"] },
+  });
   // No storage at all (a blocked localStorage): still works.
   const none = makeKeymapStore(undefined);
   none.set(choosePreset("resolve"));

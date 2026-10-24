@@ -26,12 +26,22 @@ test("a built turn without a review is reminded once; small, look-only, waiting,
   assert.ok(reviewNudge({ ...base, planned: true, graphicWrites: 1, edits: 1, storyboard: "approved" }));
 });
 
-test("the nudge suggests approve \"self\" only when the prompt or brief says nobody can answer", () => {
+test('the nudge suggests approve "self" only when the prompt or brief says nobody can answer', () => {
   const attended = reviewNudge({ ...base, graphicWrites: 5 }) ?? "";
   assert.match(attended, /review_submit/);
   assert.doesNotMatch(attended, /approve "self"|approve it yourself/, "an Auto user who's there approves the storyboard");
   assert.match(reviewNudge({ ...base, graphicWrites: 5, unattended: true }) ?? "", /approve it yourself with storyboard_propose approve "self"/);
-  for (const yes of ["Make a launch film. I can't answer questions, decide yourself.", "I won\u2019t be around to answer", "Nobody will answer, go ahead", "Don't ask me anything.", "Build it without asking", "Run unattended", "No questions, please."]) assert.ok(asksNoQuestions(yes), yes);
-  for (const no of ["Make a launch film", "Answer the FAQ questions in the film", "There are no questions about pricing here", "Ask me before you export"]) assert.ok(!asksNoQuestions(no), no);
+  for (const yes of [
+    "Make a launch film. I can't answer questions, decide yourself.",
+    "I won\u2019t be around to answer",
+    "Nobody will answer, go ahead",
+    "Don't ask me anything.",
+    "Build it without asking",
+    "Run unattended",
+    "No questions, please.",
+  ])
+    assert.ok(asksNoQuestions(yes), yes);
+  for (const no of ["Make a launch film", "Answer the FAQ questions in the film", "There are no questions about pricing here", "Ask me before you export"])
+    assert.ok(!asksNoQuestions(no), no);
   assert.ok(asksNoQuestions(undefined, "a teaser", "decide yourself on the colours"), "the brief counts");
 });

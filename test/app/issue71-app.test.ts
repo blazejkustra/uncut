@@ -38,7 +38,13 @@ const project = (): Project => ({
   media: [],
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 120, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "bg", type: "component", component: "component.solid", duration: 120, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }],
+    },
   ],
 });
 
@@ -46,7 +52,12 @@ const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"),
 const items = () => onDisk().tracks.flatMap((t) => t.items);
 const item = (id: string): Item | undefined => items().find((i) => i.id === id);
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0]) => {
   await page.keyboard.down("Meta");
   await page.keyboard.press(key);
@@ -75,7 +86,11 @@ async function goTo(frame: number) {
 const box = async (selector: string) => (await (await page.$(selector))!.boundingBox())!;
 const categories = () => page.$$eval("[data-testid=elements-category]", (els) => els.map((e) => (e as HTMLElement).dataset.category));
 const ssim = (a: string, b: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 async function screenshotSpace(): Promise<"srgb" | "p3"> {
@@ -95,7 +110,16 @@ async function screenshotSpace(): Promise<"srgb" | "p3"> {
 }
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 
@@ -115,7 +139,10 @@ after(async () => {
 
 test("issue 71: Elements sections, chips and search; stickers dropped on the canvas and edited; preview = export", { skip, timeout: 300000 }, async () => {
   const saveAs = join(root, "out", "Stickers.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -125,14 +152,24 @@ test("issue 71: Elements sections, chips and search; stickers dropped on the can
   await page.click("[data-testid=rail-elements]");
   await page.waitForSelector("[data-testid=elements-category]");
   assert.deepEqual(await categories(), ["Titles & text", "Social", "Info", "Shapes & media", "Stickers"]);
-  const inSection = (cat: string) => page.$$eval(`[data-testid=elements-category][data-category="${cat}"] [data-testid=component-tile]`, (els) => els.map((e) => (e as HTMLElement).dataset.component));
+  const inSection = (cat: string) =>
+    page.$$eval(`[data-testid=elements-category][data-category="${cat}"] [data-testid=component-tile]`, (els) =>
+      els.map((e) => (e as HTMLElement).dataset.component),
+    );
   assert.deepEqual(await inSection("Social"), ["component.subscribe", "component.social-button", "component.follow", "component.follow-card"]);
-  assert.ok((await inSection("Info")).includes("component.price-tag") && (await inSection("Info")).includes("component.map-pin") && (await inSection("Info")).includes("component.checklist"));
+  assert.ok(
+    (await inSection("Info")).includes("component.price-tag") &&
+      (await inSection("Info")).includes("component.map-pin") &&
+      (await inSection("Info")).includes("component.checklist"),
+  );
   assert.ok((await inSection("Titles & text")).includes("component.quote") && (await inSection("Titles & text")).includes("component.before-after"));
   const groups = await page.$$eval("[data-testid=sticker-group]", (els) => els.map((e) => (e as HTMLElement).dataset.group));
   assert.deepEqual(groups, ["Reactions", "Arrows & marks", "Shapes & bursts", "Bubbles", "Badges", "Social", "Emoji"]);
   // Every tile's thumbnail is its real HTML.
-  assert.equal(await page.$$eval("[data-testid=component-tile]", (els) => els.filter((e) => !e.querySelector("[data-testid=component-thumb] .pv-comp")).length), 0);
+  assert.equal(
+    await page.$$eval("[data-testid=component-tile]", (els) => els.filter((e) => !e.querySelector("[data-testid=component-thumb] .pv-comp")).length),
+    0,
+  );
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue71-panel.png") });
 
   // #86 (D263): a tile's + names itself in the app's tooltip, not a native title.
@@ -232,7 +269,14 @@ test("issue 71: Elements sections, chips and search; stickers dropped on the can
 
   const labels = historyLabels();
   console.log(`  history: ${labels.join(" | ")}`);
-  assert.deepEqual(labels, ["Add sticker hand-drawn circle", "Add sticker sale tag", "Change text of sticker", "Set loop of sticker to wiggle", "Add social button", "Set kind of social button to bell"]);
+  assert.deepEqual(labels, [
+    "Add sticker hand-drawn circle",
+    "Add sticker sale tag",
+    "Change text of sticker",
+    "Set loop of sticker to wiggle",
+    "Add social button",
+    "Set kind of social button to bell",
+  ]);
 
   // The preview vs a Standard export at two frames (the circle drawn, the tag wiggling, the button pressed).
   await page.click("[data-testid=timeline]");

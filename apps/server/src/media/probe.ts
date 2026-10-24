@@ -74,10 +74,7 @@ export function runProbe(command: string, args: ReadonlyArray<string>, options: 
     });
     // Resolve on exit (plus a short drain), not on EOF: a leftover child can keep the pipe open.
     child.on("exit", (code, signal) => {
-      drainTimer = setTimeout(
-        () => finish({ kind: "done", code: code ?? (signal ? 128 : 1), stdout: Buffer.concat(chunks).toString("utf8") }, true),
-        drainMs,
-      );
+      drainTimer = setTimeout(() => finish({ kind: "done", code: code ?? (signal ? 128 : 1), stdout: Buffer.concat(chunks).toString("utf8") }, true), drainMs);
     });
     child.stdout?.on("end", () => {
       if (child.exitCode !== null || child.signalCode !== null) {

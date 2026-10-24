@@ -41,7 +41,8 @@ export type TakeKind = typeof TakeKind.Type;
  * the server may add " 2"). capture.save only takes files named like this, so a file the user
  * uploaded (D108) is never converted or removed by it.
  */
-export const takeUploadName = (kind: TakeKind, ext: "webm" | "mp4") => `uncut-take-${kind}-${Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("")}.${ext}`;
+export const takeUploadName = (kind: TakeKind, ext: "webm" | "mp4") =>
+  `uncut-take-${kind}-${Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("")}.${ext}`;
 export const TAKE_UPLOAD_NAME = /^uncut-take-(voiceover|camera|screen|system)-[0-9a-f]{12}(?: \d+)?\.(?:webm|mp4)$/;
 
 /** D211: where a multi-source take's camera goes over its screen: a corner bubble or side by side. */
@@ -49,7 +50,13 @@ export const MultiLayout = Schema.Literals(["tl", "tr", "bl", "br", "side"]);
 export type MultiLayout = typeof MultiLayout.Type;
 
 /** D211: one source of a multi-source take: its upload, what it is, and when its recorder started after the first one's (ms). */
-export const MultiPart = Schema.Struct({ path: Schema.String, kind: TakeKind, device: Schema.optional(Schema.String), offsetMs: Schema.Number, recordedMs: Schema.optional(Schema.Number) });
+export const MultiPart = Schema.Struct({
+  path: Schema.String,
+  kind: TakeKind,
+  device: Schema.optional(Schema.String),
+  offsetMs: Schema.Number,
+  recordedMs: Schema.optional(Schema.Number),
+});
 export type MultiPart = typeof MultiPart.Type;
 
 /** D143: how the Capture tab records a device: what to do first, and Argent's own options. */

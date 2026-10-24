@@ -27,7 +27,12 @@ const which = (name: string) => {
 };
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
-const skip = !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) ? "server bundle or media core not built (run pnpm build)" : !FFMPEG || !FFPROBE ? "ffmpeg isn't installed" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA)
+    ? "server bundle or media core not built (run pnpm build)"
+    : !FFMPEG || !FFPROBE
+      ? "ffmpeg isn't installed"
+      : false;
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type Client = Awaited<ReturnType<typeof connect>>;
@@ -47,7 +52,11 @@ async function ask(prompt: string, steps: Array<unknown>) {
   return agent.values.at(-1).turns.find((t: any) => t.id === turnId);
 }
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const results = () => readFileSync(resultLog(), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+const results = () =>
+  readFileSync(resultLog(), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
 const answer = (r: any) => JSON.parse(r.result.content[0].text);
 
 before(async () => {
@@ -62,7 +71,14 @@ before(async () => {
   writeFileSync(join(root, "prompts.jsonl"), "");
   writeFileSync(resultLog(), "");
   server = await startServer({
-    env: { PATH: `${shimDir}:/usr/bin:/bin`, UNCUT_DATA_DIR: join(root, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: resultLog() },
+    env: {
+      PATH: `${shimDir}:/usr/bin:/bin`,
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan(),
+      FAKE_PROMPT_LOG: join(root, "prompts.jsonl"),
+      FAKE_RESULT_LOG: resultLog(),
+    },
   });
   client = await connect(server.ready.port, server.ready.token);
   agent = client.subscribe("agent.subscribe");
@@ -77,79 +93,115 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("project_check lists the checks with fixes; a fix through timeline_edit clears its finding; filters and disabled rules", { skip, timeout: 180000 }, async () => {
-  const start = results().length;
-  const turn = await ask("add a title and check it", [
-    { tool: "project_read", args: {} },
-    {
-      tool: "timeline_edit",
-      args: {
-        baseRevision: "$rev",
-        summary: "Title and a background",
-        ops: [
-          { op: "insert_item", track: "main", item: { id: "bg", type: "component", component: "component.solid", duration: 150, props: { color: "#101010" } } },
-          { op: "insert_item", track: "text", item: { id: "title", type: "text", start: 0, duration: 45, text: "We built it seven times.", transform: { x: 160, y: 400 }, style: { preset: "text.title", size: 96 } } },
-        ],
+test(
+  "project_check lists the checks with fixes; a fix through timeline_edit clears its finding; filters and disabled rules",
+  { skip, timeout: 180000 },
+  async () => {
+    const start = results().length;
+    const turn = await ask("add a title and check it", [
+      { tool: "project_read", args: {} },
+      {
+        tool: "timeline_edit",
+        args: {
+          baseRevision: "$rev",
+          summary: "Title and a background",
+          ops: [
+            {
+              op: "insert_item",
+              track: "main",
+              item: { id: "bg", type: "component", component: "component.solid", duration: 150, props: { color: "#101010" } },
+            },
+            {
+              op: "insert_item",
+              track: "text",
+              item: {
+                id: "title",
+                type: "text",
+                start: 0,
+                duration: 45,
+                text: "We built it seven times.",
+                transform: { x: 160, y: 400 },
+                style: { preset: "text.title", size: 96 },
+              },
+            },
+          ],
+        },
       },
-    },
-    { tool: "project_check", args: {} },
-    { tool: "project_check", args: { severity: "info" } },
-    { tool: "project_check", args: { rules: ["trailing-period"] } },
-    { tool: "project_check", args: { severity: "loud" } },
-  ]);
-  assert.equal(turn.status, "done", turn.error);
-  const mine = results().slice(start);
-  const all = answer(mine[2]);
-  const rules = all.checks.map((c: any) => c.rule);
-  // The title: a trailing period, 1.5 s for 5 words; the 16:9 canvas and no sound are info notes.
-  for (const r of ["trailing-period", "text-read-time", "canvas-format", "silent"]) assert.ok(rules.includes(r), `${r} in ${rules.join(", ")}`);
-  assert.equal(all.warnings, all.checks.filter((c: any) => c.severity === "warn").length);
-  assert.equal(all.checks.findIndex((c: any) => c.severity === "info"), all.warnings, "warnings first");
-  const period = all.checks.find((c: any) => c.rule === "trailing-period");
-  assert.deepEqual(period.items, ["title"]);
-  assert.equal(period.frame, 0);
-  assert.equal(period.seconds, 0);
-  assert.deepEqual(period.fix, { summary: 'Remove the period from "We built it seven times"', ops: [{ op: "update_item", item: "title", set: { text: "We built it seven times" } }] });
-  const read = all.checks.find((c: any) => c.rule === "text-read-time");
-  assert.match(read.message, /fully on screen for 1\.5 s, and 5 words need about 2\.0 s/);
-  assert.ok(read.fix.ops[0].set.duration === 60, JSON.stringify(read.fix));
-  assert.ok(all.checks.find((c: any) => c.rule === "silent").hint, "no fix: a hint");
-  assert.match(all.note, /never block the export/);
-  // The same list as core's.
-  assert.deepEqual(rules, projectChecks(onDisk()).map((c) => c.id));
-  assert.ok(answer(mine[3]).checks.every((c: any) => c.severity === "info"));
-  assert.deepEqual(answer(mine[4]).checks.map((c: any) => c.rule), ["trailing-period"]);
-  assert.equal(mine[5].result.isError, true);
-  assert.match(mine[5].result.content[0].text, /severity must be "warn" or "info"/);
-  assert.equal(turn.items.filter((i: any) => i.kind === "step" && i.text === "Checked the video against the taste checks").length, 4);
+      { tool: "project_check", args: {} },
+      { tool: "project_check", args: { severity: "info" } },
+      { tool: "project_check", args: { rules: ["trailing-period"] } },
+      { tool: "project_check", args: { severity: "loud" } },
+    ]);
+    assert.equal(turn.status, "done", turn.error);
+    const mine = results().slice(start);
+    const all = answer(mine[2]);
+    const rules = all.checks.map((c: any) => c.rule);
+    // The title: a trailing period, 1.5 s for 5 words; the 16:9 canvas and no sound are info notes.
+    for (const r of ["trailing-period", "text-read-time", "canvas-format", "silent"]) assert.ok(rules.includes(r), `${r} in ${rules.join(", ")}`);
+    assert.equal(all.warnings, all.checks.filter((c: any) => c.severity === "warn").length);
+    assert.equal(
+      all.checks.findIndex((c: any) => c.severity === "info"),
+      all.warnings,
+      "warnings first",
+    );
+    const period = all.checks.find((c: any) => c.rule === "trailing-period");
+    assert.deepEqual(period.items, ["title"]);
+    assert.equal(period.frame, 0);
+    assert.equal(period.seconds, 0);
+    assert.deepEqual(period.fix, {
+      summary: 'Remove the period from "We built it seven times"',
+      ops: [{ op: "update_item", item: "title", set: { text: "We built it seven times" } }],
+    });
+    const read = all.checks.find((c: any) => c.rule === "text-read-time");
+    assert.match(read.message, /fully on screen for 1\.5 s, and 5 words need about 2\.0 s/);
+    assert.ok(read.fix.ops[0].set.duration === 60, JSON.stringify(read.fix));
+    assert.ok(all.checks.find((c: any) => c.rule === "silent").hint, "no fix: a hint");
+    assert.match(all.note, /never block the export/);
+    // The same list as core's.
+    assert.deepEqual(
+      rules,
+      projectChecks(onDisk()).map((c) => c.id),
+    );
+    assert.ok(answer(mine[3]).checks.every((c: any) => c.severity === "info"));
+    assert.deepEqual(
+      answer(mine[4]).checks.map((c: any) => c.rule),
+      ["trailing-period"],
+    );
+    assert.equal(mine[5].result.isError, true);
+    assert.match(mine[5].result.content[0].text, /severity must be "warn" or "info"/);
+    assert.equal(turn.items.filter((i: any) => i.kind === "step" && i.text === "Checked the video against the taste checks").length, 4);
 
-  // Next turn: send the two fixes as they are, with the revision project_check answered at.
-  const fix = await ask("fix what the checks found", [
-    { tool: "project_check", args: { severity: "warn" } },
-    { tool: "timeline_edit", args: { baseRevision: all.revision, summary: "Checks fixes", ops: [...period.fix.ops, ...read.fix.ops] } },
-    { tool: "project_check", args: { severity: "warn" } },
-  ]);
-  assert.equal(fix.status, "done", fix.error);
-  const after = results().slice(start + mine.length);
-  assert.equal(answer(after[1]).ok, true, JSON.stringify(answer(after[1])));
-  const left = answer(after[2]).checks.map((c: any) => c.rule);
-  assert.ok(!left.includes("trailing-period") && !left.includes("text-read-time"), left.join(", "));
-  const title = onDisk().tracks.find((t) => t.id === "text")!.items[0]!;
-  assert.equal(title.text, "We built it seven times");
-  assert.equal(title.duration, 60);
+    // Next turn: send the two fixes as they are, with the revision project_check answered at.
+    const fix = await ask("fix what the checks found", [
+      { tool: "project_check", args: { severity: "warn" } },
+      { tool: "timeline_edit", args: { baseRevision: all.revision, summary: "Checks fixes", ops: [...period.fix.ops, ...read.fix.ops] } },
+      { tool: "project_check", args: { severity: "warn" } },
+    ]);
+    assert.equal(fix.status, "done", fix.error);
+    const after = results().slice(start + mine.length);
+    assert.equal(answer(after[1]).ok, true, JSON.stringify(answer(after[1])));
+    const left = answer(after[2]).checks.map((c: any) => c.rule);
+    assert.ok(!left.includes("trailing-period") && !left.includes("text-read-time"), left.join(", "));
+    const title = onDisk().tracks.find((t) => t.id === "text")!.items[0]!;
+    assert.equal(title.text, "We built it seven times");
+    assert.equal(title.duration, 60);
 
-  // A rule the project turned off isn't listed.
-  const off = await ask("I don't care about the format", [
-    { tool: "project_read", args: {} },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Turn off the canvas check", ops: [{ op: "update_project", set: { checks: { disabled: ["canvas-format"] } } }] } },
-    { tool: "project_check", args: {} },
-  ]);
-  assert.equal(off.status, "done", off.error);
-  assert.equal(answer(results().at(-2)).ok, true, results().at(-2).result.content[0].text);
-  const last = answer(results().at(-1));
-  assert.ok(!last.checks.some((c: any) => c.rule === "canvas-format"));
-  assert.deepEqual(last.disabled, ["canvas-format"]);
-});
+    // A rule the project turned off isn't listed.
+    const off = await ask("I don't care about the format", [
+      { tool: "project_read", args: {} },
+      {
+        tool: "timeline_edit",
+        args: { baseRevision: "$rev", summary: "Turn off the canvas check", ops: [{ op: "update_project", set: { checks: { disabled: ["canvas-format"] } } }] },
+      },
+      { tool: "project_check", args: {} },
+    ]);
+    assert.equal(off.status, "done", off.error);
+    assert.equal(answer(results().at(-2)).ok, true, results().at(-2).result.content[0].text);
+    const last = answer(results().at(-1));
+    assert.ok(!last.checks.some((c: any) => c.rule === "canvas-format"));
+    assert.deepEqual(last.disabled, ["canvas-format"]);
+  },
+);
 
 test("D274: no bundled music; library_search with source included finds the user's own music, or says to ask", { skip, timeout: 180000 }, async () => {
   const start = results().length;

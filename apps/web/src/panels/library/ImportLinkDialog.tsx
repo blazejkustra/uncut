@@ -35,7 +35,13 @@ export function LinkImportHost() {
   return request ? <ImportLinkDialog request={request} /> : null;
 }
 
-type Step = { readonly kind: "checking" } | { readonly kind: "missing" } | { readonly kind: "unavailable"; readonly problem: string } | { readonly kind: "notice" } | { readonly kind: "form" } | { readonly kind: "job"; readonly jobId: string };
+type Step =
+  | { readonly kind: "checking" }
+  | { readonly kind: "missing" }
+  | { readonly kind: "unavailable"; readonly problem: string }
+  | { readonly kind: "notice" }
+  | { readonly kind: "form" }
+  | { readonly kind: "job"; readonly jobId: string };
 
 function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
   const app = useApp();
@@ -71,7 +77,9 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
   const start = async () => {
     setProblem(undefined);
     setStarting(true);
-    const r = await call((c) => c["link.start"]({ url: url.trim(), kind, ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }));
+    const r = await call((c) =>
+      c["link.start"]({ url: url.trim(), kind, ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }),
+    );
     setStarting(false);
     if (!r.ok) {
       if (r.error.reason === "no-tool") {
@@ -118,7 +126,10 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
         )}
         {step.kind === "missing" && (
           <div data-testid="link-missing">
-            <p className="link-text">Import from link uses yt-dlp, a free downloader you install yourself. It isn't on {where}, and Uncut doesn't include it. Install it with Homebrew, then check again:</p>
+            <p className="link-text">
+              Import from link uses yt-dlp, a free downloader you install yourself. It isn't on {where}, and Uncut doesn't include it. Install it with Homebrew,
+              then check again:
+            </p>
             <CopyCommand command={BREW_COMMAND} />
             <div className="confirm-actions">
               <button className="btn" data-testid="link-close" onClick={close}>
@@ -133,17 +144,14 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
         {step.kind === "notice" && (
           <div data-testid="link-notice">
             <p className="link-notice-text">You need the rights to what you import. Uncut doesn't check.</p>
-            <p className="link-text">Only import what you made, what you have permission to use, or what its licence allows. Nothing behind a sign-in can be imported.</p>
+            <p className="link-text">
+              Only import what you made, what you have permission to use, or what its licence allows. Nothing behind a sign-in can be imported.
+            </p>
             <div className="confirm-actions">
               <button className="btn" data-testid="link-close" onClick={close}>
                 Cancel
               </button>
-              <button
-                className="btn primary"
-                data-testid="link-notice-ok"
-                autoFocus
-                onClick={() => setStep({ kind: "form" })}
-              >
+              <button className="btn primary" data-testid="link-notice-ok" autoFocus onClick={() => setStep({ kind: "form" })}>
                 I understand
               </button>
             </div>
@@ -157,18 +165,48 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
               if (url.trim() && online && !starting) void start();
             }}
           >
-            <input className="link-url" data-testid="link-url" type="url" placeholder="https://…" autoFocus spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Link" />
+            <input
+              className="link-url"
+              data-testid="link-url"
+              type="url"
+              placeholder="https://…"
+              autoFocus
+              spellCheck={false}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              aria-label="Link"
+            />
             <div className="link-options">
               <div className="seg" role="radiogroup" aria-label="What to import">
-                <button type="button" role="radio" aria-checked={kind === "video"} className={kind === "video" ? "active" : ""} data-testid="link-kind-video" onClick={() => setKind("video")}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === "video"}
+                  className={kind === "video" ? "active" : ""}
+                  data-testid="link-kind-video"
+                  onClick={() => setKind("video")}
+                >
                   Video
                 </button>
-                <button type="button" role="radio" aria-checked={kind === "audio"} className={kind === "audio" ? "active" : ""} data-testid="link-kind-audio" onClick={() => setKind("audio")}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === "audio"}
+                  className={kind === "audio" ? "active" : ""}
+                  data-testid="link-kind-audio"
+                  onClick={() => setKind("audio")}
+                >
                   Audio only
                 </button>
               </div>
               {kind === "video" ? (
-                <select className="link-quality" data-testid="link-quality" value={quality} aria-label="Quality" onChange={(e) => setQuality(e.target.value as LinkQuality)}>
+                <select
+                  className="link-quality"
+                  data-testid="link-quality"
+                  value={quality}
+                  aria-label="Quality"
+                  onChange={(e) => setQuality(e.target.value as LinkQuality)}
+                >
                   {QUALITIES.map((q) => (
                     <option key={q.id} value={q.id}>
                       {q.label}
@@ -230,7 +268,12 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
                   <button className="btn" data-testid="link-hide" title="Keep it going; it lands in Media" onClick={close}>
                     Hide
                   </button>
-                  <button className="btn" data-testid="link-cancel" disabled={!online || job.phase === "importing"} onClick={() => void call((c) => c["link.cancel"]({ jobId: job.id }))}>
+                  <button
+                    className="btn"
+                    data-testid="link-cancel"
+                    disabled={!online || job.phase === "importing"}
+                    onClick={() => void call((c) => c["link.cancel"]({ jobId: job.id }))}
+                  >
                     Cancel
                   </button>
                 </>

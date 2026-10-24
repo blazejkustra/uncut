@@ -26,7 +26,15 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
         <div className="group-label">Aspect</div>
         <div className="seg aspect-seg" data-testid="canvas-aspect">
           {ASPECTS.map((a) => (
-            <button key={a.id} className={aspect === a.id ? "active" : ""} data-testid="canvas-aspect-option" data-aspect={a.id} aria-pressed={aspect === a.id} disabled={!online} onClick={() => void canvasEdit({ width: a.width, height: a.height }, keep)}>
+            <button
+              key={a.id}
+              className={aspect === a.id ? "active" : ""}
+              data-testid="canvas-aspect-option"
+              data-aspect={a.id}
+              aria-pressed={aspect === a.id}
+              disabled={!online}
+              onClick={() => void canvasEdit({ width: a.width, height: a.height }, keep)}
+            >
               {a.label}
             </button>
           ))}
@@ -48,7 +56,11 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
       <div className="group">
         <div className="group-label">Frame rate</div>
         {/* A disabled control gets no hover, so the reason is on a wrapper (F10, D155). */}
-        <span className="fps-wrap" data-testid="canvas-fps-why" title={hasItems ? "Every time in the project is counted in frames, so the frame rate is set while the timeline is empty" : undefined}>
+        <span
+          className="fps-wrap"
+          data-testid="canvas-fps-why"
+          title={hasItems ? "Every time in the project is counted in frames, so the frame rate is set while the timeline is empty" : undefined}
+        >
           <select
             className="field input"
             data-testid="canvas-fps"
@@ -67,7 +79,13 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
       <div className="group">
         <div className="group-label">Background</div>
         <label className="color-row">
-          <input type="color" data-testid="canvas-background" disabled={!online} value={/^#[0-9a-f]{6}$/i.test(project.canvas.background ?? "") ? project.canvas.background! : "#000000"} onChange={(e) => void canvasEdit({ background: e.target.value.toUpperCase() })} />
+          <input
+            type="color"
+            data-testid="canvas-background"
+            disabled={!online}
+            value={/^#[0-9a-f]{6}$/i.test(project.canvas.background ?? "") ? project.canvas.background! : "#000000"}
+            onChange={(e) => void canvasEdit({ background: e.target.value.toUpperCase() })}
+          />
           <span className="mono small">{project.canvas.background ?? "#000000"}</span>
         </label>
       </div>

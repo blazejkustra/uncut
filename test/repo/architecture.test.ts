@@ -45,7 +45,8 @@ test("boxes don't overlap and every label fits in its box", async () => {
   for (const n of r) assert.deepEqual(n.overflow, [], `labels spill out of "${n.id}"`);
   for (let i = 0; i < r.length; i++) {
     for (let j = i + 1; j < r.length; j++) {
-      const a = r[i].box, b = r[j].box;
+      const a = r[i].box,
+        b = r[j].box;
       const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
       assert.ok(!overlap, `"${r[i].id}" overlaps "${r[j].id}"`);
     }

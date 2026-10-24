@@ -25,7 +25,10 @@ test("D285: the edit ops stay strict in the schema; every op's shape is in the d
   const edit = mcpTools().find((t) => t.name === "timeline_edit")!;
   const defs = edit.inputSchema.$defs as any;
   // Core ops keep their fields and types (no descriptions), set_transition also takes allowTrim.
-  assert.deepEqual(defs.op.oneOf.map((b: any) => b.properties.op.const), editOps.$defs.op.oneOf.map((b) => b.properties.op.const));
+  assert.deepEqual(
+    defs.op.oneOf.map((b: any) => b.properties.op.const),
+    editOps.$defs.op.oneOf.map((b) => b.properties.op.const),
+  );
   const trim = defs.op.oneOf.find((b: any) => b.properties.op.const === "trim_item");
   assert.deepEqual(trim.properties.edge, { enum: ["start", "end"] });
   assert.equal(trim.additionalProperties, false);
@@ -49,13 +52,33 @@ test("D285: long tool explanations live in their docs_read topic; the tool keeps
   const desc = (name: string) => tools.find((t) => t.name === name)!.description;
   const moved: Array<[string, keyof typeof DOCS, Array<string>]> = [
     ["library_search", "sound", ["vine boom, fahh, bruh", "answers with free sound-alikes and says so", "Openverse allows 20 searches a minute and 200 a day"]],
-    ["graphic_write", "graphics", ["await uncut.frame(mediaId, seconds) gives a video's exact frame", "the graphic's own @font-face with a data: URL", "pass from (the graphic's file) and edits [{old, new}] instead of html: only the changed lines travel"]],
-    ["media_download", "graphics", ["an OFL font such as Geist, Archivo or Inter", "name it after the family (\"Geist\", or \"Geist-Bold\" for one weight)"]],
-    ["storyboard_propose", "production", ["({graphic, t}: drawn alone, nothing placed", "Up to 4 beats get one (the open, the drop, the busiest state, the last frame)"]],
-    ["review_submit", "production", ["(hook, phone readability, motion, variety, sound, brand; a tutorial has no hook score", "style rules are findings unless the brief asks for them"]],
+    [
+      "graphic_write",
+      "graphics",
+      [
+        "await uncut.frame(mediaId, seconds) gives a video's exact frame",
+        "the graphic's own @font-face with a data: URL",
+        "pass from (the graphic's file) and edits [{old, new}] instead of html: only the changed lines travel",
+      ],
+    ],
+    ["media_download", "graphics", ["an OFL font such as Geist, Archivo or Inter", 'name it after the family ("Geist", or "Geist-Bold" for one weight)']],
+    [
+      "storyboard_propose",
+      "production",
+      ["({graphic, t}: drawn alone, nothing placed", "Up to 4 beats get one (the open, the drop, the busiest state, the last frame)"],
+    ],
+    [
+      "review_submit",
+      "production",
+      ["(hook, phone readability, motion, variety, sound, brand; a tutorial has no hook score", "style rules are findings unless the brief asks for them"],
+    ],
     ["project_check", "production", ["text read time (words ÷ 3 s, 2 s minimum", "music not ducked under speech, a canvas other than 4:5 (info)"]],
     ["shader_write", "picture", ["at most 64 steps, 4 loops, two deep", "nothing named uncut*; 16 KB"]],
-    ["transcript_edit", "footage", ["its group's other parts (a take's camera, screen) get the same cuts", "A media that no main clip plays is cut where it plays."]],
+    [
+      "transcript_edit",
+      "footage",
+      ["its group's other parts (a take's camera, screen) get the same cuts", "A media that no main clip plays is cut where it plays."],
+    ],
     ["captions_make", "footage", ["each item at its own start, item picks it from any clip or sound"]],
   ];
   for (const [tool, topic, texts] of moved) {
@@ -71,7 +94,10 @@ test("D285: an unknown op or a wrong shape names the expected shape", () => {
   assert.match(unknownOp([{ op: "add_text", text: "Hi" }])!, /unknown op "add_text"\. The ops: insert_item, .*insert_text.*docs_read edits/);
   assert.match(unknownOp(["trim_item"])!, /ops\[0\] must be an object/);
   assert.equal(unknownOp([{ op: "trim_item" }, { op: "insert_text" }]), undefined);
-  assert.equal(shapeHint("ops[1] (insert_text): look must be a text-style module id"), `insert_text takes ${OP_SHAPES.insert_text}. docs_read edits has every field.`);
+  assert.equal(
+    shapeHint("ops[1] (insert_text): look must be a text-style module id"),
+    `insert_text takes ${OP_SHAPES.insert_text}. docs_read edits has every field.`,
+  );
   assert.match(shapeHint("trim_item: must be equal to one of the allowed values"), /trim_item takes \{"op":"trim_item", item, edge: "start"\|"end", frames\}/);
   assert.equal(shapeHint("baseRevision 3 isn't a revision you read"), "");
 });
@@ -94,7 +120,9 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
   const plan = join(root, "plan.json");
   const results = join(root, "results.jsonl");
   writeFileSync(results, "");
-  const server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: results } });
+  const server = await startServer({
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: results },
+  });
   const client = await connect(server.ready.port, server.ready.token);
   try {
     const agent = client.subscribe("agent.subscribe");
@@ -112,7 +140,21 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
           edit([{ op: "insert_text", look: "text.big-title", text: "Hi", start: 0, duration: 60 }]),
           edit([{ op: "insert_item", track: "text", item: { id: "t1", type: "text", text: "Shake", start: 60, duration: 240 } }]),
           // A keyframed shake: the dry run used to echo every op back (20k chars in a real session).
-          { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Shake", dryRun: true, ops: [{ op: "update_item", item: "t1", set: { keys: Array.from({ length: 60 }, (_, i) => ({ frame: i * 4, x: (i % 7) - 3, y: (i % 5) - 2, scale: 1.04, ease: "linear" })) } }] } },
+          {
+            tool: "timeline_edit",
+            args: {
+              baseRevision: "$rev",
+              summary: "Shake",
+              dryRun: true,
+              ops: [
+                {
+                  op: "update_item",
+                  item: "t1",
+                  set: { keys: Array.from({ length: 60 }, (_, i) => ({ frame: i * 4, x: (i % 7) - 3, y: (i % 5) - 2, scale: 1.04, ease: "linear" })) },
+                },
+              ],
+            },
+          },
           { tool: "modules_list", args: {} },
           { tool: "modules_list", args: { ids: ["effect.color", "nope.module"] } },
           { tool: "library_search", args: { kind: "sfx", source: "included" } },
@@ -123,8 +165,13 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
     );
     const { turnId } = await client.ok("agent.send", { prompt: "add a title" });
     await agent.until(() => agent.values.at(-1)?.turns.find((t: { id: string }) => t.id === turnId)?.status !== "running", 20000);
-    const all = readFileSync(results, "utf8").trim().split("\n").map((l) => JSON.parse(l)) as Array<{ tool: string; result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string }> } }>;
-    const out = all.filter((x) => x.tool === "timeline_edit").map((x) => ({ isError: !!x.result.isError, size: x.result.content[0]!.text!.length, body: JSON.parse(x.result.content[0]!.text!) }));
+    const all = readFileSync(results, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l)) as Array<{ tool: string; result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string }> } }>;
+    const out = all
+      .filter((x) => x.tool === "timeline_edit")
+      .map((x) => ({ isError: !!x.result.isError, size: x.result.content[0]!.text!.length, body: JSON.parse(x.result.content[0]!.text!) }));
     assert.equal(out.length, 6);
     assert.ok(out[0]!.isError);
     assert.match(out[0]!.body.refused, /unknown op "add_text".*insert_text/);

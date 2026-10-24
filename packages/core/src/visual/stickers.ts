@@ -176,7 +176,8 @@ const INK = "#111111";
 /** A stroke that draws on: pathLength 1, dashed, offset {{d}}. */
 const DRAW = `pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="{{d}}"`;
 /** The words of a sticker that carries them, centred on (x, y). */
-const words = (x: number, y: number, fill: string, extra = "") => `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="'DM Sans',sans-serif" font-weight="900" font-size="{{ts}}" fill="${fill}"${extra}>{{t}}</text>`;
+const words = (x: number, y: number, fill: string, extra = "") =>
+  `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="'DM Sans',sans-serif" font-weight="900" font-size="{{ts}}" fill="${fill}"${extra}>{{t}}</text>`;
 /** A smooth path through points (Catmull-Rom as cubic Béziers). */
 function smooth(points: ReadonlyArray<readonly [number, number]>): string {
   const p = points;
@@ -233,7 +234,8 @@ interface ArtDef {
 // ---- marks: stretch to their box ----
 
 const H = 200;
-const markStroke = (d: string, width: number, extra = "") => `<path d="${d}" fill="none" stroke="{{c}}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${DRAW}${extra}/>`;
+const markStroke = (d: string, width: number, extra = "") =>
+  `<path d="${d}" fill="none" stroke="{{c}}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${DRAW}${extra}/>`;
 
 const MARKS: ReadonlyArray<ArtDef> = [
   {
@@ -286,7 +288,11 @@ const MARKS: ReadonlyArray<ArtDef> = [
     color: "#FF3B30",
     enter: "draw",
     size: [560, 110],
-    mark: (vw) => markStroke(`M18 ${H * 0.36}Q${num(vw / 2)} ${H * 0.24} ${num(vw - 18)} ${H * 0.34}M${num(vw * 0.12)} ${H * 0.72}Q${num(vw / 2)} ${H * 0.6} ${num(vw - 30)} ${H * 0.7}`, 26),
+    mark: (vw) =>
+      markStroke(
+        `M18 ${H * 0.36}Q${num(vw / 2)} ${H * 0.24} ${num(vw - 18)} ${H * 0.34}M${num(vw * 0.12)} ${H * 0.72}Q${num(vw / 2)} ${H * 0.6} ${num(vw - 30)} ${H * 0.7}`,
+        26,
+      ),
   },
   {
     id: "highlight",
@@ -296,7 +302,8 @@ const MARKS: ReadonlyArray<ArtDef> = [
     color: "#FFE14D",
     enter: "draw",
     size: [560, 120],
-    mark: (vw) => `<path d="M12 ${H * 0.56}L${num(vw - 12)} ${H * 0.46}" fill="none" stroke="{{c}}" stroke-opacity="0.6" stroke-width="${H * 0.74}" stroke-linecap="butt" ${DRAW}/>`,
+    mark: (vw) =>
+      `<path d="M12 ${H * 0.56}L${num(vw - 12)} ${H * 0.46}" fill="none" stroke="{{c}}" stroke-opacity="0.6" stroke-width="${H * 0.74}" stroke-linecap="butt" ${DRAW}/>`,
   },
   {
     id: "box-hand",
@@ -362,9 +369,30 @@ const PICTURES: ReadonlyArray<ArtDef> = [
     text: { value: "WOW", size: 46, max: 96 },
     body: `<polygon points="100,6 119,52 168,30 152,80 196,100 152,120 168,170 119,148 100,194 81,148 32,170 48,120 4,100 48,80 32,30 81,52" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}`,
   },
-  { id: "arrow", name: "Arrow", keywords: "point pointer this look here curved", group: "Arrows & marks", color: "#FFFFFF", body: `<path d="M40 160 C 50 90, 100 60, 150 62" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round"/><path d="M40 160 C 50 90, 100 60, 150 62" fill="none" stroke="{{c}}" stroke-width="12" stroke-linecap="round"/><polygon points="176,62 136,36 140,90" fill="{{c}}" ${ink()}/>` },
-  { id: "heart", name: "Heart", keywords: "love like favourite favorite", group: "Shapes & bursts", color: "#FF3B5C", body: `<path d="M100 176 L 30 104 C 4 76, 20 28, 60 28 C 80 28, 94 42, 100 54 C 106 42, 120 28, 140 28 C 180 28, 196 76, 170 104 Z" fill="{{c}}" ${ink()}/><ellipse cx="62" cy="64" rx="14" ry="9" fill="#FFFFFF" opacity="0.55" transform="rotate(-30 62 64)"/>` },
-  { id: "bubble", name: "Speech bubble", keywords: "talk chat say comment quote typing", group: "Bubbles", color: "#FFFFFF", body: `<path d="M30 40 H170 A18 18 0 0 1 188 58 V122 A18 18 0 0 1 170 140 H86 L52 172 L58 140 H30 A18 18 0 0 1 12 122 V58 A18 18 0 0 1 30 40 Z" fill="{{c}}" ${ink()}/><circle cx="64" cy="90" r="10" fill="${INK}"/><circle cx="100" cy="90" r="10" fill="${INK}"/><circle cx="136" cy="90" r="10" fill="${INK}"/>` },
+  {
+    id: "arrow",
+    name: "Arrow",
+    keywords: "point pointer this look here curved",
+    group: "Arrows & marks",
+    color: "#FFFFFF",
+    body: `<path d="M40 160 C 50 90, 100 60, 150 62" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round"/><path d="M40 160 C 50 90, 100 60, 150 62" fill="none" stroke="{{c}}" stroke-width="12" stroke-linecap="round"/><polygon points="176,62 136,36 140,90" fill="{{c}}" ${ink()}/>`,
+  },
+  {
+    id: "heart",
+    name: "Heart",
+    keywords: "love like favourite favorite",
+    group: "Shapes & bursts",
+    color: "#FF3B5C",
+    body: `<path d="M100 176 L 30 104 C 4 76, 20 28, 60 28 C 80 28, 94 42, 100 54 C 106 42, 120 28, 140 28 C 180 28, 196 76, 170 104 Z" fill="{{c}}" ${ink()}/><ellipse cx="62" cy="64" rx="14" ry="9" fill="#FFFFFF" opacity="0.55" transform="rotate(-30 62 64)"/>`,
+  },
+  {
+    id: "bubble",
+    name: "Speech bubble",
+    keywords: "talk chat say comment quote typing",
+    group: "Bubbles",
+    color: "#FFFFFF",
+    body: `<path d="M30 40 H170 A18 18 0 0 1 188 58 V122 A18 18 0 0 1 170 140 H86 L52 172 L58 140 H30 A18 18 0 0 1 12 122 V58 A18 18 0 0 1 30 40 Z" fill="{{c}}" ${ink()}/><circle cx="64" cy="90" r="10" fill="${INK}"/><circle cx="100" cy="90" r="10" fill="${INK}"/><circle cx="136" cy="90" r="10" fill="${INK}"/>`,
+  },
   {
     id: "new",
     name: "New badge",
@@ -374,21 +402,105 @@ const PICTURES: ReadonlyArray<ArtDef> = [
     text: { value: "NEW", size: 54, max: 140 },
     body: `<g transform="rotate(-8 100 100)"><rect x="14" y="58" width="172" height="84" rx="22" fill="{{c}}" ${ink()}/>${words(100, 101, "#FFFFFF")}</g>`,
   },
-  { id: "sparkle", name: "Sparkle", keywords: "shine magic star twinkle clean", group: "Shapes & bursts", color: "#FFE14D", body: `<path d="M100 10 C 108 70, 130 92, 190 100 C 130 108, 108 130, 100 190 C 92 130, 70 108, 10 100 C 70 92, 92 70, 100 10 Z" fill="{{c}}" ${ink()}/><path d="M160 22 C 163 38, 168 43, 184 46 C 168 49, 163 54, 160 70 C 157 54, 152 49, 136 46 C 152 43, 157 38, 160 22 Z" fill="#FFFFFF" ${ink(4)}/>` },
-  { id: "check", name: "Check", keywords: "done yes correct tick ok", group: "Shapes & bursts", color: "#3DDC84", body: `<circle cx="100" cy="100" r="84" fill="{{c}}" ${ink()}/><path d="M58 102 L 88 132 L 144 72" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" ${DRAW}/>` },
+  {
+    id: "sparkle",
+    name: "Sparkle",
+    keywords: "shine magic star twinkle clean",
+    group: "Shapes & bursts",
+    color: "#FFE14D",
+    body: `<path d="M100 10 C 108 70, 130 92, 190 100 C 130 108, 108 130, 100 190 C 92 130, 70 108, 10 100 C 70 92, 92 70, 100 10 Z" fill="{{c}}" ${ink()}/><path d="M160 22 C 163 38, 168 43, 184 46 C 168 49, 163 54, 160 70 C 157 54, 152 49, 136 46 C 152 43, 157 38, 160 22 Z" fill="#FFFFFF" ${ink(4)}/>`,
+  },
+  {
+    id: "check",
+    name: "Check",
+    keywords: "done yes correct tick ok",
+    group: "Shapes & bursts",
+    color: "#3DDC84",
+    body: `<circle cx="100" cy="100" r="84" fill="{{c}}" ${ink()}/><path d="M58 102 L 88 132 L 144 72" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" ${DRAW}/>`,
+  },
 
   // Arrows and hand-drawn marks.
-  { id: "arrow-hand", name: "Hand-drawn arrow", keywords: "arrow point pointer this look here marker scribble", group: "Arrows & marks", color: "#FF3B30", enter: "draw", body: `<path d="M28 170 C 40 110, 84 66, 160 52" fill="none" stroke="{{c}}" stroke-width="13" stroke-linecap="round" ${DRAW}/><path d="M128 30 L164 51 L138 84" fill="none" stroke="{{c}}" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>` },
-  { id: "arrow-loop", name: "Loop arrow", keywords: "arrow loop curly point pointer this look here", group: "Arrows & marks", color: "#FFFFFF", enter: "draw", body: `<path d="M18 156 C 60 156, 92 134, 94 102 C 96 70, 58 64, 54 94 C 50 124, 100 134, 130 110 C 150 94, 160 80, 168 62" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" ${DRAW}/><path d="M18 156 C 60 156, 92 134, 94 102 C 96 70, 58 64, 54 94 C 50 124, 100 134, 130 110 C 150 94, 160 80, 168 62" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" ${DRAW}/><path d="M140 74 L168 60 L176 92" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/><path d="M140 74 L168 60 L176 92" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>` },
-  { id: "arrow-down", name: "Arrow down", keywords: "arrow down below link description point", group: "Arrows & marks", color: "#FFFFFF", enter: "draw", body: `<path d="M104 18 C 70 60, 134 96, 100 158" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" ${DRAW}/><path d="M104 18 C 70 60, 134 96, 100 158" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" ${DRAW}/><path d="M72 134 L100 168 L130 138" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/><path d="M72 134 L100 168 L130 138" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>` },
-  { id: "arrow-block", name: "Block arrow", keywords: "arrow right next point bold", group: "Arrows & marks", color: "#FFD23F", body: `<polygon points="16,76 112,76 112,36 186,100 112,164 112,124 16,124" fill="{{c}}" ${ink()}/><path d="M26 86 H104" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round"/>` },
-  { id: "tick", name: "Tick", keywords: "check done yes correct ok marker hand", group: "Arrows & marks", color: "#3DDC84", enter: "draw", body: `<path d="M34 106 C 50 120, 64 136, 78 154 C 102 106, 134 66, 172 38" fill="none" stroke="{{c}}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" ${DRAW}/>` },
-  { id: "x-hand", name: "Hand-drawn X", keywords: "cross wrong no cancel marker x", group: "Arrows & marks", color: "#FF3B30", enter: "draw", body: `<path d="M44 42 C 80 84, 120 124, 158 160 M158 40 C 120 80, 84 120, 44 162" fill="none" stroke="{{c}}" stroke-width="20" stroke-linecap="round" ${DRAW}/>` },
-  { id: "emphasis", name: "Emphasis lines", keywords: "lines pop shock attention look action", group: "Arrows & marks", color: "#FFD23F", enter: "draw", body: `<path d="M74 70 L40 30 M104 54 L100 10 M58 102 L14 94 M126 146 L160 186 M96 162 L100 196 M142 118 L186 126" fill="none" stroke="${INK}" stroke-width="20" stroke-linecap="round" ${DRAW}/><path d="M74 70 L40 30 M104 54 L100 10 M58 102 L14 94 M126 146 L160 186 M96 162 L100 196 M142 118 L186 126" fill="none" stroke="{{c}}" stroke-width="10" stroke-linecap="round" ${DRAW}/>` },
-  { id: "question", name: "Question mark", keywords: "question what why ask hmm confused", group: "Arrows & marks", color: "#FFD23F", enter: "draw", body: `<path d="M62 70 C 60 28, 142 24, 142 70 C 142 100, 100 102, 100 134" fill="none" stroke="${INK}" stroke-width="30" stroke-linecap="round" ${DRAW}/><path d="M62 70 C 60 28, 142 24, 142 70 C 142 100, 100 102, 100 134" fill="none" stroke="{{c}}" stroke-width="18" stroke-linecap="round" ${DRAW}/><circle cx="100" cy="170" r="13" fill="{{c}}" ${ink()} opacity="{{f}}"/>` },
+  {
+    id: "arrow-hand",
+    name: "Hand-drawn arrow",
+    keywords: "arrow point pointer this look here marker scribble",
+    group: "Arrows & marks",
+    color: "#FF3B30",
+    enter: "draw",
+    body: `<path d="M28 170 C 40 110, 84 66, 160 52" fill="none" stroke="{{c}}" stroke-width="13" stroke-linecap="round" ${DRAW}/><path d="M128 30 L164 51 L138 84" fill="none" stroke="{{c}}" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>`,
+  },
+  {
+    id: "arrow-loop",
+    name: "Loop arrow",
+    keywords: "arrow loop curly point pointer this look here",
+    group: "Arrows & marks",
+    color: "#FFFFFF",
+    enter: "draw",
+    body: `<path d="M18 156 C 60 156, 92 134, 94 102 C 96 70, 58 64, 54 94 C 50 124, 100 134, 130 110 C 150 94, 160 80, 168 62" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" ${DRAW}/><path d="M18 156 C 60 156, 92 134, 94 102 C 96 70, 58 64, 54 94 C 50 124, 100 134, 130 110 C 150 94, 160 80, 168 62" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" ${DRAW}/><path d="M140 74 L168 60 L176 92" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/><path d="M140 74 L168 60 L176 92" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>`,
+  },
+  {
+    id: "arrow-down",
+    name: "Arrow down",
+    keywords: "arrow down below link description point",
+    group: "Arrows & marks",
+    color: "#FFFFFF",
+    enter: "draw",
+    body: `<path d="M104 18 C 70 60, 134 96, 100 158" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" ${DRAW}/><path d="M104 18 C 70 60, 134 96, 100 158" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" ${DRAW}/><path d="M72 134 L100 168 L130 138" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/><path d="M72 134 L100 168 L130 138" fill="none" stroke="{{c}}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="{{f}}"/>`,
+  },
+  {
+    id: "arrow-block",
+    name: "Block arrow",
+    keywords: "arrow right next point bold",
+    group: "Arrows & marks",
+    color: "#FFD23F",
+    body: `<polygon points="16,76 112,76 112,36 186,100 112,164 112,124 16,124" fill="{{c}}" ${ink()}/><path d="M26 86 H104" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round"/>`,
+  },
+  {
+    id: "tick",
+    name: "Tick",
+    keywords: "check done yes correct ok marker hand",
+    group: "Arrows & marks",
+    color: "#3DDC84",
+    enter: "draw",
+    body: `<path d="M34 106 C 50 120, 64 136, 78 154 C 102 106, 134 66, 172 38" fill="none" stroke="{{c}}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" ${DRAW}/>`,
+  },
+  {
+    id: "x-hand",
+    name: "Hand-drawn X",
+    keywords: "cross wrong no cancel marker x",
+    group: "Arrows & marks",
+    color: "#FF3B30",
+    enter: "draw",
+    body: `<path d="M44 42 C 80 84, 120 124, 158 160 M158 40 C 120 80, 84 120, 44 162" fill="none" stroke="{{c}}" stroke-width="20" stroke-linecap="round" ${DRAW}/>`,
+  },
+  {
+    id: "emphasis",
+    name: "Emphasis lines",
+    keywords: "lines pop shock attention look action",
+    group: "Arrows & marks",
+    color: "#FFD23F",
+    enter: "draw",
+    body: `<path d="M74 70 L40 30 M104 54 L100 10 M58 102 L14 94 M126 146 L160 186 M96 162 L100 196 M142 118 L186 126" fill="none" stroke="${INK}" stroke-width="20" stroke-linecap="round" ${DRAW}/><path d="M74 70 L40 30 M104 54 L100 10 M58 102 L14 94 M126 146 L160 186 M96 162 L100 196 M142 118 L186 126" fill="none" stroke="{{c}}" stroke-width="10" stroke-linecap="round" ${DRAW}/>`,
+  },
+  {
+    id: "question",
+    name: "Question mark",
+    keywords: "question what why ask hmm confused",
+    group: "Arrows & marks",
+    color: "#FFD23F",
+    enter: "draw",
+    body: `<path d="M62 70 C 60 28, 142 24, 142 70 C 142 100, 100 102, 100 134" fill="none" stroke="${INK}" stroke-width="30" stroke-linecap="round" ${DRAW}/><path d="M62 70 C 60 28, 142 24, 142 70 C 142 100, 100 102, 100 134" fill="none" stroke="{{c}}" stroke-width="18" stroke-linecap="round" ${DRAW}/><circle cx="100" cy="170" r="13" fill="{{c}}" ${ink()} opacity="{{f}}"/>`,
+  },
 
   // Shapes and bursts.
-  { id: "star", name: "Star", keywords: "star rating favourite favorite best gold", group: "Shapes & bursts", color: "#FFC531", body: `<polygon points="100,16 122.3,73.3 183.7,76.8 136.1,115.7 151.7,175.2 100,142 48.3,175.2 63.9,115.7 16.3,76.8 77.7,73.3" fill="{{c}}" ${ink()}/><ellipse cx="82" cy="88" rx="11" ry="6" fill="#FFFFFF" opacity="0.6" transform="rotate(-35 82 88)"/>` },
+  {
+    id: "star",
+    name: "Star",
+    keywords: "star rating favourite favorite best gold",
+    group: "Shapes & bursts",
+    color: "#FFC531",
+    body: `<polygon points="100,16 122.3,73.3 183.7,76.8 136.1,115.7 151.7,175.2 100,142 48.3,175.2 63.9,115.7 16.3,76.8 77.7,73.3" fill="{{c}}" ${ink()}/><ellipse cx="82" cy="88" rx="11" ry="6" fill="#FFFFFF" opacity="0.6" transform="rotate(-35 82 88)"/>`,
+  },
   {
     id: "boom",
     name: "Boom",
@@ -398,11 +510,47 @@ const PICTURES: ReadonlyArray<ArtDef> = [
     text: { value: "BOOM", size: 40, max: 100 },
     body: `<polygon points="100,8 118,44 150,18 148,58 192,52 162,88 196,118 156,124 172,170 128,148 112,192 92,152 54,186 58,140 10,150 38,112 6,78 48,72 30,30 76,46" fill="{{c}}" ${ink()}/><polygon points="100,33.8 113,59.7 136,41 134.6,69.8 166.2,65.4 144.6,91.4 169.1,113 140.3,117.3 151.8,150.4 120.2,134.6 108.6,166.2 94.2,137.4 66.9,161.9 69.8,128.8 35.2,136 55.4,108.6 32.3,84.2 62.6,79.8 49.6,49.6 82.7,61.1" fill="#FFE14D"/>${words(100, 101, INK)}`,
   },
-  { id: "starburst", name: "Starburst", keywords: "burst star spiky flash price deal", group: "Shapes & bursts", color: "#FF3B5C", text: { value: "!", size: 92, max: 120 }, body: `<polygon points="${STARBURST}" fill="{{c}}" ${ink()}/>${words(100, 104, "#FFFFFF")}` },
-  { id: "twinkles", name: "Twinkles", keywords: "sparkle sparkles shine magic stars clean new", group: "Shapes & bursts", color: "#FFFFFF", body: `<path d="${sparkle4(72, 112, 58)}" fill="{{c}}" ${ink(5)}/><path d="${sparkle4(150, 54, 32)}" fill="{{c}}" ${ink(5)}/><path d="${sparkle4(150, 152, 22)}" fill="{{c}}" ${ink(5)}/>` },
-  { id: "lightning", name: "Lightning bolt", keywords: "lightning fast power energy zap flash", group: "Shapes & bursts", color: "#FFD23F", body: `<polygon points="122,8 38,116 92,116 72,194 166,78 110,78 136,8" fill="{{c}}" ${ink()}/><path d="M112 26 L62 98" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="7" stroke-linecap="round"/>` },
-  { id: "cross", name: "Cross", keywords: "no wrong cancel x stop", group: "Shapes & bursts", color: "#FF3B30", body: `<circle cx="100" cy="100" r="84" fill="{{c}}" ${ink()}/><path d="M68 68 L132 132 M132 68 L68 132" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" ${DRAW}/>` },
-  { id: "blob", name: "Blob", keywords: "blob shape organic backdrop spot", group: "Shapes & bursts", color: "#7C5CFF", body: `<path d="M100 18 C 150 14, 190 50, 184 104 C 178 158, 136 190, 92 184 C 44 178, 12 140, 18 92 C 24 48, 56 22, 100 18 Z" fill="{{c}}"/>` },
+  {
+    id: "starburst",
+    name: "Starburst",
+    keywords: "burst star spiky flash price deal",
+    group: "Shapes & bursts",
+    color: "#FF3B5C",
+    text: { value: "!", size: 92, max: 120 },
+    body: `<polygon points="${STARBURST}" fill="{{c}}" ${ink()}/>${words(100, 104, "#FFFFFF")}`,
+  },
+  {
+    id: "twinkles",
+    name: "Twinkles",
+    keywords: "sparkle sparkles shine magic stars clean new",
+    group: "Shapes & bursts",
+    color: "#FFFFFF",
+    body: `<path d="${sparkle4(72, 112, 58)}" fill="{{c}}" ${ink(5)}/><path d="${sparkle4(150, 54, 32)}" fill="{{c}}" ${ink(5)}/><path d="${sparkle4(150, 152, 22)}" fill="{{c}}" ${ink(5)}/>`,
+  },
+  {
+    id: "lightning",
+    name: "Lightning bolt",
+    keywords: "lightning fast power energy zap flash",
+    group: "Shapes & bursts",
+    color: "#FFD23F",
+    body: `<polygon points="122,8 38,116 92,116 72,194 166,78 110,78 136,8" fill="{{c}}" ${ink()}/><path d="M112 26 L62 98" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="7" stroke-linecap="round"/>`,
+  },
+  {
+    id: "cross",
+    name: "Cross",
+    keywords: "no wrong cancel x stop",
+    group: "Shapes & bursts",
+    color: "#FF3B30",
+    body: `<circle cx="100" cy="100" r="84" fill="{{c}}" ${ink()}/><path d="M68 68 L132 132 M132 68 L68 132" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" ${DRAW}/>`,
+  },
+  {
+    id: "blob",
+    name: "Blob",
+    keywords: "blob shape organic backdrop spot",
+    group: "Shapes & bursts",
+    color: "#7C5CFF",
+    body: `<path d="M100 18 C 150 14, 190 50, 184 104 C 178 158, 136 190, 92 184 C 44 178, 12 140, 18 92 C 24 48, 56 22, 100 18 Z" fill="{{c}}"/>`,
+  },
   {
     id: "confetti",
     name: "Confetti",
@@ -412,34 +560,215 @@ const PICTURES: ReadonlyArray<ArtDef> = [
   },
 
   // Bubbles.
-  { id: "speech", name: "Talk bubble", keywords: "speech bubble talk say hi hello chat quote", group: "Bubbles", color: "#FFFFFF", text: { value: "Hi!", size: 52, max: 140 }, body: `<path d="M100 26 C 154 26, 188 54, 188 92 C 188 130, 154 158, 100 158 C 88 158, 76 156, 66 153 L 30 180 L 40 142 C 22 129, 12 112, 12 92 C 12 54, 46 26, 100 26 Z" fill="{{c}}" ${ink()}/>${words(100, 92, INK)}` },
-  { id: "thought", name: "Thought bubble", keywords: "think thought hmm idea wonder dream", group: "Bubbles", color: "#FFFFFF", text: { value: "Hmm", size: 42, max: 116 }, body: `<circle cx="26" cy="186" r="7" fill="{{c}}" ${ink(5)}/><circle cx="46" cy="164" r="11" fill="{{c}}" ${ink(5)}/><path d="M62 142 C 30 144, 14 118, 30 98 C 14 76, 34 46, 62 54 C 70 28, 112 22, 126 44 C 150 30, 186 50, 176 78 C 196 96, 184 134, 154 132 C 148 152, 112 158, 100 142 C 88 156, 66 154, 62 142 Z" fill="{{c}}" ${ink()}/>${words(104, 92, INK)}` },
-  { id: "shout", name: "Shout bubble", keywords: "shout yell omg wow comic exclaim loud", group: "Bubbles", color: "#FFE14D", text: { value: "OMG", size: 44, max: 108 }, body: `<polygon points="20,60 46,52 50,22 80,44 104,14 120,46 156,24 154,58 190,64 164,90 192,118 156,122 160,156 124,140 112,168 92,142 40,188 58,136 18,140 36,104 8,84" fill="{{c}}" ${ink()}/>${words(100, 94, INK)}` },
-  { id: "tip", name: "Tip box", keywords: "tip callout note box hint pro advice", group: "Bubbles", color: "#1C1C1F", text: { value: "Pro tip", size: 38, max: 150 }, body: `<path d="M24 34 H176 A14 14 0 0 1 190 48 V124 A14 14 0 0 1 176 138 H72 L40 174 L46 138 H24 A14 14 0 0 1 10 124 V48 A14 14 0 0 1 24 34 Z" fill="{{c}}" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>${words(100, 86, "#FFFFFF")}` },
-  { id: "chat", name: "Chat", keywords: "chat message messages text dm conversation typing", group: "Bubbles", color: "#2F80FF", body: `<path d="M44 34 H112 A30 30 0 0 1 112 94 H52 L28 110 L32 88 A30 30 0 0 1 44 34 Z" fill="#E9E9EB" ${ink(5)}/><circle cx="56" cy="64" r="7" fill="#8E8E93"/><circle cx="78" cy="64" r="7" fill="#8E8E93"/><circle cx="100" cy="64" r="7" fill="#8E8E93"/><path d="M96 104 H156 A30 30 0 0 1 168 162 L172 180 L150 164 H96 A30 30 0 0 1 96 104 Z" fill="{{c}}" ${ink(5)}/><path d="M92 124 H146 M92 144 H128" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>` },
+  {
+    id: "speech",
+    name: "Talk bubble",
+    keywords: "speech bubble talk say hi hello chat quote",
+    group: "Bubbles",
+    color: "#FFFFFF",
+    text: { value: "Hi!", size: 52, max: 140 },
+    body: `<path d="M100 26 C 154 26, 188 54, 188 92 C 188 130, 154 158, 100 158 C 88 158, 76 156, 66 153 L 30 180 L 40 142 C 22 129, 12 112, 12 92 C 12 54, 46 26, 100 26 Z" fill="{{c}}" ${ink()}/>${words(100, 92, INK)}`,
+  },
+  {
+    id: "thought",
+    name: "Thought bubble",
+    keywords: "think thought hmm idea wonder dream",
+    group: "Bubbles",
+    color: "#FFFFFF",
+    text: { value: "Hmm", size: 42, max: 116 },
+    body: `<circle cx="26" cy="186" r="7" fill="{{c}}" ${ink(5)}/><circle cx="46" cy="164" r="11" fill="{{c}}" ${ink(5)}/><path d="M62 142 C 30 144, 14 118, 30 98 C 14 76, 34 46, 62 54 C 70 28, 112 22, 126 44 C 150 30, 186 50, 176 78 C 196 96, 184 134, 154 132 C 148 152, 112 158, 100 142 C 88 156, 66 154, 62 142 Z" fill="{{c}}" ${ink()}/>${words(104, 92, INK)}`,
+  },
+  {
+    id: "shout",
+    name: "Shout bubble",
+    keywords: "shout yell omg wow comic exclaim loud",
+    group: "Bubbles",
+    color: "#FFE14D",
+    text: { value: "OMG", size: 44, max: 108 },
+    body: `<polygon points="20,60 46,52 50,22 80,44 104,14 120,46 156,24 154,58 190,64 164,90 192,118 156,122 160,156 124,140 112,168 92,142 40,188 58,136 18,140 36,104 8,84" fill="{{c}}" ${ink()}/>${words(100, 94, INK)}`,
+  },
+  {
+    id: "tip",
+    name: "Tip box",
+    keywords: "tip callout note box hint pro advice",
+    group: "Bubbles",
+    color: "#1C1C1F",
+    text: { value: "Pro tip", size: 38, max: 150 },
+    body: `<path d="M24 34 H176 A14 14 0 0 1 190 48 V124 A14 14 0 0 1 176 138 H72 L40 174 L46 138 H24 A14 14 0 0 1 10 124 V48 A14 14 0 0 1 24 34 Z" fill="{{c}}" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>${words(100, 86, "#FFFFFF")}`,
+  },
+  {
+    id: "chat",
+    name: "Chat",
+    keywords: "chat message messages text dm conversation typing",
+    group: "Bubbles",
+    color: "#2F80FF",
+    body: `<path d="M44 34 H112 A30 30 0 0 1 112 94 H52 L28 110 L32 88 A30 30 0 0 1 44 34 Z" fill="#E9E9EB" ${ink(5)}/><circle cx="56" cy="64" r="7" fill="#8E8E93"/><circle cx="78" cy="64" r="7" fill="#8E8E93"/><circle cx="100" cy="64" r="7" fill="#8E8E93"/><path d="M96 104 H156 A30 30 0 0 1 168 162 L172 180 L150 164 H96 A30 30 0 0 1 96 104 Z" fill="{{c}}" ${ink(5)}/><path d="M92 124 H146 M92 144 H128" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>`,
+  },
 
   // Badges.
-  { id: "sale", name: "Sale tag", keywords: "sale price discount deal offer tag shop", group: "Badges", color: "#FF3B30", text: { value: "SALE", size: 44, max: 90 }, body: `<g transform="rotate(-6 100 100)"><path d="M30 52 H148 L186 100 L148 148 H30 A14 14 0 0 1 16 134 V66 A14 14 0 0 1 30 52 Z" fill="{{c}}" ${ink()}/><circle cx="154" cy="100" r="9" fill="#FFFFFF" ${ink(4)}/>${words(82, 101, "#FFFFFF")}</g>` },
-  { id: "hot", name: "Hot badge", keywords: "hot trending popular deal flame", group: "Badges", color: "#FF6A00", text: { value: "HOT", size: 46, max: 96 }, body: `<rect x="12" y="58" width="176" height="84" rx="42" fill="{{c}}" ${ink()}/><path d="M48 72 C 66 88, 72 102, 62 118 C 58 126, 40 126, 36 116 C 32 104, 42 98, 44 88 C 48 94, 50 96, 52 92 C 54 86, 52 78, 48 72 Z" fill="#FFE14D" ${ink(4)}/>${words(118, 101, "#FFFFFF")}` },
-  { id: "free", name: "Free badge", keywords: "free gift giveaway offer deal", group: "Badges", color: "#3DDC84", text: { value: "FREE", size: 44, max: 128 }, body: `<polygon points="${STARBURST}" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}` },
-  { id: "live", name: "Live badge", keywords: "live stream streaming now on air broadcast", group: "Badges", color: "#FF2D55", text: { value: "LIVE", size: 44, max: 108 }, body: `<rect x="12" y="62" width="176" height="76" rx="16" fill="{{c}}" ${ink()}/><circle cx="46" cy="100" r="11" fill="#FFFFFF"/>${words(116, 101, "#FFFFFF")}` },
-  { id: "seal", name: "Discount seal", keywords: "seal discount percent off deal sale offer stamp", group: "Badges", color: "#FFD23F", text: { value: "-50%", size: 50, max: 104 }, body: `<polygon points="${SEAL}" fill="{{c}}" ${ink()}/><circle cx="100" cy="100" r="66" fill="none" stroke="${INK}" stroke-width="3" stroke-dasharray="7 7"/>${words(100, 101, INK)}` },
-  { id: "ribbon", name: "Ribbon", keywords: "ribbon banner best top pick award winner label", group: "Badges", color: "#7C5CFF", text: { value: "BEST", size: 40, max: 124 }, body: `<polygon points="8,88 48,88 48,144 8,144 24,116" fill="{{c}}" ${ink()}/><polygon points="192,88 152,88 152,144 192,144 176,116" fill="{{c}}" ${ink()}/><polygon points="8,88 48,88 48,144 8,144 24,116" fill="#000000" opacity="0.28"/><polygon points="192,88 152,88 152,144 192,144 176,116" fill="#000000" opacity="0.28"/><rect x="30" y="64" width="140" height="64" fill="{{c}}" ${ink()}/>${words(100, 97, "#FFFFFF")}` },
-  { id: "before", name: "Before label", keywords: "before after comparison then old label tag", group: "Badges", color: "#FFFFFF", text: { value: "BEFORE", size: 40, max: 156 }, body: `<rect x="10" y="64" width="180" height="72" rx="12" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}` },
-  { id: "after", name: "After label", keywords: "after before comparison now new result label tag", group: "Badges", color: "#3DDC84", text: { value: "AFTER", size: 40, max: 156 }, body: `<rect x="10" y="64" width="180" height="72" rx="12" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}` },
-  { id: "soon", name: "Coming soon", keywords: "soon coming tape label teaser upcoming", group: "Badges", color: "#FFE14D", text: { value: "SOON", size: 46, max: 160 }, body: `<g transform="rotate(-4 100 100)"><polygon points="6,66 194,60 190,82 196,104 192,126 194,140 8,146 12,124 6,104 12,84" fill="{{c}}"/>${words(100, 103, INK)}</g>` },
+  {
+    id: "sale",
+    name: "Sale tag",
+    keywords: "sale price discount deal offer tag shop",
+    group: "Badges",
+    color: "#FF3B30",
+    text: { value: "SALE", size: 44, max: 90 },
+    body: `<g transform="rotate(-6 100 100)"><path d="M30 52 H148 L186 100 L148 148 H30 A14 14 0 0 1 16 134 V66 A14 14 0 0 1 30 52 Z" fill="{{c}}" ${ink()}/><circle cx="154" cy="100" r="9" fill="#FFFFFF" ${ink(4)}/>${words(82, 101, "#FFFFFF")}</g>`,
+  },
+  {
+    id: "hot",
+    name: "Hot badge",
+    keywords: "hot trending popular deal flame",
+    group: "Badges",
+    color: "#FF6A00",
+    text: { value: "HOT", size: 46, max: 96 },
+    body: `<rect x="12" y="58" width="176" height="84" rx="42" fill="{{c}}" ${ink()}/><path d="M48 72 C 66 88, 72 102, 62 118 C 58 126, 40 126, 36 116 C 32 104, 42 98, 44 88 C 48 94, 50 96, 52 92 C 54 86, 52 78, 48 72 Z" fill="#FFE14D" ${ink(4)}/>${words(118, 101, "#FFFFFF")}`,
+  },
+  {
+    id: "free",
+    name: "Free badge",
+    keywords: "free gift giveaway offer deal",
+    group: "Badges",
+    color: "#3DDC84",
+    text: { value: "FREE", size: 44, max: 128 },
+    body: `<polygon points="${STARBURST}" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}`,
+  },
+  {
+    id: "live",
+    name: "Live badge",
+    keywords: "live stream streaming now on air broadcast",
+    group: "Badges",
+    color: "#FF2D55",
+    text: { value: "LIVE", size: 44, max: 108 },
+    body: `<rect x="12" y="62" width="176" height="76" rx="16" fill="{{c}}" ${ink()}/><circle cx="46" cy="100" r="11" fill="#FFFFFF"/>${words(116, 101, "#FFFFFF")}`,
+  },
+  {
+    id: "seal",
+    name: "Discount seal",
+    keywords: "seal discount percent off deal sale offer stamp",
+    group: "Badges",
+    color: "#FFD23F",
+    text: { value: "-50%", size: 50, max: 104 },
+    body: `<polygon points="${SEAL}" fill="{{c}}" ${ink()}/><circle cx="100" cy="100" r="66" fill="none" stroke="${INK}" stroke-width="3" stroke-dasharray="7 7"/>${words(100, 101, INK)}`,
+  },
+  {
+    id: "ribbon",
+    name: "Ribbon",
+    keywords: "ribbon banner best top pick award winner label",
+    group: "Badges",
+    color: "#7C5CFF",
+    text: { value: "BEST", size: 40, max: 124 },
+    body: `<polygon points="8,88 48,88 48,144 8,144 24,116" fill="{{c}}" ${ink()}/><polygon points="192,88 152,88 152,144 192,144 176,116" fill="{{c}}" ${ink()}/><polygon points="8,88 48,88 48,144 8,144 24,116" fill="#000000" opacity="0.28"/><polygon points="192,88 152,88 152,144 192,144 176,116" fill="#000000" opacity="0.28"/><rect x="30" y="64" width="140" height="64" fill="{{c}}" ${ink()}/>${words(100, 97, "#FFFFFF")}`,
+  },
+  {
+    id: "before",
+    name: "Before label",
+    keywords: "before after comparison then old label tag",
+    group: "Badges",
+    color: "#FFFFFF",
+    text: { value: "BEFORE", size: 40, max: 156 },
+    body: `<rect x="10" y="64" width="180" height="72" rx="12" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}`,
+  },
+  {
+    id: "after",
+    name: "After label",
+    keywords: "after before comparison now new result label tag",
+    group: "Badges",
+    color: "#3DDC84",
+    text: { value: "AFTER", size: 40, max: 156 },
+    body: `<rect x="10" y="64" width="180" height="72" rx="12" fill="{{c}}" ${ink()}/>${words(100, 101, INK)}`,
+  },
+  {
+    id: "soon",
+    name: "Coming soon",
+    keywords: "soon coming tape label teaser upcoming",
+    group: "Badges",
+    color: "#FFE14D",
+    text: { value: "SOON", size: 46, max: 160 },
+    body: `<g transform="rotate(-4 100 100)"><polygon points="6,66 194,60 190,82 196,104 192,126 194,140 8,146 12,124 6,104 12,84" fill="{{c}}"/>${words(100, 103, INK)}</g>`,
+  },
 
   // Social (generic glyphs we drew; no platform logos).
-  { id: "like", name: "Like", keywords: "like thumbs up approve good social", group: "Social", color: "#2F80FF", body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><path d="M58 96 H80 V150 H58 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/><path d="M90 150 V96 L112 52 C 117 43, 133 46, 131 61 L 127 84 H150 C 161 84, 167 95, 163 105 L 153 141 C 151 147, 145 150, 139 150 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>` },
-  { id: "love", name: "Love", keywords: "love heart like favourite favorite social", group: "Social", color: "#FF3B5C", body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><path d="M100 150 L 62 112 C 48 98, 56 70, 78 70 C 88 70, 96 76, 100 84 C 104 76, 112 70, 122 70 C 144 70, 152 98, 138 112 Z" fill="#FFFFFF"/>` },
-  { id: "bell", name: "Bell", keywords: "bell notification notify alert subscribe social", group: "Social", color: "#FFD23F", body: `<circle cx="100" cy="160" r="15" fill="{{c}}" ${ink()}/><path d="M100 26 C 138 26, 150 56, 150 92 V124 L168 148 H32 L50 124 V92 C 50 56, 62 26, 100 26 Z" fill="{{c}}" ${ink()}/><path d="M72 56 C 66 66, 64 78, 64 92" fill="none" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="8" stroke-linecap="round"/><circle cx="152" cy="44" r="17" fill="#FF3B30" ${ink(5)}/>` },
-  { id: "play", name: "Play button", keywords: "play video watch start button social", group: "Social", color: "#FF3B5C", body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><polygon points="82,62 82,138 144,100" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round"/>` },
-  { id: "comment", name: "Comment", keywords: "comment reply message talk social", group: "Social", color: "#FFFFFF", body: `<path d="M100 28 C 154 28, 186 58, 186 96 C 186 134, 154 162, 100 162 C 86 162, 74 160, 62 156 L 24 178 L 36 140 C 20 128, 14 112, 14 96 C 14 58, 46 28, 100 28 Z" fill="{{c}}" ${ink()}/><path d="M58 82 H142 M58 110 H118" stroke="${INK}" stroke-width="11" stroke-linecap="round"/>` },
-  { id: "share", name: "Share", keywords: "share send forward repost social", group: "Social", color: "#3DDC84", body: `<path d="M110 36 L186 98 L110 160 V122 C 68 120, 40 136, 16 170 C 22 114, 50 78, 110 72 Z" fill="{{c}}" ${ink()}/>` },
-  { id: "save", name: "Save", keywords: "save bookmark keep later social", group: "Social", color: "#FFD23F", body: `<path d="M56 22 H144 A10 10 0 0 1 154 32 V180 L100 142 L46 180 V32 A10 10 0 0 1 56 22 Z" fill="{{c}}" ${ink()}/>` },
-  { id: "follow", name: "Follow", keywords: "follow add friend person user plus social", group: "Social", color: "#7C5CFF", body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><circle cx="86" cy="80" r="22" fill="#FFFFFF"/><path d="M46 146 C 46 118, 64 106, 86 106 C 108 106, 126 118, 126 146 Z" fill="#FFFFFF"/><path d="M152 70 V110 M132 90 H172" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>` },
-  { id: "views", name: "Views", keywords: "views eye watch look seen social", group: "Social", color: "#2F80FF", body: `<path d="M12 100 C 44 48, 156 48, 188 100 C 156 152, 44 152, 12 100 Z" fill="#FFFFFF" ${ink()}/><circle cx="100" cy="100" r="34" fill="{{c}}" ${ink(5)}/><circle cx="100" cy="100" r="14" fill="${INK}"/><circle cx="111" cy="89" r="6" fill="#FFFFFF"/>` },
-  { id: "cursor", name: "Click", keywords: "click cursor pointer mouse tap press", group: "Social", color: "#FFFFFF", body: `<path d="M48 22 L36 6 M34 44 L14 42 M66 16 L72 -2" stroke="${INK}" stroke-width="7" stroke-linecap="round" transform="translate(0 6)"/><path d="M62 34 L62 164 L94 134 L116 182 L140 172 L118 126 L162 126 Z" fill="{{c}}" ${ink()}/>` },
+  {
+    id: "like",
+    name: "Like",
+    keywords: "like thumbs up approve good social",
+    group: "Social",
+    color: "#2F80FF",
+    body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><path d="M58 96 H80 V150 H58 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/><path d="M90 150 V96 L112 52 C 117 43, 133 46, 131 61 L 127 84 H150 C 161 84, 167 95, 163 105 L 153 141 C 151 147, 145 150, 139 150 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>`,
+  },
+  {
+    id: "love",
+    name: "Love",
+    keywords: "love heart like favourite favorite social",
+    group: "Social",
+    color: "#FF3B5C",
+    body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><path d="M100 150 L 62 112 C 48 98, 56 70, 78 70 C 88 70, 96 76, 100 84 C 104 76, 112 70, 122 70 C 144 70, 152 98, 138 112 Z" fill="#FFFFFF"/>`,
+  },
+  {
+    id: "bell",
+    name: "Bell",
+    keywords: "bell notification notify alert subscribe social",
+    group: "Social",
+    color: "#FFD23F",
+    body: `<circle cx="100" cy="160" r="15" fill="{{c}}" ${ink()}/><path d="M100 26 C 138 26, 150 56, 150 92 V124 L168 148 H32 L50 124 V92 C 50 56, 62 26, 100 26 Z" fill="{{c}}" ${ink()}/><path d="M72 56 C 66 66, 64 78, 64 92" fill="none" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="8" stroke-linecap="round"/><circle cx="152" cy="44" r="17" fill="#FF3B30" ${ink(5)}/>`,
+  },
+  {
+    id: "play",
+    name: "Play button",
+    keywords: "play video watch start button social",
+    group: "Social",
+    color: "#FF3B5C",
+    body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><polygon points="82,62 82,138 144,100" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round"/>`,
+  },
+  {
+    id: "comment",
+    name: "Comment",
+    keywords: "comment reply message talk social",
+    group: "Social",
+    color: "#FFFFFF",
+    body: `<path d="M100 28 C 154 28, 186 58, 186 96 C 186 134, 154 162, 100 162 C 86 162, 74 160, 62 156 L 24 178 L 36 140 C 20 128, 14 112, 14 96 C 14 58, 46 28, 100 28 Z" fill="{{c}}" ${ink()}/><path d="M58 82 H142 M58 110 H118" stroke="${INK}" stroke-width="11" stroke-linecap="round"/>`,
+  },
+  {
+    id: "share",
+    name: "Share",
+    keywords: "share send forward repost social",
+    group: "Social",
+    color: "#3DDC84",
+    body: `<path d="M110 36 L186 98 L110 160 V122 C 68 120, 40 136, 16 170 C 22 114, 50 78, 110 72 Z" fill="{{c}}" ${ink()}/>`,
+  },
+  {
+    id: "save",
+    name: "Save",
+    keywords: "save bookmark keep later social",
+    group: "Social",
+    color: "#FFD23F",
+    body: `<path d="M56 22 H144 A10 10 0 0 1 154 32 V180 L100 142 L46 180 V32 A10 10 0 0 1 56 22 Z" fill="{{c}}" ${ink()}/>`,
+  },
+  {
+    id: "follow",
+    name: "Follow",
+    keywords: "follow add friend person user plus social",
+    group: "Social",
+    color: "#7C5CFF",
+    body: `<circle cx="100" cy="100" r="86" fill="{{c}}" ${ink()}/><circle cx="86" cy="80" r="22" fill="#FFFFFF"/><path d="M46 146 C 46 118, 64 106, 86 106 C 108 106, 126 118, 126 146 Z" fill="#FFFFFF"/><path d="M152 70 V110 M132 90 H172" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>`,
+  },
+  {
+    id: "views",
+    name: "Views",
+    keywords: "views eye watch look seen social",
+    group: "Social",
+    color: "#2F80FF",
+    body: `<path d="M12 100 C 44 48, 156 48, 188 100 C 156 152, 44 152, 12 100 Z" fill="#FFFFFF" ${ink()}/><circle cx="100" cy="100" r="34" fill="{{c}}" ${ink(5)}/><circle cx="100" cy="100" r="14" fill="${INK}"/><circle cx="111" cy="89" r="6" fill="#FFFFFF"/>`,
+  },
+  {
+    id: "cursor",
+    name: "Click",
+    keywords: "click cursor pointer mouse tap press",
+    group: "Social",
+    color: "#FFFFFF",
+    body: `<path d="M48 22 L36 6 M34 44 L14 42 M66 16 L72 -2" stroke="${INK}" stroke-width="7" stroke-linecap="round" transform="translate(0 6)"/><path d="M62 34 L62 164 L94 134 L116 182 L140 172 L118 126 L162 126 Z" fill="{{c}}" ${ink()}/>`,
+  },
 ];
 
 const ART: ReadonlyArray<ArtDef> = [...PICTURES.slice(0, 7), ...MARKS, ...PICTURES.slice(7)];
@@ -490,19 +819,28 @@ export function artSvg(id: string, opts: { color?: string; text?: string; draw?:
 }
 
 /** A drawn sticker's info: whether it's a mark (stretches to its box), its natural size (manifest px), its words. */
-export function stickerArt(id: unknown): { readonly mark: boolean; readonly size?: readonly [number, number]; readonly text?: string; readonly color?: string } | undefined {
+export function stickerArt(
+  id: unknown,
+): { readonly mark: boolean; readonly size?: readonly [number, number]; readonly text?: string; readonly color?: string } | undefined {
   const a = typeof id === "string" ? ART_BY_ID.get(id) : undefined;
   return a && { mark: !!a.mark, size: a.size, text: a.text?.value, color: a.color };
 }
 
-export const STICKER_ART: Readonly<Record<string, { readonly name: string; readonly svg: string; readonly group: StickerGroup; readonly mark: boolean }>> = Object.fromEntries(ART.map((a) => [a.id, { name: a.name, svg: artSvg(a.id), group: a.group, mark: !!a.mark }]));
+export const STICKER_ART: Readonly<Record<string, { readonly name: string; readonly svg: string; readonly group: StickerGroup; readonly mark: boolean }>> =
+  Object.fromEntries(ART.map((a) => [a.id, { name: a.name, svg: artSvg(a.id), group: a.group, mark: !!a.mark }]));
 export const STICKER_ART_IDS = ART.map((a) => a.id);
 
 const REACTIONS = EMOJI.findIndex(([e]) => e === "💯");
 /** Every sticker: the drawn ones first, then the emoji. */
 export const STICKERS: ReadonlyArray<StickerEntry> = [
   ...ART.map((a) => ({ key: `art:${a.id}`, name: a.name, keywords: a.keywords.split(" "), group: a.group, art: a.id })),
-  ...EMOJI.map(([emoji, name, keywords], i) => ({ key: `emoji:${emoji}`, name, keywords: keywords.split(" "), group: (i <= REACTIONS ? "Reactions" : "Emoji") as StickerGroup, emoji })),
+  ...EMOJI.map(([emoji, name, keywords], i) => ({
+    key: `emoji:${emoji}`,
+    name,
+    keywords: keywords.split(" "),
+    group: (i <= REACTIONS ? "Reactions" : "Emoji") as StickerGroup,
+    emoji,
+  })),
 ];
 
 /**
@@ -511,12 +849,19 @@ export const STICKERS: ReadonlyArray<StickerEntry> = [
  * lists them all.
  */
 export function searchStickers(query: string): ReadonlyArray<StickerEntry> {
-  const terms = query.toLowerCase().trim().split(/[\s-]+/).filter(Boolean);
+  const terms = query
+    .toLowerCase()
+    .trim()
+    .split(/[\s-]+/)
+    .filter(Boolean);
   if (!terms.length) return STICKERS;
   const scored: Array<{ s: StickerEntry; score: number; i: number }> = [];
   STICKERS.forEach((s, i) => {
     const nameWords = s.name.toLowerCase().split(/[\s-]+/);
-    const groupWords = s.group.toLowerCase().split(/[\s&]+/).filter(Boolean);
+    const groupWords = s.group
+      .toLowerCase()
+      .split(/[\s&]+/)
+      .filter(Boolean);
     let score = 0;
     for (const t of terms) {
       if (s.emoji === t) score += 3;
@@ -531,4 +876,5 @@ export function searchStickers(query: string): ReadonlyArray<StickerEntry> {
 }
 
 /** The props a sticker from the set gets (component.sticker): the emoji, or the drawn art and how it enters. */
-export const stickerProps = (entry: StickerEntry): Record<string, unknown> => (entry.art ? { art: entry.art, enter: ART_BY_ID.get(entry.art)?.enter ?? "pop", tilt: 0 } : { emoji: entry.emoji!, enter: "pop", tilt: -8 });
+export const stickerProps = (entry: StickerEntry): Record<string, unknown> =>
+  entry.art ? { art: entry.art, enter: ART_BY_ID.get(entry.art)?.enter ?? "pop", tilt: 0 } : { emoji: entry.emoji!, enter: "pop", tilt: -8 };

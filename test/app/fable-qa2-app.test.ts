@@ -36,7 +36,21 @@ let page: Page;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `fable-${name}.png`);
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
-type Saved = { id: string; type: string; start?: number; duration: number; media?: string; speed?: number; group?: string; text?: string; effects?: Array<{ module: string; params?: { look?: string } }>; keys?: Array<{ frame: number; ease?: string }>; transform?: { x?: number; y?: number; w?: number; h?: number }; transitionIn?: { module: string; duration: number }; component?: string };
+type Saved = {
+  id: string;
+  type: string;
+  start?: number;
+  duration: number;
+  media?: string;
+  speed?: number;
+  group?: string;
+  text?: string;
+  effects?: Array<{ module: string; params?: { look?: string } }>;
+  keys?: Array<{ frame: number; ease?: string }>;
+  transform?: { x?: number; y?: number; w?: number; h?: number };
+  transitionIn?: { module: string; duration: number };
+  component?: string;
+};
 type SavedTrack = { id: string; kind: string; name: string; role?: string; items: Array<Saved> };
 type SavedProject = { canvas: { width: number; height: number }; media: Array<{ id: string; name: string; path: string }>; tracks: Array<SavedTrack> };
 const onDisk = (): SavedProject => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
@@ -47,7 +61,10 @@ const itemOnDisk = (id: string) => {
   }
   return undefined;
 };
-const mainIds = () => onDisk().tracks.find((t) => t.role === "main")!.items.map((i) => i.id);
+const mainIds = () =>
+  onDisk()
+    .tracks.find((t) => t.role === "main")!
+    .items.map((i) => i.id);
 const until = async (check: () => boolean, what: string, timeout = 10000) => {
   const t0 = Date.now();
   while (!check()) {
@@ -56,7 +73,12 @@ const until = async (check: () => boolean, what: string, timeout = 10000) => {
   }
 };
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((want) => Number(/revision (\d+)/.exec((document.querySelector("[data-testid=saved]") as HTMLElement | null)?.title ?? "")?.[1] ?? -1) >= want, { timeout: 15000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (want) => Number(/revision (\d+)/.exec((document.querySelector("[data-testid=saved]") as HTMLElement | null)?.title ?? "")?.[1] ?? -1) >= want,
+    { timeout: 15000 },
+    n,
+  );
 const rect = (selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as DOMRect);
 const ppf = () => page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
 const xOf = async (frame: number) => (await rect("[data-testid=lanes]")).left + frame * (await ppf());
@@ -87,14 +109,21 @@ const key = async (k: Parameters<Page["keyboard"]["press"]>[0], mod?: "Shift" | 
 const undo = async () => {
   const r = await revision();
   await key("z", "Meta");
-  await page.waitForFunction((was) => Number(/revision (\d+)/.exec((document.querySelector("[data-testid=saved]") as HTMLElement | null)?.title ?? "")?.[1] ?? -1) !== was, { timeout: 10000 }, r);
+  await page.waitForFunction(
+    (was) => Number(/revision (\d+)/.exec((document.querySelector("[data-testid=saved]") as HTMLElement | null)?.title ?? "")?.[1] ?? -1) !== was,
+    { timeout: 10000 },
+    r,
+  );
 };
-const previewFrame = () => page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
 /** Click on the ruler at a frame (moves the playhead there). */
 const seek = async (frame: number) => {
   const ruler = await rect("[data-testid=ruler]");
   await page.mouse.click(await xOf(frame), ruler.top + ruler.height - 6);
-  await page.waitForFunction((f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1, { timeout: 5000 }, frame);
+  await page.waitForFunction(
+    (f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1,
+    { timeout: 5000 },
+    frame,
+  );
 };
 /** A rail tab (the taller timeline leaves the lower ones scrolled out of the rail). */
 const rail = (id: string) => page.$eval(`[data-testid=rail-${id}]`, (el) => (el as HTMLElement).click());
@@ -106,7 +135,28 @@ before(async () => {
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-fable-qa2-")));
   const lavfi = (args: Array<string>, file: string) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args, join(root, file)]);
-  lavfi(["-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "10", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"], "Shot.mp4");
+  lavfi(
+    [
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc=size=640x360:rate=30",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000",
+      "-t",
+      "10",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+    ],
+    "Shot.mp4",
+  );
   lavfi(["-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000", "-t", "3", "-c:a", "aac"], "Tone.m4a");
   lavfi(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p"], "DJI_20261013182112_0042_D.mp4");
   dir = join(root, "Fable.uncut");
@@ -119,12 +169,37 @@ before(async () => {
       canvas: { width: 1920, height: 1080, fps: 30 },
       textLooks: 1,
       media: [
-        { id: "m-shot", kind: "video", name: "Shot.mp4", path: join(root, "Shot.mp4"), probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: true } },
+        {
+          id: "m-shot",
+          kind: "video",
+          name: "Shot.mp4",
+          path: join(root, "Shot.mp4"),
+          probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: true },
+        },
         { id: "m-tone", kind: "audio", name: "Tone.m4a", path: join(root, "Tone.m4a"), probe: { frames: 90, hasAudio: true } },
       ],
       tracks: [
         { id: "text", kind: "text", name: "Text", items: [] },
-        { id: "overlay", kind: "video", name: "Overlay", items: [{ id: "o1", type: "clip", media: "m-shot", in: 0, start: 30, duration: 60, transform: { x: 1200, y: 600, w: 640, h: 360 }, keys: [{ frame: 5, scale: 1 }, { frame: 20, scale: 1.5 }] }] },
+        {
+          id: "overlay",
+          kind: "video",
+          name: "Overlay",
+          items: [
+            {
+              id: "o1",
+              type: "clip",
+              media: "m-shot",
+              in: 0,
+              start: 30,
+              duration: 60,
+              transform: { x: 1200, y: 600, w: 640, h: 360 },
+              keys: [
+                { frame: 5, scale: 1 },
+                { frame: 20, scale: 1.5 },
+              ],
+            },
+          ],
+        },
         {
           id: "main",
           kind: "video",
@@ -148,7 +223,10 @@ after(async () => {
 });
 
 test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, text, import, canvas, background", { skip, timeout: 420000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, [join(root, "DJI_20261013182112_0042_D.mp4")]]) } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, [join(root, "DJI_20261013182112_0042_D.mp4")]]) },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -242,7 +320,8 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   rev = await revision();
   await page.click("[data-testid=filter-tile][data-look=teal-orange]");
   await waitRevision(rev + 1);
-  for (const id of ["a", "b", "c"]) assert.equal(itemOnDisk(id)!.effects?.find((e) => e.module === "effect.look")?.params?.look, "teal-orange", `${id} has the filter`);
+  for (const id of ["a", "b", "c"])
+    assert.equal(itemOnDisk(id)!.effects?.find((e) => e.module === "effect.look")?.params?.look, "teal-orange", `${id} has the filter`);
   assert.equal(await revision(), rev + 1, "one edit for all three");
   await waitFor("[data-testid=multi-filter-intensity]");
   await waitFor("[data-testid=multi-speed]");
@@ -266,7 +345,13 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   const moved = onDisk().tracks.find((t) => t.items.some((i) => i.id === "b"))!;
   assert.equal(moved.kind, "video");
   assert.notEqual(moved.role, "main");
-  assert.deepEqual(onDisk().tracks.map((t) => t.id).slice(0, 2), ["text", moved.id], "a new video track right under the text track");
+  assert.deepEqual(
+    onDisk()
+      .tracks.map((t) => t.id)
+      .slice(0, 2),
+    ["text", moved.id],
+    "a new video track right under the text track",
+  );
   await undo();
   await until(() => mainIds().includes("b"), "b back on main");
 
@@ -293,7 +378,18 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   await page.mouse.click(pip.x, pip.y, { button: "right" });
   await waitFor("[data-testid=context-menu]");
   const labels = await menuLabels();
-  for (const want of ["menu-add-to-chat", "menu-split", "menu-detach-audio", "menu-bring-forward", "menu-send-backward", "menu-reset-position", "menu-copy", "menu-duplicate", "menu-delete"]) assert.ok(labels.includes(want), `the canvas menu has ${want}: ${labels.join(" | ")}`);
+  for (const want of [
+    "menu-add-to-chat",
+    "menu-split",
+    "menu-detach-audio",
+    "menu-bring-forward",
+    "menu-send-backward",
+    "menu-reset-position",
+    "menu-copy",
+    "menu-duplicate",
+    "menu-delete",
+  ])
+    assert.ok(labels.includes(want), `the canvas menu has ${want}: ${labels.join(" | ")}`);
   await page.screenshot({ path: out("canvas-menu") });
   rev = await revision();
   await page.click("[data-testid=menu-bring-forward]");
@@ -307,10 +403,17 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   await page.click("[data-testid=cut-point][data-frame='210']");
   await rail("transitions");
   await waitFor("[data-testid=transition-tile][data-module='transition.crossfade'][data-fit=no]");
-  assert.match(await page.$eval("[data-testid=transition-tile][data-module='transition.crossfade'] [data-testid=transition-unfit]", (el) => el.textContent ?? ""), /^Needs .* more footage$/);
+  assert.match(
+    await page.$eval("[data-testid=transition-tile][data-module='transition.crossfade'] [data-testid=transition-unfit]", (el) => el.textContent ?? ""),
+    /^Needs .* more footage$/,
+  );
   assert.equal(await page.$eval("[data-testid=transition-tile][data-module='transition.dip-to-black']", (el) => (el as HTMLElement).dataset.fit), "yes");
   await page.click("[data-testid=tab-inspector]");
-  assert.equal(await page.$eval("[data-testid=insp-transition-type] option[value='transition.crossfade']", (el) => (el as HTMLOptionElement).disabled), true, "listed but not pickable");
+  assert.equal(
+    await page.$eval("[data-testid=insp-transition-type] option[value='transition.crossfade']", (el) => (el as HTMLOptionElement).disabled),
+    true,
+    "listed but not pickable",
+  );
   await page.screenshot({ path: out("transition-fit") });
 
   // ---- F16: a tile dragged with the pointer onto the cut at 120: target, ghost, then it's there ----
@@ -337,7 +440,9 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   rev = await revision();
   await page.click("[data-testid=text-preset][data-preset=kicker-title]");
   await waitRevision(rev + 1);
-  const texts = onDisk().tracks.flatMap((t) => t.items).filter((i) => i.type === "text");
+  const texts = onDisk()
+    .tracks.flatMap((t) => t.items)
+    .filter((i) => i.type === "text");
   assert.equal(texts.length, 2);
   assert.ok(texts[0]!.group && texts[0]!.group === texts[1]!.group, "one group");
   const [t1, t2] = [texts[0]!.id, texts[1]!.id];
@@ -370,7 +475,9 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   rev = await revision();
   await page.click("[data-testid=text-preset][data-preset=title]");
   await waitRevision(rev + 1);
-  const title = onDisk().tracks.flatMap((t) => t.items).find((i) => i.type === "text" && i.id !== t1 && i.id !== t2)!;
+  const title = onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.type === "text" && i.id !== t1 && i.id !== t2)!;
   await page.waitForFunction((id) => document.querySelectorAll(`[data-testid=text-handle][data-item="${id}"]`).length === 4, { timeout: 5000 }, title.id);
   assert.deepEqual(await selectedIds(), [title.id]);
   await page.screenshot({ path: out("text-added") });
@@ -390,7 +497,9 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   await until(() => onDisk().media.length === 3, "the import");
   const imported = onDisk().media.find((m) => m.path.endsWith("DJI_20261013182112_0042_D.mp4"))!;
   assert.equal(imported.name, "DJI 0042");
-  await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=tile-name]")].some((e) => e.textContent?.includes("DJI 0042")), { timeout: 10000 });
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=tile-name]")].some((e) => e.textContent?.includes("DJI 0042")), {
+    timeout: 10000,
+  });
 
   // ---- F10: 16:9 → 9:16 rescales the PiP in the same edit; the frame rate says why it's fixed ----
   await key("Escape");
@@ -414,9 +523,14 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   rev = await revision();
   await page.click("[data-testid=component-tile][data-component='component.lower-third'] [data-testid=component-add]");
   await waitRevision(rev + 1);
-  const lt = onDisk().tracks.flatMap((t) => t.items).find((i) => i.component === "component.lower-third")!;
+  const lt = onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.component === "component.lower-third")!;
   assert.equal(lt.transform!.x, 72, "at the left safe margin");
-  assert.ok(lt.transform!.y! + lt.transform!.h! / 2 > 1920 * 0.6 && lt.transform!.y! + lt.transform!.h! <= 1920 - 72, `low, inside the safe area: ${JSON.stringify(lt.transform)}`);
+  assert.ok(
+    lt.transform!.y! + lt.transform!.h! / 2 > 1920 * 0.6 && lt.transform!.y! + lt.transform!.h! <= 1920 - 72,
+    `low, inside the safe area: ${JSON.stringify(lt.transform)}`,
+  );
   await sleep(300);
   await page.screenshot({ path: out("lower-third-9x16") });
 
@@ -433,12 +547,20 @@ test("Fable QA round 2: keys, multi-select, drags, menus, transitions, groups, t
   const bg = tracks[bgTrack]!.items[0]!;
   assert.equal(bg.start, 0);
   // The edit's end before the background (main 270 frames; the title and lower third run past it).
-  const ends = tracks.flatMap((t) => (t.role === "main" ? [t.items.reduce((n, i) => n + i.duration, 0)] : t.items.filter((i) => i.id !== bg.id).map((i) => i.start! + i.duration)));
+  const ends = tracks.flatMap((t) =>
+    t.role === "main" ? [t.items.reduce((n, i) => n + i.duration, 0)] : t.items.filter((i) => i.id !== bg.id).map((i) => i.start! + i.duration),
+  );
   assert.equal(bg.duration, Math.max(...ends), "as long as the edit");
   const laneTop = async (id: string) => (await rect(`[data-testid=lane][data-track="${id}"]`)).top;
   assert.ok((await laneTop(tracks[bgTrack]!.id)) > (await laneTop("main")), "its lane is under Main");
   await page.waitForSelector(`.pv-solid[data-item="${bg.id}"]`);
-  const z = await page.evaluate((id) => [Number((document.querySelector(`.pv-solid[data-item="${id}"]`) as HTMLElement).style.zIndex), Number((document.querySelector(".pv-box[data-item=a]") as HTMLElement).style.zIndex)], bg.id);
+  const z = await page.evaluate(
+    (id) => [
+      Number((document.querySelector(`.pv-solid[data-item="${id}"]`) as HTMLElement).style.zIndex),
+      Number((document.querySelector(".pv-box[data-item=a]") as HTMLElement).style.zIndex),
+    ],
+    bg.id,
+  );
   assert.ok(z[0]! < z[1]!, `drawn under the footage (z ${z})`);
   await sleep(300);
   await page.screenshot({ path: out("background") });

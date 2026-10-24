@@ -3,14 +3,28 @@ import { textPlacement, textDecor } from "../../visual/render.ts";
 import { editWords } from "../transcript.ts";
 import { gapOf, resolveStarts } from "../../timeline/rules.ts";
 import type { Project, Item } from "../../timeline/types.ts";
-import { captionSettings, SENTENCE_END, ABBREVIATIONS, type CaptionCard, captionWordText, CAPTION_HOLD_S, CAPTION_BRIDGE_S, CAPTION_MIN_S, captionMode, CAPTION_DEFAULTS, CAPTION_LINE_BOUNDS } from "./settings.ts";
+import {
+  captionSettings,
+  SENTENCE_END,
+  ABBREVIATIONS,
+  type CaptionCard,
+  captionWordText,
+  CAPTION_HOLD_S,
+  CAPTION_BRIDGE_S,
+  CAPTION_MIN_S,
+  captionMode,
+  CAPTION_DEFAULTS,
+  CAPTION_LINE_BOUNDS,
+} from "./settings.ts";
 
 /** Word text made safe for textHtml's markup ([[accent]], **bold**, `mono` stay literal-ish). */
 const plain = (text: string) => text.replace(/`/g, "'").replace(/\*\*+/g, "*").replace(/\[\[+/g, "[").replace(/\]\]+/g, "]").replace(/\s+/g, " ");
 
 /** The items a captions item follows when it has `anyTrack` (D215): every clip or sound that plays its source, on any track, unmuted. */
 function followedItems(project: Pick<Project, "tracks">, item: Item): Set<string> {
-  return new Set(project.tracks.flatMap((t) => t.items.filter((i) => (i.type === "clip" || i.type === "audio") && i.media === item.source && !i.mute).map((i) => i.id)));
+  return new Set(
+    project.tracks.flatMap((t) => t.items.filter((i) => (i.type === "clip" || i.type === "audio") && i.media === item.source && !i.mute).map((i) => i.id)),
+  );
 }
 
 /**
@@ -35,7 +49,12 @@ function heardByClip(project: Pick<Project, "tracks" | "canvas">, item: Item) {
  * least `pause`, after a sentence end, when the card would run past maxSeconds, or when the word
  * doesn't fit in maxLines lines of maxChars (and maxWords) — a word longer than a line gets its own.
  */
-function group(words: ReadonlyArray<{ index: number; text: string; from: number; to: number; hidden: boolean }>, s: ReturnType<typeof captionSettings>, breaks: ReadonlySet<number>, fps: number) {
+function group(
+  words: ReadonlyArray<{ index: number; text: string; from: number; to: number; hidden: boolean }>,
+  s: ReturnType<typeof captionSettings>,
+  breaks: ReadonlySet<number>,
+  fps: number,
+) {
   const cards: Array<{ words: Array<(typeof words)[number]>; lines: Array<{ chars: number; count: number }> }> = [];
   let card: (typeof cards)[number] | undefined;
   // Where the last word heard ends, shown or not: a hidden filler is speech, not a pause.
@@ -95,7 +114,8 @@ export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Parti
       const text = plain(captionWordText(item, w.index));
       return { ...w, text, hidden: !text || (hideFillers && item.words![w.index]!.filler === true && !item.edits?.some((e) => e.word === w.index)) };
     });
-    for (const c of group(marked, s, breaks, fps)) raw.push({ clip: run.clip, words: c.words.map(({ hidden: _, ...w }) => w), lines: c.lines.map((l) => l.count) });
+    for (const c of group(marked, s, breaks, fps))
+      raw.push({ clip: run.clip, words: c.words.map(({ hidden: _, ...w }) => w), lines: c.lines.map((l) => l.count) });
   }
   const hold = Math.round(CAPTION_HOLD_S * fps);
   const bridge = CAPTION_BRIDGE_S * fps;
@@ -109,7 +129,9 @@ export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Parti
     // Each followed item's end, and whether another one plays on from there (D215).
     const starts = resolveStarts(project);
     const followed = followedItems(project, item);
-    const spans = project.tracks.flatMap((tr) => tr.items.filter((i) => followed.has(i.id)).map((i) => ({ id: i.id, start: starts.get(i.id) ?? 0, end: (starts.get(i.id) ?? 0) + i.duration })));
+    const spans = project.tracks.flatMap((tr) =>
+      tr.items.filter((i) => followed.has(i.id)).map((i) => ({ id: i.id, start: starts.get(i.id) ?? 0, end: (starts.get(i.id) ?? 0) + i.duration })),
+    );
     for (const sp of spans) clipEnds.set(sp.id, { end: sp.end, sameNext: spans.some((o) => o.id !== sp.id && o.start === sp.end) });
   } else {
     let t = 0;
@@ -193,14 +215,30 @@ export function captionAt(project: Pick<Project, "tracks" | "canvas" | "theme">,
       // Karaoke (D166): every word said so far on the line is filled (one accent run), not only the speaking one.
       const upTo = karaoke ? Math.min(count, k + 1 - i) : 0;
       if (upTo > 0) parts.push([`[[${line.slice(0, upTo).join(" ")}]]`, ...line.slice(upTo)].join(" "));
-      else parts.push(card.words.slice(i, i + count).map((w, j) => (i + j === k ? `[[${line[j]}]]` : w.text)).join(" "));
+      else
+        parts.push(
+          card.words
+            .slice(i, i + count)
+            .map((w, j) => (i + j === k ? `[[${line[j]}]]` : w.text))
+            .join(" "),
+        );
       i += count;
     }
     text = parts.join("\n");
   }
-  const style = { preset: CAPTION_DEFAULTS.look, ...(item.style ?? {}) } as Item["style"] & {};
-  const transform = { ...(item.transform ?? {}), ...captionBox(project, item) };
-  return { id: item.id, type: "text", ...(item.name ? { name: item.name } : {}), start: card.from, duration: card.to - card.from, text, style, transform: { ...transform, y: transform.bottom }, anchor: "bottom" };
+  const style = { preset: CAPTION_DEFAULTS.look, ...item.style } as Item["style"] & {};
+  const transform = { ...item.transform, ...captionBox(project, item) };
+  return {
+    id: item.id,
+    type: "text",
+    ...(item.name ? { name: item.name } : {}),
+    start: card.from,
+    duration: card.to - card.from,
+    text,
+    style,
+    transform: { ...transform, y: transform.bottom },
+    anchor: "bottom",
+  };
 }
 
 /**
@@ -210,7 +248,7 @@ export function captionAt(project: Pick<Project, "tracks" | "canvas" | "theme">,
  * anything that wraps grows upward, never off the canvas's bottom.
  */
 export function captionBox(project: Pick<Project, "canvas"> & Partial<Pick<Project, "theme">>, item: Pick<Item, "style" | "transform" | "lines">) {
-  const style = { preset: CAPTION_DEFAULTS.look, ...(item.style ?? {}) } as NonNullable<Item["style"]>;
+  const style = { preset: CAPTION_DEFAULTS.look, ...item.style } as NonNullable<Item["style"]>;
   const shell = { transform: item.transform, style };
   const place = textPlacement(shell, project);
   const look = textLook(style.preset);
@@ -222,7 +260,10 @@ export function captionBox(project: Pick<Project, "canvas"> & Partial<Pick<Proje
 }
 
 /** Pieces of the timeline where a captions item draws one unchanging look: per card, and per speaking word in word and single mode. */
-export function captionSegments(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "theme">>, item: Item): Array<{ readonly from: number; readonly to: number; readonly text: Item }> {
+export function captionSegments(
+  project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "theme">>,
+  item: Item,
+): Array<{ readonly from: number; readonly to: number; readonly text: Item }> {
   const out: Array<{ from: number; to: number; text: Item }> = [];
   const mode = captionMode(item);
   for (const card of captionCards(project, item)) {
@@ -241,7 +282,8 @@ export function captionSegments(project: Pick<Project, "tracks" | "canvas"> & Pa
 
 /** A `lines` value checked against the schema's bounds and keys (null for a field: its default, when `nulls`). */
 export function checkCaptionLines(lines: unknown, nulls = false): { readonly lines: Record<string, number | null> } | { readonly problem: string } {
-  if (typeof lines !== "object" || lines === null || Array.isArray(lines)) return { problem: "lines must be an object: maxChars, maxLines, maxSeconds, maxWords, pause." };
+  if (typeof lines !== "object" || lines === null || Array.isArray(lines))
+    return { problem: "lines must be an object: maxChars, maxLines, maxSeconds, maxWords, pause." };
   const out: Record<string, number | null> = {};
   for (const [k, v] of Object.entries(lines)) {
     const b = CAPTION_LINE_BOUNDS[k as keyof typeof CAPTION_LINE_BOUNDS];
@@ -252,7 +294,10 @@ export function checkCaptionLines(lines: unknown, nulls = false): { readonly lin
       continue;
     }
     if (typeof v !== "number" || !Number.isFinite(v) || (b.integer && !Number.isInteger(v)) || v < b.min || v > b.max || (k === "maxSeconds" && v <= 0)) {
-      return { problem: k === "maxLines" ? "lines.maxLines must be 1 or 2." : `lines.${k} must be ${b.integer ? "a whole number" : "a number"} from ${b.min} to ${b.max}.` };
+      return {
+        problem:
+          k === "maxLines" ? "lines.maxLines must be 1 or 2." : `lines.${k} must be ${b.integer ? "a whole number" : "a number"} from ${b.min} to ${b.max}.`,
+      };
     }
     out[k] = v;
   }

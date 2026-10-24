@@ -92,7 +92,15 @@ function frameReader(stream: NodeJS.ReadableStream, size: number) {
  * Draw every shaded layer's frames (see the header) into `dir`: the layer → its FFV1 file. Throws
  * with the clip, the effect and the moment when a frame can't be drawn; stops on `signal`.
  */
-export async function shadeLayers(r: Rasterizer, bin: string, plan: ExportPlan, opts: Pick<CommandOptions, "caps" | "untagged">, dir: string, signal: AbortSignal, onFrame?: (done: number, total: number) => void): Promise<Map<VisualLayer, string>> {
+export async function shadeLayers(
+  r: Rasterizer,
+  bin: string,
+  plan: ExportPlan,
+  opts: Pick<CommandOptions, "caps" | "untagged">,
+  dir: string,
+  signal: AbortSignal,
+  onFrame?: (done: number, total: number) => void,
+): Promise<Map<VisualLayer, string>> {
   const out = new Map<VisualLayer, string>();
   const layers = shadedLayers(plan);
   if (!layers.length) return out;
@@ -111,7 +119,32 @@ export async function shadeLayers(r: Rasterizer, bin: string, plan: ExportPlan, 
     const input = join(dir, `shader-${j}-in.rgba`);
     const drawn = join(dir, `shader-${j}-out.rgba`);
     const decode = start(bin, shaderSourceArgs(layer, opts, plan.width, plan.height, plan.fps), "ignore");
-    const encode = start(bin, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${w}x${h}`, "-framerate", String(plan.fps), "-i", "pipe:0", "-c:v", "ffv1", "-pix_fmt", "bgra", file], "pipe");
+    const encode = start(
+      bin,
+      [
+        "-hide_banner",
+        "-nostdin",
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgba",
+        "-s",
+        `${w}x${h}`,
+        "-framerate",
+        String(plan.fps),
+        "-i",
+        "pipe:0",
+        "-c:v",
+        "ffv1",
+        "-pix_fmt",
+        "bgra",
+        file,
+      ],
+      "pipe",
+    );
     const kill = () => {
       decode.child.kill("SIGKILL");
       encode.child.kill("SIGKILL");
@@ -130,10 +163,24 @@ export async function shadeLayers(r: Rasterizer, bin: string, plan: ExportPlan, 
         await writeFile(input, picture);
         const t = shaderTime(layer.f0 + i, fx.start, plan.fps);
         await r
-          .render({ kind: "shader", width: w, height: h, code, frame: floats(shaderFrameBytes(w, h, t, false))!, ...(params ? { params } : {}), input, out: drawn, name: `the shader effect ${use.def.name} on ${clipName(layer)}` })
+          .render({
+            kind: "shader",
+            width: w,
+            height: h,
+            code,
+            frame: floats(shaderFrameBytes(w, h, t, false))!,
+            ...(params ? { params } : {}),
+            input,
+            out: drawn,
+            name: `the shader effect ${use.def.name} on ${clipName(layer)}`,
+          })
           .catch((error: Error) => {
             const m = /no-webgpu: .*/.exec(error.message);
-            throw new Error(m ? noWebGpuMessage(layer, m[0]) : `The shader effect ${use.def.name} on the clip ${clipName(layer)} couldn't be drawn at ${t.toFixed(2)} s: ${error.message.replace(/^The text renderer failed: /, "")}`);
+            throw new Error(
+              m
+                ? noWebGpuMessage(layer, m[0])
+                : `The shader effect ${use.def.name} on the clip ${clipName(layer)} couldn't be drawn at ${t.toFixed(2)} s: ${error.message.replace(/^The text renderer failed: /, "")}`,
+            );
           });
         const pixels = await readFile(drawn);
         if (!encode.child.stdin!.write(pixels)) await new Promise<void>((resolve) => encode.child.stdin!.once("drain", resolve));

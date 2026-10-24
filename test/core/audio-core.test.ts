@@ -3,7 +3,19 @@
 // transitions crossfading the sound, checked at the boundaries.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { audibleAt, dbToGain, fadeAt, gainToDb, keyDbAt, layout, validateProject, loadModules, type Item, type Project, type Track } from "../../packages/core/src/index.ts";
+import {
+  audibleAt,
+  dbToGain,
+  fadeAt,
+  gainToDb,
+  keyDbAt,
+  layout,
+  validateProject,
+  loadModules,
+  type Item,
+  type Project,
+  type Track,
+} from "../../packages/core/src/index.ts";
 
 const near = (a: number, b: number, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≉ ${b}`);
 
@@ -20,13 +32,26 @@ const project = (patch: { music?: Partial<Item>; musicTrack?: Partial<Track>; ma
     { id: "pic", kind: "image", name: "p.png", path: "/p.png", probe: {} },
   ],
   tracks: [
-    { id: "main", kind: "video", role: "main", name: "Main", ...patch.mainTrack, items: [
-      { id: "a", type: "clip", media: "cam", in: 30, duration: 60 },
-      { id: "b", type: "clip", media: "cam", in: 300, duration: 60, transitionIn: { module: "transition.crossfade", duration: 20 } },
-      { id: "quiet", type: "clip", media: "silent", in: 0, duration: 30 },
-      { id: "still", type: "clip", media: "pic", duration: 30 },
-    ] },
-    { id: "music", kind: "audio", name: "Music", ...patch.musicTrack, items: [{ id: "m", type: "audio", media: "song", start: 30, in: 0, duration: 120, ...patch.music }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      ...patch.mainTrack,
+      items: [
+        { id: "a", type: "clip", media: "cam", in: 30, duration: 60 },
+        { id: "b", type: "clip", media: "cam", in: 300, duration: 60, transitionIn: { module: "transition.crossfade", duration: 20 } },
+        { id: "quiet", type: "clip", media: "silent", in: 0, duration: 30 },
+        { id: "still", type: "clip", media: "pic", duration: 30 },
+      ],
+    },
+    {
+      id: "music",
+      kind: "audio",
+      name: "Music",
+      ...patch.musicTrack,
+      items: [{ id: "m", type: "audio", media: "song", start: 30, in: 0, duration: 120, ...patch.music }],
+    },
     ...(patch.extra ?? []),
   ],
 });
@@ -95,7 +120,11 @@ test("fades: linear, 0 on the first frame and at the end, 1 once the fade is ove
 });
 
 test("gainKeys: an envelope in dB on top of the volume, linear between keys, held outside", () => {
-  const keys = [{ frame: 60, db: -10 }, { frame: 0, db: 0 }, { frame: 90, db: -10 }];
+  const keys = [
+    { frame: 60, db: -10 },
+    { frame: 0, db: 0 },
+    { frame: 90, db: -10 },
+  ];
   near(keyDbAt(keys, -5), 0);
   near(keyDbAt(keys, 0), 0);
   near(keyDbAt(keys, 30), -5);
@@ -104,9 +133,27 @@ test("gainKeys: an envelope in dB on top of the volume, linear between keys, hel
   near(keyDbAt(keys, 200), -10);
   near(keyDbAt([{ frame: 10, db: -3 }], 0), -3, 0);
   near(keyDbAt(undefined, 10), 0);
-  near(keyDbAt([{ frame: 5, db: 0 }, { frame: 5, db: -6 }], 5), 0, 0);
+  near(
+    keyDbAt(
+      [
+        { frame: 5, db: 0 },
+        { frame: 5, db: -6 },
+      ],
+      5,
+    ),
+    0,
+    0,
+  );
   // The example project's music: 0 dB until 600, then down to −4 dB at 640.
-  const p = project({ music: { gainDb: -2, gainKeys: [{ frame: 0, db: 0 }, { frame: 30, db: -4 }] } });
+  const p = project({
+    music: {
+      gainDb: -2,
+      gainKeys: [
+        { frame: 0, db: 0 },
+        { frame: 30, db: -4 },
+      ],
+    },
+  });
   near(gain(p, 30, "m")!, dbToGain(-2));
   near(gain(p, 45, "m")!, dbToGain(-4));
   near(gain(p, 60, "m")!, dbToGain(-6));
@@ -126,7 +173,9 @@ test("mute silences a track, solo silences the others, hidden doesn't silence an
   const hidden = project({ mainTrack: { hidden: true } });
   near(gain(hidden, 10, "a")!, 1, 0);
   // An audio item on a second track is mixed with the first.
-  const two = project({ extra: [{ id: "vo", kind: "audio", name: "VO", items: [{ id: "v", type: "audio", media: "song", start: 0, duration: 60, gainDb: -6 }] }] });
+  const two = project({
+    extra: [{ id: "vo", kind: "audio", name: "VO", items: [{ id: "v", type: "audio", media: "song", start: 0, duration: 60, gainDb: -6 }] }],
+  });
   assert.deepEqual(Object.keys(at(two, 40)).sort(), ["a", "m", "v"]);
 });
 
@@ -176,10 +225,16 @@ test("the schema takes fades and keys on clips and bounds volumes to −60…+12
   assert.deepEqual(validateProject(ok, modules), []);
   const loud = structuredClone(ok);
   Object.assign(loud.tracks[1]!.items[0]!, { gainDb: 13 });
-  assert.ok(validateProject(loud, modules).some((e) => e.code === "schema"), "13 dB is too loud");
+  assert.ok(
+    validateProject(loud, modules).some((e) => e.code === "schema"),
+    "13 dB is too loud",
+  );
   const quiet = structuredClone(ok);
   Object.assign(quiet.tracks[0]!.items[0]!, { gainDb: -61 });
-  assert.ok(validateProject(quiet, modules).some((e) => e.code === "schema"), "−61 dB is out of range");
+  assert.ok(
+    validateProject(quiet, modules).some((e) => e.code === "schema"),
+    "−61 dB is out of range",
+  );
   const long = structuredClone(ok);
   Object.assign(long.tracks[0]!.items[0]!, { fadeIn: 40, fadeOut: 30 });
   assert.ok(validateProject(long, modules).some((e) => e.code === "fade-too-long"));
@@ -188,11 +243,24 @@ test("the schema takes fades and keys on clips and bounds volumes to −60…+12
 test("split and start trims keep the volume envelope continuous (a key goes on the cut)", async () => {
   const { applyEdit, createSession, itemGain } = await import("../../packages/core/src/index.ts");
   // Music: 0 dB at 0 → −12 dB at 60 (frames from its start at 30).
-  const p = project({ music: { gainKeys: [{ frame: 0, db: 0 }, { frame: 60, db: -12 }] } });
+  const p = project({
+    music: {
+      gainKeys: [
+        { frame: 0, db: 0 },
+        { frame: 60, db: -12 },
+      ],
+    },
+  });
   const split = applyEdit(createSession(p), { actor: "user", ops: [{ op: "split_item", item: "m", at: 30, newId: "m-2" }] }).project;
   const track = split.tracks[1]!;
-  assert.deepEqual(track.items[0]!.gainKeys, [{ frame: 0, db: 0 }, { frame: 30, db: -6 }]);
-  assert.deepEqual(track.items[1]!.gainKeys, [{ frame: 0, db: -6 }, { frame: 30, db: -12 }]);
+  assert.deepEqual(track.items[0]!.gainKeys, [
+    { frame: 0, db: 0 },
+    { frame: 30, db: -6 },
+  ]);
+  assert.deepEqual(track.items[1]!.gainKeys, [
+    { frame: 0, db: -6 },
+    { frame: 30, db: -12 },
+  ]);
   // No step at the cut: the first half's last frame and the second's first are continuous.
   near(itemGain(track, 0, 30), itemGain(track, 1, 0), 1e-12);
   for (const f of [40, 59, 60, 61, 75, 100]) {
@@ -202,6 +270,9 @@ test("split and start trims keep the volume envelope continuous (a key goes on t
   }
   // A start trim that cuts keys off puts one at the new start with the value there.
   const trimmed = applyEdit(createSession(p), { actor: "user", ops: [{ op: "trim_item", item: "m", edge: "start", frames: 15 }] }).project;
-  assert.deepEqual(trimmed.tracks[1]!.items[0]!.gainKeys, [{ frame: 0, db: -3 }, { frame: 45, db: -12 }]);
+  assert.deepEqual(trimmed.tracks[1]!.items[0]!.gainKeys, [
+    { frame: 0, db: -3 },
+    { frame: 45, db: -12 },
+  ]);
   for (const f of [45, 60, 105]) near(gain(trimmed, f, "m")!, gain(p, f, "m")!, 1e-9);
 });

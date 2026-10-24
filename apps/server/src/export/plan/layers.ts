@@ -4,7 +4,6 @@ import { n } from "./num.ts";
 
 // ---- opacity ----
 
-
 /**
  * The opacity ramps of an item as visualsAt computes its opacity: a crossfade's (0 at `from` → 1
  * at start + half, a zoom's too; a wipe, iris or push changes no opacity), then the in and out animations (core
@@ -16,7 +15,8 @@ export function opacityRamps(item: Item, start: number, span: Pick<Span, "half" 
   if (span.half > 0 && fadesIn(span.into ?? "")) ramps.push({ type: "in", st: start - span.half, d: 2 * span.half });
   const a = item.animation;
   if (!span.skipIn && a?.in && a.in.duration > 0 && moveFades(item, a.in)) ramps.push({ type: "in", st: start, d: a.in.duration });
-  if (!span.skipOut && a?.out && a.out.duration > 0 && moveFades(item, a.out)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
+  if (!span.skipOut && a?.out && a.out.duration > 0 && moveFades(item, a.out))
+    ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
   return ramps;
 }
 
@@ -41,7 +41,17 @@ export function placementOf(box: ClipBox, kx: number, ky: number, base: Rect = b
   const cy = Math.round(c.y * ky) - y0;
   const cw = Math.max(1, Math.round((c.x + c.w) * kx) - x0 - cx);
   const ch = Math.max(1, Math.round((c.y + c.h) * ky) - y0 - cy);
-  return { x: Math.round(box.x * kx), y: Math.round(box.y * ky), w, h, cx, cy, cw, ch, radius: Math.min(Math.round(box.radius * Math.min(kx, ky)), Math.floor(Math.min(w, h) / 2)) };
+  return {
+    x: Math.round(box.x * kx),
+    y: Math.round(box.y * ky),
+    w,
+    h,
+    cx,
+    cy,
+    cw,
+    ch,
+    radius: Math.min(Math.round(box.radius * Math.min(kx, ky)), Math.floor(Math.min(w, h) / 2)),
+  };
 }
 
 /** The share of a wiped layer shown at frame f (core visualsAt's `wipe`; 1 when whole). */
@@ -79,10 +89,23 @@ export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
 function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, source?: number): VisualLayer {
   const a = from - layer.f0;
   const b = to - layer.f0;
-  const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}), ...(layer.blur ? { blur: layer.blur.slice(a, b) } : {}), ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}) };
+  const common = {
+    f0: from,
+    f1: to,
+    ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}),
+    ...(layer.blur ? { blur: layer.blur.slice(a, b) } : {}),
+    ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}),
+  };
   if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
-  if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b), ...(layer.motion ? { motion: { ...layer.motion, ts: layer.motion.ts.slice(a, b) } } : {}) };
-  if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
+  if (layer.kind === "graphic")
+    return { ...layer, ...common, frames: layer.frames.slice(a, b), ...(layer.motion ? { motion: { ...layer.motion, ts: layer.motion.ts.slice(a, b) } } : {}) };
+  if (layer.kind === "video" && layer.cycle)
+    return {
+      ...layer,
+      ...common,
+      cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length },
+      source: ((layer.cycle.offset + a) % layer.cycle.length) / fps,
+    };
   if (layer.kind === "video") return { ...layer, ...common, source: Math.min(source ?? layer.source + (a * layer.speed) / fps, layer.last ?? Infinity) };
   return { ...layer, ...common };
 }
@@ -128,7 +151,10 @@ export function splitAt(layer: VisualLayer, cuts: Cuts, fps: number): Array<Visu
     return true;
   };
   const inside = (c: number) => c > layer.f0 && c < layer.f1;
-  const reveal = [...(cuts.revealEnd !== undefined && inside(cuts.revealEnd) && (layer.wipe || layer.iris || layer.mask) ? [cuts.revealEnd] : []), ...(layer.blur ? (cuts.always ?? []).filter(inside) : [])];
+  const reveal = [
+    ...(cuts.revealEnd !== undefined && inside(cuts.revealEnd) && (layer.wipe || layer.iris || layer.mask) ? [cuts.revealEnd] : []),
+    ...(layer.blur ? (cuts.always ?? []).filter(inside) : []),
+  ];
   const candidates = [...new Set([...reveal, ...cuts.moves.filter(inside)])].sort((a, b) => a - b);
   // A move's cut is kept only where the frames on its two sides differ in needing geometry.
   const kept: Array<number> = [];
@@ -188,7 +214,7 @@ export function splitLoop(layer: VisualLayer, project: Project, start: number, s
   const geo = layer.geometry?.frames;
   const pixels = geo ? Math.max(...geo.map((p) => p.cw)) * Math.max(...geo.map((p) => p.ch)) : size.width * size.height;
   if (layer.speed === 1 && pass(layer.f1 - 1) - pass(layer.f0) + 1 > MAX_LOOP_INPUTS && length * pixels * 1.5 <= MAX_LOOP_BUFFER) {
-    const offset = (((layer.item.in ?? 0) + layer.f0 - start) % length + length) % length;
+    const offset = ((((layer.item.in ?? 0) + layer.f0 - start) % length) + length) % length;
     return [{ ...layer, source: offset / fps, cycle: { length, offset } }];
   }
   let from = layer.f0;

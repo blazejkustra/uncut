@@ -42,7 +42,15 @@ const DEFAULT_PROMPT = 4000;
  * generator's or an earlier plugin's) or whose plugin lacks network and api-key is left out, with
  * a line in `skipped`.
  */
-export function pluginGeneratorsOf(plugins: ReadonlyArray<{ readonly id: string; readonly name: string; readonly capabilities: ReadonlyArray<string>; readonly manifest: Record<string, unknown> }>, taken: ReadonlySet<string>) {
+export function pluginGeneratorsOf(
+  plugins: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly capabilities: ReadonlyArray<string>;
+    readonly manifest: Record<string, unknown>;
+  }>,
+  taken: ReadonlySet<string>,
+) {
   const out: Array<PluginGenerator> = [];
   const skipped: Array<string> = [];
   const seen = new Set(taken);
@@ -57,7 +65,11 @@ export function pluginGeneratorsOf(plugins: ReadonlyArray<{ readonly id: string;
     for (const g of declared) {
       const id = `generate.${g.id}`;
       if (seen.has(id) || !PROVIDER_API[g.provider as KeyProvider]) {
-        skipped.push(seen.has(id) ? `${p.name}'s generator ${g.id} is left out: another generator has that id.` : `${p.name}'s generator ${g.id} is left out: Uncut doesn't keep keys for ${g.provider}.`);
+        skipped.push(
+          seen.has(id)
+            ? `${p.name}'s generator ${g.id} is left out: another generator has that id.`
+            : `${p.name}'s generator ${g.id} is left out: Uncut doesn't keep keys for ${g.provider}.`,
+        );
         continue;
       }
       seen.add(id);
@@ -123,7 +135,10 @@ export function checkSeconds(g: PluginGenerator, seconds: number | undefined): s
 }
 
 /** The estimate in US dollars: the price per unit (the `by` option's own when it has one) times the prompt's characters or the seconds. */
-export function estimateOf(g: PluginGenerator, input: { readonly prompt: string; readonly seconds?: number | undefined; readonly options?: GenerateOptions | undefined }) {
+export function estimateOf(
+  g: PluginGenerator,
+  input: { readonly prompt: string; readonly seconds?: number | undefined; readonly options?: GenerateOptions | undefined },
+) {
   const by = g.price.by;
   const value = by ? input.options?.[by.option] : undefined;
   const rate = by && typeof value === "string" && typeof by.usd[value] === "number" ? by.usd[value]! : g.price.usd;
@@ -163,7 +178,8 @@ const MAX_BODY = 1024 * 1024;
 const DENY_HEADER = /^(authorization|cookie|host|content-length|connection|transfer-encoding|proxy-.*|x-goog-api-key|xi-api-key)$|key|token|secret|auth/i;
 
 /** Answers a plugin's request (PluginHost.serveRequests): uncut/fetch only. */
-export const servePluginRequest = (pluginId: string, method: string, params: unknown): Promise<unknown> | undefined => (method === "uncut/fetch" ? pluginFetch(pluginId, params) : undefined);
+export const servePluginRequest = (pluginId: string, method: string, params: unknown): Promise<unknown> | undefined =>
+  method === "uncut/fetch" ? pluginFetch(pluginId, params) : undefined;
 
 async function pluginFetch(pluginId: string, raw: unknown): Promise<unknown> {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -244,7 +260,10 @@ export function choicesOf(structured: unknown): ReadonlyArray<GeneratorChoice> |
   const list = (structured as { choices?: unknown } | null | undefined)?.choices;
   if (!Array.isArray(list)) return undefined;
   return list
-    .filter((c): c is { value: string; label: string } => !!c && typeof c.value === "string" && typeof c.label === "string" && c.value.length > 0 && c.value.length <= 80)
+    .filter(
+      (c): c is { value: string; label: string } =>
+        !!c && typeof c.value === "string" && typeof c.label === "string" && c.value.length > 0 && c.value.length <= 80,
+    )
     .slice(0, 200)
     .map((c) => ({ value: c.value, label: c.label.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 80) }));
 }

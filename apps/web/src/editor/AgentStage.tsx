@@ -19,7 +19,15 @@ export function AgentStage({ project, online, onDismiss }: { project: Project; o
     const dialog = () => {
       const s = getState();
       // D266: and any other dialog on screen (Import from link…), wherever the focus is.
-      return s.newProjectOpen || s.exportOpen || s.settingsOpen || s.setupOpen || s.shortcutsOpen || s.environmentsOpen || document.querySelector(".modal-layer") !== null;
+      return (
+        s.newProjectOpen ||
+        s.exportOpen ||
+        s.settingsOpen ||
+        s.setupOpen ||
+        s.shortcutsOpen ||
+        s.environmentsOpen ||
+        document.querySelector(".modal-layer") !== null
+      );
     };
     // The composer's pickers take Esc first (they prevent its default).
     const onKey = (e: KeyboardEvent) => {

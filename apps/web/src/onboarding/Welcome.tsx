@@ -43,7 +43,9 @@ export function Welcome() {
                 </div>
               </div>
               <p className="wiz-lead" data-testid="welcome-lead">
-                {remote ? `Projects here live on ${environment.name}: its folders, its footage, its exports.` : "A project is a folder on this Mac. Your footage stays where it is."}
+                {remote
+                  ? `Projects here live on ${environment.name}: its folders, its footage, its exports.`
+                  : "A project is a folder on this Mac. Your footage stays where it is."}
               </p>
               <div className="welcome-actions">
                 <button className="wiz-card" data-testid="new-project" onClick={actions.showNewProject} disabled={offline}>
@@ -70,7 +72,14 @@ export function Welcome() {
               ) : (
                 <div className="wiz-list" data-testid="recents">
                   {recents.map((r) => (
-                    <button key={r.dir} className="wiz-row recent" data-testid="recent" onClick={() => void actions.openProject(r.dir)} disabled={offline} title={r.dir}>
+                    <button
+                      key={r.dir}
+                      className="wiz-row recent"
+                      data-testid="recent"
+                      onClick={() => void actions.openProject(r.dir)}
+                      disabled={offline}
+                      title={r.dir}
+                    >
                       <Clapperboard />
                       <div className="grow">
                         <div className="wiz-name">{r.name}</div>

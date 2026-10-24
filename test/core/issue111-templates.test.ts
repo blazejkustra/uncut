@@ -5,12 +5,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { aspectOf, fillTemplate, formatTemplate, insertBrief, parseTemplate, sayDuration, TEMPLATE_KEYS, TEMPLATE_MISSING, TEMPLATE_SYNTAX, templateId, templatePlaceholders, templateValues, type TemplateFacts } from "../../packages/core/src/templates/templates.ts";
+import {
+  aspectOf,
+  fillTemplate,
+  formatTemplate,
+  insertBrief,
+  parseTemplate,
+  sayDuration,
+  TEMPLATE_KEYS,
+  TEMPLATE_MISSING,
+  TEMPLATE_SYNTAX,
+  templateId,
+  templatePlaceholders,
+  templateValues,
+  type TemplateFacts,
+} from "../../packages/core/src/templates/templates.ts";
 import { BUILTIN_TEMPLATES } from "../../packages/core/src/templates/builtin.ts";
 import { slashItems } from "../../apps/web/src/panels/composer/slash.ts";
 
 test("a template file: front matter name and description, the body after; formatTemplate reads back the same", () => {
-  const t = parseTemplate("---\nname: My reel\ndescription: \"Fast cuts.\"\n---\n\nCut {{footage}} to {{music}}.\n", "my-reel");
+  const t = parseTemplate('---\nname: My reel\ndescription: "Fast cuts."\n---\n\nCut {{footage}} to {{music}}.\n', "my-reel");
   assert.deepEqual(t, { id: "my-reel", name: "My reel", description: "Fast cuts.", body: "Cut {{footage}} to {{music}}.\n" });
   assert.deepEqual(parseTemplate(formatTemplate(t), "my-reel"), t);
   // Windows line ends and a BOM; no front matter: the id is the name, the whole text the body.
@@ -36,7 +50,18 @@ const facts: TemplateFacts = {
   ],
   canvas: { width: 1080, height: 1350, fps: 60 },
   length: { seconds: 28, from: "song" },
-  kit: { name: "Acme", logos: ["acme-light.svg"], fonts: ["Inter (Inter.woff2)"], files: ["ui-shot.webp"], colors: [{ hex: "#0a0a0a", role: "background" }, { hex: "#6d8cff", role: "accent", name: "Blue" }], about: "Acme makes rockets.", tone: "Plain." },
+  kit: {
+    name: "Acme",
+    logos: ["acme-light.svg"],
+    fonts: ["Inter (Inter.woff2)"],
+    files: ["ui-shot.webp"],
+    colors: [
+      { hex: "#0a0a0a", role: "background" },
+      { hex: "#6d8cff", role: "accent", name: "Blue" },
+    ],
+    about: "Acme makes rockets.",
+    tone: "Plain.",
+  },
   music: { name: "song.mp3", seconds: 28, bpm: 121.84, confidence: 0.8, beatCount: 56, beatSpan: 28, drop: { seconds: 14.21, beat: 28 } },
 };
 
@@ -51,7 +76,18 @@ test("placeholders fill from the project's facts, deterministically", () => {
   assert.equal(v.beats, "56 beats in 28 s");
   assert.equal(v.drop, "0:14.2 into the song (beat 29)");
   assert.equal(v.music, "song.mp3, 28 s, 121.8 BPM, drop at 0:14.2");
-  assert.equal(v.kit, ['"Acme" brand kit', "- Logos (use these files, never redraw them): acme-light.svg", "- Fonts: Inter (Inter.woff2)", "- Colours: #0a0a0a background, #6d8cff Blue (accent)", "- Other files: ui-shot.webp", "- About: Acme makes rockets.", "- Tone: Plain."].join("\n"));
+  assert.equal(
+    v.kit,
+    [
+      '"Acme" brand kit',
+      "- Logos (use these files, never redraw them): acme-light.svg",
+      "- Fonts: Inter (Inter.woff2)",
+      "- Colours: #0a0a0a background, #6d8cff Blue (accent)",
+      "- Other files: ui-shot.webp",
+      "- About: Acme makes rockets.",
+      "- Tone: Plain.",
+    ].join("\n"),
+  );
   assert.equal(v.product, "Acme");
   assert.equal(v["footage-kind"], "footage");
   assert.deepEqual(templateValues(facts), v);
@@ -65,10 +101,18 @@ test("the kit's design facts and the beat grid: palette by role, typefaces once 
     ...facts,
     kit: {
       ...facts.kit!,
-      colors: [{ hex: "#0a0a0a", role: "background", name: "bg" }, { hex: "#111111", role: "surface", name: "panel" }, { hex: "#161616", role: "surface" }, { hex: "#6d8cff", role: "accent" }],
+      colors: [
+        { hex: "#0a0a0a", role: "background", name: "bg" },
+        { hex: "#111111", role: "surface", name: "panel" },
+        { hex: "#161616", role: "surface" },
+        { hex: "#6d8cff", role: "accent" },
+      ],
       files: ["claude-mark.svg", "ui-editor.webp", "ui-shot.webp", "notes.pdf"],
       logoRoles: { dark: "acme-dark.svg", light: "acme-light.svg" },
-      typefaces: [{ family: "Inter", roles: ["heading", "body"], file: "Inter.woff2" }, { family: "Mono", roles: ["mono"] }],
+      typefaces: [
+        { family: "Inter", roles: ["heading", "body"], file: "Inter.woff2" },
+        { family: "Mono", roles: ["mono"] },
+      ],
       screens: ["ui-editor.webp"],
       taglines: ["Rockets, simply", "Second line"],
       urls: ["acme.dev", "github.com/acme"],
@@ -94,7 +138,10 @@ test("the kit's design facts and the beat grid: palette by role, typefaces once 
   assert.equal(plain["claude-mark"], undefined);
   assert.match(fillTemplate("{{claude-mark}}", plain).text, /model's name alone/);
   // The grid: beat and bar length, the first downbeat, the bars, the drop's bar.
-  assert.equal(v.grid, "121.8 BPM: a beat every 0.49 s, a bar of 4 beats every 1.97 s; the first downbeat at 0:00.4 into the song; 56 beats (14 bars) in 28 s; the drop on bar 8, at 0:14.2");
+  assert.equal(
+    v.grid,
+    "121.8 BPM: a beat every 0.49 s, a bar of 4 beats every 1.97 s; the first downbeat at 0:00.4 into the song; 56 beats (14 bars) in 28 s; the drop on bar 8, at 0:14.2",
+  );
   const g = templateValues({ ...facts, music: { ...facts.music!, downbeat: { seconds: 0.5, beat: 1 }, drop: { seconds: 12.5, beat: 25 } } }).grid;
   assert.match(g!, /first downbeat at 0:00\.5 into the song; .*the drop on bar 7, at 0:12\.5$/);
 });
@@ -118,11 +165,27 @@ test("what the project doesn't have: the fallback, else an honest note; never a 
 test("the keynote's typed request: a user's plain ask, product from the kit, the footage named only when the clip names say drone", () => {
   const line = (f: TemplateFacts) => /"Create a promo video for [^"\n]*"/.exec(fillTemplate(BUILTIN_TEMPLATES[0]!.body, templateValues(f)).text)?.[0];
   assert.equal(line(facts), '"Create a promo video for Acme from this footage"');
-  const drone: TemplateFacts = { ...facts, media: [{ name: "drone-coast.mp4", kind: "video" }, { name: "Aerial 2.mov", kind: "video" }, { name: "ui.png", kind: "image" }] };
+  const drone: TemplateFacts = {
+    ...facts,
+    media: [
+      { name: "drone-coast.mp4", kind: "video" },
+      { name: "Aerial 2.mov", kind: "video" },
+      { name: "ui.png", kind: "image" },
+    ],
+  };
   assert.equal(templateValues(drone)["footage-kind"], "drone footage");
   assert.equal(line(drone), '"Create a promo video for Acme from this drone footage"');
   // DJI_ names alone don't say drone (DJI makes handheld cameras too): plain footage, and the brief lets the agent name it.
-  assert.equal(templateValues({ ...facts, media: [{ name: "DJI_20261014175116_0050_D.MP4", kind: "video" }, { name: "drone.mp4", kind: "video" }] })["footage-kind"], "footage");
+  assert.equal(
+    templateValues({
+      ...facts,
+      media: [
+        { name: "DJI_20261014175116_0050_D.MP4", kind: "video" },
+        { name: "drone.mp4", kind: "video" },
+      ],
+    })["footage-kind"],
+    "footage",
+  );
   assert.match(BUILTIN_TEMPLATES[0]!.body, /If it says just "footage", you may name the footage by what the clips show/);
   // No kit, no footage: still a plain ask, never a note in brackets.
   assert.equal(line({ media: [] }), '"Create a promo video for the product from this footage"');
@@ -133,11 +196,20 @@ test("the keynote's typed request: a user's plain ask, product from the kit, the
 
 test("the keynote looks like AI is editing: a cursor only where a person acts, the agent's step lines cause the rest, curated features, export to its saved message", () => {
   const k = BUILTIN_TEMPLATES[0]!.body;
-  assert.match(k, /The cursor is the person, and it appears only where a person acts: typing the request into the composer and pressing send at the open, and pressing Export at the end/);
+  assert.match(
+    k,
+    /The cursor is the person, and it appears only where a person acts: typing the request into the composer and pressing send at the open, and pressing Export at the end/,
+  );
   assert.match(k, /happens with no cursor on screen: a step line of the agent ticks in, and on the next beat the edit it names appears by itself/);
   assert.doesNotMatch(k, /cursor is the reason for every change|cursor approves|the cursor does its one action/);
   assert.match(k, /2 to 4 of the product's features[^\n]*as the agent using it on this project/);
-  for (const pick of ["captions appearing word by word", "a look or effect visibly changing the footage", "a title or text animating in", "bars beginning to fill"]) assert.ok(k.includes(pick), pick);
+  for (const pick of [
+    "captions appearing word by word",
+    "a look or effect visibly changing the footage",
+    "a title or text animating in",
+    "bars beginning to fill",
+  ])
+    assert.ok(k.includes(pick), pick);
   assert.match(k, /Steer away from dense panels and forms \(settings, mixer faders, brand kit forms, file lists, capture setup\)/);
   assert.match(k, /it clicks Export, [^\n]*lands on its saved message/);
   assert.doesNotMatch(k, /never finished/);
@@ -145,8 +217,14 @@ test("the keynote looks like AI is editing: a cursor only where a person acts, t
 
 test("the keynote's cursor leaves after Export on its own motion and is back only at frame 0, where it began (T3b parked it through the render, lockup and close)", () => {
   const k = BUILTIN_TEMPLATES[0]!.body;
-  assert.match(k, /After its last human act \(the Export click\) the cursor leaves the frame on its own motion, gliding off an edge or fading itself out \(never a fade of the scene\)/);
-  assert.match(k, /stays gone through the render, the logo and the close; it comes back only if the loop needs it on frame 0, at the same spot as on the first frame/);
+  assert.match(
+    k,
+    /After its last human act \(the Export click\) the cursor leaves the frame on its own motion, gliding off an edge or fading itself out \(never a fade of the scene\)/,
+  );
+  assert.match(
+    k,
+    /stays gone through the render, the logo and the close; it comes back only if the loop needs it on frame 0, at the same spot as on the first frame/,
+  );
   assert.match(k, /Once Export is pressed the cursor glides off the frame \(or fades itself out\) and isn't seen through the render, the logo and the close/);
   assert.match(k, /between send and Export, and after the Export click, it is gone, not parked by the button or in a corner/);
   assert.doesNotMatch(k, /the cursor where it began\)/);
@@ -181,7 +259,8 @@ test("the four built-ins: parse, are read-only, use known placeholders with inpu
   for (const t of BUILTIN_TEMPLATES) {
     assert.equal(t.builtin, true);
     assert.ok(t.description.length > 20, t.id);
-    for (const section of ["<inputs>", "<direction>", "<structure>", "<build>", "<gotchas>", "<start>"]) assert.ok(t.body.includes(section), `${t.id} ${section}`);
+    for (const section of ["<inputs>", "<direction>", "<structure>", "<build>", "<gotchas>", "<start>"])
+      assert.ok(t.body.includes(section), `${t.id} ${section}`);
     const used = [...t.body.matchAll(/\{\{\s*([a-z][a-z0-9-]*)/g)].map((m) => m[1]!);
     assert.ok(used.length >= 4, t.id);
     for (const u of used) assert.ok(u in TEMPLATE_KEYS, `${t.id} uses {{${u}}}`);
@@ -196,14 +275,16 @@ test("the four built-ins: parse, are read-only, use known placeholders with inpu
   // The keynote shows the model picker with the kit's Claude mark when the kit has it, pasted in, never redrawn.
   assert.match(BUILTIN_TEMPLATES[0]!.body, /claude-mark\.svg[^\n]*model picker|model picker[^\n]*claude-mark|claude-mark\.svg, the composer's model picker/);
   // No over-prescribed slow pacing: no "calm", "fewer transitions" or long holds.
-  for (const t of BUILTIN_TEMPLATES) assert.doesNotMatch(t.body, /\bcalm|fewer transitions|second and a half|hold(?:s)? (?:for )?(?:two|three|[2-9]) ?s/i, t.id);
+  for (const t of BUILTIN_TEMPLATES)
+    assert.doesNotMatch(t.body, /\bcalm|fewer transitions|second and a half|hold(?:s)? (?:for )?(?:two|three|[2-9]) ?s/i, t.id);
   // Filled with nothing, a built-in still reads: notes, never "undefined".
   const filled = fillTemplate(BUILTIN_TEMPLATES[0]!.body, {}).text;
   assert.doesNotMatch(filled, /undefined|\{\{/);
   // The keynote is concrete through the project, never through numbers of its own: the kit's palette,
   // type, logos, screens, dos and don'ts, the beat grid; a readability floor; no scripted results.
   const keynote = BUILTIN_TEMPLATES[0]!.body;
-  for (const k of ["palette", "fonts", "logos", "screens", "look", "avoid", "grid", "footage", "claude-mark", "tagline", "url"]) assert.ok(keynote.includes(`{{${k}`), k);
+  for (const k of ["palette", "fonts", "logos", "screens", "look", "avoid", "grid", "footage", "claude-mark", "tagline", "url"])
+    assert.ok(keynote.includes(`{{${k}`), k);
   for (const section of ["<look>", "<never>"]) assert.ok(keynote.includes(section), section);
   assert.match(keynote, /at least 3 % of the frame's height/);
   assert.match(keynote, /never a verdict/);
@@ -224,13 +305,33 @@ test("the / menu: the templates first as their own group, then the skills, match
   const all = slashItems("", skills, BUILTIN_TEMPLATES);
   assert.deepEqual(
     all.map((x) => `${x.kind}:${x.id}`),
-    ["template:keynote-one-take", "template:one-shape-never-cut", "template:beat-cut-reel", "template:talking-head-subtitles", "skill:launch-promo", "skill:talking-head", "skill:motion-film"],
+    [
+      "template:keynote-one-take",
+      "template:one-shape-never-cut",
+      "template:beat-cut-reel",
+      "template:talking-head-subtitles",
+      "skill:launch-promo",
+      "skill:talking-head",
+      "skill:motion-film",
+    ],
   );
-  assert.deepEqual(slashItems("talking", skills, BUILTIN_TEMPLATES).map((x) => `${x.kind}:${x.id}`), ["template:talking-head-subtitles", "skill:talking-head"]);
+  assert.deepEqual(
+    slashItems("talking", skills, BUILTIN_TEMPLATES).map((x) => `${x.kind}:${x.id}`),
+    ["template:talking-head-subtitles", "skill:talking-head"],
+  );
   // Only a template matches: the menu still opens with it.
-  assert.deepEqual(slashItems("keyn", skills, BUILTIN_TEMPLATES).map((x) => x.id), ["keynote-one-take"]);
-  assert.deepEqual(slashItems("one-shape", skills, BUILTIN_TEMPLATES).map((x) => x.id), ["one-shape-never-cut"]);
-  assert.deepEqual(slashItems("cut", skills, BUILTIN_TEMPLATES).map((x) => x.id), ["one-shape-never-cut", "beat-cut-reel"]);
+  assert.deepEqual(
+    slashItems("keyn", skills, BUILTIN_TEMPLATES).map((x) => x.id),
+    ["keynote-one-take"],
+  );
+  assert.deepEqual(
+    slashItems("one-shape", skills, BUILTIN_TEMPLATES).map((x) => x.id),
+    ["one-shape-never-cut"],
+  );
+  assert.deepEqual(
+    slashItems("cut", skills, BUILTIN_TEMPLATES).map((x) => x.id),
+    ["one-shape-never-cut", "beat-cut-reel"],
+  );
   assert.deepEqual(slashItems("zzz", skills, BUILTIN_TEMPLATES), []);
   const own = slashItems("my", [], [{ id: "my-reel", name: "My reel", description: "d" }]);
   assert.deepEqual(own, [{ kind: "template", id: "my-reel", name: "My reel", description: "d", builtin: false }]);

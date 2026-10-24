@@ -61,7 +61,7 @@ export const DM_MONO = `'DM Mono', ${MONO.replace(/"/g, "'")}`;
 
 /** Theme colours by token: the project's own over the defaults. */
 export function themeColors(target: Pick<RenderTarget, "theme">): Record<string, string> {
-  return { ...DEFAULT_THEME.colors, ...(target.theme?.colors ?? {}) };
+  return { ...DEFAULT_THEME.colors, ...target.theme?.colors };
 }
 
 // A colour or font name goes inside a style attribute (and a solid's background): only plain
@@ -80,7 +80,7 @@ export function resolveColor(target: Pick<RenderTarget, "theme">, value: unknown
 
 /** A font token ("sans", "mono") or a family name as a CSS font-family list. */
 export function resolveFont(target: Pick<RenderTarget, "theme">, value: unknown): string {
-  const fonts: Record<string, string> = { ...(target.theme?.fonts ?? {}) };
+  const fonts: Record<string, string> = { ...target.theme?.fonts };
   const name = typeof value === "string" && value ? value : "sans";
   const family = fonts[name] ?? (name === "sans" || name === "mono" ? "" : name);
   const stack = name === "mono" ? MONO : SANS;
@@ -167,22 +167,37 @@ export function withAlpha(color: string, opacity: number): string {
  * when the look has one. A legacy look without a shadow on the item keeps the pre-D80 soft shadow
  * (`legacy`). Shared by textHtml and the Inspector (which shows what is drawn).
  */
-export function textDecor(item: Pick<Item, "style">, look: TextLook, size: number, target: Pick<RenderTarget, "textLooks"> = {}): { stroke?: Required<Pick<TextStroke, "width">> & TextStroke; shadow?: TextShadow; legacyShadow: boolean; background?: TextBackground } {
+export function textDecor(
+  item: Pick<Item, "style">,
+  look: TextLook,
+  size: number,
+  target: Pick<RenderTarget, "textLooks"> = {},
+): { stroke?: Required<Pick<TextStroke, "width">> & TextStroke; shadow?: TextShadow; legacyShadow: boolean; background?: TextBackground } {
   // Saved objects that say nothing usable (shadow {}, a stroke without a width, a box without a
   // colour: the format allowed any object before D80) count as absent, so the look's applies.
   const raw = item.style ?? {};
-  const usable = (v: unknown, need: (o: Record<string, unknown>) => boolean) => (v === false ? false : v && typeof v === "object" && need(v as Record<string, unknown>) ? v : undefined);
+  const usable = (v: unknown, need: (o: Record<string, unknown>) => boolean) =>
+    v === false ? false : v && typeof v === "object" && need(v as Record<string, unknown>) ? v : undefined;
   const s = {
     stroke: usable(raw.stroke, (o) => typeof o.width === "number") as TextStroke | false | undefined,
     shadow: usable(raw.shadow, (o) => ["x", "y", "blur", "color", "opacity"].some((k) => o[k] !== undefined)) as TextShadow | false | undefined,
     background: usable(raw.background, (o) => typeof o.color === "string") as TextBackground | false | undefined,
   };
   const em = (v: number | undefined) => (v === undefined ? undefined : v * size);
-  const stroke = s.stroke === false ? undefined : s.stroke ?? (look.stroke ? { width: em(look.stroke.width)!, ...(look.stroke.color ? { color: look.stroke.color } : {}) } : undefined);
+  const stroke =
+    s.stroke === false
+      ? undefined
+      : (s.stroke ?? (look.stroke ? { width: em(look.stroke.width)!, ...(look.stroke.color ? { color: look.stroke.color } : {}) } : undefined));
   const lookShadow = look.shadow ? { ...look.shadow, x: em(look.shadow.x), y: em(look.shadow.y), blur: em(look.shadow.blur) } : undefined;
-  const shadow = s.shadow === false ? undefined : s.shadow ?? lookShadow;
+  const shadow = s.shadow === false ? undefined : (s.shadow ?? lookShadow);
   const lb = look.background;
-  const background = s.background === false ? undefined : s.background ?? (lb ? { ...lb, ...(lb.padding !== undefined ? { padding: em(lb.padding) } : {}), ...(lb.radius !== undefined ? { radius: em(lb.radius) } : {}) } : undefined);
+  const background =
+    s.background === false
+      ? undefined
+      : (s.background ??
+        (lb
+          ? { ...lb, ...(lb.padding !== undefined ? { padding: em(lb.padding) } : {}), ...(lb.radius !== undefined ? { radius: em(lb.radius) } : {}) }
+          : undefined));
   const clean = <T extends object>(o: T | undefined) => (o ? (Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T) : undefined);
   return {
     ...(stroke && stroke.width > 0 ? { stroke: clean(stroke)! } : {}),
@@ -292,13 +307,17 @@ export function wordCss(p: number, style: WordStyle = "pop"): string {
  * only when the item has no x of its own — the look's width (span: the safe area between the
  * margins); no w = as wide as its text. size = style.size, else the look's.
  */
-export function textPlacement(item: Pick<Item, "transform" | "style">, target: Pick<RenderTarget, "canvas" | "theme">): { x: number; y: number; w: number | undefined; size: number } {
+export function textPlacement(
+  item: Pick<Item, "transform" | "style">,
+  target: Pick<RenderTarget, "canvas" | "theme">,
+): { x: number; y: number; w: number | undefined; size: number } {
   const { width, height } = target.canvas;
   const look = textLook(item.style?.preset);
   const margin = safeMargin(target as RenderTarget);
   const x = item.transform?.x ?? (look.span ? margin : width * look.x);
   const y = item.transform?.y ?? height * look.y;
-  const w = item.transform?.w ?? (item.transform?.x === undefined ? (look.span ? width - 2 * margin : look.w !== undefined ? width * look.w : undefined) : undefined);
+  const w =
+    item.transform?.w ?? (item.transform?.x === undefined ? (look.span ? width - 2 * margin : look.w !== undefined ? width * look.w : undefined) : undefined);
   return { x, y, w, size: item.style?.size ?? height * look.size };
 }
 
@@ -321,7 +340,11 @@ export const textRotation = (item: Pick<Item, "transform">) => {
  * Stroke, shadow and background box (D80) come from the item, else its look; the word-by-word and
  * zoom moves (D81) come in `motion`.
  */
-export function textHtml(item: Item, target: RenderTarget, { opacity = 1, selected = false, motion }: { opacity?: number; selected?: boolean; motion?: Motion } = {}): string {
+export function textHtml(
+  item: Item,
+  target: RenderTarget,
+  { opacity = 1, selected = false, motion }: { opacity?: number; selected?: boolean; motion?: Motion } = {},
+): string {
   const { width, height } = target.canvas;
   const look = textLook(item.style?.preset);
   const s = item.style ?? {};
@@ -350,18 +373,25 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
   if (decor.legacyShadow) css.push(`text-shadow:${LEGACY_SHADOW_CSS}`);
   else if (decor.shadow) {
     const sh = decor.shadow;
-    css.push(`text-shadow:${num(sh.x ?? 0)}px ${num(sh.y ?? 0)}px ${num(Math.max(0, sh.blur ?? 0))}px ${withAlpha(resolveColor(target, sh.color, "#000000"), sh.opacity ?? 1)}`);
+    css.push(
+      `text-shadow:${num(sh.x ?? 0)}px ${num(sh.y ?? 0)}px ${num(Math.max(0, sh.blur ?? 0))}px ${withAlpha(resolveColor(target, sh.color, "#000000"), sh.opacity ?? 1)}`,
+    );
   }
   if (decor.stroke) css.push(`-webkit-text-stroke:${num(decor.stroke.width)}px ${resolveColor(target, decor.stroke.color, "#000000")};paint-order:stroke fill`);
   const textCase = s.case === "lower" ? "lowercase" : s.case === "title" ? "capitalize" : (s.uppercase ?? look.uppercase) ? "uppercase" : undefined;
   if (textCase) css.push(`text-transform:${textCase}`);
   const bg = decor.background;
   const bgFill = bg ? withAlpha(resolveColor(target, bg.color, "#000000"), bg.opacity ?? 1) : undefined;
-  if (bg && bg.wrap !== "lines") css.push(`background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px`);
+  if (bg && bg.wrap !== "lines")
+    css.push(`background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px`);
   const moved = !!(motion?.dx || motion?.dy);
   const scaled = motion?.scale !== undefined && motion.scale !== 1;
   const turn = textRotation(item) + (motion?.rotate ?? 0);
-  const parts = [moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : "", turn ? `rotate(${num(turn)}deg)` : "", scaled ? `scale(${num(motion!.scale!)})` : ""].filter(Boolean);
+  const parts = [
+    moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : "",
+    turn ? `rotate(${num(turn)}deg)` : "",
+    scaled ? `scale(${num(motion!.scale!)})` : "",
+  ].filter(Boolean);
   if (parts.length) css.push(`transform:${parts.join(" ")}`);
   if (motion?.reveal !== undefined && motion.reveal < 1) css.push(`clip-path:inset(-20% ${num((1 - motion.reveal) * 100)}% -20% -5%)`);
   if (motion?.blur) css.push(`filter:blur(${num(motion.blur)}cqh)`);
@@ -375,7 +405,8 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
   }
   // Typewriter (D163): as with word by word, a box grows with the characters (the rest left out); without one they keep their place.
   if (motion?.chars !== undefined) body = cutChars(body, motion.chars, !!bg);
-  if (bg && bg.wrap === "lines") body = `<span class="pv-line" style="background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px">${body}</span>`;
+  if (bg && bg.wrap === "lines")
+    body = `<span class="pv-line" style="background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px">${body}</span>`;
   return `<div class="pv-text${accentBox ? " acc-box" : ""}${selected ? " sel-box" : ""}" data-item="${esc(item.id)}" style="${css.join(";")}">${body}</div>`;
 }
 

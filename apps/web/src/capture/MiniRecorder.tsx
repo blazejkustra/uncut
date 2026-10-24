@@ -41,7 +41,12 @@ export function MiniRecorder() {
         {state.name}
       </span>
       {(state.phase === "recording" || state.phase === "paused") && (
-        <button className="mini-btn" data-testid={state.phase === "paused" ? "mini-resume" : "mini-pause"} title={state.phase === "paused" ? "Resume recording" : "Pause recording"} onClick={() => send(state.phase === "paused" ? "resume" : "pause")}>
+        <button
+          className="mini-btn"
+          data-testid={state.phase === "paused" ? "mini-resume" : "mini-pause"}
+          title={state.phase === "paused" ? "Resume recording" : "Pause recording"}
+          onClick={() => send(state.phase === "paused" ? "resume" : "pause")}
+        >
           {state.phase === "paused" ? <Play /> : <Pause />}
         </button>
       )}

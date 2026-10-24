@@ -144,9 +144,15 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     };
     const el =
       (target as HTMLElement).closest<HTMLElement>(".pv-text[data-item]") ??
-      (at ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]")) : undefined) ??
+      (at
+        ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]"))
+        : undefined) ??
       // F20 (D158): a text mid-way through a reveal (clipped) still takes a double click inside its box; the selected one first.
-      (at ? ([...document.querySelectorAll<HTMLElement>(".pv-text.sel-box[data-item]"), ...document.querySelectorAll<HTMLElement>(".pv-text[data-item]")].find(inside) ?? undefined) : undefined);
+      (at
+        ? ([...document.querySelectorAll<HTMLElement>(".pv-text.sel-box[data-item]"), ...document.querySelectorAll<HTMLElement>(".pv-text[data-item]")].find(
+            inside,
+          ) ?? undefined)
+        : undefined);
     const placed = findItem(project, el?.dataset.item);
     // Captions (D82) draw as text: they move like it, but their words are edited in the Inspector.
     if (!el || !placed || (placed.item.type !== "text" && placed.item.type !== "captions") || lockOf(placed)) return undefined;
@@ -208,7 +214,13 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** The edit a drag makes, planned on `p`. */
   const dragPlan = (p: ProjectModel, d: CanvasDrag, to: NonNullable<CanvasDrag["to"]>) =>
-    d.textCorner ? planTextScale(p, d.id, to.k ?? 1, d.textCorner, { x: d.x, y: d.y, w: d.w, h: d.h }) : d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame) : planClipBox(p, d.id, to, d.frame);
+    d.textCorner
+      ? planTextScale(p, d.id, to.k ?? 1, d.textCorner, { x: d.x, y: d.y, w: d.w, h: d.h })
+      : d.kind === "text"
+        ? planTransform(p, d.id, { x: to.x, y: to.y })
+        : d.kind === "clip"
+          ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame)
+          : planClipBox(p, d.id, to, d.frame);
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -290,7 +302,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** A component dragged from Elements (D76): dropped on the canvas, it's added at the playhead, centred where it lands. */
   /** The clip on the canvas under a pointer (an Effects tile dropped there goes on it, D136): the topmost box there. */
-  const clipAt = (x: number, y: number) => document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.matches(".pv-box[data-item]"))?.dataset.item;
+  const clipAt = (x: number, y: number) =>
+    document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.matches(".pv-box[data-item]"))?.dataset.item;
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     const types = [...e.dataTransfer.types];
     if (types.includes(EFFECT_DRAG_TYPE)) {
@@ -346,7 +359,15 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   return (
     <main className={`stage ${full ? "fullscreen" : ""}`} data-testid="stage" data-full={full ? "true" : undefined}>
       <style>{RENDER_CSS}</style>
-      <div className={`stage-canvas ${view.hand ? "hand" : ""}`} ref={ref} data-testid="stage-canvas" data-zoom={view.zoom === "fit" ? "fit" : view.scale.toFixed(3)} onPointerDownCapture={(e) => view.handDown(e)} onMouseDownCapture={(e) => e.button === 1 && e.preventDefault()} onAuxClick={(e) => e.button === 1 && e.preventDefault()}>
+      <div
+        className={`stage-canvas ${view.hand ? "hand" : ""}`}
+        ref={ref}
+        data-testid="stage-canvas"
+        data-zoom={view.zoom === "fit" ? "fit" : view.scale.toFixed(3)}
+        onPointerDownCapture={(e) => view.handDown(e)}
+        onMouseDownCapture={(e) => e.button === 1 && e.preventDefault()}
+        onAuxClick={(e) => e.button === 1 && e.preventDefault()}
+      >
         <div
           className="frame"
           ref={frameRef}
@@ -372,20 +393,40 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             const forward = layered ? planLayer(project, id, -1) : undefined;
             const backward = layered ? planLayer(project, id, 1) : undefined;
             const reset = planResetPosition(project, id);
-            openMenu(e.clientX, e.clientY, [
-              { id: "add-to-chat", label: "Add to chat", run: () => actions.addItemToChat(id, frame) },
-              "-",
-              { id: "split", label: "Split at playhead", shortcut: "S", disabled: locked || !(frame > start && frame < start + item.duration), run: () => void actions.split() },
-              ...(item.type === "clip" && media?.kind === "video" && media.probe?.hasAudio ? [{ id: "detach-audio", label: item.mute ? "Audio detached" : "Detach audio", disabled: locked || !!item.mute, run: () => void actions.detachAudio(id) }] : []),
-              "-",
-              { id: "bring-forward", label: "Bring forward", disabled: locked || !forward || "problem" in forward, run: () => void actions.layer(id, -1) },
-              { id: "send-backward", label: "Send backward", disabled: locked || !backward || "problem" in backward, run: () => void actions.layer(id, 1) },
-              { id: "reset-position", label: "Reset position", disabled: locked || "problem" in reset, run: () => void actions.resetPosition(id) },
-              "-",
-              { id: "copy", label: "Copy", shortcut: "⌘C", run: () => void copySelection() },
-              { id: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: off, run: () => void duplicate() },
-              { id: "delete", label: "Delete", shortcut: "⌫", danger: true, disabled: off, run: () => void deleteSelection() },
-            ], "Canvas item");
+            openMenu(
+              e.clientX,
+              e.clientY,
+              [
+                { id: "add-to-chat", label: "Add to chat", run: () => actions.addItemToChat(id, frame) },
+                "-",
+                {
+                  id: "split",
+                  label: "Split at playhead",
+                  shortcut: "S",
+                  disabled: locked || !(frame > start && frame < start + item.duration),
+                  run: () => void actions.split(),
+                },
+                ...(item.type === "clip" && media?.kind === "video" && media.probe?.hasAudio
+                  ? [
+                      {
+                        id: "detach-audio",
+                        label: item.mute ? "Audio detached" : "Detach audio",
+                        disabled: locked || !!item.mute,
+                        run: () => void actions.detachAudio(id),
+                      },
+                    ]
+                  : []),
+                "-",
+                { id: "bring-forward", label: "Bring forward", disabled: locked || !forward || "problem" in forward, run: () => void actions.layer(id, -1) },
+                { id: "send-backward", label: "Send backward", disabled: locked || !backward || "problem" in backward, run: () => void actions.layer(id, 1) },
+                { id: "reset-position", label: "Reset position", disabled: locked || "problem" in reset, run: () => void actions.resetPosition(id) },
+                "-",
+                { id: "copy", label: "Copy", shortcut: "⌘C", run: () => void copySelection() },
+                { id: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: off, run: () => void duplicate() },
+                { id: "delete", label: "Delete", shortcut: "⌫", danger: true, disabled: off, run: () => void deleteSelection() },
+              ],
+              "Canvas item",
+            );
           }}
           onPointerMove={onPointerMove}
           onPointerUp={(e) => endDrag(e, true)}
@@ -405,20 +446,20 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             <div className="pv-layer" ref={mediaRef} data-testid="preview-media" />
             <div className="pv-layer pv-texts" ref={textRef} data-testid="preview-text" />
             <div className="pv-layer pv-overlay">
-            {guides.map((g) => (
-              <div
-                key={`${g.axis}-${g.at}`}
-                className={`pv-guide ${g.axis} ${g.kind}`}
-                data-testid="canvas-guide"
-                data-axis={g.axis}
-                data-kind={g.kind}
-                style={g.axis === "x" ? { left: `${(g.at / width) * 100}%` } : { top: `${(g.at / height) * 100}%` }}
-              />
-            ))}
-            {dropGhost && <div className="pv-drop-ghost" data-testid="drop-ghost" dangerouslySetInnerHTML={{ __html: dropGhost }} />}
-            {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
-            <ClipSelection project={project} />
-            {!editing && <TextSelection layer={textRef} project={project} />}
+              {guides.map((g) => (
+                <div
+                  key={`${g.axis}-${g.at}`}
+                  className={`pv-guide ${g.axis} ${g.kind}`}
+                  data-testid="canvas-guide"
+                  data-axis={g.axis}
+                  data-kind={g.kind}
+                  style={g.axis === "x" ? { left: `${(g.at / width) * 100}%` } : { top: `${(g.at / height) * 100}%` }}
+                />
+              ))}
+              {dropGhost && <div className="pv-drop-ghost" data-testid="drop-ghost" dangerouslySetInnerHTML={{ __html: dropGhost }} />}
+              {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
+              <ClipSelection project={project} />
+              {!editing && <TextSelection layer={textRef} project={project} />}
             </div>
           </div>
           <MediaSkim />

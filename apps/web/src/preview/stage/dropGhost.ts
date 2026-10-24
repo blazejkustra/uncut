@@ -11,14 +11,22 @@ import { draggedComponentProps, planAddComponent } from "../components.ts";
  * makes (the same planner), drawn by core (textHtml / componentHtml) as the export would, for the
  * faint ghost under the pointer. Undefined when the plan is refused or there's nothing to draw.
  */
-export function dropGhostHtml(project: ProjectModel, what: { text?: string | undefined; component?: string | undefined }, at: { x: number; y: number }): string | undefined {
+export function dropGhostHtml(
+  project: ProjectModel,
+  what: { text?: string | undefined; component?: string | undefined },
+  at: { x: number; y: number },
+): string | undefined {
   const frame = getPlayback().frame;
   if (what.text !== undefined) {
     const preset = textPresets().find((p) => p.id === what.text);
     if (!preset) return undefined;
     const plan = planAddText(project, preset, frame, at);
     if ("problem" in plan) return undefined;
-    return (plan.ops as ReadonlyArray<Op>).flatMap((op) => (op.op === "insert_item" ? [textHtml(op.item as Item, { ...project, textLooks: project.textLooks ?? 1 }).replace(/ data-item="[^"]*"/, "")] : [])).join("");
+    return (plan.ops as ReadonlyArray<Op>)
+      .flatMap((op) =>
+        op.op === "insert_item" ? [textHtml(op.item as Item, { ...project, textLooks: project.textLooks ?? 1 }).replace(/ data-item="[^"]*"/, "")] : [],
+      )
+      .join("");
   }
   if (!what.component) return undefined;
   const props = draggedComponentProps(what.component);

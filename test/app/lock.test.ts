@@ -53,7 +53,10 @@ test("a live holder makes the wait give up with a message naming it, and our unl
   try {
     await new Promise((r) => setTimeout(r, 100));
     writeFileSync(path, JSON.stringify({ pid: holder.pid, start: startOf(holder.pid!) }));
-    await assert.rejects(lockApps({ path, timeoutMs: 800 }), (error: Error) => error.message.includes(`pid ${holder.pid}`) && error.message.includes("Waited 1 s"));
+    await assert.rejects(
+      lockApps({ path, timeoutMs: 800 }),
+      (error: Error) => error.message.includes(`pid ${holder.pid}`) && error.message.includes("Waited 1 s"),
+    );
     unlockApps({ path });
     assert.equal(JSON.parse(readFileSync(path, "utf8")).pid, holder.pid);
   } finally {
@@ -108,7 +111,10 @@ test("waiters in other processes get the lock in the order they arrived, however
   }
   assert.equal(tickets().length, names.length);
   unlockApps({ path });
-  const got = (await Promise.all(runs)).map((o) => o.trim()).sort((x, y) => Number(x.split(" ")[1]) - Number(y.split(" ")[1])).map((l) => l.split(" ")[0]);
+  const got = (await Promise.all(runs))
+    .map((o) => o.trim())
+    .sort((x, y) => Number(x.split(" ")[1]) - Number(y.split(" ")[1]))
+    .map((l) => l.split(" ")[0]);
   assert.deepEqual(got, names);
   assert.deepEqual(tickets(), []);
 });

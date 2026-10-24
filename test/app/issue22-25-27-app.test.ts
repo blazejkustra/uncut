@@ -42,7 +42,12 @@ function png(r: number, g: number, b: number): Buffer {
   ihdr[9] = 2;
   const rows = Buffer.alloc((w * 3 + 1) * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) rows.set([r, g, b], y * (w * 3 + 1) + 1 + x * 3);
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 let root = "";
@@ -60,11 +65,15 @@ before(async () => {
   mkdirSync(join(home, "Projects"), { recursive: true });
   const stills = join(home, "Documents", "stills");
   mkdirSync(stills, { recursive: true });
-  for (let i = 0; i < 40; i++) writeFileSync(join(stills, `still-${String(i + 1).padStart(2, "0")}.png`), png((i * 53) % 256, (i * 97) % 256, (i * 31 + 80) % 256));
+  for (let i = 0; i < 40; i++)
+    writeFileSync(join(stills, `still-${String(i + 1).padStart(2, "0")}.png`), png((i * 53) % 256, (i * 97) % 256, (i * 31 + 80) % 256));
   // #22: a Finder folder and files to paste.
   mkdirSync(join(home, "Downloads", "argent-marketing"), { recursive: true });
   writeFileSync(join(home, "Downloads", "argent-marketing", "a.txt"), "x");
-  writeFileSync(join(home, "Downloads", "logo.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#f5a623"/></svg>`);
+  writeFileSync(
+    join(home, "Downloads", "logo.svg"),
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#f5a623"/></svg>`,
+  );
   writeFileSync(join(home, "Downloads", "demo take.mp4"), "x");
   writeFileSync(join(home, "Downloads", "KitMono.woff2"), readFileSync(resolve("assets/fonts/DMMono-Regular.woff2")));
   writeFileSync(join(home, "Downloads", "shot.png"), png(200, 40, 40));
@@ -76,7 +85,15 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const text = (id: string, start: number, duration: number, words: string) => ({ id, type: "text", start, duration, text: words, transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 120, weight: 700 } });
+const text = (id: string, start: number, duration: number, words: string) => ({
+  id,
+  type: "text",
+  start,
+  duration,
+  text: words,
+  transform: { x: 154, y: 410 },
+  style: { preset: "text.title", size: 120, weight: 700 },
+});
 
 test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interrupt, pasted folders as paths", { skip, timeout: 300000 }, async () => {
   const stills = join(home, "Documents", "stills");
@@ -91,19 +108,45 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
         { text: "I'll bring the stills in and start with the title." },
         { tool: "media_import", args: { path: stills } },
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: the title", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, 300, "Stills") }] } },
-        { tool: "ask_user", args: { question: "Which ending should it have?", options: [{ label: "A logo", detail: "The mark on black" }, { label: "A line", detail: "Thanks for watching" }] } },
+        {
+          tool: "timeline_edit",
+          args: { baseRevision: "$rev", summary: "Scene 1: the title", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, 300, "Stills") }] },
+        },
+        {
+          tool: "ask_user",
+          args: {
+            question: "Which ending should it have?",
+            options: [
+              { label: "A logo", detail: "The mark on black" },
+              { label: "A line", detail: "Thanks for watching" },
+            ],
+          },
+        },
         { await: gate },
         { text: "Going with the line." },
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 2: the end line", ops: [{ op: "insert_item", track: "text", item: text("end-1", 300, 150, "Thanks for watching") }] } },
+        {
+          tool: "timeline_edit",
+          args: {
+            baseRevision: "$rev",
+            summary: "Scene 2: the end line",
+            ops: [{ op: "insert_item", track: "text", item: text("end-1", 300, 150, "Thanks for watching") }],
+          },
+        },
         { text: "The title and the end line are in." },
       ],
       // #27: edits and a ui_show while the user plays.
       [
         { sleep: 1200 },
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 3: a middle line", ops: [{ op: "insert_item", track: "text", item: text("mid-1", 450, 90, "In between") }] } },
+        {
+          tool: "timeline_edit",
+          args: {
+            baseRevision: "$rev",
+            summary: "Scene 3: a middle line",
+            ops: [{ op: "insert_item", track: "text", item: text("mid-1", 450, 90, "In between") }],
+          },
+        },
         { tool: "ui_show", args: { frame: 450, select: ["mid-1"] } },
         { sleep: 800 },
         { text: "Added a middle line at 0:15." },
@@ -114,7 +157,16 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
   );
   const app = await launchApp({
     command: APP,
-    env: { HOME: home, UNCUT_FONT_DIRS: "", UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(home, "Projects")]), UNCUT_TEST_CLIPBOARD: JSON.stringify([join(home, "Downloads", "argent-marketing")]), UNCUT_CLAUDE: join(root, "claude"), FAKE_PLAN: plan, UNCUT_APPROVAL_MS: "60000" },
+    env: {
+      HOME: home,
+      UNCUT_FONT_DIRS: "",
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([join(home, "Projects")]),
+      UNCUT_TEST_CLIPBOARD: JSON.stringify([join(home, "Downloads", "argent-marketing")]),
+      UNCUT_CLAUDE: join(root, "claude"),
+      FAKE_PLAN: plan,
+      UNCUT_APPROVAL_MS: "60000",
+    },
   });
   apps.add(app);
   const { page } = app;
@@ -137,7 +189,11 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await waitFor("[data-testid=agent-question]", 60000);
     // The stream so far, in order: thinking, the reply, the import row, the read, the edit, the question.
     const order = await page.$$eval("[data-testid=agent-stream] > *", (els) => els.map((el) => (el as HTMLElement).dataset.testid ?? el.className));
-    assert.deepEqual(order.slice(0, 7), ["agent-thinking", "agent-reply", "agent-import", "worklog", "agent-edit-row", "worklog", "agent-question"], order.join(", "));
+    assert.deepEqual(
+      order.slice(0, 7),
+      ["agent-thinking", "agent-reply", "agent-import", "worklog", "agent-edit-row", "worklog", "agent-question"],
+      order.join(", "),
+    );
     assert.equal(await page.$eval("[data-testid=agent-import] [data-testid=agent-step]", (el) => (el as HTMLElement).innerText.trim()), "Imported 40 files");
     assert.equal(await page.$("[data-testid=agent-import-grid]"), null, "the files are folded into one row");
     assert.equal(await page.$eval("[data-testid=agent-edit-row] [data-testid=agent-step]", (el) => (el as HTMLElement).innerText.trim()), "Scene 1: the title");
@@ -147,7 +203,11 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await page.click("[data-testid=agent-import] [data-testid=agent-step]");
     await waitFor("[data-testid=agent-import-grid]");
     assert.equal((await page.$$("[data-testid=agent-import-thumb]")).length, 40);
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=agent-import-thumb] img")].filter((i) => i.complete && i.naturalWidth > 0).length >= 6, { timeout: 20000 });
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll<HTMLImageElement>("[data-testid=agent-import-thumb] img")].filter((i) => i.complete && i.naturalWidth > 0).length >= 6,
+      { timeout: 20000 },
+    );
     assert.equal((await page.$$("[data-testid=agent-import-thumb] img")).length, 40, "each file has its picture (loaded as it scrolls into view)");
     await page.$eval("[data-testid=agent-import]", (el) => el.scrollIntoView({ block: "start" }));
     await page.screenshot({ path: shot("issue25-imports") });
@@ -167,7 +227,24 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await page.waitForFunction(() => !document.querySelector("[data-testid=agent-latest]"));
     // Done: the later reply and edit come after the answered question; the footer is compact.
     const done = await page.$$eval("[data-testid=agent-stream] > *", (els) => els.map((el) => (el as HTMLElement).dataset.testid ?? el.className));
-    assert.deepEqual(done, ["agent-thinking", "agent-reply", "agent-import", "worklog", "agent-edit-row", "worklog", "agent-card", "agent-reply", "worklog", "agent-edit-row", "agent-reply", "agent-reply"], "the stand-in's closing line comes last");
+    assert.deepEqual(
+      done,
+      [
+        "agent-thinking",
+        "agent-reply",
+        "agent-import",
+        "worklog",
+        "agent-edit-row",
+        "worklog",
+        "agent-card",
+        "agent-reply",
+        "worklog",
+        "agent-edit-row",
+        "agent-reply",
+        "agent-reply",
+      ],
+      "the stand-in's closing line comes last",
+    );
     assert.equal(await page.$eval("[data-testid=agent-edits-toggle]", (el) => (el as HTMLElement).innerText.trim()), "3 edits", "the import and two scenes");
     assert.ok(await page.$("[data-testid=agent-undo-turn]"), "Undo turn is in the footer");
     assert.match(await page.$eval(".turn-status", (el) => (el as HTMLElement).innerText), /^Claude Code, \d+ s$/);
@@ -176,7 +253,10 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await until(async () => {
       if (await page.$("[data-testid=agent-edit-lines]")) return true;
       await page.$$eval("[data-testid=agent-edit-row] [data-testid=agent-step]", (els) => (els.at(-1) as HTMLElement | undefined)?.click());
-      return page.waitForSelector("[data-testid=agent-edit-lines]", { timeout: 2000 }).then(() => true, () => false);
+      return page.waitForSelector("[data-testid=agent-edit-lines]", { timeout: 2000 }).then(
+        () => true,
+        () => false,
+      );
     }, "the last edit's lines to open");
     await page.screenshot({ path: shot("issue25-stream") });
     await page.click("[data-testid=agent-edits-toggle]");
@@ -203,7 +283,10 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     }
     assert.ok(turnDone, "the agent's turn ended while playing");
     for (let i = 1; i < frames.length; i++) assert.ok(frames[i]! >= frames[i - 1]!, `the playhead only moved forward: ${frames.join(", ")}`);
-    assert.ok(frames.every((f) => f < 450), `the playhead never jumped to the agent's 450: ${frames.join(", ")}`);
+    assert.ok(
+      frames.every((f) => f < 450),
+      `the playhead never jumped to the agent's 450: ${frames.join(", ")}`,
+    );
     assert.equal(await page.$('[data-testid=timeline-item][data-item="mid-1"].selected'), null, "nothing selected under the user");
     await waitFor("[data-testid=agent-change]");
     assert.equal(await page.$eval("[data-testid=agent-change-jump]", (el) => (el as HTMLElement).innerText.trim()), "Agent changed 0:15–0:18");
@@ -241,7 +324,11 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
       box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
     });
     const folder = join(home, "Downloads", "argent-marketing");
-    await page.waitForFunction((p) => document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")!.value === `Use these: ${p} `, { timeout: 5000 }, folder);
+    await page.waitForFunction(
+      (p) => document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")!.value === `Use these: ${p} `,
+      { timeout: 5000 },
+      folder,
+    );
     // Files from disk (real Files, set through CDP): SVG, video and font as paths, the PNG attached.
     await page.evaluate(() => {
       const input = document.createElement("input");
@@ -253,7 +340,12 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     });
     const picker = (await page.$("#test-paste-files"))!;
     const downloads = join(home, "Downloads");
-    await (picker as unknown as { uploadFile: (...p: Array<string>) => Promise<void> }).uploadFile(join(downloads, "logo.svg"), join(downloads, "demo take.mp4"), join(downloads, "KitMono.woff2"), join(downloads, "shot.png"));
+    await (picker as unknown as { uploadFile: (...p: Array<string>) => Promise<void> }).uploadFile(
+      join(downloads, "logo.svg"),
+      join(downloads, "demo take.mp4"),
+      join(downloads, "KitMono.woff2"),
+      join(downloads, "shot.png"),
+    );
     await page.evaluate(() => {
       const box = document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")!;
       box.setSelectionRange(box.value.length, box.value.length);
@@ -262,13 +354,15 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
       box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
     });
     await waitFor("[data-testid=agent-attachment]");
-    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")!.value.includes("KitMono.woff2"), { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")!.value.includes("KitMono.woff2"), {
+      timeout: 5000,
+    });
     const value = await page.$eval("[data-testid=agent-input]", (el) => (el as HTMLTextAreaElement).value);
     assert.equal(value, `Use these: ${folder} ${join(downloads, "logo.svg")} ${join(downloads, "demo\\ take.mp4")} ${join(downloads, "KitMono.woff2")} `);
     const chips = await page.$$eval(".composer-hl [data-testid=agent-path-chip]", (els) => els.map((el) => (el as HTMLElement).innerText));
     assert.deepEqual(chips, [folder, join(downloads, "logo.svg"), join(downloads, "demo\\ take.mp4"), join(downloads, "KitMono.woff2")]);
     assert.equal((await page.$$("[data-testid=agent-attachment]")).length, 1, "the PNG attached as an image");
-    assert.equal(await page.$("[data-testid=agent-attach-error]"), null, "no \"isn't a PNG\" error");
+    assert.equal(await page.$("[data-testid=agent-attach-error]"), null, 'no "isn\'t a PNG" error');
     await page.screenshot({ path: shot("issue22-paste") });
     assert.deepEqual(app.errors, []);
   } catch (error) {

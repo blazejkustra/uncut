@@ -60,7 +60,14 @@ export class LibraryError extends Schema.TaggedError<LibraryError>()("LibraryErr
 
 // ---- the user's sound folders (D208) ----
 
-export const FolderSoundSchema = Schema.Struct({ id: Schema.String, folder: Schema.String, name: Schema.String, rel: Schema.String, ext: Schema.String, bytes: Schema.Number });
+export const FolderSoundSchema = Schema.Struct({
+  id: Schema.String,
+  folder: Schema.String,
+  name: Schema.String,
+  rel: Schema.String,
+  ext: Schema.String,
+  bytes: Schema.Number,
+});
 export const SoundFolderSchema = Schema.Struct({
   id: Schema.String,
   path: Schema.String,

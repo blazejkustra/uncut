@@ -41,9 +41,11 @@ const createReachable = async (page: Page, label: string) => {
   assert.ok(r.onTop, `${label}: a click on Create lands on it`);
 };
 const waitViewport = (page: Page, w: number, h: number) =>
-  page.waitForFunction((w, h) => innerWidth === w && innerHeight === h, { timeout: 10000 }, w, h).catch(async () => {
-    throw new Error(`viewport ${await viewport(page)}, wanted ${w}×${h}`);
-  });
+  page
+    .waitForFunction((w, h) => innerWidth === w && innerHeight === h, { timeout: 10000 }, w, h)
+    .catch(async () => {
+      throw new Error(`viewport ${await viewport(page)}, wanted ${w}×${h}`);
+    });
 
 before(async () => {
   if (skip) return;
@@ -52,7 +54,22 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue14-15-")));
   mkdirSync(join(root, "projects"));
   // A 1280×720 clip at 25 fps for Match first clip.
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=25", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "Clip25.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=1280x720:rate=25",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "Clip25.mp4"),
+  ]);
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -80,7 +97,16 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     // #15: eight presets and Custom.
     await page.click("[data-testid=new-project]");
     await page.waitForSelector("[data-testid=new-project-form]");
-    assert.deepEqual(await page.$$eval(".wiz-cards.presets [data-preset]", (els) => els.map((e) => (e as HTMLElement).dataset.preset)), ["landscape", "1080p60", "4k", "cinema", "vertical", "4k-vertical", "social", "square"]);
+    assert.deepEqual(await page.$$eval(".wiz-cards.presets [data-preset]", (els) => els.map((e) => (e as HTMLElement).dataset.preset)), [
+      "landscape",
+      "1080p60",
+      "4k",
+      "cinema",
+      "vertical",
+      "4k-vertical",
+      "social",
+      "square",
+    ]);
     const fits = await page.$eval("[data-testid=new-project-form]", (el) => el.getBoundingClientRect().right <= innerWidth);
     assert.ok(fits, "the form fits the compact window");
     await createReachable(page, "760×720");
@@ -100,7 +126,16 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await page.click("[data-testid=custom-width]", { clickCount: 3 });
     await page.keyboard.type("1280");
     assert.equal(await page.$eval("[data-testid=custom-height]", (el) => (el as HTMLInputElement).value), "720");
-    assert.deepEqual(await page.$$eval("[data-testid=custom-fps] option", (els) => els.map((e) => (e as HTMLOptionElement).value)), ["23.976", "24", "25", "29.97", "30", "50", "59.94", "60"]);
+    assert.deepEqual(await page.$$eval("[data-testid=custom-fps] option", (els) => els.map((e) => (e as HTMLOptionElement).value)), [
+      "23.976",
+      "24",
+      "25",
+      "29.97",
+      "30",
+      "50",
+      "59.94",
+      "60",
+    ]);
     await page.select("[data-testid=custom-fps]", "29.97");
     await page.$eval("[data-testid=custom-background]", (el) => {
       const input = el as HTMLInputElement;
@@ -188,7 +223,12 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     assert.ok(existsSync(join(dir, ".cache", "match-first-clip")));
     assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).canvas, { width: 1080, height: 1350, fps: 60 });
     await page.click("[data-testid=import-plus]");
-    await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile], [data-testid=media-row]").length > 0 || document.querySelector("[data-testid=canvas-info]")?.textContent?.includes("1280"), { timeout: 30000 });
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll("[data-testid=media-tile], [data-testid=media-row]").length > 0 ||
+        document.querySelector("[data-testid=canvas-info]")?.textContent?.includes("1280"),
+      { timeout: 30000 },
+    );
     await page.waitForFunction(() => /1280×720/.test(document.querySelector("[data-testid=canvas-info]")?.textContent ?? ""), { timeout: 30000 });
     const matched = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
     assert.deepEqual(matched.canvas, { width: 1280, height: 720, fps: 25 });

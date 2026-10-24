@@ -25,14 +25,26 @@ export const idleMs = () => envMs("UNCUT_AGENT_IDLE_MS", 15 * 60_000);
 export const initMs = () => envMs("UNCUT_AGENT_INIT_MS", 10_000);
 /** JSON with sorted keys: the same args however claude ordered them. */
 export const canonical = (value: unknown): string =>
-  Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(",")}}` : JSON.stringify(value ?? null);
+  Array.isArray(value)
+    ? `[${value.map(canonical).join(",")}]`
+    : value && typeof value === "object"
+      ? `{${Object.keys(value)
+          .sort()
+          .map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`)
+          .join(",")}}`
+      : JSON.stringify(value ?? null);
 /** Live text and thinking are published at most this often. */
 export const STREAM_PUBLISH_MS = 80;
 
 /** The claude binary: UNCUT_CLAUDE (tests, or a custom install), else the first on PATH. */
 export const findClaude = async (env: NodeJS.ProcessEnv = process.env) => env.UNCUT_CLAUDE || (await which("claude", env.PATH ?? ""));
 
-export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+};
 
 /**
  * The session's command line (D139, D181, D194): Claude Code's default built-in tools (web, files,
@@ -48,26 +60,49 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "
  * `settings` (D277): the --settings value when it isn't just Uncut's own rules (settingsArg: a 0600
  * file that adds the user's sign-in commands, which --setting-sources "" would otherwise drop).
  */
-export function sessionArgs(o: { readonly cfg: string; readonly settings?: string | undefined; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly promptSnapshot?: "off" | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
+export function sessionArgs(o: {
+  readonly cfg: string;
+  readonly settings?: string | undefined;
+  readonly model?: string | undefined;
+  readonly effort?: string | undefined;
+  readonly resume?: string | undefined;
+  readonly thinking?: string | undefined;
+  readonly promptSnapshot?: "off" | undefined;
+  readonly addDirs?: ReadonlyArray<string> | undefined;
+  readonly access?: Access | undefined;
+  readonly projects?: ReadonlyArray<string> | undefined;
+  readonly dataDir?: string | undefined;
+  readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined;
+}) {
   const access = o.access ?? "auto";
   const args = [
     "-p",
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
-    "--tools", "default",
+    "--tools",
+    "default",
     "--strict-mcp-config",
-    "--mcp-config", o.cfg,
-    "--setting-sources", "",
-    "--allowedTools", "mcp__uncut",
-    "--permission-mode", permissionMode(access),
-    "--permission-prompt-tool", "stdio",
+    "--mcp-config",
+    o.cfg,
+    "--setting-sources",
+    "",
+    "--allowedTools",
+    "mcp__uncut",
+    "--permission-mode",
+    permissionMode(access),
+    "--permission-prompt-tool",
+    "stdio",
     // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
     // D219: Uncut's data folder (and other apps' data) too.
-    "--settings", o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir, claudeConfig: claudeConfigDirs() }),
+    "--settings",
+    o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir, claudeConfig: claudeConfigDirs() }),
     // D232 (issue #60): every installed skill by name and description; skill_read loads one.
-    "--append-system-prompt", `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
+    "--append-system-prompt",
+    `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
   ];
   // D260 amended: Claude Code records the system prompt on a conversation's first request and reuses
   // that record on --resume (until compaction), ignoring the text passed later; off renders the current
@@ -105,4 +140,8 @@ export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
  * CLI's default (claude: or UNCUT_AGENT_MODEL; Codex: its config.toml's model, issue #106).
  */
 export const modelFor = (asked: string | undefined, provider: AgentProvider = "claude") =>
-  asked && AGENT_MODELS.some((m) => m.id === asked && m.provider === provider) ? asked : provider === "claude" ? process.env.UNCUT_AGENT_MODEL || undefined : undefined;
+  asked && AGENT_MODELS.some((m) => m.id === asked && m.provider === provider)
+    ? asked
+    : provider === "claude"
+      ? process.env.UNCUT_AGENT_MODEL || undefined
+      : undefined;

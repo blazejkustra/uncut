@@ -27,7 +27,9 @@ const override = (name: string, reason: () => string | undefined) => {
 
 /** Why the GPU can't be trusted for pixel parity with the export or for real-time playback (frame pacing, decode speed), if it can't. */
 export const NO_REAL_GPU = override("UNCUT_TEST_GPU", () =>
-  virtualMachine ? "needs a real GPU and media engine: this Mac is a virtual machine (kern.hv_vmm_present), whose paravirtual GPU draws slightly differently, decodes video in software and drops frames" : undefined,
+  virtualMachine
+    ? "needs a real GPU and media engine: this Mac is a virtual machine (kern.hv_vmm_present), whose paravirtual GPU draws slightly differently, decodes video in software and drops frames"
+    : undefined,
 );
 
 /** The default output device's name (system_profiler), or "" when it can't be read. */

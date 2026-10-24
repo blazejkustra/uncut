@@ -13,7 +13,10 @@ import { Tooltip } from "../ui/Tooltip.tsx";
 import { TemplateEditor, TemplateRow, TemplateView, type TemplateDraft } from "./skills/Templates.tsx";
 
 // Issue #111: the Templates section's own views beside the skills'.
-type TabView = View | { readonly kind: "template"; readonly id: string } | { readonly kind: "template-edit"; readonly id: string | undefined; readonly draft: TemplateDraft };
+type TabView =
+  | View
+  | { readonly kind: "template"; readonly id: string }
+  | { readonly kind: "template-edit"; readonly id: string | undefined; readonly draft: TemplateDraft };
 import "./skills/skills.css";
 
 export function SkillsLibrary() {
@@ -29,18 +32,30 @@ export function SkillsLibrary() {
     void actions.brandGet();
     void actions.templatesGet();
   }, [online]);
-  const duplicateTemplate = (t: TemplateInfo) => setView({ kind: "template-edit", id: undefined, draft: { name: `${t.name} copy`, description: t.description, body: t.body } });
+  const duplicateTemplate = (t: TemplateInfo) =>
+    setView({ kind: "template-edit", id: undefined, draft: { name: `${t.name} copy`, description: t.description, body: t.body } });
 
   const openSkill = (s: BrandSkill) =>
-    s.plugin ? setView({ kind: "builtin", id: s.id }) : setView({ kind: "skill", id: s.id, scope: s.scope, draft: { name: s.name, scope: s.scope, description: s.description, body: s.body } });
+    s.plugin
+      ? setView({ kind: "builtin", id: s.id })
+      : setView({ kind: "skill", id: s.id, scope: s.scope, draft: { name: s.name, scope: s.scope, description: s.description, body: s.body } });
   const newSkill = (t?: Pick<BrandSkill, "name" | "description" | "body">) =>
-    setView({ kind: "skill", id: undefined, scope: "global", draft: { name: t ? `${t.name} copy` : "", scope: "global", description: t?.description ?? "", body: t?.body ?? "" } });
+    setView({
+      kind: "skill",
+      id: undefined,
+      scope: "global",
+      draft: { name: t ? `${t.name} copy` : "", scope: "global", description: t?.description ?? "", body: t?.body ?? "" },
+    });
   const use = (s: BrandSkill) => actions.composeSkill(s.id);
 
   const fromPlugins = brand?.skills.filter((s) => s.plugin) ?? [];
   const yours = brand?.skills.filter((s) => !s.plugin) ?? [];
   // Grouped by plugin, Uncut's own first.
-  const groups = [...new Set(fromPlugins.map((s) => s.pluginName ?? s.plugin!))].sort((a, b) => Number(fromPlugins.find((s) => (s.pluginName ?? s.plugin) === b)?.builtin ?? false) - Number(fromPlugins.find((s) => (s.pluginName ?? s.plugin) === a)?.builtin ?? false));
+  const groups = [...new Set(fromPlugins.map((s) => s.pluginName ?? s.plugin!))].sort(
+    (a, b) =>
+      Number(fromPlugins.find((s) => (s.pluginName ?? s.plugin) === b)?.builtin ?? false) -
+      Number(fromPlugins.find((s) => (s.pluginName ?? s.plugin) === a)?.builtin ?? false),
+  );
 
   const row = (s: BrandSkill) => (
     <button key={`${s.scope}:${s.id}`} className="brand-row" data-testid={`skill-${s.id}`} onClick={() => openSkill(s)}>
@@ -71,7 +86,14 @@ export function SkillsLibrary() {
           {online ? "Loading" : "Not connected"}
         </div>
       ) : view.kind === "builtin" ? (
-        <SkillView skill={brand.skills.find((s) => s.id === view.id)} online={online} hasProject={hasProject} onUse={use} onDuplicate={(s) => newSkill(s)} onClose={() => setView({ kind: "list" })} />
+        <SkillView
+          skill={brand.skills.find((s) => s.id === view.id)}
+          online={online}
+          hasProject={hasProject}
+          onUse={use}
+          onDuplicate={(s) => newSkill(s)}
+          onClose={() => setView({ kind: "list" })}
+        />
       ) : view.kind === "template" ? (
         <TemplateView
           t={templates.find((t) => t.id === view.id)}
@@ -82,9 +104,23 @@ export function SkillsLibrary() {
           onClose={() => setView({ kind: "list" })}
         />
       ) : view.kind === "template-edit" ? (
-        <TemplateEditor id={view.id} draft={view.draft} templates={templates} online={online} onDraft={(draft) => setView({ ...view, draft })} onClose={() => setView({ kind: "list" })} />
+        <TemplateEditor
+          id={view.id}
+          draft={view.draft}
+          templates={templates}
+          online={online}
+          onDraft={(draft) => setView({ ...view, draft })}
+          onClose={() => setView({ kind: "list" })}
+        />
       ) : view.kind === "skill" ? (
-        <SkillEditor brand={brand} view={view} hasProject={hasProject} online={online} onDraft={(draft) => setView({ ...view, draft })} onClose={() => setView({ kind: "list" })} />
+        <SkillEditor
+          brand={brand}
+          view={view}
+          hasProject={hasProject}
+          online={online}
+          onDraft={(draft) => setView({ ...view, draft })}
+          onClose={() => setView({ kind: "list" })}
+        />
       ) : (
         <div className="brand-body">
           <div className="lib-section">
@@ -104,7 +140,9 @@ export function SkillsLibrary() {
           ))}
           <div className="lib-section">
             <div className="brand-head">
-              <span className="lib-label" data-testid="skills-yours">Yours</span>
+              <span className="lib-label" data-testid="skills-yours">
+                Yours
+              </span>
               <button className="btn ghost brand-small-btn" data-testid="skills-new" disabled={!online} onClick={() => newSkill()}>
                 <Plus />
                 New skill
@@ -116,7 +154,12 @@ export function SkillsLibrary() {
           <div className="lib-section" data-testid="templates-section">
             <div className="brand-head">
               <span className="lib-label">Templates</span>
-              <button className="btn ghost brand-small-btn" data-testid="templates-new" disabled={!online} onClick={() => setView({ kind: "template-edit", id: undefined, draft: { name: "", description: "", body: "" } })}>
+              <button
+                className="btn ghost brand-small-btn"
+                data-testid="templates-new"
+                disabled={!online}
+                onClick={() => setView({ kind: "template-edit", id: undefined, draft: { name: "", description: "", body: "" } })}
+              >
                 <Plus />
                 New template
               </button>

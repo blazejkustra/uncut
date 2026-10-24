@@ -5,8 +5,14 @@ import { planReplaceRange } from "@uncut/core/arrange";
 
 import { layoutOf, type ProjectModel } from "../state/project.ts";
 
-export function planReplaceMarks(project: ProjectModel, media: string, at: { readonly markIn: number | undefined; readonly markOut: number | undefined; readonly selected: string | undefined }, from = 0) {
-  if (at.markIn === undefined || at.markOut === undefined || at.markOut <= at.markIn) return { problem: "Set In and Out on the timeline first (I and O): the piece to replace." };
+export function planReplaceMarks(
+  project: ProjectModel,
+  media: string,
+  at: { readonly markIn: number | undefined; readonly markOut: number | undefined; readonly selected: string | undefined },
+  from = 0,
+) {
+  if (at.markIn === undefined || at.markOut === undefined || at.markOut <= at.markIn)
+    return { problem: "Set In and Out on the timeline first (I and O): the piece to replace." };
   const { starts } = layoutOf(project);
   const inside = (id: string, duration: number) => {
     const start = starts.get(id) ?? 0;

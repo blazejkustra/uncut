@@ -75,20 +75,42 @@ after(async () => {
 async function frame(local: number) {
   const out = join(root, `f-${local}.png`);
   const info = graphicInfo({ duration: 60, props: {} }, canvas, local);
-  await raster.render({ kind: "graphic", width: W, height: H, doc: docs.get("graphics/steps.html")!, t: local / canvas.fps, info, out, name: "graphics/steps.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc: docs.get("graphics/steps.html")!,
+    t: local / canvas.fps,
+    info,
+    out,
+    name: "graphics/steps.html",
+  });
   return rgbaOf(out);
 }
 
 /** The text lines below the bar: bands of rows with light ink (grey 100+), their heights and the ink's left and right edges. */
 function lines(px: Uint8Array | Buffer) {
-  const lum = (x: number, y: number) => { const i = (y * W + x) * 4; return (px[i]! + px[i + 1]! + px[i + 2]!) / 3; };
+  const lum = (x: number, y: number) => {
+    const i = (y * W + x) * 4;
+    return (px[i]! + px[i + 1]! + px[i + 2]!) / 3;
+  };
   const bands: Array<{ top: number; h: number }> = [];
-  let left = W, right = -1, top = -1;
+  let left = W,
+    right = -1,
+    top = -1;
   for (let y = 8; y < H; y++) {
     let ink = false;
-    for (let x = 0; x < W; x++) if (lum(x, y) > 100) { ink = true; left = Math.min(left, x); right = Math.max(right, x); }
+    for (let x = 0; x < W; x++)
+      if (lum(x, y) > 100) {
+        ink = true;
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+      }
     if (ink && top < 0) top = y;
-    if (!ink && top >= 0) { bands.push({ top, h: y - top }); top = -1; }
+    if (!ink && top >= 0) {
+      bands.push({ top, h: y - top });
+      top = -1;
+    }
   }
   return { bands: bands.filter((b) => b.h >= 3), left, right };
 }
@@ -99,7 +121,7 @@ test("frameText sets the agent's steps larger than the panel's width does, and s
   const solo = await frame(75);
   const near = lines(all);
   const alone = lines(solo);
-  const median = (l: ReturnType<typeof lines>) => [...l.bands.map((b) => b.h)].sort((a, b) => a - b)[l.bands.length >> 1]! / H;
+  const median = (l: ReturnType<typeof lines>) => l.bands.map((b) => b.h).sort((a, b) => a - b)[l.bands.length >> 1]! / H;
   const msg = `lines (median, share of the height): the panel's width ${(median(wide) * 100).toFixed(1)} %, the steps ${(median(near) * 100).toFixed(1)} %, one step ${(median(alone) * 100).toFixed(1)} %`;
   t.diagnostic(msg);
   assert.ok(median(near) > median(wide) * 1.15 && median(near) >= 0.033, msg);

@@ -31,7 +31,12 @@ export const windowKey = (o: { readonly model?: string | undefined; readonly ini
  * this model (earlier in this app run); else undefined (the meter shows only the used count until
  * the turn's result reports modelUsage's contextWindow). Never a guessed 200k.
  */
-export function knownWindow(o: { readonly model?: string | undefined; readonly initModel?: string | undefined; readonly chosen?: string | undefined; readonly learned?: ReadonlyMap<string, number> }): number | undefined {
+export function knownWindow(o: {
+  readonly model?: string | undefined;
+  readonly initModel?: string | undefined;
+  readonly chosen?: string | undefined;
+  readonly learned?: ReadonlyMap<string, number>;
+}): number | undefined {
   const marked = windowFor(o.chosen) ?? windowFor(o.initModel);
   if (marked) return marked;
   const key = windowKey(o);
@@ -73,13 +78,27 @@ export function resultWindow(msg: Record<string, any>, model: string | undefined
 }
 
 /** System prompt + tools, estimated from Uncut's own strings plus Claude Code's (about CLAUDE_CODE_BASE_TOKENS). */
-export const systemToolsEstimate = (systemChars: number, toolsJsonChars: number) => CLAUDE_CODE_BASE_TOKENS + estimateTokens(systemChars) + estimateTokens(toolsJsonChars, "json");
+export const systemToolsEstimate = (systemChars: number, toolsJsonChars: number) =>
+  CLAUDE_CODE_BASE_TOKENS + estimateTokens(systemChars) + estimateTokens(toolsJsonChars, "json");
 
 /** The meter's numbers: what claude reported, split into estimated parts (the conversation is the rest, never below 0). */
-export function contextOf(o: { readonly used: number; readonly window?: number | undefined; readonly systemTools: number; readonly message: number; readonly model?: string | undefined }): AgentContext {
+export function contextOf(o: {
+  readonly used: number;
+  readonly window?: number | undefined;
+  readonly systemTools: number;
+  readonly message: number;
+  readonly model?: string | undefined;
+}): AgentContext {
   const systemTools = Math.min(o.systemTools, o.used);
   const message = Math.min(o.message, Math.max(0, o.used - systemTools));
-  return { used: o.used, ...(o.window ? { window: o.window } : {}), systemTools, conversation: Math.max(0, o.used - systemTools - message), message, ...(o.model ? { model: o.model } : {}) };
+  return {
+    used: o.used,
+    ...(o.window ? { window: o.window } : {}),
+    systemTools,
+    conversation: Math.max(0, o.used - systemTools - message),
+    message,
+    ...(o.model ? { model: o.model } : {}),
+  };
 }
 
 /** This message's context: what Uncut added to the user's words (the <context>, <editor-context> and other blocks), estimated. */

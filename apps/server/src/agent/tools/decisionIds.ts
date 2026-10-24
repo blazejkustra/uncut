@@ -15,5 +15,7 @@ export function withoutDecisionIds(text: string): string {
 export function scrubDescriptions(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(scrubDescriptions);
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === "description" && typeof v === "string" ? withoutDecisionIds(v) : scrubDescriptions(v)]));
+  return Object.fromEntries(
+    Object.entries(value).map(([k, v]) => [k, k === "description" && typeof v === "string" ? withoutDecisionIds(v) : scrubDescriptions(v)]),
+  );
 }

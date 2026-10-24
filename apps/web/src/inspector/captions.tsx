@@ -5,7 +5,18 @@ import { useEffect, useRef, useState } from "react";
 import { frameTimecode } from "../state/format.ts";
 import { playback, usePlayback } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
-import { autoMaxChars, CAPTION_MODE_NAMES, CAPTION_MODES, captionCardAt, captionCards, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, type CaptionEdit } from "@uncut/core/captions";
+import {
+  autoMaxChars,
+  CAPTION_MODE_NAMES,
+  CAPTION_MODES,
+  captionCardAt,
+  captionCards,
+  captionSettings,
+  captionsCoverMain,
+  captionWordText,
+  planCaptionEdit,
+  type CaptionEdit,
+} from "@uncut/core/captions";
 import { TextStyleTab } from "./text.tsx";
 import { CaptionStyleGallery } from "./captionStyles.tsx";
 import { send, NumberField, Tabs, Group } from "./fields.tsx";
@@ -59,7 +70,14 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
       <Group label="Show">
         <div className="seg" role="group">
           {CAPTION_MODES.map((m) => (
-            <button key={m} className={mode === m ? "active" : ""} data-testid={`cap-mode-${m}`} disabled={disabled} title={CAPTION_MODE_NAMES[m]} onClick={() => edit({ mode: m })}>
+            <button
+              key={m}
+              className={mode === m ? "active" : ""}
+              data-testid={`cap-mode-${m}`}
+              disabled={disabled}
+              title={CAPTION_MODE_NAMES[m]}
+              onClick={() => edit({ mode: m })}
+            >
               {CAPTION_SHORT[m]}
             </button>
           ))}
@@ -68,18 +86,57 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
       <Group label="Cards">
         <div className="seg" role="group">
           {[1, 2].map((k) => (
-            <button key={k} className={s.maxLines === k ? "active" : ""} data-testid={`cap-lines-${k}`} disabled={disabled} onClick={() => edit({ lines: { maxLines: k } })}>
+            <button
+              key={k}
+              className={s.maxLines === k ? "active" : ""}
+              data-testid={`cap-lines-${k}`}
+              disabled={disabled}
+              onClick={() => edit({ lines: { maxLines: k } })}
+            >
               {k === 1 ? "1 line" : "2 lines"}
             </button>
           ))}
         </div>
         <div className="field-row">
-          <NumberField label="Characters" testId="cap-chars" value={item.lines?.maxChars} placeholder={`${autoMaxChars(item, project)}`} min={4} max={200} disabled={disabled} onCommit={(v) => edit({ lines: { maxChars: v === undefined ? null : Math.round(v) } })} />
-          <NumberField label="Seconds" testId="cap-seconds" value={s.maxSeconds} step={0.5} min={0.5} max={30} disabled={disabled} onCommit={(v) => edit({ lines: { maxSeconds: v ?? null } })} />
-          <NumberField label="Pause" testId="cap-pause" value={s.pause} step={0.1} min={0} max={10} disabled={disabled} onCommit={(v) => edit({ lines: { pause: v ?? null } })} />
+          <NumberField
+            label="Characters"
+            testId="cap-chars"
+            value={item.lines?.maxChars}
+            placeholder={`${autoMaxChars(item, project)}`}
+            min={4}
+            max={200}
+            disabled={disabled}
+            onCommit={(v) => edit({ lines: { maxChars: v === undefined ? null : Math.round(v) } })}
+          />
+          <NumberField
+            label="Seconds"
+            testId="cap-seconds"
+            value={s.maxSeconds}
+            step={0.5}
+            min={0.5}
+            max={30}
+            disabled={disabled}
+            onCommit={(v) => edit({ lines: { maxSeconds: v ?? null } })}
+          />
+          <NumberField
+            label="Pause"
+            testId="cap-pause"
+            value={s.pause}
+            step={0.1}
+            min={0}
+            max={10}
+            disabled={disabled}
+            onCommit={(v) => edit({ lines: { pause: v ?? null } })}
+          />
         </div>
         <label className="check-row">
-          <input type="checkbox" data-testid="cap-fillers" checked={item.hideFillers === true} disabled={disabled} onChange={(e) => edit({ hideFillers: e.target.checked })} />
+          <input
+            type="checkbox"
+            data-testid="cap-fillers"
+            checked={item.hideFillers === true}
+            disabled={disabled}
+            onChange={(e) => edit({ hideFillers: e.target.checked })}
+          />
           Hide fillers (um, uh)
         </label>
         {!captionsCoverMain(project, item) && (
@@ -103,22 +160,48 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
                 <span key={index} className="cap-word">
                   {i > 0 && shown && (
                     <Tooltip label="Start a new card at this word">
-                      <button className={`cap-break ${(item.breaks ?? []).includes(index) ? "on" : ""}`} data-testid="cap-break" data-index={index} disabled={disabled} onClick={() => edit({ breaks: [{ index, on: true }] })}>
+                      <button
+                        className={`cap-break ${(item.breaks ?? []).includes(index) ? "on" : ""}`}
+                        data-testid="cap-break"
+                        data-index={index}
+                        disabled={disabled}
+                        onClick={() => edit({ breaks: [{ index, on: true }] })}
+                      >
                         ↵
                       </button>
                     </Tooltip>
                   )}
                   {i === 0 && (item.breaks ?? []).includes(index) && (
                     <Tooltip label="Join this card to the one before">
-                      <button className="cap-break on" data-testid="cap-join" data-index={index} disabled={disabled} onClick={() => edit({ breaks: [{ index, on: false }] })}>
+                      <button
+                        className="cap-break on"
+                        data-testid="cap-join"
+                        data-index={index}
+                        disabled={disabled}
+                        onClick={() => edit({ breaks: [{ index, on: false }] })}
+                      >
                         ↵
                       </button>
                     </Tooltip>
                   )}
                   {shown ? (
-                    <CaptionWord key={`${index}:${text}`} index={index} value={text} original={original} disabled={disabled} onCommit={(t) => edit({ words: [{ index, text: t }] })} />
+                    <CaptionWord
+                      key={`${index}:${text}`}
+                      index={index}
+                      value={text}
+                      original={original}
+                      disabled={disabled}
+                      onCommit={(t) => edit({ words: [{ index, text: t }] })}
+                    />
                   ) : (
-                    <button className="cap-hidden" data-testid="cap-restore" data-index={index} disabled={disabled} title={`Hidden: click to show "${original}" again`} onClick={() => edit({ words: [{ index, text: null }] })}>
+                    <button
+                      className="cap-hidden"
+                      data-testid="cap-restore"
+                      data-index={index}
+                      disabled={disabled}
+                      title={`Hidden: click to show "${original}" again`}
+                      onClick={() => edit({ words: [{ index, text: null }] })}
+                    >
                       {original}
                     </button>
                   )}
@@ -137,7 +220,15 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
         <Group label={`Hidden words (${hidden.length})`}>
           <div className="cap-words" data-testid="cap-hidden-list">
             {hidden.map((index) => (
-              <button key={index} className="cap-hidden" data-testid="cap-restore" data-index={index} disabled={disabled} title="Show it again" onClick={() => edit({ words: [{ index, text: null }] })}>
+              <button
+                key={index}
+                className="cap-hidden"
+                data-testid="cap-restore"
+                data-index={index}
+                disabled={disabled}
+                title="Show it again"
+                onClick={() => edit({ words: [{ index, text: null }] })}
+              >
                 {(item.words?.[index]?.text ?? "").trim()}
               </button>
             ))}
@@ -147,7 +238,14 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
       <Group label={`All cards (${cards.length})`}>
         <div className="cap-list" ref={listRef}>
           {cards.map((c, k) => (
-            <button key={`${c.from}-${c.words[0]!.index}`} className="cap-row" data-testid="cap-card-row" data-from={c.from} data-current={k === n ? "true" : undefined} onClick={() => playback.seek(c.from)}>
+            <button
+              key={`${c.from}-${c.words[0]!.index}`}
+              className="cap-row"
+              data-testid="cap-card-row"
+              data-from={c.from}
+              data-current={k === n ? "true" : undefined}
+              onClick={() => playback.seek(c.from)}
+            >
               <span className="mono small muted">{frameTimecode(c.from, fps)}</span>
               <span className="ellipsis">{c.words.map((w) => w.text).join(" ")}</span>
             </button>
@@ -166,7 +264,19 @@ const cardIndices = (card: { readonly words: ReadonlyArray<{ readonly index: num
 };
 
 /** One caption word: typed over, committed on Enter, blur or unmount (playback moving on mid-typing); Esc puts it back; empty hides it. */
-function CaptionWord({ index, value, original, disabled, onCommit }: { index: number; value: string; original: string; disabled: boolean; onCommit: (text: string | null) => void }) {
+function CaptionWord({
+  index,
+  value,
+  original,
+  disabled,
+  onCommit,
+}: {
+  index: number;
+  value: string;
+  original: string;
+  disabled: boolean;
+  onCommit: (text: string | null) => void;
+}) {
   const [text, setText] = useState(value);
   const latest = useRef({ text, value, original, onCommit, done: false });
   latest.current = { ...latest.current, text, value, original, onCommit };

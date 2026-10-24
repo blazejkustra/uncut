@@ -32,7 +32,9 @@ export function UpdateToast() {
         <Download />
         <span className="banner-text">
           <strong>Uncut {status.version} is ready</strong>
-          <span className="update-sub" data-testid="update-sub">{updateSubline({ refused, quitting })}</span>
+          <span className="update-sub" data-testid="update-sub">
+            {updateSubline({ refused, quitting })}
+          </span>
         </span>
         <button className="btn primary" data-testid="update-restart" disabled={restarting} onClick={() => void restartToUpdate()}>
           {restarting ? "Restarting…" : "Restart to update"}

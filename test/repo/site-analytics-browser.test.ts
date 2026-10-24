@@ -18,12 +18,26 @@ import { onRequest } from "../../site/functions/_middleware.ts";
 import { GA_MEASUREMENT_ID } from "../../site/src/consent.ts";
 
 declare global {
-  interface Window { dataLayer?: Array<unknown>; gtag?: (...args: Array<unknown>) => void }
+  interface Window {
+    dataLayer?: Array<unknown>;
+    gtag?: (...args: Array<unknown>) => void;
+  }
 }
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const SITE = new URL("../../site/out/", import.meta.url).pathname;
-const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".xml": "application/xml", ".txt": "text/plain" };
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".webp": "image/webp",
+  ".woff2": "font/woff2",
+  ".svg": "image/svg+xml",
+  ".xml": "application/xml",
+  ".txt": "text/plain",
+};
 /** Serve the scripts with the placeholder ID instead of the real one. */
 let placeholder = false;
 
@@ -33,7 +47,18 @@ function parseHeaders(text: string): Array<Rule> {
   const rules: Array<Rule> = [];
   for (const line of text.split("\n")) {
     if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    if (!/^\s/.test(line)) rules.push({ re: new RegExp("^" + line.trim().replace(/[.+?^$(){}|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"), lines: [] });
+    if (!/^\s/.test(line))
+      rules.push({
+        re: new RegExp(
+          "^" +
+            line
+              .trim()
+              .replace(/[.+?^$(){}|[\]\\]/g, "\\$&")
+              .replace(/\*/g, ".*") +
+            "$",
+        ),
+        lines: [],
+      });
     else rules.at(-1)!.lines.push(line.trim());
   }
   return rules;
@@ -44,7 +69,12 @@ function headersFor(rules: Array<Rule>, path: string): Record<string, string> {
   for (const r of rules.filter((r) => r.re.test(path))) {
     for (const l of r.lines) {
       if (l.startsWith("! ")) delete out[l.slice(2).toLowerCase()];
-      else { const i = l.indexOf(":"); const k = l.slice(0, i).trim().toLowerCase(); const v = l.slice(i + 1).trim(); out[k] = out[k] ? `${out[k]}, ${v}` : v; }
+      else {
+        const i = l.indexOf(":");
+        const k = l.slice(0, i).trim().toLowerCase();
+        const v = l.slice(i + 1).trim();
+        out[k] = out[k] ? `${out[k]}, ${v}` : v;
+      }
     }
   }
   return out;
@@ -64,7 +94,10 @@ before(async () => {
     let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
     if (path.endsWith("/")) path += "index.html";
     const file = join(SITE, path);
-    if (!file.startsWith(SITE) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
+    if (!file.startsWith(SITE) || !existsSync(file) || !statSync(file).isFile()) {
+      res.writeHead(404).end();
+      return;
+    }
     let body: Buffer = readFileSync(file);
     if (placeholder && path.endsWith(".js")) body = Buffer.from(body.toString("utf8").replaceAll(GA_MEASUREMENT_ID, "G-XXXXXXXXXX"));
     const csp = headersFor(rules, url.pathname)["content-security-policy"];
@@ -73,7 +106,8 @@ before(async () => {
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
     const response = await onRequest({
       request: new Request(`http://localhost${req.url}`, { headers }),
-      next: async () => new Response(new Uint8Array(body), { headers: { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": csp } }),
+      next: async () =>
+        new Response(new Uint8Array(body), { headers: { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": csp } }),
     });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));
@@ -112,18 +146,31 @@ const google = (v: Visit) => v.offsite.filter((u) => /google(tagmanager|-analyti
 const gtagUrl = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
 const settle = (p: Page) => p.evaluate(() => new Promise((r) => setTimeout(r, 400)));
 const bannerShown = (p: Page) => p.$eval(".consent", (e) => getComputedStyle(e).position === "fixed" && (e as HTMLElement).offsetHeight > 0).catch(() => false);
-const settingsLink = (p: Page) => p.$('footer [data-cookie-settings]').then(Boolean);
+const settingsLink = (p: Page) => p.$("footer [data-cookie-settings]").then(Boolean);
 
 test("EU visitor: banner with equal Accept and Reject, nothing from Google before a choice", { skip }, async () => {
-  for (const [w, h] of [[1440, 900], [390, 844]] as const) {
+  for (const [w, h] of [
+    [1440, 900],
+    [390, 844],
+  ] as const) {
     const v = await visitor("PL", w, h);
     await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
     await settle(v.page);
     assert.equal(await bannerShown(v.page), true);
     assert.deepEqual(google(v), []);
     assert.equal(await v.page.evaluate(() => typeof window.gtag), "function", "Consent Mode defaults are set");
-    const btns = await v.page.$$eval(".consent-btn", (bs) => bs.map((b) => ({ t: b.textContent, w: Math.round(b.getBoundingClientRect().width), bg: getComputedStyle(b).backgroundColor, r: getComputedStyle(b).borderRadius })));
-    assert.deepEqual(btns.map((b) => b.t), ["Reject", "Accept"]);
+    const btns = await v.page.$$eval(".consent-btn", (bs) =>
+      bs.map((b) => ({
+        t: b.textContent,
+        w: Math.round(b.getBoundingClientRect().width),
+        bg: getComputedStyle(b).backgroundColor,
+        r: getComputedStyle(b).borderRadius,
+      })),
+    );
+    assert.deepEqual(
+      btns.map((b) => b.t),
+      ["Reject", "Accept"],
+    );
     assert.equal(btns[0]!.w, btns[1]!.w);
     assert.equal(btns[0]!.bg, btns[1]!.bg);
     assert.equal(btns[0]!.r, "6px");
@@ -213,7 +260,12 @@ test("Every page: no CSP violation, no page error, no inline script without its 
       assert.deepEqual(v.errors, [], `${path} at ${w}`);
       const nav = await v.page.evaluate(() => {
         const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
-        return { fits: document.documentElement.scrollWidth <= window.innerWidth, gap: r("header.top nav").left - r(".wordmark").right, right: r("header.top nav").right, width: window.innerWidth };
+        return {
+          fits: document.documentElement.scrollWidth <= window.innerWidth,
+          gap: r("header.top nav").left - r(".wordmark").right,
+          right: r("header.top nav").right,
+          width: window.innerWidth,
+        };
       });
       assert.ok(nav.fits && nav.gap > 0 && nav.right <= nav.width, `${path} at ${w}: ${JSON.stringify(nav)}`);
       await v.page.browserContext().close();
@@ -229,6 +281,7 @@ test("The CSP has no 'unsafe-inline' or 'unsafe-eval', and every page's own rule
     const csp = headersFor(rules, path)["content-security-policy"]!;
     const inline = [...page.matchAll(/<script\b(?![^>]*\bsrc=)(?![^>]*application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/g)];
     assert.ok(inline.length > 0, path);
-    for (const m of inline) assert.ok(csp.includes(`'sha256-${createHash("sha256").update(m[1]!, "utf8").digest("base64")}'`), `${path}: an inline script without its hash`);
+    for (const m of inline)
+      assert.ok(csp.includes(`'sha256-${createHash("sha256").update(m[1]!, "utf8").digest("base64")}'`), `${path}: an inline script without its hash`);
   }
 });

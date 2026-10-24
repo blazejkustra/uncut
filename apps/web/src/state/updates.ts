@@ -61,7 +61,10 @@ export function startUpdates() {
   recorderListeners.add(report);
   report();
   bridge.onUpdateStatus((status) => setView({ status, dismissed: undefined, refused: false }));
-  void bridge.updateStatus?.().then((status) => view.status.kind === "idle" && setView({ status }), () => {});
+  void bridge.updateStatus?.().then(
+    (status) => view.status.kind === "idle" && setView({ status }),
+    () => {},
+  );
 }
 
 export const dismissUpdate = () => setView({ dismissed: view.status, refused: false });

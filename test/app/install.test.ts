@@ -5,7 +5,20 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadModules, validateProject } from "../../packages/core/src/index.ts";
@@ -14,7 +27,11 @@ import { launchApp, lockApps, onInterrupt, unlockApps, type LaunchedApp } from "
 import { DJI_CLIP } from "../helpers/footage.ts";
 
 const DJI = DJI_CLIP;
-const dmgs = existsSync("dist") ? readdirSync("dist").filter((f) => /^Uncut-.+-arm64\.dmg$/.test(f)).map((f) => resolve("dist", f)) : [];
+const dmgs = existsSync("dist")
+  ? readdirSync("dist")
+      .filter((f) => /^Uncut-.+-arm64\.dmg$/.test(f))
+      .map((f) => resolve("dist", f))
+  : [];
 const DMG = dmgs[0];
 const skip = dmgs.length === 0 ? "no dmg built: run pnpm dist" : false;
 
@@ -35,12 +52,16 @@ function newestSource() {
   return newest;
 }
 
-let root: string, mountpoint: string, mounted = false, app: LaunchedApp | undefined;
+let root: string,
+  mountpoint: string,
+  mounted = false,
+  app: LaunchedApp | undefined;
 const step = (text: string) => console.log(`# step: ${text}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const waitFor = (page: Page, selector: string, timeout = 30000) => page.waitForSelector(selector, { timeout });
 const text = (page: Page, id: string) => page.$eval(`[data-testid=${id}]`, (el) => el.textContent.trim());
-const row = (page: Page, id: string) => page.$eval(`[data-testid=check-${id}]`, (el) => `${el.querySelector(".wiz-chip")!.textContent}, ${el.querySelector(".wiz-sub")!.textContent}`);
+const row = (page: Page, id: string) =>
+  page.$eval(`[data-testid=check-${id}]`, (el) => `${el.querySelector(".wiz-chip")!.textContent}, ${el.querySelector(".wiz-sub")!.textContent}`);
 const detach = () => {
   if (!mounted) return;
   const r = spawnSync("hdiutil", ["detach", mountpoint], { encoding: "utf8" });
@@ -100,7 +121,10 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.deepEqual(readFileSync(join(installed, "Contents/Resources/icon.icns")), readFileSync(resolve("apps/desktop/build/icon.icns")), "Uncut's own icon");
   // Help › Licence and Third-Party Notices open these; Electron's and Chromium's licences ship too (D112).
   assert.ok(readFileSync(join(installed, "Contents/Resources/LICENSE.txt")).equals(readFileSync(resolve("LICENSE"))), "LICENSE shipped");
-  assert.ok(readFileSync(join(installed, "Contents/Resources/THIRD_PARTY_NOTICES.txt")).equals(readFileSync(resolve("THIRD_PARTY_NOTICES"))), "notices shipped");
+  assert.ok(
+    readFileSync(join(installed, "Contents/Resources/THIRD_PARTY_NOTICES.txt")).equals(readFileSync(resolve("THIRD_PARTY_NOTICES"))),
+    "notices shipped",
+  );
   assert.ok(existsSync(join(installed, "Contents/Resources/licenses/LICENSES.chromium.html")), "Chromium's licences shipped");
   // No bundled music (D274).
   assert.ok(!existsSync(join(installed, "Contents/Resources/music")), "no music shipped");
@@ -121,11 +145,24 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   const whisper = join(installed, "Contents/Resources/plugins/whisper-transcribe");
   assert.deepEqual(readdirSync(whisper).sort(), ["icon.svg", "server.ts", "uncut.module.json", "whisper.ts"]);
   for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
-  assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "catalog", "uncut-elevenlabs", "uncut-skills", "whisper-transcribe"]);
+  assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), [
+    "argent-capture",
+    "catalog",
+    "uncut-elevenlabs",
+    "uncut-skills",
+    "whisper-transcribe",
+  ]);
   // The catalog (D103): every plugin in plugins/catalog, as in the repo, off until enabled.
   const catalog = join(installed, "Contents/Resources/plugins/catalog");
-  assert.deepEqual(readdirSync(catalog).sort(), readdirSync(resolve("plugins/catalog")).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort());
-  for (const name of readdirSync(catalog)) for (const f of readdirSync(join(catalog, name))) assert.ok(readFileSync(join(catalog, name, f)).equals(readFileSync(resolve("plugins/catalog", name, f))), `${name}/${f}`);
+  assert.deepEqual(
+    readdirSync(catalog).sort(),
+    readdirSync(resolve("plugins/catalog"))
+      .filter((n) => !n.startsWith(".") && !n.startsWith("_"))
+      .sort(),
+  );
+  for (const name of readdirSync(catalog))
+    for (const f of readdirSync(join(catalog, name)))
+      assert.ok(readFileSync(join(catalog, name, f)).equals(readFileSync(resolve("plugins/catalog", name, f))), `${name}/${f}`);
   // The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.
   const sdk = join(installed, "Contents/Resources/plugin-sdk");
   assert.deepEqual(readdirSync(sdk).sort(), ["index.ts", "register.ts"]);
@@ -197,7 +234,9 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
     step("import the DJI clip");
     await page.click("[data-testid=import]");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 1, { timeout: 60000 });
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].some((i) => i.complete && i.naturalWidth > 0), { timeout: 60000 });
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].some((i) => i.complete && i.naturalWidth > 0), {
+      timeout: 60000,
+    });
     assert.equal(await page.$eval("[data-testid=tile-meta]", (el) => el.textContent), "3840×2160, 59.94 fps");
   }
   assert.deepEqual(app.errors, []);

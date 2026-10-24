@@ -358,7 +358,12 @@ export function serve(options: ServeOptions): PluginServer {
       meta,
       progress: (progress, total, message) => {
         if (token === undefined || abort.signal.aborted) return;
-        notify("notifications/progress", { progressToken: token, progress, ...(total !== undefined ? { total } : {}), ...(message ? { message } : {}) } satisfies ProgressParams);
+        notify("notifications/progress", {
+          progressToken: token,
+          progress,
+          ...(total !== undefined ? { total } : {}),
+          ...(message ? { message } : {}),
+        } satisfies ProgressParams);
       },
       fetch: async (req) => {
         const grant = str(meta["uncut/grant"]);

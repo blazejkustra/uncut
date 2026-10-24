@@ -42,33 +42,58 @@ export default function ZoomShot(props: ComponentProps<"img">) {
     closing.current = true;
     setShown(false);
     el.style.transform = fromRect(src.getBoundingClientRect(), el.getBoundingClientRect());
-    const done = () => { closing.current = false; setOpen(false); };
+    const done = () => {
+      closing.current = false;
+      setOpen(false);
+    };
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
     el.addEventListener("transitionend", done, { once: true });
-    setTimeout(() => { if (closing.current) done(); }, 600);
+    setTimeout(() => {
+      if (closing.current) done();
+    }, 600);
   };
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
     const y = scrollY;
-    const onScroll = () => { if (Math.abs(scrollY - y) > 40) close(); };
+    const onScroll = () => {
+      if (Math.abs(scrollY - y) > 40) close();
+    };
     addEventListener("keydown", onKey);
     addEventListener("scroll", onScroll, { passive: true });
-    return () => { removeEventListener("keydown", onKey); removeEventListener("scroll", onScroll); };
+    return () => {
+      removeEventListener("keydown", onKey);
+      removeEventListener("scroll", onScroll);
+    };
   }, [open]);
 
   return (
     <>
-      <button type="button" className="shot-zoom" aria-label="View the editor screenshot larger" onClick={() => setOpen(true)} style={{ visibility: open ? "hidden" : undefined }}>
+      <button
+        type="button"
+        className="shot-zoom"
+        aria-label="View the editor screenshot larger"
+        onClick={() => setOpen(true)}
+        style={{ visibility: open ? "hidden" : undefined }}
+      >
         <img ref={shot} {...props} />
       </button>
-      {open && createPortal(
-        <div className={shown ? "zoom open" : "zoom"} role="dialog" aria-modal="true" aria-label="Editor screenshot" onClick={close}>
-          <img ref={big} className="zoom-img" src={props.src} alt={props.alt} style={{ maxWidth: `${100 - MARGIN * 200}vw`, maxHeight: `${100 - MARGIN * 200}vh` }} />
-        </div>,
-        document.body,
-      )}
+      {open &&
+        createPortal(
+          <div className={shown ? "zoom open" : "zoom"} role="dialog" aria-modal="true" aria-label="Editor screenshot" onClick={close}>
+            <img
+              ref={big}
+              className="zoom-img"
+              src={props.src}
+              alt={props.alt}
+              style={{ maxWidth: `${100 - MARGIN * 200}vw`, maxHeight: `${100 - MARGIN * 200}vh` }}
+            />
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

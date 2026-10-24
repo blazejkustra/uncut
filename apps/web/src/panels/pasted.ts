@@ -17,7 +17,10 @@ export const quotePaths = (paths: ReadonlyArray<string>) => paths.map((p) => p.r
  * pasteboard) gives the real path, matched by name. A picture with no file behind it (a
  * screenshot, an image copied from a page) attaches; `unknown` is anything else.
  */
-export function sortPasted(files: ReadonlyArray<{ readonly name: string; readonly type: string; readonly path: string }>, copied: ReadonlyArray<string>): { paths: Array<string>; attach: Array<number>; unknown: Array<number> } {
+export function sortPasted(
+  files: ReadonlyArray<{ readonly name: string; readonly type: string; readonly path: string }>,
+  copied: ReadonlyArray<string>,
+): { paths: Array<string>; attach: Array<number>; unknown: Array<number> } {
   const paths: Array<string> = [];
   const attach: Array<number> = [];
   const unknown: Array<number> = [];
@@ -41,4 +44,3 @@ export function sortPasted(files: ReadonlyArray<{ readonly name: string; readonl
   if (copied.length && files.every((f) => !f.path.startsWith("/"))) for (const p of copied) if (!used.has(p)) addPath(p);
   return { paths, attach, unknown: copied.length ? unknown.filter((i) => !files[i]!.type.startsWith("image/")) : unknown };
 }
-

@@ -1,5 +1,17 @@
 // project_read's project summary, and edit_captions' expansion.
-import { type Project, subtitleCues, layout, mixNote, type Item, captionCardList, applyEdit, createSession, type Op, planCaptionEdit, sectionsNote } from "@uncut/core";
+import {
+  type Project,
+  subtitleCues,
+  layout,
+  mixNote,
+  type Item,
+  captionCardList,
+  applyEdit,
+  createSession,
+  type Op,
+  planCaptionEdit,
+  sectionsNote,
+} from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
 /** D105: project_read's line about subtitles (cues from captions and Subtitles tracks), or undefined. */
@@ -41,7 +53,12 @@ function compactItem(project: Project, it: Item, start: number | undefined) {
  * long project's items (over COMPACT_ITEMS, no range) come as compact lines; detail "items" or
  * `items` (ids) gives every field.
  */
-export function projectSummary(project: Project, revision: number, range?: { start: number; end: number }, opts: { readonly detail?: "summary" | "items"; readonly items?: ReadonlyArray<string> } = {}) {
+export function projectSummary(
+  project: Project,
+  revision: number,
+  range?: { start: number; end: number },
+  opts: { readonly detail?: "summary" | "items"; readonly items?: ReadonlyArray<string> } = {},
+) {
   const { starts, duration } = layout(project);
   const end = project.tracks.some((t) => t.items.length) ? duration : 0;
   const fps = project.canvas.fps;
@@ -53,7 +70,8 @@ export function projectSummary(project: Project, revision: number, range?: { sta
   const picked = (it: Item) => (only ? only.has(it.id) : inRange(it.id, it.duration));
   const count = project.tracks.reduce((n, t) => n + t.items.filter(picked).length, 0);
   const compact = !only && !range && opts.detail !== "items" && count > COMPACT_ITEMS;
-  const full = (it: Item) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) });
+  const full = (it: Item) =>
+    it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) };
   return {
     revision,
     name: project.name,
@@ -78,11 +96,25 @@ export function projectSummary(project: Project, revision: number, range?: { sta
       ...(t.locked ? { locked: true } : {}),
       items: t.items.filter(picked).map((it) => (compact ? compactItem(project, it, starts.get(it.id)) : full(it))),
     })),
-    ...(compact ? { itemsNote: `${count} items, listed compactly. project_read with detail "items" and items [ids] (or a range) gives every field; read an item that way before update_item.` } : {}),
-    ...(only ? { itemsNote: `Only the items asked for${[...only].some((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))) ? `; not found: ${[...only].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))).join(", ")}` : ""}.` } : {}),
+    ...(compact
+      ? {
+          itemsNote: `${count} items, listed compactly. project_read with detail "items" and items [ids] (or a range) gives every field; read an item that way before update_item.`,
+        }
+      : {}),
+    ...(only
+      ? {
+          itemsNote: `Only the items asked for${[...only].some((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))) ? `; not found: ${[...only].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))).join(", ")}` : ""}.`,
+        }
+      : {}),
     ...(project.master ? { master: project.master } : {}),
     // Issue #118: what the user locked (edits that would change it are refused) and flagged to redo.
-    ...(sectionsNote(project) ? { sections: sectionsNote(project), sectionsNote: "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it)." } : {}),
+    ...(sectionsNote(project)
+      ? {
+          sections: sectionsNote(project),
+          sectionsNote:
+            "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it).",
+        }
+      : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.
@@ -95,7 +127,12 @@ export function projectSummary(project: Project, revision: number, range?: { sta
 /** project_read's credits (D135): who to credit (CC BY) and the CC0 sounds, plus the text to paste. */
 function creditsSummary(project: Project) {
   const c = creditsOf(project);
-  const line = (x: (typeof c.attribution)[number]) => ({ title: x.title, creator: x.creator, license: x.license === "by" ? `CC BY ${x.licenseVersion}` : "CC0", url: x.landingUrl });
+  const line = (x: (typeof c.attribution)[number]) => ({
+    title: x.title,
+    creator: x.creator,
+    license: x.license === "by" ? `CC BY ${x.licenseVersion}` : "CC0",
+    url: x.landingUrl,
+  });
   return { needAttribution: c.attribution.map(line), publicDomain: c.publicDomain.map(line), text: creditsText(project) };
 }
 
@@ -134,7 +171,12 @@ const EDIT_CAPTIONS_KEYS = new Set(["op", "item", "words", "breaks", "mode", "li
 export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
   if (!ops.some((op) => (op as { op?: unknown })?.op === "edit_captions")) return { ops: [...ops] };
   const out: Array<unknown> = [];
-  const word = (value: unknown) => (Number.isInteger(value) && (value as number) >= 0 ? (value as number) : typeof value === "string" && /^w?\d+$/.test(value) ? Number(value.replace(/^w/, "")) : undefined);
+  const word = (value: unknown) =>
+    Number.isInteger(value) && (value as number) >= 0
+      ? (value as number)
+      : typeof value === "string" && /^w?\d+$/.test(value)
+        ? Number(value.replace(/^w/, ""))
+        : undefined;
   for (const [i, raw] of ops.entries()) {
     const op = raw as Record<string, unknown>;
     if (op?.op !== "edit_captions") {
@@ -150,7 +192,10 @@ export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>
       if (!Array.isArray(op.words) || !op.words.length) return { problem: `${where}: words must be a list like [{"word":"w12","text":"Argent"}].` };
       for (const w of op.words as ReadonlyArray<{ word?: unknown; text?: unknown }>) {
         const index = word(w?.word);
-        if (index === undefined || !(typeof w.text === "string" || w.text === null)) return { problem: `${where}: each words entry needs word ("w12") and text (a string, "" to hide it, null for the transcript's); got ${JSON.stringify(w)}.` };
+        if (index === undefined || !(typeof w.text === "string" || w.text === null))
+          return {
+            problem: `${where}: each words entry needs word ("w12") and text (a string, "" to hide it, null for the transcript's); got ${JSON.stringify(w)}.`,
+          };
         words.push({ index, text: w.text as string | null });
       }
     }
@@ -159,11 +204,13 @@ export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>
       if (!Array.isArray(op.breaks) || !op.breaks.length) return { problem: `${where}: breaks must be a list like [{"word":"w20"}].` };
       for (const b of op.breaks as ReadonlyArray<{ word?: unknown; on?: unknown }>) {
         const index = word(b?.word);
-        if (index === undefined || (b.on !== undefined && typeof b.on !== "boolean")) return { problem: `${where}: each breaks entry needs word ("w20") and optionally on (true or false); got ${JSON.stringify(b)}.` };
+        if (index === undefined || (b.on !== undefined && typeof b.on !== "boolean"))
+          return { problem: `${where}: each breaks entry needs word ("w20") and optionally on (true or false); got ${JSON.stringify(b)}.` };
         breaks.push({ index, on: b.on !== false });
       }
     }
-    if (op.lines !== undefined && (typeof op.lines !== "object" || op.lines === null || Array.isArray(op.lines))) return { problem: `${where}: lines must be an object (maxChars, maxLines, maxSeconds, maxWords, pause).` };
+    if (op.lines !== undefined && (typeof op.lines !== "object" || op.lines === null || Array.isArray(op.lines)))
+      return { problem: `${where}: lines must be an object (maxChars, maxLines, maxSeconds, maxWords, pause).` };
     if (op.hideFillers !== undefined && typeof op.hideFillers !== "boolean") return { problem: `${where}: hideFillers must be true or false.` };
     let now: Project = project;
     try {

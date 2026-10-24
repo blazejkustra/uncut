@@ -36,7 +36,10 @@ for (const m of modules.values()) for (const t of (m.agentTools as Array<any> | 
 function shakyOverlaps(project: Project) {
   const shaky = new Map<string, Array<any>>();
   for (const c of trace.calls.filter((c: any) => c.tool === "media_analyze")) {
-    shaky.set(c.input.media, c.output.stability.filter((s: any) => s.value < trace.expect.maxShakyStability));
+    shaky.set(
+      c.input.media,
+      c.output.stability.filter((s: any) => s.value < trace.expect.maxShakyStability),
+    );
   }
   const hits: Array<string> = [];
   for (const item of project.tracks.find((t) => t.role === "main")!.items) {
@@ -102,7 +105,11 @@ test("D6: the agent can't overwrite a newer manual edit, but can edit other thin
 
 test("D6: the agent gets a note listing the user's manual edits, and only those", () => {
   let s = createSession(promo);
-  s = applyEdit(s, { actor: "agent", turnId: "t1", summary: "built the promo", ops: [{ op: "update_item", item: "txt-hook", set: { text: "Claude Code tests your app" } }] }, validate);
+  s = applyEdit(
+    s,
+    { actor: "agent", turnId: "t1", summary: "built the promo", ops: [{ op: "update_item", item: "txt-hook", set: { text: "Claude Code tests your app" } }] },
+    validate,
+  );
   const since = s.revision;
   assert.equal(manualEditsNote(s, since), "", "no note when the user did nothing");
   s = applyEdit(s, { actor: "user", ops: [{ op: "trim_item", item: "sim-login", edge: "end", frames: 90 }] }, validate);
@@ -134,7 +141,11 @@ test("D7: undoing a turn never moves revisions back; kept entries keep theirs", 
   s = applyEdit(s, { actor: "user", ops: [{ op: "update_track", track: "a1", set: { mixer: { gainDb: -4 } } }] }, validate);
   const undone = undoTurn(promo, s, "t1", validate);
   assert.equal(undone.revision, s.revision + 1, "one past the session, not renumbered from 0");
-  assert.deepEqual(undone.log.map((e) => [e.revision, e.actor]), [[3, "user"]], "the user's entry keeps revision 3");
+  assert.deepEqual(
+    undone.log.map((e) => [e.revision, e.actor]),
+    [[3, "user"]],
+    "the user's entry keeps revision 3",
+  );
   assert.equal(JSON.stringify(undone.project.tracks.find((t) => t.id === "a1")), JSON.stringify(s.project.tracks.find((t) => t.id === "a1")));
   // A revision read before the undo can still be checked against the kept log.
   assert.throws(() => applyEdit(undone, { actor: "agent", baseRevision: 2, ops: [{ op: "update_track", track: "a1", set: { hidden: true } }] }), EditConflict);
@@ -142,23 +153,43 @@ test("D7: undoing a turn never moves revisions back; kept entries keep theirs", 
 
 test("D7: a turn a later edit builds on can't be undone, and a turn with nothing in the log says so", () => {
   let s = createSession(promo);
-  s = applyEdit(s, { actor: "agent", turnId: "t1", summary: "add a label", ops: [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "x" } }] }, validate);
+  s = applyEdit(
+    s,
+    {
+      actor: "agent",
+      turnId: "t1",
+      summary: "add a label",
+      ops: [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "x" } }],
+    },
+    validate,
+  );
   s = applyEdit(s, { actor: "user", summary: "reword it", ops: [{ op: "update_item", item: "txt-new", set: { text: "y" } }] }, validate);
   assert.throws(
     () => undoTurn(promo, s, "t1", validate),
     (e) => e instanceof TurnDependency && e.entry.summary === "reword it" && /builds on this turn/.test(e.message),
   );
-  assert.throws(() => undoTurn(promo, s, "t-unknown", validate), (e) => e instanceof EditError && !(e instanceof TurnDependency) && /no edits in this session/.test(e.message));
+  assert.throws(
+    () => undoTurn(promo, s, "t-unknown", validate),
+    (e) => e instanceof EditError && !(e instanceof TurnDependency) && /no edits in this session/.test(e.message),
+  );
 });
 
 test("edits are atomic: an invalid edit leaves the project untouched", () => {
   const s = createSession(promo);
   const before = JSON.stringify(s.project);
   assert.throws(
-    () => applyEdit(s, { actor: "agent", ops: [
-      { op: "update_item", item: "txt-hook", set: { text: "ok" } },
-      { op: "update_item", item: "sim-login", set: { in: 300 } },
-    ] }, validate),
+    () =>
+      applyEdit(
+        s,
+        {
+          actor: "agent",
+          ops: [
+            { op: "update_item", item: "txt-hook", set: { text: "ok" } },
+            { op: "update_item", item: "sim-login", set: { in: 300 } },
+          ],
+        },
+        validate,
+      ),
     (e) => e instanceof EditError && e.details.some((d) => (d as Problem).code === "media-range"),
   );
   assert.equal(JSON.stringify(s.project), before);
@@ -168,7 +199,13 @@ test("edits are atomic: an invalid edit leaves the project untouched", () => {
 test("every op type works and keeps the promo valid", () => {
   let s = createSession(promo);
   const steps: Array<Array<Op>> = [
-    [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "argent.example.com", style: { preset: "text.mono-label" } } }],
+    [
+      {
+        op: "insert_item",
+        track: "t1",
+        item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "argent.example.com", style: { preset: "text.mono-label" } },
+      },
+    ],
     [{ op: "split_item", item: "sim-login", at: 180, newId: "sim-login-b" }],
     [{ op: "move_item", item: "cmp-tap", start: 430 }],
     [{ op: "delete_item", item: "result-bg" }],
@@ -194,7 +231,13 @@ test("every op type works and keeps the promo valid", () => {
 
 test("the editor context says when the playhead is at the end, after the last frame (D56)", async () => {
   const { playheadLine } = await import("../../apps/server/src/agent/agentTools.ts");
-  const p = { format: "uncut/0", name: "P", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 420, text: "Hi" }] }] } as unknown as Project;
+  const p = {
+    format: "uncut/0",
+    name: "P",
+    canvas: { width: 1920, height: 1080, fps: 30 },
+    media: [],
+    tracks: [{ id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 420, text: "Hi" }] }],
+  } as unknown as Project;
   assert.equal(playheadLine(p, 30), "Playhead: frame 30 (1.00 s).");
   assert.equal(playheadLine(p, 420), "Playhead: frame 420 (14.00 s), the end of the project, after its last frame (419); nothing is drawn here.");
   assert.equal(playheadLine({ ...p, tracks: [] }, 0), "Playhead: frame 0 (0.00 s).");

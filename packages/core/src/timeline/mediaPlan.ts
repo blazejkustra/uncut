@@ -19,7 +19,8 @@ export function propMediaIds(value: unknown, into: Set<Id> = new Set()): Set<Id>
 }
 
 /** Whether an item uses a media: as its `media`, a captions' `source`, or in its props (an image frame's image). */
-export const itemUsesMedia = (item: Item, mediaId: Id) => item.media === mediaId || (item.type === "captions" && item.source === mediaId) || (item.props !== undefined && propMediaIds(item.props).has(mediaId));
+export const itemUsesMedia = (item: Item, mediaId: Id) =>
+  item.media === mediaId || (item.type === "captions" && item.source === mediaId) || (item.props !== undefined && propMediaIds(item.props).has(mediaId));
 
 /** The items that use a media: clips and sounds (`media`), captions made from it (`source`), elements showing it (props). */
 export function mediaUses(project: Pick<Project, "tracks">, mediaId: Id): Array<{ readonly item: Item; readonly track: Track; readonly index: number }> {
@@ -72,7 +73,11 @@ export function planRemoveMedia(project: Pick<Project, "tracks" | "media">, medi
   for (const track of project.tracks) if (track.role === "main") ops.push(...rippleMainGaps(track, gone));
   ops.push({ op: "delete_media", media: mediaId });
   const n = uses.length;
-  return { ops, summary: n ? `Remove ${media.name} from the project (and ${n} item${n === 1 ? "" : "s"} using it)` : `Remove ${media.name} from the project`, items: n };
+  return {
+    ops,
+    summary: n ? `Remove ${media.name} from the project (and ${n} item${n === 1 ? "" : "s"} using it)` : `Remove ${media.name} from the project`,
+    items: n,
+  };
 }
 
 /** Where the picture ends: the last frame of any video or text track (sound and captions don't count). */
@@ -100,7 +105,10 @@ export const fitFadeOut = (duration: number, fps: number) => Math.min(2 * fps, M
  * 2 s (a longer fade out it has stays). One update_item. Refused when the sound starts at or past
  * the end of the picture, when another item on its track is in the way, or when it is locked.
  */
-export function planFitToVideo(project: Pick<Project, "tracks" | "media" | "canvas">, itemId: Id): (Plan & { readonly mode: "trim" | "loop" | "same" }) | Problem {
+export function planFitToVideo(
+  project: Pick<Project, "tracks" | "media" | "canvas">,
+  itemId: Id,
+): (Plan & { readonly mode: "trim" | "loop" | "same" }) | Problem {
   const fps = project.canvas.fps;
   let found: { item: Item; track: Track } | undefined;
   for (const track of project.tracks) {
@@ -133,8 +141,16 @@ export function planFitToVideo(project: Pick<Project, "tracks" | "media" | "canv
   // A detached sound (D123) that is fitted on its own stops following its clip.
   if (item.linkedTo) set.linkedTo = null;
   const mode = fits ? (duration === item.duration ? "same" : "trim") : "loop";
-  const changed = Object.entries(set).some(([k, v]) => (v === null ? (item as unknown as Record<string, unknown>)[k] !== undefined : (item as unknown as Record<string, unknown>)[k] !== v && JSON.stringify((item as unknown as Record<string, unknown>)[k]) !== JSON.stringify(v)));
+  const changed = Object.entries(set).some(([k, v]) =>
+    v === null
+      ? (item as unknown as Record<string, unknown>)[k] !== undefined
+      : (item as unknown as Record<string, unknown>)[k] !== v && JSON.stringify((item as unknown as Record<string, unknown>)[k]) !== JSON.stringify(v),
+  );
   if (!changed) return { ops: [], summary: "Already fits the video", mode: "same" };
   const name = item.name ?? media.name;
-  return { ops: [{ op: "update_item", item: item.id, set }], summary: `Fit ${name} to the video (${mode === "loop" ? "looped" : "trimmed"} to ${(duration / fps).toFixed(1)} s, fade out)`, mode };
+  return {
+    ops: [{ op: "update_item", item: item.id, set }],
+    summary: `Fit ${name} to the video (${mode === "loop" ? "looped" : "trimmed"} to ${(duration / fps).toFixed(1)} s, fade out)`,
+    mode,
+  };
 }

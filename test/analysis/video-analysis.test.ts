@@ -46,7 +46,25 @@ const analyze = async (name: string) => {
 
 /** A pan over a still: crop x/y expressions (n = frame, t = seconds), 640×360 at 30 fps for 6 s, then extra filters. */
 const pan = (out: string, x: string, y: string, extra = "") =>
-  ff("-loop", "1", "-framerate", String(FPS), "-i", clip("still.png"), "-t", "6", "-vf", `crop=640:360:x='${x}':y='${y}'${extra}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", clip(out));
+  ff(
+    "-loop",
+    "1",
+    "-framerate",
+    String(FPS),
+    "-i",
+    clip("still.png"),
+    "-t",
+    "6",
+    "-vf",
+    `crop=640:360:x='${x}':y='${y}'${extra}`,
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-g",
+    "30",
+    clip(out),
+  );
 
 before(() => {
   if (skip) return;
@@ -58,37 +76,173 @@ before(() => {
   pan("jittered.mp4", "100+t*60+3*sin(n*2.7)+2*sin(n*5.3)", "80+t*20+2*sin(n*3.1)+2*sin(n*7.7)");
   pan("blurred.mp4", "100+t*60", "80+t*20", ",gblur=sigma=4");
   // Dropped frames: the smooth pan with frames 60–66 missing (their time stays a gap), like DJI files.
-  ff("-i", clip("smooth.mp4"), "-vf", "select='not(between(n,60,66))'", "-fps_mode", "passthrough", "-c:v", "libx264", "-pix_fmt", "yuv420p", clip("dropped.mp4"));
+  ff(
+    "-i",
+    clip("smooth.mp4"),
+    "-vf",
+    "select='not(between(n,60,66))'",
+    "-fps_mode",
+    "passthrough",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    clip("dropped.mp4"),
+  );
   // A whole second with no frames (frames 55–95 gone, 1.83–3.17 s): second 2 is empty.
   ff("-i", clip("smooth.mp4"), "-vf", "select='not(between(n,55,95))'", "-fps_mode", "passthrough", "-c:v", "libx264", "-pix_fmt", "yuv420p", clip("hole.mp4"));
   // Portrait (360×640) shaking only sideways, and only up and down, by the same amount, over a
   // texture with structure both ways (blobs of smoothed noise; testsrc2's bars have none vertically).
-  ff("-f", "lavfi", "-i", "nullsrc=s=400x225,geq=lum='random(1)*255':cb=128:cr=128", "-vf", "scale=1600:900:flags=bicubic", "-frames:v", "1", clip("blobs.png"));
-  for (const [name, x, y] of [["portrait-x.mp4", "500+4*sin(n*2.7)+3*sin(n*5.3)", "100"], ["portrait-y.mp4", "500", "100+4*sin(n*2.7)+3*sin(n*5.3)"]] as const) {
-    ff("-loop", "1", "-framerate", String(FPS), "-i", clip("blobs.png"), "-t", "4", "-vf", `crop=360:640:x='${x}':y='${y}'`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", clip(name));
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "nullsrc=s=400x225,geq=lum='random(1)*255':cb=128:cr=128",
+    "-vf",
+    "scale=1600:900:flags=bicubic",
+    "-frames:v",
+    "1",
+    clip("blobs.png"),
+  );
+  for (const [name, x, y] of [
+    ["portrait-x.mp4", "500+4*sin(n*2.7)+3*sin(n*5.3)", "100"],
+    ["portrait-y.mp4", "500", "100+4*sin(n*2.7)+3*sin(n*5.3)"],
+  ] as const) {
+    ff(
+      "-loop",
+      "1",
+      "-framerate",
+      String(FPS),
+      "-i",
+      clip("blobs.png"),
+      "-t",
+      "4",
+      "-vf",
+      `crop=360:640:x='${x}':y='${y}'`,
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-g",
+      "30",
+      clip(name),
+    );
   }
   // The resolution changes mid-file (640×360, then 480×360): MPEG-TS segments joined end to end,
   // the second 2 s later. ffmpeg rebuilds its filter graph there.
-  ff("-loop", "1", "-framerate", String(FPS), "-i", clip("still.png"), "-t", "2", "-vf", "crop=640:360:x='100+t*60':y=80", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", clip("part1.ts"));
-  ff("-loop", "1", "-framerate", String(FPS), "-i", clip("still.png"), "-t", "2", "-vf", "crop=480:360:x='220+t*60':y=80", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-muxdelay", "0", "-muxpreload", "0", "-output_ts_offset", "2", "-f", "mpegts", clip("part2.ts"));
+  ff(
+    "-loop",
+    "1",
+    "-framerate",
+    String(FPS),
+    "-i",
+    clip("still.png"),
+    "-t",
+    "2",
+    "-vf",
+    "crop=640:360:x='100+t*60':y=80",
+    "-c:v",
+    "libx264",
+    "-bf",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    "-muxdelay",
+    "0",
+    "-muxpreload",
+    "0",
+    "-f",
+    "mpegts",
+    clip("part1.ts"),
+  );
+  ff(
+    "-loop",
+    "1",
+    "-framerate",
+    String(FPS),
+    "-i",
+    clip("still.png"),
+    "-t",
+    "2",
+    "-vf",
+    "crop=480:360:x='220+t*60':y=80",
+    "-c:v",
+    "libx264",
+    "-bf",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    "-muxdelay",
+    "0",
+    "-muxpreload",
+    "0",
+    "-output_ts_offset",
+    "2",
+    "-f",
+    "mpegts",
+    clip("part2.ts"),
+  );
   writeFileSync(clip("resized.ts"), Buffer.concat([readFileSync(clip("part1.ts")), readFileSync(clip("part2.ts"))]));
   // A hold: the pan stops from 2 s to 3.5 s.
   pan("hold.mp4", "100+60*min(t,2)+60*max(0,t-3.5)", "80");
   // Hard cuts at frames 45 and 100: test pattern, bars, a fractal (5 s at 30 fps).
   ff(
-    "-f", "lavfi", "-i", `testsrc2=s=640x360:r=${FPS}:d=1.5`,
-    "-f", "lavfi", "-i", `smptehdbars=s=640x360:r=${FPS}:d=1.8333333`,
-    "-f", "lavfi", "-i", `mandelbrot=s=640x360:r=${FPS}`,
-    "-filter_complex", "[2]trim=end_frame=50,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p",
-    "-c:v", "libx264", "-g", "300", clip("cuts.mp4"),
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=s=640x360:r=${FPS}:d=1.5`,
+    "-f",
+    "lavfi",
+    "-i",
+    `smptehdbars=s=640x360:r=${FPS}:d=1.8333333`,
+    "-f",
+    "lavfi",
+    "-i",
+    `mandelbrot=s=640x360:r=${FPS}`,
+    "-filter_complex",
+    "[2]trim=end_frame=50,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p",
+    "-c:v",
+    "libx264",
+    "-g",
+    "300",
+    clip("cuts.mp4"),
   );
   // DJI-like: a larger default mjpeg stream next to the footage, and a sound.
   ff(
-    "-f", "lavfi", "-i", `testsrc2=size=320x180:rate=${FPS}`,
-    "-f", "lavfi", "-i", `color=blue:size=1280x720:rate=${FPS}`,
-    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-    "-t", "2", "-map", "0:v", "-map", "1:v", "-map", "2:a",
-    "-c:v:0", "libx264", "-pix_fmt:v:0", "yuv420p", "-c:v:1", "mjpeg", "-pix_fmt:v:1", "yuvj420p", "-disposition:v:0", "0", "-disposition:v:1", "default", "-c:a", "aac",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=320x180:rate=${FPS}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `color=blue:size=1280x720:rate=${FPS}`,
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000",
+    "-t",
+    "2",
+    "-map",
+    "0:v",
+    "-map",
+    "1:v",
+    "-map",
+    "2:a",
+    "-c:v:0",
+    "libx264",
+    "-pix_fmt:v:0",
+    "yuv420p",
+    "-c:v:1",
+    "mjpeg",
+    "-pix_fmt:v:1",
+    "yuvj420p",
+    "-disposition:v:0",
+    "0",
+    "-disposition:v:1",
+    "default",
+    "-c:a",
+    "aac",
     clip("covered.mp4"),
   );
   ff("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1", "-c:a", "pcm_s16le", clip("tone.wav"));
@@ -166,7 +320,10 @@ test("synthetic takes: smooth > jittered > blurred, clearly apart; the shake, pa
   // Injected shake: RMS about 4 px (of 640) left after smoothing; the smooth pan's is under 1 px.
   const shake = (r: VideoResult) => Math.max(...r.windows!.map((w) => w.jitter!));
   assert.ok(shake(smoothR) < 0.0015, `smooth: ${shake(smoothR)}`);
-  assert.ok(jitterR.windows!.every((w) => w.jitter! > 0.003 && w.jitter! < 0.01), JSON.stringify(jitterR.windows!.map((w) => w.jitter)));
+  assert.ok(
+    jitterR.windows!.every((w) => w.jitter! > 0.003 && w.jitter! < 0.01),
+    JSON.stringify(jitterR.windows!.map((w) => w.jitter)),
+  );
   assert.ok(Math.min(...blurR.windows!.map((w) => w.blur!)) > Math.max(...smoothR.windows!.map((w) => w.blur!)) + 2, "blur measures blurrier");
 });
 
@@ -176,7 +333,14 @@ test("hard cuts are found within ±1 frame; a still stretch and a hold in a pan 
   const frames = r.cuts!.map((c) => c.time * FPS);
   assert.equal(frames.length, 2, JSON.stringify(r.cuts));
   assert.ok(Math.abs(frames[0]! - 45) <= 1 && Math.abs(frames[1]! - 100) <= 1, JSON.stringify(r.cuts));
-  assert.deepEqual(shotsOf(r).map((s) => [Math.round(s.start * FPS), Math.round(s.end * FPS)]), [[0, 45], [45, 100], [100, 150]]);
+  assert.deepEqual(
+    shotsOf(r).map((s) => [Math.round(s.start * FPS), Math.round(s.end * FPS)]),
+    [
+      [0, 45],
+      [45, 100],
+      [100, 150],
+    ],
+  );
   // The bars don't move: frozen from the first cut to the second.
   assert.equal(r.frozen!.length, 1, JSON.stringify(r.frozen));
   assert.ok(Math.abs(r.frozen![0]!.start - 1.5) <= 0.05 && Math.abs(r.frozen![0]!.end - 100 / FPS) <= 0.05, JSON.stringify(r.frozen));
@@ -219,20 +383,29 @@ test("portrait footage: the same shake sideways and up and down reads the same (
 test("a resolution change mid-file keeps every frame's time in order", { skip, timeout: 60000 }, async () => {
   const r = await analyze("resized.ts");
   assert.equal(r.frames, 120);
-  assert.deepEqual(r.windows!.map((w) => w.frames), [30, 30, 30, 30]);
+  assert.deepEqual(
+    r.windows!.map((w) => w.frames),
+    [30, 30, 30, 30],
+  );
   assert.ok(Math.abs(r.seconds! - 4) < 0.1, `${r.seconds}`);
   assert.deepEqual(r.drops, []);
 });
 
 test("a second with no frames is null in perSecond, not shifted; stretches and the best stretch don't bridge it", { skip, timeout: 60000 }, async () => {
   const r = await analyze("hole.mp4");
-  assert.deepEqual(r.windows!.map((w) => w.start), [0, 1, 3, 4, 5]);
+  assert.deepEqual(
+    r.windows!.map((w) => w.start),
+    [0, 1, 3, 4, 5],
+  );
   const out = videoOut(r, false, framesFor(FPS, 180), undefined, FPS) as any;
   assert.equal(out.perSecond.firstSecond, 0);
   assert.equal(out.perSecond.cleanScore.length, 6);
   assert.equal(out.perSecond.cleanScore[2], null);
   assert.ok(out.perSecond.cleanScore[3] !== null && out.perSecond.panPerSecond[2] === null);
-  assert.ok(out.stretches.every((s: any) => s.endSeconds <= 2 || s.startSeconds >= 3), JSON.stringify(out.stretches));
+  assert.ok(
+    out.stretches.every((s: any) => s.endSeconds <= 2 || s.startSeconds >= 3),
+    JSON.stringify(out.stretches),
+  );
   const best = bestStretch(r, 3)!;
   assert.ok(best.end <= 2 || best.start >= 3, JSON.stringify(best));
 });
@@ -242,7 +415,10 @@ test("the first video stream (not a DJI-like mjpeg cover); sound files and image
   assert.equal(r.hasVideo, true);
   assert.equal(r.frames, 60);
   // Blue would be a flat 0.16 or so; the test pattern is brighter and textured.
-  assert.ok(r.windows!.every((w) => w.blur !== null && w.brightness > 0.25), JSON.stringify(r.windows));
+  assert.ok(
+    r.windows!.every((w) => w.blur !== null && w.brightness > 0.25),
+    JSON.stringify(r.windows),
+  );
   const tone = await analyzeVideo(ffmpegPath!, clip("tone.wav"), { signal: signal() });
   assert.deepEqual(tone, { hasVideo: false });
 });
@@ -292,12 +468,28 @@ test("scores: each component falls as its measure worsens; an unmeasured one is 
   assert.ok(Math.abs(cleanOf(null, 1, 1, 0) - 1) < 1e-9, "no stability measured: the rest decide");
   assert.ok(cleanOf(1, 1, 1, 0.5) <= 0.5 + 1e-9, "half frozen halves it");
   // Two runs of motion separated by an unmatched pair: neither run's path leaks into the other.
-  const samples = Array.from({ length: 60 }, (_, i) => ({ time: i / 30, brightness: 0.5, dark: 0, bright: 0, blur: 5, ...(i === 0 || i === 30 ? {} : { dx: i < 30 ? 1 : -1, dy: 0 }) }));
+  const samples = Array.from({ length: 60 }, (_, i) => ({
+    time: i / 30,
+    brightness: 0.5,
+    dark: 0,
+    bright: 0,
+    blur: 5,
+    ...(i === 0 || i === 30 ? {} : { dx: i < 30 ? 1 : -1, dy: 0 }),
+  }));
   const ws = windowsOf(samples, [], 128, 2);
   assert.equal(ws.length, 2);
-  assert.ok(ws.every((w) => w.jitter! < 1e-6), JSON.stringify(ws));
-  assert.ok(ws.every((w) => Math.abs(w.motion! - 30 / 128) < 1e-3), JSON.stringify(ws));
-  assert.deepEqual(ws.map((w) => w.tracked), [1, 0.967]);
+  assert.ok(
+    ws.every((w) => w.jitter! < 1e-6),
+    JSON.stringify(ws),
+  );
+  assert.ok(
+    ws.every((w) => Math.abs(w.motion! - 30 / 128) < 1e-3),
+    JSON.stringify(ws),
+  );
+  assert.deepEqual(
+    ws.map((w) => w.tracked),
+    [1, 0.967],
+  );
 });
 
 // The user's footage, read only (never copied or written next to). Slow (about a minute), so it
@@ -309,7 +501,9 @@ test("speed: at least 4× realtime on a real DJI clip (4K HEVC 10-bit)", { skip:
   const r = await analyzeVideo(ffmpegPath!, DJI, { signal: signal() });
   const elapsed = (performance.now() - t0) / 1000;
   const speed = r.seconds! / elapsed;
-  console.log(`DJI clip: ${r.seconds} s (${r.frames} frames) analysed in ${elapsed.toFixed(1)} s = ${speed.toFixed(2)}× realtime; cuts ${r.cuts!.length}, frozen ${r.frozen!.length}, clean ${meanScores(r.windows!).cleanScore}`);
+  console.log(
+    `DJI clip: ${r.seconds} s (${r.frames} frames) analysed in ${elapsed.toFixed(1)} s = ${speed.toFixed(2)}× realtime; cuts ${r.cuts!.length}, frozen ${r.frozen!.length}, clean ${meanScores(r.windows!).cleanScore}`,
+  );
   assert.equal(r.hasVideo, true);
   assert.ok(speed >= 4, `${speed.toFixed(2)}× realtime`);
   // One continuous take: no cuts (fast pans over busy ground and gaps in the recording aren't cuts),

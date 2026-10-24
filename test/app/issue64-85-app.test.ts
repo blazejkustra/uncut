@@ -38,7 +38,15 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const text = (id: string, start: number, duration: number, words: string) => ({ id, type: "text", start, duration, text: words, transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 120, weight: 700 } });
+const text = (id: string, start: number, duration: number, words: string) => ({
+  id,
+  type: "text",
+  start,
+  duration,
+  text: words,
+  transform: { x: 154, y: 410 },
+  style: { preset: "text.title", size: 120, weight: 700 },
+});
 
 test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user is", { skip, timeout: 240000 }, async () => {
   const plan = join(root, "plan.json");
@@ -48,18 +56,34 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
       // Turn 1: two titles over the first 10 s (turn 2 adds lines at 0:15 and 0:17 on the same track).
       [
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Two titles", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, 150, "First") }, { op: "insert_item", track: "text", item: text("title-2", 150, 150, "Second") }] } },
+        {
+          tool: "timeline_edit",
+          args: {
+            baseRevision: "$rev",
+            summary: "Two titles",
+            ops: [
+              { op: "insert_item", track: "text", item: text("title-1", 0, 150, "First") },
+              { op: "insert_item", track: "text", item: text("title-2", 150, 150, "Second") },
+            ],
+          },
+        },
         { tool: "ui_show", args: { frame: 150, select: ["title-2"] } },
         { text: "Two titles are in." },
       ],
       // Turn 2: edits at 0:15 and points there, keeps working, edits again at 0:17 and points there.
       [
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A line at 0:15", ops: [{ op: "insert_item", track: "text", item: text("far-1", 450, 60, "Elsewhere") }] } },
+        {
+          tool: "timeline_edit",
+          args: { baseRevision: "$rev", summary: "A line at 0:15", ops: [{ op: "insert_item", track: "text", item: text("far-1", 450, 60, "Elsewhere") }] },
+        },
         { tool: "ui_show", args: { frame: 450, select: ["far-1"] } },
         { sleep: 4000 },
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A line at 0:17", ops: [{ op: "insert_item", track: "text", item: text("far-2", 510, 60, "Further") }] } },
+        {
+          tool: "timeline_edit",
+          args: { baseRevision: "$rev", summary: "A line at 0:17", ops: [{ op: "insert_item", track: "text", item: text("far-2", 510, 60, "Further") }] },
+        },
         { tool: "ui_show", args: { frame: 510, select: ["far-2"] } },
         { sleep: 1500 },
         { text: "Added two lines at 0:15 and 0:17." },
@@ -68,7 +92,15 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
   );
   const app = await launchApp({
     command: APP,
-    env: { HOME: home, UNCUT_FONT_DIRS: "", UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(home, "Projects")]), UNCUT_CLAUDE: join(root, "claude"), FAKE_PLAN: plan, UNCUT_APPROVAL_MS: "60000" },
+    env: {
+      HOME: home,
+      UNCUT_FONT_DIRS: "",
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([join(home, "Projects")]),
+      UNCUT_CLAUDE: join(root, "claude"),
+      FAKE_PLAN: plan,
+      UNCUT_APPROVAL_MS: "60000",
+    },
   });
   apps.add(app);
   const { page } = app;
@@ -121,7 +153,9 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
     // Space (the composer lets go of the focus first): playback starts from 60 while the turn goes on.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Space");
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"), { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"), {
+      timeout: 5000,
+    });
     const frames: Array<number> = [];
     let sawSecond = false;
     for (let i = 0; i < 30 && !(sawSecond && frames.length > 8); i++) {
@@ -133,10 +167,15 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
     assert.ok(sawSecond, "the agent pointed at 0:17 while the user played");
     assert.ok(frames[0]! >= 60 && frames[0]! < 80, `playback started where the user was: ${frames.join(", ")}`);
     for (let i = 1; i < frames.length; i++) assert.ok(frames[i]! >= frames[i - 1]!, `the playhead only moved forward: ${frames.join(", ")}`);
-    assert.ok(frames.every((f) => f < 450), `never jumped to the agent's frames: ${frames.join(", ")}`);
+    assert.ok(
+      frames.every((f) => f < 450),
+      `never jumped to the agent's frames: ${frames.join(", ")}`,
+    );
     await page.screenshot({ path: shot("issue85-playing") });
     await page.keyboard.press("Space");
-    await page.waitForFunction(() => !document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"), { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"), {
+      timeout: 5000,
+    });
     const paused = await frame();
     assert.ok(paused >= frames.at(-1)! && paused < 450, `paused where playback got to: ${paused}`);
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]")[1]?.getAttribute("data-status") === "done", { timeout: 30000 });

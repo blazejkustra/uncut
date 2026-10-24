@@ -48,12 +48,50 @@ before(() => {
   dir = mkdtempSync(join(tmpdir(), "uncut-gm-lifecycle-"));
   clip = join(dir, "clip.mp4");
   // 6 s at 30 fps, every frame different, a keyframe every second.
-  const r = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "6", "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", clip]);
+  const r = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30",
+    "-t",
+    "6",
+    "-c:v",
+    "libx264",
+    "-g",
+    "30",
+    "-pix_fmt",
+    "yuv420p",
+    clip,
+  ]);
   assert.equal(r.status, 0, String(r.stderr));
   // Variable rate: frames 0–20 at n/30, then a third of a second missing (frame 21 at 31/30 s), each
   // frame's brightness its number × 7 (mod 256), lossless.
   vfr = join(dir, "vfr.mp4");
-  const v = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "nullsrc=s=64x64:r=30", "-frames:v", "60", "-vf", "geq=lum='mod(N*7,256)':cb=128:cr=128,setpts='(N+10*gt(N,20))/30/TB'", "-fps_mode", "passthrough", "-c:v", "libx264", "-qp", "0", "-g", "15", "-pix_fmt", "yuv420p", vfr]);
+  const v = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "nullsrc=s=64x64:r=30",
+    "-frames:v",
+    "60",
+    "-vf",
+    "geq=lum='mod(N*7,256)':cb=128:cr=128,setpts='(N+10*gt(N,20))/30/TB'",
+    "-fps_mode",
+    "passthrough",
+    "-c:v",
+    "libx264",
+    "-qp",
+    "0",
+    "-g",
+    "15",
+    "-pix_fmt",
+    "yuv420p",
+    vfr,
+  ]);
   assert.equal(v.status, 0, String(v.stderr));
 });
 
@@ -73,10 +111,18 @@ test("8 sizes at once: all resolve, one decoder each; close stops everything, no
   await Promise.all(Array.from({ length: 8 }, (_, i) => source.picture({ id: "clip", t: 2.5 + 1 / 30, w: 100 + 2 * i })));
   assert.ok(source.starts() <= 16, `bounded: ${source.starts()} starts`);
   // In flight at close: asked, then closed at once.
-  const late = Array.from({ length: 8 }, (_, i) => source.file({ id: "clip", t: 4, w: 200 + 2 * i }).then(() => "ok", (e: Error) => e.message));
+  const late = Array.from({ length: 8 }, (_, i) =>
+    source.file({ id: "clip", t: 4, w: 200 + 2 * i }).then(
+      () => "ok",
+      (e: Error) => e.message,
+    ),
+  );
   source.close();
   const results = await Promise.all(late);
-  assert.ok(results.every((r) => /closed$/.test(r)), `in-flight requests end with "closed": ${results.join(", ")}`);
+  assert.ok(
+    results.every((r) => r.endsWith("closed")),
+    `in-flight requests end with "closed": ${results.join(", ")}`,
+  );
   const after = source.starts();
   await sleep(1500);
   assert.equal(source.starts(), after, "no decoder starts after close");
@@ -98,7 +144,22 @@ test("one size asked for far-apart frames at once takes turns: a bounded number 
 /** The frame a clip of the VFR file shows at source time t (sourceFramePick), 64×64 bgr24. */
 function clipFrame(t: number): Buffer {
   const pick = sourceFramePick(t, 30);
-  const r = spawnSync(bin, ["-v", "error", ...pick.seekArgs, "-i", vfr, "-vf", `${untaggedFilter(64)}${pick.filter},scale=w=64:h=64:flags=bicubic,format=bgr24`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"]);
+  const r = spawnSync(bin, [
+    "-v",
+    "error",
+    ...pick.seekArgs,
+    "-i",
+    vfr,
+    "-vf",
+    `${untaggedFilter(64)}${pick.filter},scale=w=64:h=64:flags=bicubic,format=bgr24`,
+    "-frames:v",
+    "1",
+    "-f",
+    "rawvideo",
+    "-pix_fmt",
+    "bgr24",
+    "pipe:1",
+  ]);
   assert.equal(r.status, 0, String(r.stderr));
   return r.stdout;
 }
@@ -151,7 +212,10 @@ test("file(): 100 at once each hold their own picture; the reader removes each o
   // The rasteriser's side (apps/desktop renderMedia.ts): the answer's file is read, then removed.
   let handler: ((request: Request) => Promise<Response>) | undefined;
   const sent: Array<{ media: { sub: number } }> = [];
-  handleMedia({ handle: (_scheme: string, fn: (request: Request) => Promise<Response>) => void (handler = fn) } as never, (msg) => void sent.push(msg as { media: { sub: number } }));
+  handleMedia(
+    { handle: (_scheme: string, fn: (request: Request) => Promise<Response>) => void (handler = fn) } as never,
+    (msg) => void sent.push(msg as { media: { sub: number } }),
+  );
   const file = join(dir, "answer.bmp");
   writeFileSync(file, Buffer.from("picture"));
   const response = handler!(new Request("uncut-media://media/clip?t=1"));
@@ -170,7 +234,12 @@ test("the preview's shared source closes when idle and when the project changes,
   const fake = async (d: string) => {
     const rec = { dir: d, closed: 0 };
     made.push(rec);
-    return { picture: async () => ({ bytes: Buffer.alloc(1), type: "image/png" as const, width: 1, height: 1 }), file: async () => ({ file: "", type: "" }), close: () => void rec.closed++, starts: () => 0 };
+    return {
+      picture: async () => ({ bytes: Buffer.alloc(1), type: "image/png" as const, width: 1, height: 1 }),
+      file: async () => ({ file: "", type: "" }),
+      close: () => void rec.closed++,
+      starts: () => 0,
+    };
   };
   const preview = previewSource(fake, 80);
   await preview.use("/a", "ffmpeg", [], async (s) => {

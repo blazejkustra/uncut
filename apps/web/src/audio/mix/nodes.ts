@@ -78,7 +78,11 @@ export const stageShape = (stages: ReadonlyArray<Stage>, ctx?: BaseAudioContext)
  * OfflineAudioContext checks).
  */
 export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>): StageChain {
-  type Part = { readonly stage: Stage["kind"]; readonly nodes: ReadonlyArray<AudioNode>; readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void };
+  type Part = {
+    readonly stage: Stage["kind"];
+    readonly nodes: ReadonlyArray<AudioNode>;
+    readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void;
+  };
   const parts: Array<Part> = [];
   const denoisers: Array<AudioWorkletNode> = [];
   const denoise = denoiseReady(ctx);
@@ -120,7 +124,14 @@ export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>)
         parts.push({ stage: "denoise", nodes: [], set: () => {} });
         continue;
       }
-      const w = new AudioWorkletNode(ctx, "uncut-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit", channelInterpretation: "speakers" });
+      const w = new AudioWorkletNode(ctx, "uncut-denoise", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        channelCount: 2,
+        channelCountMode: "explicit",
+        channelInterpretation: "speakers",
+      });
       denoisers.push(w);
       // Counted on a live context only (an offline render ends with its context).
       if (typeof AudioContext !== "undefined" && ctx instanceof AudioContext) {

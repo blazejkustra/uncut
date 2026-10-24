@@ -47,7 +47,13 @@ before(async () => {
     media: [{ id: "m-pattern", kind: "video", name: "Pattern.mp4", path: join(root, "media", "Pattern.mp4"), probe: PATTERN_PROBE }],
     tracks: [
       { id: "text", kind: "text", name: "Text", items: [] },
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "left", type: "clip", media: "m-pattern", in: 0, duration: 240, transform: { x: 100, y: 50, w: 640, h: 360 } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "left", type: "clip", media: "m-pattern", in: 0, duration: 240, transform: { x: 100, y: 50, w: 640, h: 360 } }],
+      },
     ],
   } as never);
   writeFileSync(join(root, "plan.json"), "[]");
@@ -59,14 +65,22 @@ after(async () => {
 });
 
 test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, overlay scrollbars, provider marks", { skip, timeout: 300000 }, async () => {
-  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, "plan.json") } });
+  const app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, "plan.json") },
+  });
   apps.add(app);
   const { page } = app;
   const box = async (sel: string) => (await (await page.$(sel))!.boundingBox())!;
   const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
   const x = () => onDisk().tracks.find((t: { id: string }) => t.id === "main").items[0].transform.x as number;
   const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-  const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+  const waitRevision = (n: number) =>
+    page.waitForFunction(
+      (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+      { timeout: 10000 },
+      n,
+    );
   const field = () => page.$eval("[data-testid=insp-box-x]", (el) => (el as HTMLInputElement).value);
   try {
     await waitForWelcome(page);
@@ -157,23 +171,30 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     const mediaTab = await box("[data-testid=rail-media]");
     await page.mouse.click(mediaTab.x + mediaTab.width / 2, mediaTab.y + mediaTab.height / 2, { button: "right" });
     await page.click("[data-testid=menu-rail-reset]");
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=rail]")!.dataset.order!.startsWith("media,transcript,text") && !document.querySelector("[data-testid=rail-more]"));
+    await page.waitForFunction(
+      () =>
+        document.querySelector<HTMLElement>("[data-testid=rail]")!.dataset.order!.startsWith("media,transcript,text") &&
+        !document.querySelector("[data-testid=rail-more]"),
+    );
 
     // ---- #29: overlay scrollbars ----
     await page.click("[data-testid=rail-sfx]");
     await page.waitForSelector("[data-testid=library-source]");
     await page.select("[data-testid=library-source]", "pack");
     await page.waitForSelector("[data-testid=sfx-included]");
-    await page.waitForFunction(() => {
-      const lib = document.querySelector(".library");
-      const all = lib ? [lib, ...lib.querySelectorAll<HTMLElement>("*")] : [];
-      const hit = all.find((el) => {
-        const s = getComputedStyle(el);
-        return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 40;
-      });
-      if (hit) (hit as HTMLElement).dataset.testScroll = "1";
-      return !!hit;
-    }, { timeout: 15000 });
+    await page.waitForFunction(
+      () => {
+        const lib = document.querySelector(".library");
+        const all = lib ? [lib, ...lib.querySelectorAll<HTMLElement>("*")] : [];
+        const hit = all.find((el) => {
+          const s = getComputedStyle(el);
+          return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 40;
+        });
+        if (hit) (hit as HTMLElement).dataset.testScroll = "1";
+        return !!hit;
+      },
+      { timeout: 15000 },
+    );
     const area = (await page.$("[data-test-scroll]"))!;
     const gutter = await area.evaluate((el) => {
       const s = getComputedStyle(el as HTMLElement);
@@ -195,9 +216,19 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
         }
         return null;
       }, areaBox);
-    await page.waitForFunction((a) => [...document.querySelectorAll<HTMLElement>("[data-testid=scrollbar][data-axis=y][data-visible=true] [data-testid=scrollbar-thumb]")].some((t) => Math.abs(t.getBoundingClientRect().right - (a.x + a.width)) < 12), { timeout: 5000 }, areaBox);
+    await page.waitForFunction(
+      (a) =>
+        [...document.querySelectorAll<HTMLElement>("[data-testid=scrollbar][data-axis=y][data-visible=true] [data-testid=scrollbar-thumb]")].some(
+          (t) => Math.abs(t.getBoundingClientRect().right - (a.x + a.width)) < 12,
+        ),
+      { timeout: 5000 },
+      areaBox,
+    );
     const bar = (await areaBar())!;
-    assert.ok(bar.width <= 9 && bar.x + bar.width <= areaBox.x + areaBox.width + 1 && bar.x >= areaBox.x + areaBox.width - 12, `a thin bar over the area's right edge: ${JSON.stringify(bar)}`);
+    assert.ok(
+      bar.width <= 9 && bar.x + bar.width <= areaBox.x + areaBox.width + 1 && bar.x >= areaBox.x + areaBox.width - 12,
+      `a thin bar over the area's right edge: ${JSON.stringify(bar)}`,
+    );
     await shot(page, "issue29-scrollbar");
     // Dragging the thumb scrolls the area.
     // The wheel scrolls smoothly: let it settle, then take the thumb where it is now.
@@ -242,15 +273,29 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     assert.equal(await page.$eval("[data-testid=agent-provider] [data-testid=provider-mark]", (el) => (el as HTMLElement).dataset.provider), "claude");
     await page.click("[data-testid=agent-provider]");
     await page.waitForSelector("[data-testid=agent-provider-menu]");
-    assert.deepEqual(await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-wordmark]", (els) => els.map((e) => e.textContent)), ["Claude", "Codex"]);
+    assert.deepEqual(await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-wordmark]", (els) => els.map((e) => e.textContent)), [
+      "Claude",
+      "Codex",
+    ]);
     // #50 superseded D209's no-logo rule: the real marks (issue50-app.test.ts checks them closely).
-    assert.deepEqual(await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-mark] svg.provider-logo", (els) => els.map((e) => (e.parentElement as HTMLElement).dataset.provider)), ["claude", "codex"]);
+    assert.deepEqual(
+      await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-mark] svg.provider-logo", (els) =>
+        els.map((e) => (e.parentElement as HTMLElement).dataset.provider),
+      ),
+      ["claude", "codex"],
+    );
     await shot(page, "issue23-provider");
     await page.click("[data-testid=agent-provider]");
     await page.click("[data-testid=agent-model]");
     await page.waitForSelector("[data-testid=agent-model-menu] [data-testid=agent-model-rail]");
     assert.equal(await page.$$eval("[data-testid=agent-model-option] [data-testid=provider-mark]", (els) => els.length), 5);
-    assert.deepEqual(await page.$$eval("[data-testid=agent-model-option]", (els) => els.map((e) => !!e.querySelector("[data-testid=agent-model-new]"))), [false, true, true, false, true]);
+    assert.deepEqual(await page.$$eval("[data-testid=agent-model-option]", (els) => els.map((e) => !!e.querySelector("[data-testid=agent-model-new]"))), [
+      false,
+      true,
+      true,
+      false,
+      true,
+    ]);
     assert.deepEqual(await page.$$eval("[data-testid=agent-model-key]", (els) => els.map((e) => e.textContent)), ["⌘1", "⌘2", "⌘3", "⌘4"]);
     await shot(page, "issue23-models");
     await page.keyboard.down("Meta");

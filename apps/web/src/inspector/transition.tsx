@@ -37,7 +37,13 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
         Between {itemLabel(project, prev)} and {itemLabel(project, item)} on {track.name}
       </div>
       <Group label="Transition">
-        <select className="field input" data-testid="insp-transition-type" value={tr?.module ?? ""} disabled={locked} onChange={(e) => set(e.target.value ? { module: e.target.value } : null)}>
+        <select
+          className="field input"
+          data-testid="insp-transition-type"
+          value={tr?.module ?? ""}
+          disabled={locked}
+          onChange={(e) => set(e.target.value ? { module: e.target.value } : null)}
+        >
           <option value="">None (cut)</option>
           {TRANSITIONS.map((t) => {
             // F9 (D153): a transition that doesn't fit this cut is listed, but can't be picked.
@@ -64,10 +70,22 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
               disabled={locked}
               onCommit={(v) => v !== undefined && set({ module: tr.module, duration: Math.round(v * fps) })}
             />
-            <NumberField label="frames" testId="insp-transition-frames" value={tr.duration} step={1} min={1} disabled={locked} onCommit={(v) => v !== undefined && set({ module: tr.module, duration: Math.round(v) })} />
+            <NumberField
+              label="frames"
+              testId="insp-transition-frames"
+              value={tr.duration}
+              step={1}
+              min={1}
+              disabled={locked}
+              onCommit={(v) => v !== undefined && set({ module: tr.module, duration: Math.round(v) })}
+            />
           </div>
           <div className="hint-line muted small" data-testid="insp-transition-range">
-            {range ? `${secs(range.min)}–${secs(range.max)} s (${range.min}–${range.max} frames) fit at this cut` : limits && "problem" in limits ? limits.problem : ""}
+            {range
+              ? `${secs(range.min)}–${secs(range.max)} s (${range.min}–${range.max} frames) fit at this cut`
+              : limits && "problem" in limits
+                ? limits.problem
+                : ""}
           </div>
         </Group>
       )}

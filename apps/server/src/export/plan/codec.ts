@@ -21,7 +21,8 @@ export interface Caps {
 }
 
 /** How to hand ffmpeg a filter graph in a file: `-/filter_complex` from 7 on, `-filter_complex_script` before (deprecated since 7). */
-export const graphFileArgs = (caps: Pick<Caps, "major">, file: string) => (caps.major !== undefined && caps.major < 7 ? ["-filter_complex_script", file] : ["-/filter_complex", file]);
+export const graphFileArgs = (caps: Pick<Caps, "major">, file: string) =>
+  caps.major !== undefined && caps.major < 7 ? ["-filter_complex_script", file] : ["-/filter_complex", file];
 
 /** F4 (D171): what the Advanced row changes; absent = the preset's (H.264, its encoder and rate). */
 export interface VideoChoice {
@@ -62,7 +63,20 @@ export function videoCodec(quality: Quality, caps: Caps, size: { width: number; 
     if (hardware) return ["-c:v", "hevc_videotoolbox", "-allow_sw", "1", "-profile:v", "main", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
     return ["-c:v", "libx265", "-preset", quality === "draft" ? "veryfast" : "medium", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
   }
-  if (hardware) return ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-profile:v", "high", ...(chosen ? ["-b:v", chosen] : ["-q:v", String(HARDWARE_H264_QUALITY[quality])]), ...(quality === "draft" ? ["-prio_speed", "1"] : []), "-tag:v", "avc1", ...tags("h264")];
+  if (hardware)
+    return [
+      "-c:v",
+      "h264_videotoolbox",
+      "-allow_sw",
+      "1",
+      "-profile:v",
+      "high",
+      ...(chosen ? ["-b:v", chosen] : ["-q:v", String(HARDWARE_H264_QUALITY[quality])]),
+      ...(quality === "draft" ? ["-prio_speed", "1"] : []),
+      "-tag:v",
+      "avc1",
+      ...tags("h264"),
+    ];
   const preset = ["-preset", quality === "draft" ? "veryfast" : "medium"];
   if (chosen) return ["-c:v", "libx264", ...preset, "-b:v", chosen, "-tag:v", "avc1", ...tags("h264")];
   return ["-c:v", "libx264", ...preset, "-crf", String(SOFTWARE_H264_CRF[quality]), "-tag:v", "avc1", ...tags("h264")];
@@ -72,4 +86,7 @@ export function videoCodec(quality: Quality, caps: Caps, size: { width: number; 
  * D212: whether a failed encode looks like VideoToolbox refusing (no session, no constant-quality
  * mode on this Mac, a hardware error), so the export tries again with the software encoder.
  */
-export const hardwareEncoderFailed = (stderr: string) => /videotoolbox|VTCompression|compression session|Error (?:while opening|initializing output stream)|Could not open encoder|Error submitting video frame|encoder.*(?:not supported|failed)/i.test(stderr);
+export const hardwareEncoderFailed = (stderr: string) =>
+  /videotoolbox|VTCompression|compression session|Error (?:while opening|initializing output stream)|Could not open encoder|Error submitting video frame|encoder.*(?:not supported|failed)/i.test(
+    stderr,
+  );

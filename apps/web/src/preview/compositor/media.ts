@@ -37,7 +37,8 @@ export type MediaEl = HTMLVideoElement | HTMLImageElement;
 /** What a clip's picture is drawn from: its media element, or (D221) its scrub canvas. */
 export type PictureEl = MediaEl | HTMLCanvasElement;
 /** Whether a picture has something to read. */
-export const pictureReady = (el: PictureEl) => (el instanceof HTMLVideoElement ? el.readyState >= 2 : el instanceof HTMLImageElement ? el.complete && el.naturalWidth > 0 : el.width > 0);
+export const pictureReady = (el: PictureEl) =>
+  el instanceof HTMLVideoElement ? el.readyState >= 2 : el instanceof HTMLImageElement ? el.complete && el.naturalWidth > 0 : el.width > 0;
 // Where a video was last asked to be; while a seek runs only the newest target is kept.
 /**
  * D212: what a clip's element plays: the media item's proxy when the server has made one and
@@ -56,7 +57,8 @@ export const wanted = new WeakMap<HTMLVideoElement, number>();
  * overestimated, a relinked shorter file) would otherwise make the browser clamp every seek and
  * the "seeked" handler chase the unreachable target forever.
  */
-export const reachable = (el: HTMLVideoElement, t: number) => (Number.isFinite(el.duration) && el.duration > 0 ? Math.min(Math.max(0, t), Math.max(0, el.duration - 0.001)) : Math.max(0, t));
+export const reachable = (el: HTMLVideoElement, t: number) =>
+  Number.isFinite(el.duration) && el.duration > 0 ? Math.min(Math.max(0, t), Math.max(0, el.duration - 0.001)) : Math.max(0, t);
 
 /** Seek without piling up seeks (from the spike): the "seeked" handler chases the latest target. */
 export function seek(el: HTMLVideoElement, t: number) {
@@ -114,7 +116,8 @@ export const px = (n: number) => `${Math.round(n * 1000) / 1000}px`;
 type Canvas = { readonly width: number; readonly height: number };
 
 /** An iris transition (D79): the circle core's `iris` shows, centred on the canvas, in an element's own px (its top-left at `left`, `top` on the canvas). */
-export const irisClip = (iris: number, canvas: Canvas, left = 0, top = 0) => `circle(${px(irisRadius(iris, canvas))} at ${px(canvas.width / 2 - left)} ${px(canvas.height / 2 - top)})`;
+export const irisClip = (iris: number, canvas: Canvas, left = 0, top = 0) =>
+  `circle(${px(irisRadius(iris, canvas))} at ${px(canvas.width / 2 - left)} ${px(canvas.height / 2 - top)})`;
 
 /**
  * A full-canvas element (a background, a graphic) through a transition: a wipe shows the left share
@@ -122,7 +125,14 @@ export const irisClip = (iris: number, canvas: Canvas, left = 0, top = 0) => `ci
  * canvas (D79: shift right, zoom about the canvas's centre, its own transform-origin).
  */
 export function transitionCanvas(el: HTMLElement, v: Pick<Visual, "wipe" | "iris" | "mask" | "shift" | "shiftY" | "zoom" | "blur">, canvas: Canvas) {
-  const clip = v.wipe !== undefined ? `inset(0 ${((1 - v.wipe) * 100).toFixed(4)}% 0 0)` : v.iris !== undefined ? irisClip(v.iris, canvas) : v.mask ? maskClipPath(v.mask.shape, v.mask.p, canvas) : "";
+  const clip =
+    v.wipe !== undefined
+      ? `inset(0 ${((1 - v.wipe) * 100).toFixed(4)}% 0 0)`
+      : v.iris !== undefined
+        ? irisClip(v.iris, canvas)
+        : v.mask
+          ? maskClipPath(v.mask.shape, v.mask.p, canvas)
+          : "";
   if (el.style.clipPath !== clip) el.style.clipPath = clip;
   setBlur(el, v.blur);
   const translate = v.shift || v.shiftY ? `${px(v.shift ?? 0)} ${px(v.shiftY ?? 0)}` : "";
@@ -159,7 +169,12 @@ export function placeContent(el: HTMLElement, box: ClipBox, fit: string = box.fi
  * file), is laid out at the content rect with its object-fit as before.
  */
 export function placePicture(el: HTMLElement, box: ClipBox) {
-  const n = el instanceof HTMLVideoElement ? { w: el.videoWidth, h: el.videoHeight } : el instanceof HTMLCanvasElement && el.classList.contains("pv-scrub") ? { w: el.width, h: el.height } : { w: 0, h: 0 };
+  const n =
+    el instanceof HTMLVideoElement
+      ? { w: el.videoWidth, h: el.videoHeight }
+      : el instanceof HTMLCanvasElement && el.classList.contains("pv-scrub")
+        ? { w: el.width, h: el.height }
+        : { w: 0, h: 0 };
   const c = box.content;
   const fits = n.w > 0 && n.h > 0 && c.w > 0 && c.h > 0 && (box.fit === "fill" || Math.abs((c.w / c.h) * (n.h / n.w) - 1) < 2e-3);
   if (!fits) return placeContent(el, box);
@@ -181,7 +196,16 @@ export function placePicture(el: HTMLElement, box: ClipBox) {
  * is already in the box, D79), and a wipe revealing the canvas from the left (the share of the
  * canvas width shown, in the wrapper's own pixels) or an iris the circle at the canvas's centre.
  */
-export function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canvas: Canvas, shown: number | undefined, iris: number | undefined, mask?: Visual["mask"], blur?: number) {
+export function placeBox(
+  wrap: HTMLElement,
+  el: HTMLElement,
+  box: ClipBox,
+  canvas: Canvas,
+  shown: number | undefined,
+  iris: number | undefined,
+  mask?: Visual["mask"],
+  blur?: number,
+) {
   setStyle(wrap, "left", px(box.x));
   setStyle(wrap, "top", px(box.y));
   setStyle(wrap, "width", px(box.w));
@@ -189,7 +213,14 @@ export function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canva
   setStyle(wrap, "borderRadius", box.radius > 0 ? px(box.radius) : "");
   placePicture(el, box);
   const hidden = shown === undefined ? 0 : Math.min(box.w, Math.max(0, box.x + box.w - canvas.width * shown));
-  const clip = hidden > 0 ? `inset(0 ${px(hidden)} 0 0)` : iris !== undefined ? irisClip(iris, canvas, box.x, box.y) : mask ? maskClipPath(mask.shape, mask.p, canvas, (x, y) => [x - box.x, y - box.y]) : "";
+  const clip =
+    hidden > 0
+      ? `inset(0 ${px(hidden)} 0 0)`
+      : iris !== undefined
+        ? irisClip(iris, canvas, box.x, box.y)
+        : mask
+          ? maskClipPath(mask.shape, mask.p, canvas, (x, y) => [x - box.x, y - box.y])
+          : "";
   if (wrap.style.clipPath !== clip) wrap.style.clipPath = clip;
   setBlur(wrap, blur);
 }

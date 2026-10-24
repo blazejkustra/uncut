@@ -42,17 +42,26 @@ before(async () => {
     media: [],
     tracks: [
       { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "square", type: "graphic", src: "graphics/square.html", start: 0, duration: FRAMES }] },
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: FRAMES, props: { color: "#000000" } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "bg", type: "component", component: "component.solid", duration: FRAMES, props: { color: "#000000" } }],
+      },
     ],
   } as unknown as Project;
   dir = writeProject(root, "Motion", project);
   mkdirSync(join(dir, "graphics"));
   // A white square crossing the canvas 60 px a frame: the default 90° shutter (6bcd148) smears it over
   // 15 px, as 180° did at 30 px, so 4 sub-frames leave clearly more partly lit pixels than a sharp edge.
-  writeFileSync(join(dir, "graphics", "square.html"), `<canvas id="c" width="${W}" height="${H}"></canvas><script>
+  writeFileSync(
+    join(dir, "graphics", "square.html"),
+    `<canvas id="c" width="${W}" height="${H}"></canvas><script>
 const ctx = document.getElementById("c").getContext("2d");
 window.render = (t, info) => { ctx.clearRect(0, 0, ${W}, ${H}); ctx.fillStyle = "#fff"; ctx.fillRect((t * info.fps * 60) % ${W}, 300, 60, 60); };
-</script>`);
+</script>`,
+  );
   mkdirSync(join(root, "out"));
 });
 after(async () => {
@@ -63,7 +72,19 @@ after(async () => {
 
 /** Partly lit pixels in the square's row at frame `f` (a smear has many, a sharp square almost none). */
 function partly(file: string, f: number): number {
-  const rows = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${f}),crop=${W}:2:0:330,format=gray`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+  const rows = execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-i",
+    file,
+    "-vf",
+    `select=eq(n\\,${f}),crop=${W}:2:0:330,format=gray`,
+    "-frames:v",
+    "1",
+    "-f",
+    "rawvideo",
+    "-",
+  ]);
   return [...rows.subarray(0, W)].filter((v) => v > 40 && v < 215).length;
 }
 
@@ -78,12 +99,18 @@ async function exportOnce(page: Page, file: string, blur: boolean) {
   if ((await checked(page)) !== blur) await page.click("[data-testid=export-motion-blur]");
   assert.equal(await checked(page), blur);
   await page.click("[data-testid=export-change]");
-  await page.waitForFunction((name) => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === name, {}, file.slice(file.lastIndexOf("/") + 1));
+  await page.waitForFunction(
+    (name) => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === name,
+    {},
+    file.slice(file.lastIndexOf("/") + 1),
+  );
   await page.click("[data-testid=loudness-off]");
   if (blur) await page.screenshot({ path: out("d291-export-dialog.png") });
   await page.click("[data-testid=export-start]");
   await waitFor(page, "[data-testid=export-job]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")!.dataset.phase ?? ""), { timeout: 180000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")!.dataset.phase ?? ""), {
+    timeout: 180000,
+  });
   const text = await page.$eval("[data-testid=export-job]", (el) => el.textContent ?? "");
   assert.equal(await page.$eval("[data-testid=export-job]", (el) => (el as HTMLElement).dataset.phase), "done", text);
   if (blur) {
@@ -95,7 +122,14 @@ async function exportOnce(page: Page, file: string, blur: boolean) {
 }
 
 test("Export dialog: Motion blur on by default (not at Draft), the exports smeared with it and sharp without", { skip, timeout: 420000 }, async () => {
-  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, join(root, "out", "blurred.mp4"), join(root, "out", "sharp.mp4")]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  const app = await launchApp({
+    command: APP,
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir, join(root, "out", "blurred.mp4"), join(root, "out", "sharp.mp4")]),
+      UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts"),
+    },
+  });
   apps.add(app);
   const { page } = app;
   await waitForWelcome(page);
@@ -119,7 +153,11 @@ test("Export dialog: Motion blur on by default (not at Draft), the exports smear
   await exportOnce(page, sharp, false);
   assert.ok(existsSync(blurred) && existsSync(sharp));
   for (const f of [blurred, sharp]) {
-    const n = execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "csv=p=0", f], { encoding: "utf8" }).trim();
+    const n = execFileSync(
+      "ffprobe",
+      ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "csv=p=0", f],
+      { encoding: "utf8" },
+    ).trim();
     assert.equal(n, `60/1,${FRAMES}`, `${f}: every frame at 60 fps`);
   }
   for (const f of [20, 75]) {

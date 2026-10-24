@@ -49,7 +49,12 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
 ]);
 
 /** A family as compared: unquoted, single-spaced, lower case. */
-export const familyKey = (family: string) => family.replace(/^["']|["']$/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+export const familyKey = (family: string) =>
+  family
+    .replace(/^["']|["']$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
 const SAFE_FAMILY = /^[A-Za-z0-9 _.-]{1,80}$/;
 
@@ -128,7 +133,10 @@ export function graphicAskedFamilies(html: string): Array<string> {
 export function fontFaceRules(sources: ReadonlyArray<FontSource>): string {
   return sources
     .filter((s) => SAFE_FAMILY.test(s.family) && /^data:[a-z0-9/+.-]+;base64,[A-Za-z0-9+/=]+$/.test(s.url))
-    .map((s) => `@font-face{font-family:"${s.family}";font-style:${s.style ?? "normal"};font-weight:${s.weight && /^\d{3,4}( \d{3,4})?$/.test(s.weight) ? s.weight : "100 1000"};src:url(${s.url}) format("${s.format}")}`)
+    .map(
+      (s) =>
+        `@font-face{font-family:"${s.family}";font-style:${s.style ?? "normal"};font-weight:${s.weight && /^\d{3,4}( \d{3,4})?$/.test(s.weight) ? s.weight : "100 1000"};src:url(${s.url}) format("${s.format}")}`,
+    )
     .join("\n");
 }
 
@@ -163,14 +171,19 @@ export function resolveGraphicFonts(html: string, sources: ReadonlyArray<FontSou
     used.push(s);
   }
   if (!used.length && !left.length) return html;
-  const note = left.length ? `<!-- uncut: the font${left.length === 1 ? "" : "s"} ${left.map((f) => f.replace(/--/g, "- -")).join(", ")} left out: the graphic's fonts are over ${Math.round(budget / 1000)} KB -->\n` : "";
+  const note = left.length
+    ? `<!-- uncut: the font${left.length === 1 ? "" : "s"} ${left.map((f) => f.replace(/--/g, "- -")).join(", ")} left out: the graphic's fonts are over ${Math.round(budget / 1000)} KB -->\n`
+    : "";
   return `${used.length ? `<style data-uncut-fonts>${fontFaceRules(used)}</style>\n` : ""}${note}${html}`;
 }
 
 /** Whether the HTML names `family` anywhere as a whole name (any case, any spacing between its words): in a string, a comment or markup. */
 function mentionsFamily(html: string, family: string): boolean {
   if (!SAFE_FAMILY.test(family)) return false;
-  const words = family.trim().split(/\s+/).map((w) => w.replace(/[.\-]/g, "\\$&"));
+  const words = family
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[.-]/g, "\\$&"));
   return new RegExp(`(?<![A-Za-z0-9_-])${words.join("\\s+")}(?![A-Za-z0-9_-])`, "i").test(html);
 }
 
@@ -198,19 +211,34 @@ export function fontRule(available: (family: string) => boolean, graphics: Reado
     severity: "warn",
     check: (ctx) => {
       const out: Array<{ key: string; message: string; itemIds?: Array<string>; frame?: number; hint: string }> = [];
-      const themeFonts = Object.entries((ctx.project.theme?.fonts ?? {}) as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string");
+      const themeFonts = Object.entries((ctx.project.theme?.fonts ?? {}) as Record<string, unknown>).filter(
+        (e): e is [string, string] => typeof e[1] === "string",
+      );
       for (const [name, family] of themeFonts) {
-        if (SAFE_FAMILY.test(family) && !ok(family)) out.push({ key: `font-missing:theme:${name}`, message: `The theme's ${name} font "${family}" isn't bundled, in the brand kit or installed on this Mac: everything set in it falls back to another font.`, hint: fix });
+        if (SAFE_FAMILY.test(family) && !ok(family))
+          out.push({
+            key: `font-missing:theme:${name}`,
+            message: `The theme's ${name} font "${family}" isn't bundled, in the brand kit or installed on this Mac: everything set in it falls back to another font.`,
+            hint: fix,
+          });
       }
       for (const p of ctx.texts) {
         const family = textFamily(ctx.project, p.item);
         if (!family || ok(family) || themeFonts.some(([, f]) => f === family)) continue;
-        out.push({ key: `font-missing:${p.item.id}`, message: `"${textLabel(p.item.text)}" asks for the font "${family}", which isn't bundled, in the brand kit or installed on this Mac: it falls back to another font.`, itemIds: [p.item.id], frame: p.start, hint: fix });
+        out.push({
+          key: `font-missing:${p.item.id}`,
+          message: `"${textLabel(p.item.text)}" asks for the font "${family}", which isn't bundled, in the brand kit or installed on this Mac: it falls back to another font.`,
+          itemIds: [p.item.id],
+          frame: p.start,
+          hint: fix,
+        });
       }
       const users = new Map<string, Array<{ id: string; at: number }>>();
       for (const track of ctx.project.tracks) {
         if (track.hidden) continue;
-        for (const item of track.items) if (item.type === "graphic" && typeof item.src === "string") users.set(item.src, [...(users.get(item.src) ?? []), { id: item.id, at: ctx.starts.get(item.id) ?? 0 }]);
+        for (const item of track.items)
+          if (item.type === "graphic" && typeof item.src === "string")
+            users.set(item.src, [...(users.get(item.src) ?? []), { id: item.id, at: ctx.starts.get(item.id) ?? 0 }]);
       }
       for (const [src, items] of users) {
         const html = graphics.get(src);
@@ -219,7 +247,13 @@ export function fontRule(available: (family: string) => boolean, graphics: Reado
         const own = new Set(graphicDeclaredFamilies(html).map(familyKey));
         const missing = graphicAskedFamilies(html).filter((f) => !ok(f) && !own.has(familyKey(f)));
         if (!missing.length) continue;
-        out.push({ key: `font-missing:${src}`, message: `The graphic ${src} asks for ${missing.map((f) => `"${f}"`).join(", ")}, which ${missing.length === 1 ? "isn't" : "aren't"} bundled, in the brand kit or installed on this Mac: its text falls back to another font.`, itemIds: items.map((i) => i.id), frame: Math.min(...items.map((i) => i.at)), hint: fix });
+        out.push({
+          key: `font-missing:${src}`,
+          message: `The graphic ${src} asks for ${missing.map((f) => `"${f}"`).join(", ")}, which ${missing.length === 1 ? "isn't" : "aren't"} bundled, in the brand kit or installed on this Mac: its text falls back to another font.`,
+          itemIds: items.map((i) => i.id),
+          frame: Math.min(...items.map((i) => i.at)),
+          hint: fix,
+        });
       }
       return out;
     },

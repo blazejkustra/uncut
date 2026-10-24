@@ -37,7 +37,16 @@ export function AudioEditor({ project, item, locked }: { project: ProjectModel; 
               send((p) => planGain(p, item.id, v), d);
             }}
           />
-          <NumberField label="dB" testId="insp-volume-num" value={db} step={0.5} min={SILENCE_DB} max={MAX_DB} disabled={locked} onCommit={(v) => send((p) => planGain(p, item.id, v ?? 0))} />
+          <NumberField
+            label="dB"
+            testId="insp-volume-num"
+            value={db}
+            step={0.5}
+            min={SILENCE_DB}
+            max={MAX_DB}
+            disabled={locked}
+            onCommit={(v) => send((p) => planGain(p, item.id, v ?? 0))}
+          />
         </div>
         <div className="hint-line muted small" data-testid="insp-volume-label">
           {db <= SILENCE_DB ? "Silent (−∞ dB)" : db === 0 ? "As recorded (0 dB)" : `${dbLabel(db)} dB`}
@@ -45,13 +54,35 @@ export function AudioEditor({ project, item, locked }: { project: ProjectModel; 
       </Group>
       <Group label="Fades">
         <div className="field-row">
-          <NumberField label="In s" testId="insp-fade-in" value={secs(item.fadeIn)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "in", Math.round((v ?? 0) * fps)))} />
-          <NumberField label="Out s" testId="insp-fade-out" value={secs(item.fadeOut)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "out", Math.round((v ?? 0) * fps)))} />
+          <NumberField
+            label="In s"
+            testId="insp-fade-in"
+            value={secs(item.fadeIn)}
+            step={0.1}
+            min={0}
+            disabled={locked}
+            onCommit={(v) => send((p) => planFade(p, item.id, "in", Math.round((v ?? 0) * fps)))}
+          />
+          <NumberField
+            label="Out s"
+            testId="insp-fade-out"
+            value={secs(item.fadeOut)}
+            step={0.1}
+            min={0}
+            disabled={locked}
+            onCommit={(v) => send((p) => planFade(p, item.id, "out", Math.round((v ?? 0) * fps)))}
+          />
         </div>
       </Group>
       {item.type === "audio" && (
         <div className="group">
-          <button className="btn" data-testid="insp-fit-to-video" disabled={locked} title="Trim or loop to the end of the video, with a fade out" onClick={() => void actions.fitToVideo(item.id)}>
+          <button
+            className="btn"
+            data-testid="insp-fit-to-video"
+            disabled={locked}
+            title="Trim or loop to the end of the video, with a fade out"
+            onClick={() => void actions.fitToVideo(item.id)}
+          >
             <MoveHorizontal />
             Fit to video
           </button>
@@ -83,7 +114,10 @@ function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
   const job = activeAnalyses(app, media.id).find((j) => j.analyzer === "beats");
   return (
     <Group label="Beats">
-      <div data-testid="insp-beats" data-state={job ? job.phase : entry === undefined ? "loading" : entry === null || entry === "failed" ? "none" : entry.bpm === null ? "no-beat" : "done"}>
+      <div
+        data-testid="insp-beats"
+        data-state={job ? job.phase : entry === undefined ? "loading" : entry === null || entry === "failed" ? "none" : entry.bpm === null ? "no-beat" : "done"}
+      >
         {job ? (
           <div className="beats-progress" title={analysisText(job)}>
             <Activity />
@@ -102,7 +136,9 @@ function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
             Find beats
           </button>
         ) : entry.bpm === null ? (
-          <div className="small" data-testid="insp-beats-summary">No steady beat found</div>
+          <div className="small" data-testid="insp-beats-summary">
+            No steady beat found
+          </div>
         ) : (
           <div className="small" data-testid="insp-beats-summary">
             {Math.round(entry.bpm)} BPM, {entry.beats.length} beats

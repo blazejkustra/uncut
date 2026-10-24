@@ -24,8 +24,20 @@ let agent: ReturnType<Client["subscribe"]>;
 let dir = "";
 const plan = () => join(root, "plan.json");
 const log = () => join(root, "prompts.jsonl");
-const sent = (): Array<{ prompt: string; resume: string | null; env: Array<string>; pid: number; mcpPid: number; mcpToken: string; tools: string; allowed: string }> =>
-  readFileSync(log(), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const sent = (): Array<{
+  prompt: string;
+  resume: string | null;
+  env: Array<string>;
+  pid: number;
+  mcpPid: number;
+  mcpToken: string;
+  tools: string;
+  allowed: string;
+}> =>
+  readFileSync(log(), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
 const latest = () => agent.values.at(-1);
 const turnById = (id: string) => latest()?.turns.find((t: { id: string }) => t.id === id);
 const items = (project: any) => project.tracks.flatMap((t: any) => t.items);
@@ -52,7 +64,15 @@ async function ask(prompt: string, extra: Record<string, unknown> = {}) {
   return turnById(turnId);
 }
 
-const title = { id: "title-1", type: "text", start: 0, duration: 150, text: "Kraków from above", transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 130, weight: 700 } };
+const title = {
+  id: "title-1",
+  type: "text",
+  start: 0,
+  duration: 150,
+  text: "Kraków from above",
+  transform: { x: 154, y: 410 },
+  style: { preset: "text.title", size: 130, weight: 700 },
+};
 
 before(async () => {
   if (skip) return;
@@ -120,7 +140,10 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
   assert.equal(first!.resume, null, "the first turn starts a conversation");
   assert.equal(first!.tools, "default", "D194: claude gets its built-in tools");
   assert.equal(first!.allowed, "mcp__uncut");
-  assert.match(first!.prompt, /^make a 5 s title card that says Kraków from above\n\n<brand>\nNo brand kit is chosen for this project\. The user has no kits yet\.\n<\/brand>\n\n<editor-context>\nPlayhead: frame 0/);
+  assert.match(
+    first!.prompt,
+    /^make a 5 s title card that says Kraków from above\n\n<brand>\nNo brand kit is chosen for this project\. The user has no kits yet\.\n<\/brand>\n\n<editor-context>\nPlayhead: frame 0/,
+  );
   // Saves are queued; give the last one a moment to land.
   const saved = () => readAgentHistory(dir);
   for (let i = 0; i < 50 && saved().turns[0]?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 50));
@@ -135,7 +158,11 @@ test("D277: claude gets Claude Code's own sign-in, but no generator key or paren
   for (const name of ["OPENAI_API_KEY", "CLAUDECODE"]) assert.ok(!env.includes(name), `${name} reached claude`);
   // Only Uncut's own switches (D181), never one from outside (CLAUDE_CODE_ENTRYPOINT), but the
   // user's setup-token login, CLAUDE_CODE_OAUTH_TOKEN (D219: their subscription, as t3code passes it).
-  assert.deepEqual(env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(), ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"], "CLAUDE_CODE_* from outside reached claude");
+  assert.deepEqual(
+    env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(),
+    ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"],
+    "CLAUDE_CODE_* from outside reached claude",
+  );
   assert.ok(env.includes("HOME") && env.includes("FAKE_PLAN"), "the rest of the environment is passed on");
   assert.ok(!env.includes("UNCUT_TOKEN") && !env.includes("ELECTRON_RUN_AS_NODE"));
 });
@@ -148,9 +175,23 @@ test("D6: a manual edit is in the next prompt, and the agent's stale edit to it 
   await client.ok("project.edit", { ops: [{ op: "update_item", item: "title-1", set: { text: "Kraków, from above" } }] });
   nextTurn([
     // Planned against the revision before the user's edit: refused.
-    { tool: "timeline_edit", args: { baseRevision: agentRevision, summary: "Make the title bigger", ops: [{ op: "update_item", item: "title-1", set: { text: "KRAKÓW FROM ABOVE" } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: agentRevision,
+        summary: "Make the title bigger",
+        ops: [{ op: "update_item", item: "title-1", set: { text: "KRAKÓW FROM ABOVE" } }],
+      },
+    },
     { tool: "project_read" },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add an end card", ops: [{ op: "insert_item", track: "text", item: { ...title, id: "end-1", start: 150, duration: 90, text: "Thanks for watching" } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Add an end card",
+        ops: [{ op: "insert_item", track: "text", item: { ...title, id: "end-1", start: 150, duration: 90, text: "Thanks for watching" } }],
+      },
+    },
   ]);
   const t = await ask("add an end card");
   secondTurn = t.id;
@@ -161,12 +202,19 @@ test("D6: a manual edit is in the next prompt, and the agent's stale edit to it 
   assert.match(prompt.prompt, /intentional/);
   assert.equal(prompt.resume, "fake-session", "the second turn continues the conversation");
   assert.match(t.note, /by hand/, "the card shows the note");
-  assert.deepEqual(t.items.filter((i: any) => i.kind === "step").map((i: any) => [i.text, i.status]), [
-    ["Make the title bigger", "error"],
-    ["Read the timeline", "done"],
-    ["Add an end card", "done"],
-  ]);
-  assert.deepEqual(t.edits.map((e: any) => e.summary), ["Add an end card"], "only the applied edit is listed");
+  assert.deepEqual(
+    t.items.filter((i: any) => i.kind === "step").map((i: any) => [i.text, i.status]),
+    [
+      ["Make the title bigger", "error"],
+      ["Read the timeline", "done"],
+      ["Add an end card", "done"],
+    ],
+  );
+  assert.deepEqual(
+    t.edits.map((e: any) => e.summary),
+    ["Add an end card"],
+    "only the applied edit is listed",
+  );
   const now = onDisk();
   assert.equal(item(now, "title-1").text, "Kraków, from above", "the user's edit stands");
   assert.equal(item(now, "end-1").text, "Thanks for watching");
@@ -194,36 +242,52 @@ test("D7: Undo turn reverts exactly that turn, as one undoable step; a turn late
   assert.ok(item(onDisk(), "title-1"), "nothing changed");
 });
 
-test("Stop interrupts the turn (D139): claude keeps running for the next message, the session's token takes no call between turns, and what was done stays", { skip, timeout: 30000 }, async () => {
-  nextTurn([{ tool: "project_read" }, { sleep: 60000 }]);
-  const { turnId } = await client.ok("agent.send", { prompt: "take your time" });
-  await agent.until(() => turnById(turnId)?.items.some((i: any) => i.status === "done"), 15000);
-  const busy = await client.fail("agent.send", { prompt: "and another thing" });
-  assert.equal(busy.reason, "busy", "one turn at a time");
-  const { pid, mcpPid, mcpToken } = sent().at(-1)!;
-  assert.ok(alive(pid) && alive(mcpPid));
-  assert.equal(new Set(sent().map((r) => r.pid)).size, 1, "every message so far went to one claude");
-  // While the turn runs, the bridge still wants the session's token: not the app's, not a guess, not none.
-  const base = `http://127.0.0.1:${server.ready.port}/agent`;
-  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200, "the session's own token works");
-  for (const headers of [{}, { "x-uncut-agent-token": "nope" }, { "x-uncut-agent-token": server.ready.token }] as Array<Record<string, string>>) {
-    assert.equal((await fetch(`${base}/tools`, { headers })).status, 401);
-    const call = await fetch(`${base}/call`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "timeline_edit", args: {} }) });
-    assert.equal(call.status, 401);
-  }
-  const started = Date.now();
-  await client.ok("agent.cancel");
-  await agent.until(() => turnById(turnId)?.status === "cancelled", 10000);
-  assert.ok(Date.now() - started < 2500, "the interrupt ended it, not the kill fallback");
-  assert.deepEqual(turnById(turnId).items.map((i: any) => [i.kind, i.text]), [["step", "Read the timeline"]], "what was done stays");
-  await new Promise((r) => setTimeout(r, 300));
-  assert.ok(alive(pid) && alive(mcpPid), "claude and its MCP server keep running for the next message");
-  // Between turns the token lists tools (claude may ask) but no call is taken.
-  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200);
-  const idle = await fetch(`${base}/call`, { method: "POST", headers: { "x-uncut-agent-token": mcpToken, "content-type": "application/json" }, body: JSON.stringify({ name: "project_read", args: {} }) });
-  assert.equal(idle.status, 401, "no turn, no call");
-  assert.equal(latest().running, null);
-});
+test(
+  "Stop interrupts the turn (D139): claude keeps running for the next message, the session's token takes no call between turns, and what was done stays",
+  { skip, timeout: 30000 },
+  async () => {
+    nextTurn([{ tool: "project_read" }, { sleep: 60000 }]);
+    const { turnId } = await client.ok("agent.send", { prompt: "take your time" });
+    await agent.until(() => turnById(turnId)?.items.some((i: any) => i.status === "done"), 15000);
+    const busy = await client.fail("agent.send", { prompt: "and another thing" });
+    assert.equal(busy.reason, "busy", "one turn at a time");
+    const { pid, mcpPid, mcpToken } = sent().at(-1)!;
+    assert.ok(alive(pid) && alive(mcpPid));
+    assert.equal(new Set(sent().map((r) => r.pid)).size, 1, "every message so far went to one claude");
+    // While the turn runs, the bridge still wants the session's token: not the app's, not a guess, not none.
+    const base = `http://127.0.0.1:${server.ready.port}/agent`;
+    assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200, "the session's own token works");
+    for (const headers of [{}, { "x-uncut-agent-token": "nope" }, { "x-uncut-agent-token": server.ready.token }] as Array<Record<string, string>>) {
+      assert.equal((await fetch(`${base}/tools`, { headers })).status, 401);
+      const call = await fetch(`${base}/call`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ name: "timeline_edit", args: {} }),
+      });
+      assert.equal(call.status, 401);
+    }
+    const started = Date.now();
+    await client.ok("agent.cancel");
+    await agent.until(() => turnById(turnId)?.status === "cancelled", 10000);
+    assert.ok(Date.now() - started < 2500, "the interrupt ended it, not the kill fallback");
+    assert.deepEqual(
+      turnById(turnId).items.map((i: any) => [i.kind, i.text]),
+      [["step", "Read the timeline"]],
+      "what was done stays",
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(alive(pid) && alive(mcpPid), "claude and its MCP server keep running for the next message");
+    // Between turns the token lists tools (claude may ask) but no call is taken.
+    assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200);
+    const idle = await fetch(`${base}/call`, {
+      method: "POST",
+      headers: { "x-uncut-agent-token": mcpToken, "content-type": "application/json" },
+      body: JSON.stringify({ name: "project_read", args: {} }),
+    });
+    assert.equal(idle.status, 401, "no turn, no call");
+    assert.equal(latest().running, null);
+  },
+);
 
 test("the history survives closing and reopening the project; old turns keep their Undo turn state (history.db)", { skip, timeout: 30000 }, async () => {
   const { pid, mcpPid } = sent().at(-1)!;

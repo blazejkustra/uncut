@@ -61,10 +61,15 @@ const clampWeight = (w: number) => Math.min(900, Math.max(100, Math.round(w / 10
  * applies again). Size is clamped to at least 1 canvas pixel, weight to 100–900 in hundreds,
  * the schema's limits, so a slider can't make an edit the server refuses.
  */
-export function planStyle(project: ProjectModel, itemId: string, patch: { readonly [K in keyof Style]?: Style[K] | null }, summary = "Restyle text"): Plan | Problem {
+export function planStyle(
+  project: ProjectModel,
+  itemId: string,
+  patch: { readonly [K in keyof Style]?: Style[K] | null },
+  summary = "Restyle text",
+): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  const style: Record<string, unknown> = { ...(item.style ?? {}) };
+  const style: Record<string, unknown> = { ...item.style };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined) delete style[k];
     else if (k === "size") style[k] = Math.max(1, Math.round(v as number));
@@ -84,7 +89,23 @@ export function planStyle(project: ProjectModel, itemId: string, patch: { readon
 export function planPreset(project: ProjectModel, itemId: string, preset: string): Plan | Problem {
   const look = TEXT_STYLES[preset];
   if (!look) return { problem: `There's no text style called ${preset}.` };
-  return planStyle(project, itemId, { preset, size: project.canvas.height * look.size, weight: look.weight, font: null, tracking: null, lineHeight: null, uppercase: null, stroke: null, shadow: null, background: null }, `Style text as ${look.name}`);
+  return planStyle(
+    project,
+    itemId,
+    {
+      preset,
+      size: project.canvas.height * look.size,
+      weight: look.weight,
+      font: null,
+      tracking: null,
+      lineHeight: null,
+      uppercase: null,
+      stroke: null,
+      shadow: null,
+      background: null,
+    },
+    `Style text as ${look.name}`,
+  );
 }
 
 /** Reset to preset (D80): the item's look again, whole: its style is the look's (size, weight, every other field from the look) and so is its position. */
@@ -94,7 +115,8 @@ export function planResetLook(project: ProjectModel, itemId: string): Plan | Pro
   const look = TEXT_STYLES[item.style?.preset ?? ""];
   if (!look) return { problem: "This text has no preset to reset to: pick one first." };
   const { style, transform } = lookItem(look, project, item.duration);
-  if (JSON.stringify(style) === JSON.stringify(item.style ?? {}) && JSON.stringify(transform) === JSON.stringify(item.transform ?? {})) return { ops: [], summary: "" };
+  if (JSON.stringify(style) === JSON.stringify(item.style ?? {}) && JSON.stringify(transform) === JSON.stringify(item.transform ?? {}))
+    return { ops: [], summary: "" };
   return planUpdate(project, itemId, { style, transform } as FieldSet, `Reset text to ${look.name}`);
 }
 
@@ -103,7 +125,14 @@ export function textDecorOf(item: Item, project: Pick<RenderTarget, "canvas" | "
   const look = textLook(item.style?.preset);
   const decor = textDecor(item, look, textBox(item, project).size, project);
   const shadow: TextShadow | undefined = decor.legacyShadow ? LEGACY_SHADOW : decor.shadow;
-  return { stroke: decor.stroke, shadow, background: decor.background, uppercase: !!(item.style?.uppercase ?? look.uppercase), tracking: item.style?.tracking ?? look.tracking, lineHeight: item.style?.lineHeight ?? look.lineHeight };
+  return {
+    stroke: decor.stroke,
+    shadow,
+    background: decor.background,
+    uppercase: !!(item.style?.uppercase ?? look.uppercase),
+    tracking: item.style?.tracking ?? look.tracking,
+    lineHeight: item.style?.lineHeight ?? look.lineHeight,
+  };
 }
 /** The pre-D80 soft shadow (render.ts LEGACY_SHADOW_CSS) as shadow fields. */
 export const LEGACY_SHADOW: TextShadow = { x: 0, y: 2, blur: 18, color: "#000000", opacity: 0.45 };
@@ -115,7 +144,8 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, Math.round(n * 100) / 100
 export function planStroke(project: ProjectModel, itemId: string, patch: Partial<TextStroke> | false | null): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  if (patch === null || patch === false) return planStyle(project, itemId, { stroke: patch === false ? false : null }, patch === false ? "Remove text outline" : "Use the preset's outline");
+  if (patch === null || patch === false)
+    return planStyle(project, itemId, { stroke: patch === false ? false : null }, patch === false ? "Remove text outline" : "Use the preset's outline");
   const now = textDecorOf(item, project).stroke;
   const width = Math.max(0, r1(patch.width ?? now?.width ?? Math.max(2, Math.round(textBox(item, project).size * 0.04))));
   const stroke: TextStroke = { width, color: patch.color ?? now?.color ?? "#000000" };
@@ -126,10 +156,17 @@ export function planStroke(project: ProjectModel, itemId: string, patch: Partial
 export function planShadow(project: ProjectModel, itemId: string, patch: Partial<TextShadow> | false | null): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  if (patch === null || patch === false) return planStyle(project, itemId, { shadow: patch === false ? false : null }, patch === false ? "Remove text shadow" : "Use the preset's shadow");
+  if (patch === null || patch === false)
+    return planStyle(project, itemId, { shadow: patch === false ? false : null }, patch === false ? "Remove text shadow" : "Use the preset's shadow");
   const now = textDecorOf(item, project).shadow ?? { x: 0, y: 4, blur: 16, color: "#000000", opacity: 0.6 };
   const next = { ...now, ...patch };
-  const shadow: TextShadow = { x: r1(next.x ?? 0), y: r1(next.y ?? 0), blur: Math.max(0, r1(next.blur ?? 0)), color: next.color ?? "#000000", opacity: clamp01(next.opacity ?? 1) };
+  const shadow: TextShadow = {
+    x: r1(next.x ?? 0),
+    y: r1(next.y ?? 0),
+    blur: Math.max(0, r1(next.blur ?? 0)),
+    color: next.color ?? "#000000",
+    opacity: clamp01(next.opacity ?? 1),
+  };
   return planStyle(project, itemId, { shadow }, textDecorOf(item, project).shadow ? "Change text shadow" : "Add text shadow");
 }
 
@@ -137,27 +174,39 @@ export function planShadow(project: ProjectModel, itemId: string, patch: Partial
 export function planTextBox(project: ProjectModel, itemId: string, patch: Partial<TextBackground> | false | null): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  if (patch === null || patch === false) return planStyle(project, itemId, { background: patch === false ? false : null }, patch === false ? "Remove text box" : "Use the preset's box");
+  if (patch === null || patch === false)
+    return planStyle(project, itemId, { background: patch === false ? false : null }, patch === false ? "Remove text box" : "Use the preset's box");
   const size = textBox(item, project).size;
   const was = textDecorOf(item, project).background;
   const now = was ?? { color: "#000000", opacity: 0.7, padding: Math.round(size * 0.35), radius: Math.round(size * 0.18), wrap: "box" as const };
   const next = { ...now, ...patch };
-  const background: TextBackground = { color: next.color ?? "#000000", opacity: clamp01(next.opacity ?? 1), padding: Math.max(0, Math.round(next.padding ?? 0)), radius: Math.max(0, Math.round(next.radius ?? 0)), wrap: next.wrap === "lines" ? "lines" : "box" };
+  const background: TextBackground = {
+    color: next.color ?? "#000000",
+    opacity: clamp01(next.opacity ?? 1),
+    padding: Math.max(0, Math.round(next.padding ?? 0)),
+    radius: Math.max(0, Math.round(next.radius ?? 0)),
+    wrap: next.wrap === "lines" ? "lines" : "box",
+  };
   return planStyle(project, itemId, { background }, was ? "Change text box" : `Put text on a box${background.wrap === "lines" ? " per line" : ""}`);
 }
 
 /** Position and box width merged into the transform (a null w makes the box fit its text). */
-export function planTransform(project: ProjectModel, itemId: string, patch: { readonly x?: number; readonly y?: number; readonly w?: number | null; readonly rotate?: number | null; readonly opacity?: number | null }, summary = "Move text"): Plan | Problem {
+export function planTransform(
+  project: ProjectModel,
+  itemId: string,
+  patch: { readonly x?: number; readonly y?: number; readonly w?: number | null; readonly rotate?: number | null; readonly opacity?: number | null },
+  summary = "Move text",
+): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
   // The box as drawn: a look's width (a quote, a spanning title) is written with the position,
   // so moving it doesn't make the text reflow to its natural width.
   const box = textBox(item, project);
-  const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: box.x, y: box.y, ...(box.w !== undefined ? { w: box.w } : {}) };
+  const transform: Record<string, unknown> = { ...item.transform, x: box.x, y: box.y, ...(box.w !== undefined ? { w: box.w } : {}) };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined || (k === "w" && (v as number) <= 0)) delete transform[k];
     // D129: rotation in degrees (to 0.1, within ±180; 0 = none), opacity 0–1 (to 0.01; 1 = none).
-    else if (k === "rotate") transform[k] = Math.round((((((v as number) + 180) % 360) + 360) % 360 - 180) * 10) / 10;
+    else if (k === "rotate") transform[k] = Math.round(((((((v as number) + 180) % 360) + 360) % 360) - 180) * 10) / 10;
     else if (k === "opacity") transform[k] = Math.min(1, Math.max(0, Math.round((v as number) * 100) / 100));
     else transform[k] = Math.round(v as number);
   }
@@ -175,8 +224,8 @@ export function planCentre(project: ProjectModel, itemId: string): Plan | Proble
   const margin = safeMargin(project);
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  const transform = { ...(item.transform ?? {}), x: margin, y: textBox(item, project).y, w: project.canvas.width - 2 * margin };
-  const style = { ...(item.style ?? {}), align: "center" as const };
+  const transform = { ...item.transform, x: margin, y: textBox(item, project).y, w: project.canvas.width - 2 * margin };
+  const style = { ...item.style, align: "center" as const };
   return planUpdate(project, itemId, { transform, style }, "Centre text");
 }
 
@@ -192,7 +241,17 @@ export function planFrameAlign(project: ProjectModel, itemId: string, edge: Fram
   const { width, height } = project.canvas;
   const m = safeMargin(project);
   const patch =
-    edge === "left" ? { x: m } : edge === "right" ? { x: width - m - size.w } : edge === "hcenter" ? { x: (width - size.w) / 2 } : edge === "top" ? { y: m } : edge === "bottom" ? { y: height - m - size.h } : { y: (height - size.h) / 2 };
+    edge === "left"
+      ? { x: m }
+      : edge === "right"
+        ? { x: width - m - size.w }
+        : edge === "hcenter"
+          ? { x: (width - size.w) / 2 }
+          : edge === "top"
+            ? { y: m }
+            : edge === "bottom"
+              ? { y: height - m - size.h }
+              : { y: (height - size.h) / 2 };
   const words: Readonly<Record<FrameEdge, string>> = { left: "left", hcenter: "centre", right: "right", top: "top", vcenter: "middle", bottom: "bottom" };
   return planTransform(project, itemId, patch, `Align text to the ${words[edge]}`);
 }
@@ -204,7 +263,13 @@ export function planFrameAlign(project: ProjectModel, itemId: string, edge: Fram
  * lines break as before. `drawn` is the box as drawn when the drag began (canvas px, measured); the
  * corner opposite the dragged one stays where it is. One update_item: one edit, one undo.
  */
-export function planTextScale(project: ProjectModel, itemId: string, k: number, corner: "nw" | "ne" | "sw" | "se", drawn: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }): Plan | Problem {
+export function planTextScale(
+  project: ProjectModel,
+  itemId: string,
+  k: number,
+  corner: "nw" | "ne" | "sw" | "se",
+  drawn: { readonly x: number; readonly y: number; readonly w: number; readonly h: number },
+): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
   const box = textBox(item, project);
@@ -217,9 +282,9 @@ export function planTextScale(project: ProjectModel, itemId: string, k: number, 
   // The drawn box may start off the item's x / y (a look drawn elsewhere): keep that offset, scaled.
   const x = left ? drawn.x + drawn.w - drawn.w * f + (box.x - drawn.x) * f : drawn.x + (box.x - drawn.x) * f;
   const y = top ? drawn.y + drawn.h - drawn.h * f + (box.y - drawn.y) * f : drawn.y + (box.y - drawn.y) * f;
-  const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: Math.round(x), y: Math.round(y) };
+  const transform: Record<string, unknown> = { ...item.transform, x: Math.round(x), y: Math.round(y) };
   if (box.w !== undefined) transform.w = Math.max(1, Math.round(box.w * f));
-  const style = { ...(item.style ?? {}), size };
+  const style = { ...item.style, size };
   if (size === item.style?.size && JSON.stringify(transform) === JSON.stringify(item.transform ?? {})) return { ops: [], summary: "Resize text" };
   return planUpdate(project, itemId, { style, transform: transform as Transform }, "Resize text");
 }
@@ -233,7 +298,12 @@ export const caseOf = (item: Item): TextCase => {
 };
 export function planCase(project: ProjectModel, itemId: string, next: TextCase): Plan | Problem {
   const look = textLook(itemOf(project, itemId)?.style?.preset);
-  const patch = next === "upper" ? { uppercase: look.uppercase ? null : true, case: null } : next === "none" ? { uppercase: look.uppercase ? false : null, case: null } : { case: next, uppercase: null };
+  const patch =
+    next === "upper"
+      ? { uppercase: look.uppercase ? null : true, case: null }
+      : next === "none"
+        ? { uppercase: look.uppercase ? false : null, case: null }
+        : { case: next, uppercase: null };
   const words: Readonly<Record<TextCase, string>> = { none: "normal case", upper: "capitals", lower: "lower case", title: "title case" };
   return planStyle(project, itemId, patch as Parameters<typeof planStyle>[2], `Set text in ${words[next]}`);
 }
@@ -295,10 +365,13 @@ export function planAnimation(project: ProjectModel, itemId: string, slot: Anima
     const params = move.params && Object.keys(move.params).length ? move.params : undefined;
     const { params: _drop, ...rest } = move;
     animation[slot] = { ...rest, duration: Math.max(1, Math.min(item.duration, Math.round(move.duration))), ...(params ? { params } : {}) };
-  }
-  else delete animation[slot];
+  } else delete animation[slot];
   if (JSON.stringify(animation) === JSON.stringify(item.animation ?? {})) return { ops: [], summary: "" };
-  const words = move?.module ? (slot === "loop" ? `${moveLabel(move.module, slot)} loop` : `${moveLabel(move.module, slot)}${slot === "out" && moveLabel(move.module, "out") !== moveLabel(move.module, "in") ? "" : ` ${slot}`}`) : `no ${slot} animation`;
+  const words = move?.module
+    ? slot === "loop"
+      ? `${moveLabel(move.module, slot)} loop`
+      : `${moveLabel(move.module, slot)}${slot === "out" && moveLabel(move.module, "out") !== moveLabel(move.module, "in") ? "" : ` ${slot}`}`
+    : `no ${slot} animation`;
   return planUpdate(project, itemId, { animation: Object.keys(animation).length ? animation : null }, `Animate text: ${words.toLowerCase()}`);
 }
 
@@ -388,7 +461,8 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
   taken.add(itemId);
   const item: Item = { id: itemId, type: "component", component: SOLID, duration, props: { ...props } };
   const card = () => ({ ops: [{ op: "insert_item" as const, track: main.id, item }], summary: "Add a background", itemId, start });
-  const free = (t: Track) => t.kind === "video" && t.role !== "main" && !t.locked && t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
+  const free = (t: Track) =>
+    t.kind === "video" && t.role !== "main" && !t.locked && t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
   // Under this track index: the free video track right there (or, under main, the nearest free one
   // below it), else a new one inserted there. Tracks are listed top to bottom and the preview and
   // export stack them in that order, so it draws under that track's items.
@@ -397,7 +471,10 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
   if (!sel || sel.track.role === "main") {
     if (start === mainEnd && !main.locked && !sel) return card();
     index = mainIndex + 1;
-    track = project.tracks.slice(mainIndex + 1).filter((t) => t.kind === "video" && !t.locked).find(free);
+    track = project.tracks
+      .slice(mainIndex + 1)
+      .filter((t) => t.kind === "video" && !t.locked)
+      .find(free);
   } else {
     index = project.tracks.findIndex((t) => t.id === sel.track.id) + 1;
     const next = project.tracks[index];
@@ -418,10 +495,21 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
 }
 
 /** A background's colours (props merged; a null `to` makes it a plain colour again). */
-export function planBackground(project: ProjectModel, itemId: string, patch: { readonly color?: string; readonly to?: string | null; readonly via?: string | null; readonly angle?: number | null; readonly gradient?: "linear" | "radial" | null; readonly noise?: number | null }): Plan | Problem {
+export function planBackground(
+  project: ProjectModel,
+  itemId: string,
+  patch: {
+    readonly color?: string;
+    readonly to?: string | null;
+    readonly via?: string | null;
+    readonly angle?: number | null;
+    readonly gradient?: "linear" | "radial" | null;
+    readonly noise?: number | null;
+  },
+): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  const props: Record<string, unknown> = { ...(item.props ?? {}) };
+  const props: Record<string, unknown> = { ...item.props };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined) delete props[k];
     else props[k] = k === "angle" ? Math.round(v as number) : k === "noise" ? Math.min(1, Math.max(0, Math.round((v as number) * 100) / 100)) : v;
@@ -449,7 +537,11 @@ export interface Guide {
  * the centre, its edges to the margins, whichever is nearest within `threshold`. Returns the
  * snapped corner and the guides to draw.
  */
-export function snapBox(box: { x: number; y: number; w: number; h: number }, target: RenderTarget, threshold: number): { x: number; y: number; guides: Array<Guide> } {
+export function snapBox(
+  box: { x: number; y: number; w: number; h: number },
+  target: RenderTarget,
+  threshold: number,
+): { x: number; y: number; guides: Array<Guide> } {
   const { width, height } = target.canvas;
   const margin = safeMargin(target);
   const guides: Array<Guide> = [];

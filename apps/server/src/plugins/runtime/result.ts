@@ -15,11 +15,18 @@ export function toMcpResult(raw: unknown): McpResult {
     if (c?.type === "text" && typeof c.text === "string") content.push({ type: "text", text: c.text });
     else if (c?.type === "image" && typeof c.data === "string" && typeof c.mimeType === "string") {
       const bytes = Math.floor((c.data.length * 3) / 4);
-      if (!IMAGE_TYPES.has(c.mimeType)) content.push({ type: "text", text: `(The plugin sent an image of type ${c.mimeType.slice(0, 60)}; only PNG, JPEG, GIF and WebP are passed on, so it was left out.)` });
-      else if (bytes > MAX_IMAGE_BYTES) content.push({ type: "text", text: `(The plugin sent a ${Math.round(bytes / 1024 / 1024)} MB image; images over ${MAX_IMAGE_BYTES / 1024 / 1024} MB are left out.)` });
+      if (!IMAGE_TYPES.has(c.mimeType))
+        content.push({
+          type: "text",
+          text: `(The plugin sent an image of type ${c.mimeType.slice(0, 60)}; only PNG, JPEG, GIF and WebP are passed on, so it was left out.)`,
+        });
+      else if (bytes > MAX_IMAGE_BYTES)
+        content.push({
+          type: "text",
+          text: `(The plugin sent a ${Math.round(bytes / 1024 / 1024)} MB image; images over ${MAX_IMAGE_BYTES / 1024 / 1024} MB are left out.)`,
+        });
       else content.push({ type: "image", data: c.data, mimeType: c.mimeType });
-    }
-    else content.push({ type: "text", text: JSON.stringify(c) });
+    } else content.push({ type: "text", text: JSON.stringify(c) });
   }
   if (!content.length && r.structuredContent !== undefined) content.push({ type: "text", text: JSON.stringify(r.structuredContent) });
   if (!content.length) content.push({ type: "text", text: Array.isArray(r.content) ? "(The plugin returned nothing.)" : JSON.stringify(raw ?? null) });

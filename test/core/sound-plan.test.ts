@@ -20,7 +20,16 @@ const project: Project = {
   ],
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-cam", in: 0, duration: 90 }, { id: "clip-2", type: "clip", media: "m-mute", in: 0, duration: 90 }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [
+        { id: "clip-1", type: "clip", media: "m-cam", in: 0, duration: 90 },
+        { id: "clip-2", type: "clip", media: "m-mute", in: 0, duration: 90 },
+      ],
+    },
     { id: "audio", kind: "audio", name: "Audio", items: [{ id: "audio-1", type: "audio", media: "m-song", in: 0, start: 30, duration: 120 }] },
   ],
 };
@@ -105,7 +114,10 @@ test("the agent's note lists volume and fade changes in words", () => {
   assert.match(note, /Removed the fade in on song\.m4a \(audio-1\)/);
   assert.match(note, /Set volume of track audio to \+3\.5 dB/);
   assert.match(note, /Muted track audio/);
-  assert.equal(describeOp({ op: "update_item", item: "audio-1", set: { gainDb: -6, fadeIn: 30 } }, s.project), "Changed the sound of song.m4a (audio-1): volume −6 dB, fade in 1.0 s");
+  assert.equal(
+    describeOp({ op: "update_item", item: "audio-1", set: { gainDb: -6, fadeIn: 30 } }, s.project),
+    "Changed the sound of song.m4a (audio-1): volume −6 dB, fade in 1.0 s",
+  );
 });
 
 test("adding audio (D124): at the playhead on the first audio track free there, else on a new track", () => {

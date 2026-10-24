@@ -12,7 +12,9 @@ const planOf = (doc: string, o: { width?: number; height?: number; fps?: number 
   ({
     fps: o.fps ?? 30,
     canvas: { width: o.width ?? 64, height: o.height ?? 80 },
-    visuals: [{ kind: "graphic", doc, f0: 0, f1: 10, frames: Array.from({ length: 10 }, (_, i) => i), item: { id: "g", src: "graphics/g.html", duration: 10 } }],
+    visuals: [
+      { kind: "graphic", doc, f0: 0, f1: 10, frames: Array.from({ length: 10 }, (_, i) => i), item: { id: "g", src: "graphics/g.html", duration: 10 } },
+    ],
   }) as unknown as ExportPlan;
 
 const fake = (render: Rasterizer["render"]) => ({ render, close: async () => {}, pid: 1 }) as unknown as Rasterizer;
@@ -50,16 +52,36 @@ test("a rehearsal stopped under it (the rasteriser gone) isn't remembered as the
 
 test("a crash that names no frame is said once, not kept; a frame's own failure is kept", async () => {
   const doc = `<p>crash ${Math.random()}</p>`;
-  const crash = await rehearseGraphics(fake(async () => { throw new Error("The text renderer stopped (code 1)."); }), planOf(doc), { budgetMs: 10_000 });
+  const crash = await rehearseGraphics(
+    fake(async () => {
+      throw new Error("The text renderer stopped (code 1).");
+    }),
+    planOf(doc),
+    { budgetMs: 10_000 },
+  );
   assert.match(crash.failure ?? "", /stopped/);
   let calls = 0;
-  await rehearseGraphics(fake(async () => void calls++), planOf(doc), { budgetMs: 10_000 });
+  await rehearseGraphics(
+    fake(async () => void calls++),
+    planOf(doc),
+    { budgetMs: 10_000 },
+  );
   assert.equal(calls, 1, "rehearsed again after the crash");
   const doc2 = `<p>breaks ${Math.random()}</p>`;
-  const broke = await rehearseGraphics(fake(async () => { throw new Error("The text renderer failed: at its frame 4: boom"); }), planOf(doc2), { budgetMs: 10_000 });
+  const broke = await rehearseGraphics(
+    fake(async () => {
+      throw new Error("The text renderer failed: at its frame 4: boom");
+    }),
+    planOf(doc2),
+    { budgetMs: 10_000 },
+  );
   assert.match(broke.failure ?? "", /boom/);
   calls = 0;
-  const kept = await rehearseGraphics(fake(async () => void calls++), planOf(doc2), { budgetMs: 10_000 });
+  const kept = await rehearseGraphics(
+    fake(async () => void calls++),
+    planOf(doc2),
+    { budgetMs: 10_000 },
+  );
   assert.equal(calls, 0, "the graphic's own failure is kept");
   assert.match(kept.failure ?? "", /boom/);
 });
@@ -68,7 +90,16 @@ const longPlan = (doc: string, frames: number): ExportPlan =>
   ({
     fps: 30,
     canvas: { width: 64, height: 80 },
-    visuals: [{ kind: "graphic", doc, f0: 0, f1: frames, frames: Array.from({ length: frames }, (_, i) => i), item: { id: "g", src: "graphics/g.html", duration: frames } }],
+    visuals: [
+      {
+        kind: "graphic",
+        doc,
+        f0: 0,
+        f1: frames,
+        frames: Array.from({ length: frames }, (_, i) => i),
+        item: { id: "g", src: "graphics/g.html", duration: frames },
+      },
+    ],
   }) as unknown as ExportPlan;
 
 test("each request waits at most what's left of the budget, so a 15 s budget stays about 15 s", async () => {
@@ -109,7 +140,11 @@ test("a stall (past the renderer's own deadline) is remembered for the same grap
   assert.equal(again.stalled, true);
   assert.equal(calls, 1, "the stall is said again without waiting it out");
   let fine = 0;
-  const changed = await rehearseGraphics(fake(async () => void fine++), planOf(`${doc}<i>fixed</i>`), { budgetMs: 60_000 });
+  const changed = await rehearseGraphics(
+    fake(async () => void fine++),
+    planOf(`${doc}<i>fixed</i>`),
+    { budgetMs: 60_000 },
+  );
   assert.equal(fine, 1, "a changed graphic is rehearsed");
   assert.equal(changed.covered, 10);
 });

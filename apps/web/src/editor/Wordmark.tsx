@@ -29,7 +29,14 @@ export function UncutMark({ className, tile = false }: { className?: string; til
         )}
       </defs>
       {tile && <rect x="100" y="100" width="824" height="824" rx="184" fill={`url(#${mask}-tile)`} />}
-      <path d="M368 318 V560 A144 144 0 0 0 656 560 V318" fill="none" stroke={tile ? "#f1f0ed" : "currentColor"} strokeWidth="128" strokeLinecap="round" mask={`url(#${mask})`} />
+      <path
+        d="M368 318 V560 A144 144 0 0 0 656 560 V318"
+        fill="none"
+        stroke={tile ? "#f1f0ed" : "currentColor"}
+        strokeWidth="128"
+        strokeLinecap="round"
+        mask={`url(#${mask})`}
+      />
     </svg>
   );
 }

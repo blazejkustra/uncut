@@ -62,7 +62,12 @@ test("D212: a VideoToolbox refusal is told apart from other ffmpeg failures", ()
     "Could not open encoder before EOF",
   ])
     assert.ok(hardwareEncoderFailed(line), line);
-  for (const line of ["/x/clip.mp4: No such file or directory", "Invalid data found when processing input", "[Parsed_overlay_3 @ 0x1] Failed to configure input pad"]) assert.ok(!hardwareEncoderFailed(line), line);
+  for (const line of [
+    "/x/clip.mp4: No such file or directory",
+    "Invalid data found when processing input",
+    "[Parsed_overlay_3 @ 0x1] Failed to configure input pad",
+  ])
+    assert.ok(!hardwareEncoderFailed(line), line);
 });
 
 // ---- quality ----
@@ -74,7 +79,11 @@ const hasVt = /\bh264_videotoolbox\b/.test(listed("-encoders")) && /\blibx264\b/
 const skipQuality = !hasFfmpeg ? "needs ffmpeg" : !hasVmaf ? "this ffmpeg has no libvmaf" : !hasVt ? "this ffmpeg has no h264_videotoolbox and libx264" : false;
 
 const vmaf = (file: string, ref: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-i", ref, "-lavfi", "[0:v]settb=1/60,setpts=N[a];[1:v]settb=1/60,setpts=N[b];[a][b]libvmaf", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", file, "-i", ref, "-lavfi", "[0:v]settb=1/60,setpts=N[a];[1:v]settb=1/60,setpts=N[b];[a][b]libvmaf", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   const score = /VMAF score: ([\d.]+)/.exec(r.stderr)?.[1];
   assert.ok(score, r.stderr.slice(-400));
   return Number(score);
@@ -85,7 +94,22 @@ test("D212: VideoToolbox at each preset's quality scores at least libx264's VMAF
   try {
     const ref = join(dir, "ref.mkv");
     // Detail and grain that change every frame: hard for both encoders.
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=2,noise=alls=12:allf=t+u,format=yuv420p", "-c:v", "libx264", "-qp", "0", "-preset", "ultrafast", ref]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=1280x720:r=30:d=2,noise=alls=12:allf=t+u,format=yuv420p",
+      "-c:v",
+      "libx264",
+      "-qp",
+      "0",
+      "-preset",
+      "ultrafast",
+      ref,
+    ]);
     const caps = BOTH;
     const size = { width: 1280, height: 720 };
     for (const q of ["draft", "standard", "high"] as const) {
@@ -106,7 +130,14 @@ test("D212: VideoToolbox at each preset's quality scores at least libx264's VMAF
 // ---- on the server ----
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
-const skipServer = !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP) ? "server, desktop or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg" : !hasVt ? "this ffmpeg has no h264_videotoolbox and libx264" : false;
+const skipServer =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP)
+    ? "server, desktop or media core not built (run pnpm build)"
+    : !hasFfmpeg
+      ? "needs ffmpeg"
+      : !hasVt
+        ? "this ffmpeg has no h264_videotoolbox and libx264"
+        : false;
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type Client = Awaited<ReturnType<typeof connect>>;
@@ -115,8 +146,10 @@ let server: Server;
 let client: Client;
 let jobs: ReturnType<Client["subscribe"]>;
 const job = (id: string) => jobs.values.at(-1)?.find((j: { id: string }) => j.id === id);
-const finished = (id: string) => jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), 120000).then(() => job(id));
-const codecOf = (file: string) => execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", file], { encoding: "utf8" }).trim();
+const finished = (id: string) =>
+  jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), 120000).then(() => job(id));
+const codecOf = (file: string) =>
+  execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", file], { encoding: "utf8" }).trim();
 
 before(async () => {
   if (skipServer) return;
@@ -126,9 +159,14 @@ before(async () => {
   // An ffmpeg that refuses VideoToolbox encodes while bin/refuse exists, like a Mac without the hardware mode.
   const real = execFileSync("/bin/sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).trim();
   const wrapper = join(root, "bin", "ffmpeg");
-  writeFileSync(wrapper, `#!/bin/sh\nif [ -e "${join(root, "bin", "refuse")}" ]; then case "$*" in *h264_videotoolbox*) echo "[h264_videotoolbox @ 0x1] Error: cannot create compression session: -12902" >&2; exit 1;; esac; fi\nexec "${real}" "$@"\n`);
+  writeFileSync(
+    wrapper,
+    `#!/bin/sh\nif [ -e "${join(root, "bin", "refuse")}" ]; then case "$*" in *h264_videotoolbox*) echo "[h264_videotoolbox @ 0x1] Error: cannot create compression session: -12902" >&2; exit 1;; esac; fi\nexec "${real}" "$@"\n`,
+  );
   chmodSync(wrapper, 0o755);
-  server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data"), TMPDIR: join(root, "tmp"), PATH: `${join(root, "bin")}:${process.env.PATH ?? ""}` } });
+  server = await startServer({
+    env: { UNCUT_DATA_DIR: join(root, "data"), TMPDIR: join(root, "tmp"), PATH: `${join(root, "bin")}:${process.env.PATH ?? ""}` },
+  });
   client = await connect(server.ready.port, server.ready.token);
   jobs = client.subscribe("export.jobs");
   const p = exportProject(join(root, "media"));
@@ -157,5 +195,8 @@ test("D212 on the server: Draft encodes on the hardware; a refused hardware enco
   writeFileSync(join(root, "bin", "refuse"), "");
   const fell = await run("Fallback");
   assert.equal(fell.encoder, "software");
-  assert.ok((fell.warnings ?? []).some((w: string) => /hardware encoder failed/.test(w)), JSON.stringify(fell.warnings));
+  assert.ok(
+    (fell.warnings ?? []).some((w: string) => /hardware encoder failed/.test(w)),
+    JSON.stringify(fell.warnings),
+  );
 });

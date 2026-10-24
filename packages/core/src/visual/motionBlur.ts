@@ -24,20 +24,25 @@ export const MOTION_BLUR_DEFAULTS: MotionBlur = { samples: 4, shutter: 90 };
 export const MOTION_BLUR_SAMPLES = { min: 2, max: 16 } as const;
 
 /** Whether an export blurs by default: the project's `on`, else on for Standard and High, off for Draft. */
-export const motionBlurDefault = (project: Pick<Project, "motionBlur">, quality: "draft" | "standard" | "high") => project.motionBlur?.on ?? quality !== "draft";
+export const motionBlurDefault = (project: Pick<Project, "motionBlur">, quality: "draft" | "standard" | "high") =>
+  project.motionBlur?.on ?? quality !== "draft";
 
 /** The project's blur (its samples and shutter, or the defaults), clamped to what the export takes. */
 export function projectMotionBlur(project: Pick<Project, "motionBlur">): MotionBlur {
   const s = project.motionBlur?.samples;
   const sh = project.motionBlur?.shutter;
   return {
-    samples: typeof s === "number" && Number.isFinite(s) ? Math.min(MOTION_BLUR_SAMPLES.max, Math.max(MOTION_BLUR_SAMPLES.min, Math.round(s))) : MOTION_BLUR_DEFAULTS.samples,
+    samples:
+      typeof s === "number" && Number.isFinite(s)
+        ? Math.min(MOTION_BLUR_SAMPLES.max, Math.max(MOTION_BLUR_SAMPLES.min, Math.round(s)))
+        : MOTION_BLUR_DEFAULTS.samples,
     shutter: typeof sh === "number" && Number.isFinite(sh) ? Math.min(360, Math.max(1, sh)) : MOTION_BLUR_DEFAULTS.shutter,
   };
 }
 
 /** An item's blur in an export with blur `on` (the export's switch): none when it's off or the item opts out (motionBlur false). */
-export const itemMotionBlur = (item: Pick<Item, "motionBlur">, project: Pick<Project, "motionBlur">, on: boolean): MotionBlur | undefined => (on && item.motionBlur !== false ? projectMotionBlur(project) : undefined);
+export const itemMotionBlur = (item: Pick<Item, "motionBlur">, project: Pick<Project, "motionBlur">, on: boolean): MotionBlur | undefined =>
+  on && item.motionBlur !== false ? projectMotionBlur(project) : undefined;
 
 /**
  * The moments (seconds) drawn for frame `frame` (a number of frames from the item's start, at
@@ -117,9 +122,13 @@ function range3(v: Uint8Array, cols: number, rows: number): { lo: Uint8Array; hi
   for (let k = 0; k < v.length; k++) {
     const up = k >= cols ? k - cols : k;
     const down = k + cols < v.length ? k + cols : k;
-    const a = rowLo[up]!, b = rowLo[k]!, c = rowLo[down]!;
+    const a = rowLo[up]!,
+      b = rowLo[k]!,
+      c = rowLo[down]!;
     lo[k] = a < b ? (a < c ? a : c) : b < c ? b : c;
-    const d = rowHi[up]!, e = rowHi[k]!, f = rowHi[down]!;
+    const d = rowHi[up]!,
+      e = rowHi[k]!,
+      f = rowHi[down]!;
     hi[k] = d > e ? (d > f ? d : f) : e > f ? e : f;
   }
   return { lo, hi };
@@ -168,7 +177,17 @@ export function blurStep(a: BlurSignature, b: BlurSignature): number {
       const la = al[k]!;
       const ab = ba[k]!;
       const aA = aa[k]!;
-      if (lb > alh[k]! + tol || lb < all[k]! - tol || la > blh[k]! + tol || la < bll[k]! - tol || ab > aah[k]! + tol || ab < aal[k]! - tol || aA > bah[k]! + tol || aA < bal[k]! - tol) counts[row + ((x / c) | 0)]!++;
+      if (
+        lb > alh[k]! + tol ||
+        lb < all[k]! - tol ||
+        la > blh[k]! + tol ||
+        la < bll[k]! - tol ||
+        ab > aah[k]! + tol ||
+        ab < aal[k]! - tol ||
+        aA > bah[k]! + tol ||
+        aA < bal[k]! - tol
+      )
+        counts[row + ((x / c) | 0)]!++;
     }
   }
   let worst = 0;
@@ -203,7 +222,8 @@ export function blurLevels(ts: ReadonlyArray<number>, max: number = BLUR_REFINE.
   const start = ts[0]! - w / 2;
   const span = w * n;
   const out: Array<Array<number>> = [];
-  for (let N = Math.min(max, 4 * n); N > (out.at(-1)?.length ?? n); N = Math.min(max, N * 2)) out.push(Array.from({ length: N }, (_, j) => start + ((j + 0.5) * span) / N));
+  for (let N = Math.min(max, 4 * n); N > (out.at(-1)?.length ?? n); N = Math.min(max, N * 2))
+    out.push(Array.from({ length: N }, (_, j) => start + ((j + 0.5) * span) / N));
   return out;
 }
 

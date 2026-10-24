@@ -11,7 +11,16 @@ import { mkdir, readdir, realpath, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { GenerateError, type GenerateJob, type GenerateKind, type GenerateOptions, type GenerateRequest, type GeneratorChoice, type GeneratorInfo, type KeyProvider } from "@uncut/contracts";
+import {
+  GenerateError,
+  type GenerateJob,
+  type GenerateKind,
+  type GenerateOptions,
+  type GenerateRequest,
+  type GeneratorChoice,
+  type GeneratorInfo,
+  type KeyProvider,
+} from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,7 +32,16 @@ import { Plugins } from "../plugins/plugins.ts";
 import { Projects } from "../project/projects.ts";
 import { Keys, providerName } from "./keys.ts";
 import { allowBaseOverrides, isTestRun, KEYED, type KeyedGenerator } from "./providers.ts";
-import { checkOptions, checkSeconds, choicesOf, estimateOf, openGrant, pluginGeneratorsOf, servePluginRequest, type PluginGenerator } from "./pluginGenerators.ts";
+import {
+  checkOptions,
+  checkSeconds,
+  choicesOf,
+  estimateOf,
+  openGrant,
+  pluginGeneratorsOf,
+  servePluginRequest,
+  type PluginGenerator,
+} from "./pluginGenerators.ts";
 import { ServerConfig } from "../app/config.ts";
 import { askClaude, renderMarkup, SVG_GENERATOR, SVG_MAX_SECONDS, SVG_SECONDS, SVG_SIZES, svgPixels } from "./svg.ts";
 
@@ -67,7 +85,9 @@ export interface GeneratorShape {
   /** A plugin generator's choices for one of its options (#108: the voices of the user's account). */
   readonly choices: (generator: string, option: string) => Effect.Effect<ReadonlyArray<GeneratorChoice>, GenerateError>;
   /** A request checked and completed (kind defaulted), or why not; `estimate` in US dollars. */
-  readonly plan: (raw: Record<string, unknown>) => Effect.Effect<{ readonly spec: GenerateSpec; readonly estimate: number; readonly provider?: KeyProvider | undefined } | GenerateError>;
+  readonly plan: (
+    raw: Record<string, unknown>,
+  ) => Effect.Effect<{ readonly spec: GenerateSpec; readonly estimate: number; readonly provider?: KeyProvider | undefined } | GenerateError>;
   /** Makes it and imports it into the opening `openId` (the agent's edit with `turnId`). */
   readonly produce: (
     spec: GenerateSpec,
@@ -94,9 +114,22 @@ export function fileBase(spec: Pick<GenerateSpec, "name" | "prompt">, now = new 
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
   // A name is letters, digits, spaces, dots, dashes and underscores, never starting with a dot
   // (so never "." or ".."); one that's left empty falls back to the prompt.
-  const fromName = spec.name?.replace(/\.[A-Za-z0-9]{2,4}$/, "").replace(/[^A-Za-z0-9 ._-]+/g, "").replace(/^[\s.]+/, "").trim().slice(0, 60);
+  const fromName = spec.name
+    ?.replace(/\.[A-Za-z0-9]{2,4}$/, "")
+    .replace(/[^A-Za-z0-9 ._-]+/g, "")
+    .replace(/^[\s.]+/, "")
+    .trim()
+    .slice(0, 60);
   if (fromName && /[A-Za-z0-9]/.test(fromName)) return fromName;
-  const words = spec.prompt.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean).slice(0, 5).join("-").slice(0, 40);
+  const words = spec.prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 5)
+    .join("-")
+    .slice(0, 40);
   return `${words || "generated"} ${stamp}`;
 }
 
@@ -107,10 +140,17 @@ export function fileBase(spec: Pick<GenerateSpec, "name" | "prompt">, now = new 
  * The file keeps its own unique name (fileBase).
  */
 export function displayNameOf(spec: Pick<GenerateSpec, "name" | "prompt">, taken: ReadonlySet<string> = new Set()) {
-  const given = spec.name?.replace(/\.[A-Za-z0-9]{2,4}$/, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const given = spec.name
+    ?.replace(/\.[A-Za-z0-9]{2,4}$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
   let base = given && /[\p{L}\p{N}]/u.test(given) ? given : "";
   if (!base) {
-    let p = spec.prompt.replace(/\s+/g, " ").trim().replace(/^(a|an|the)\s+/i, "");
+    let p = spec.prompt
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^(a|an|the)\s+/i, "");
     if (p.length > 48) {
       const cut = p.slice(0, 48);
       p = cut.includes(" ", 20) ? cut.slice(0, cut.lastIndexOf(" ")) : cut;
@@ -151,7 +191,8 @@ export const layer = Layer.effect(
     const controllers = new Map<string, AbortController>();
     yield* Effect.addFinalizer(() => Effect.sync(() => controllers.forEach((c) => c.abort())));
 
-    const update = (id: string, patch: Partial<GenerateJob>) => Effect.runSync(SubscriptionRef.update(jobsRef, (jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j))));
+    const update = (id: string, patch: Partial<GenerateJob>) =>
+      Effect.runSync(SubscriptionRef.update(jobsRef, (jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j))));
 
     const info = (g: KeyedGenerator, has: boolean): GeneratorInfo => ({
       id: g.id,
@@ -184,7 +225,17 @@ export const layer = Layer.effect(
       maxPrompt: g.maxPrompt,
     });
     const list = Effect.gen(function* () {
-      const out: Array<GeneratorInfo> = [{ id: SVG_GENERATOR, name: "SVG and HTML", kinds: ["image", "video"], ready: true, sizes: [...SVG_SIZES], seconds: [...SVG_SECONDS], billing: "Uses your Claude Code, no key needed" }];
+      const out: Array<GeneratorInfo> = [
+        {
+          id: SVG_GENERATOR,
+          name: "SVG and HTML",
+          kinds: ["image", "video"],
+          ready: true,
+          sizes: [...SVG_SIZES],
+          seconds: [...SVG_SECONDS],
+          billing: "Uses your Claude Code, no key needed",
+        },
+      ];
       for (const g of KEYED) out.push(info(g, yield* keys.has(g.provider)));
       for (const g of yield* pluginGens) out.push(pluginInfo(g, yield* keys.has(g.provider)));
       return out;
@@ -197,20 +248,25 @@ export const layer = Layer.effect(
         const fromPlugins = yield* pluginGens;
         const plugged = typeof id === "string" ? fromPlugins.find((g) => g.id === id) : undefined;
         const ids = [...GENERATOR_IDS, ...fromPlugins.map((g) => g.id)];
-        if (typeof id !== "string" || !ids.includes(id)) return new GenerateError({ reason: "unknown-generator", message: `generator must be one of ${ids.join(", ")}.` });
+        if (typeof id !== "string" || !ids.includes(id))
+          return new GenerateError({ reason: "unknown-generator", message: `generator must be one of ${ids.join(", ")}.` });
         const prompt = typeof raw.prompt === "string" ? raw.prompt.trim() : "";
         if (!prompt) return bad("Write a prompt first: what should it make?");
         const maxPrompt = plugged?.maxPrompt ?? MAX_PROMPT;
         if (prompt.length > maxPrompt) return bad(`The ${plugged?.promptLabel?.toLowerCase() ?? "prompt"} is over ${maxPrompt} characters.`);
         if (raw.size !== undefined && typeof raw.size !== "string") return bad("size must be a string, e.g. 1536x1024 or 16:9.");
-        if (raw.seconds !== undefined && (typeof raw.seconds !== "number" || !Number.isFinite(raw.seconds) || raw.seconds <= 0)) return bad("seconds must be a positive number.");
+        if (raw.seconds !== undefined && (typeof raw.seconds !== "number" || !Number.isFinite(raw.seconds) || raw.seconds <= 0))
+          return bad("seconds must be a positive number.");
         if (raw.name !== undefined && typeof raw.name !== "string") return bad("name must be a string.");
         if (raw.content !== undefined && typeof raw.content !== "string") return bad("content must be the SVG or HTML as a string.");
         if (raw.options !== undefined && !plugged) return bad(`options are only for a plugin's generators; ${id} takes size and seconds.`);
         const keyed = keyedOf(id);
         const kinds: ReadonlyArray<GenerateKind> = plugged ? [plugged.media] : keyed ? keyed.kinds : ["image", "video"];
         const words: Record<string, string> = { image: "pictures", video: "video", audio: "sound" };
-        if (raw.kind !== undefined && !kinds.includes(raw.kind as GenerateKind)) return bad(`${plugged?.name ?? keyed?.name ?? "The SVG generator"} makes ${kinds.map((k) => words[k]).join(" or ")}, not ${words[String(raw.kind)] ?? String(raw.kind)} (kind ${kinds.join(" or ")}).`);
+        if (raw.kind !== undefined && !kinds.includes(raw.kind as GenerateKind))
+          return bad(
+            `${plugged?.name ?? keyed?.name ?? "The SVG generator"} makes ${kinds.map((k) => words[k]).join(" or ")}, not ${words[String(raw.kind)] ?? String(raw.kind)} (kind ${kinds.join(" or ")}).`,
+          );
         const kind = (raw.kind as GenerateKind | undefined) ?? kinds[0]!;
         const spec: GenerateSpec = {
           generator: id,
@@ -237,18 +293,23 @@ export const layer = Layer.effect(
           if (problem) return bad(problem);
           return { spec, estimate: keyed.estimate(spec), provider: keyed.provider };
         }
-        if (spec.size !== undefined && !svgPixels(spec.size, { width: 1, height: 1 })) return bad("size must be canvas or WIDTHxHEIGHT, e.g. 1920x1080 (16 to 4096 a side).");
-        if (spec.kind === "video" && spec.seconds !== undefined && spec.seconds > SVG_MAX_SECONDS) return bad(`An animation is at most ${SVG_MAX_SECONDS} seconds.`);
+        if (spec.size !== undefined && !svgPixels(spec.size, { width: 1, height: 1 }))
+          return bad("size must be canvas or WIDTHxHEIGHT, e.g. 1920x1080 (16 to 4096 a side).");
+        if (spec.kind === "video" && spec.seconds !== undefined && spec.seconds > SVG_MAX_SECONDS)
+          return bad(`An animation is at most ${SVG_MAX_SECONDS} seconds.`);
         return { spec, estimate: 0 };
       });
 
     const produce: GeneratorShape["produce"] = (spec, target) =>
       Effect.gen(function* () {
-        const status = target.status ?? (() => {});
         const failed = (message: string) => new GenerateError({ reason: "failed", message });
         const keyed = keyedOf(spec.generator);
         const plugged = keyed || spec.generator === SVG_GENERATOR ? undefined : (yield* pluginGens).find((g) => g.id === spec.generator);
-        if (!keyed && !plugged && spec.generator !== SVG_GENERATOR) return yield* new GenerateError({ reason: "unknown-generator", message: `${spec.generator} isn't available any more (its plugin was turned off or removed).` });
+        if (!keyed && !plugged && spec.generator !== SVG_GENERATOR)
+          return yield* new GenerateError({
+            reason: "unknown-generator",
+            message: `${spec.generator} isn't available any more (its plugin was turned off or removed).`,
+          });
         const provider = keyed?.provider ?? plugged?.provider;
         let key: string | undefined;
         if (provider) {
@@ -283,7 +344,14 @@ export const layer = Layer.effect(
      * (pluginGenerators.ts); the result is the file Uncut saved for it, nothing else. A failure or
      * a cancel removes that file.
      */
-    const runPlugin = async (g: PluginGenerator, spec: GenerateSpec, key: string, outBase: string, target: Parameters<GeneratorShape["produce"]>[1], status: (text: string) => void) => {
+    const runPlugin = async (
+      g: PluginGenerator,
+      spec: GenerateSpec,
+      key: string,
+      outBase: string,
+      target: Parameters<GeneratorShape["produce"]>[1],
+      status: (text: string) => void,
+    ) => {
       const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider, key, signal: target.signal, outBase, sent: target.sent });
       try {
         status(`Asking ${g.plugin.name}…`);
@@ -299,7 +367,10 @@ export const layer = Layer.effect(
         const saved = grant.saved();
         if (r.isError || !saved) {
           if (saved) await rm(saved, { force: true });
-          const said = r.content.flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : [])).join(" ").trim();
+          const said = r.content
+            .flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : []))
+            .join(" ")
+            .trim();
           throw new Error(r.isError ? said || `${g.plugin.name} stopped before it finished.` : `${g.plugin.name} finished without making a file.`);
         }
         const out = (r.structured ?? {}) as { model?: unknown };
@@ -310,7 +381,14 @@ export const layer = Layer.effect(
       }
     };
 
-    const produceInto = (spec: GenerateSpec, target: Parameters<GeneratorShape["produce"]>[1], key: string | undefined, keyed: KeyedGenerator | undefined, plugged: PluginGenerator | undefined, outBase: string) =>
+    const produceInto = (
+      spec: GenerateSpec,
+      target: Parameters<GeneratorShape["produce"]>[1],
+      key: string | undefined,
+      keyed: KeyedGenerator | undefined,
+      plugged: PluginGenerator | undefined,
+      outBase: string,
+    ) =>
       Effect.gen(function* () {
         const status = target.status ?? (() => {});
         const failed = (message: string) => new GenerateError({ reason: "failed", message });
@@ -328,7 +406,14 @@ export const layer = Layer.effect(
               status("Drawing it…");
               markup = await askClaude({ prompt: spec.prompt, kind: spec.kind === "video" ? "video" : "image", ...size, seconds }, target.signal);
             }
-            const out = await renderMarkup(markup, { kind: spec.kind === "video" ? "video" : "image", ...size, seconds, outBase, signal: target.signal, status });
+            const out = await renderMarkup(markup, {
+              kind: spec.kind === "video" ? "video" : "image",
+              ...size,
+              seconds,
+              outBase,
+              signal: target.signal,
+              status,
+            });
             return { path: out.path, model: spec.content ? "written by the agent" : "claude", cost: 0 };
           },
           catch: (e) => (cancelled(target.signal) ? failed("Cancelled.") : failed((e as Error).message ?? String(e))),
@@ -338,10 +423,20 @@ export const layer = Layer.effect(
           return yield* failed("Cancelled.");
         }
         status("Adding it to Media…");
-        const source = { module: spec.generator, prompt: spec.prompt, model: made.model, kind: spec.kind, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}) };
+        const source = {
+          module: spec.generator,
+          prompt: spec.prompt,
+          model: made.model,
+          kind: spec.kind,
+          ...(spec.size ? { size: spec.size } : {}),
+          ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}),
+          ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}),
+        };
         const open = Effect.runSync(projects.view);
         const names = new Set(open && open.openId === target.openId ? open.session.project.media.map((m) => m.name) : []);
-        const result = yield* media.importCapture({ openId: target.openId, dir: target.dir, path: made.path, name: displayNameOf(spec, names), source, turnId: target.turnId }).pipe(Effect.mapError((e) => failed(`It was made but couldn't be added: ${e.message}`)));
+        const result = yield* media
+          .importCapture({ openId: target.openId, dir: target.dir, path: made.path, name: displayNameOf(spec, names), source, turnId: target.turnId })
+          .pipe(Effect.mapError((e) => failed(`It was made but couldn't be added: ${e.message}`)));
         const entry = result.entries[0];
         if (!entry) {
           yield* Effect.promise(() => rm(made.path, { force: true }));
@@ -356,18 +451,37 @@ export const layer = Layer.effect(
         if (!open) return yield* new GenerateError({ reason: "no-project", message: "Open a project first: what's generated goes into its Media." });
         const planned = yield* plan(request as unknown as Record<string, unknown>);
         if (planned instanceof GenerateError) return yield* planned;
-        if (planned.provider && !(yield* keys.has(planned.provider))) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(planned.provider)}. Add it in Settings › Keys.` });
+        if (planned.provider && !(yield* keys.has(planned.provider)))
+          return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(planned.provider)}. Add it in Settings › Keys.` });
         const id = randomUUID();
         const { spec } = planned;
-        const job: GenerateJob = { id, projectDir: open.dir, generator: spec.generator, kind: spec.kind, prompt: spec.prompt, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}), phase: "running", status: "Starting…", startedAt: new Date().toISOString(), estimate: planned.estimate };
-        yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase === "running" || j.phase === "importing"), ...jobs.filter((j) => j.phase !== "running" && j.phase !== "importing").slice(-MAX_JOBS_KEPT), job]);
+        const job: GenerateJob = {
+          id,
+          projectDir: open.dir,
+          generator: spec.generator,
+          kind: spec.kind,
+          prompt: spec.prompt,
+          ...(spec.size ? { size: spec.size } : {}),
+          ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}),
+          ...(spec.options && Object.keys(spec.options).length ? { options: spec.options } : {}),
+          phase: "running",
+          status: "Starting…",
+          startedAt: new Date().toISOString(),
+          estimate: planned.estimate,
+        };
+        yield* SubscriptionRef.update(jobsRef, (jobs) => [
+          ...jobs.filter((j) => j.phase === "running" || j.phase === "importing"),
+          ...jobs.filter((j) => j.phase !== "running" && j.phase !== "importing").slice(-MAX_JOBS_KEPT),
+          job,
+        ]);
         const controller = new AbortController();
         controllers.set(id, controller);
         yield* Effect.forkIn(
           produce(spec, { openId: open.openId, dir: open.dir, signal: controller.signal, status: (text) => update(id, { status: text }) }).pipe(
             Effect.match({
               onSuccess: (p) => update(id, { phase: "done", status: undefined, mediaId: p.entry.id, name: p.entry.name, estimate: p.cost }),
-              onFailure: (e) => update(id, controller.signal.aborted ? { phase: "cancelled", status: undefined } : { phase: "failed", status: undefined, error: e.message }),
+              onFailure: (e) =>
+                update(id, controller.signal.aborted ? { phase: "cancelled", status: undefined } : { phase: "failed", status: undefined, error: e.message }),
             }),
             Effect.ensuring(Effect.sync(() => controllers.delete(id))),
           ),
@@ -388,9 +502,15 @@ export const layer = Layer.effect(
         // A read-only grant: GET requests only, nothing saved, nothing billed.
         const signal = AbortSignal.timeout(CHOICES_TIMEOUT_MS);
         const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider, key, signal });
-        const r = yield* plugins.callPlugin(g.plugin.id, "choices", { generator: g.local, option }, { signal, timeoutMs: CHOICES_TIMEOUT_MS, meta: { "uncut/grant": grant.token } }).pipe(Effect.ensuring(Effect.sync(grant.end)));
-        const said = r.content.flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : [])).join(" ").trim();
-        if (r.isError) return yield* new GenerateError({ reason: "failed", message: said || `${g.plugin.name} couldn't list the ${o.label.toLowerCase()} choices.` });
+        const r = yield* plugins
+          .callPlugin(g.plugin.id, "choices", { generator: g.local, option }, { signal, timeoutMs: CHOICES_TIMEOUT_MS, meta: { "uncut/grant": grant.token } })
+          .pipe(Effect.ensuring(Effect.sync(grant.end)));
+        const said = r.content
+          .flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : []))
+          .join(" ")
+          .trim();
+        if (r.isError)
+          return yield* new GenerateError({ reason: "failed", message: said || `${g.plugin.name} couldn't list the ${o.label.toLowerCase()} choices.` });
         const list = choicesOf(r.structured);
         if (!list) return yield* new GenerateError({ reason: "failed", message: `${g.plugin.name} answered without a list of choices.` });
         return list;

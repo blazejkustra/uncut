@@ -13,7 +13,13 @@ export function DeviceParam({ item, disabled }: { item: Item; disabled: boolean 
   const value = (item.props?.device as Device | undefined) ?? "phone";
   return (
     <Prop label="Device">
-      <Segmented testId="param-device" options={DEVICES.map((d) => [d, d === "phone" ? "Phone" : d === "android" ? "Android" : "Browser"] as const)} value={value} disabled={disabled} onChange={(d) => send((p) => planDevice(p, item.id, d))} />
+      <Segmented
+        testId="param-device"
+        options={DEVICES.map((d) => [d, d === "phone" ? "Phone" : d === "android" ? "Android" : "Browser"] as const)}
+        value={value}
+        disabled={disabled}
+        onChange={(d) => send((p) => planDevice(p, item.id, d))}
+      />
     </Prop>
   );
 }
@@ -50,4 +56,3 @@ export function ScreenFootage({ project, item, disabled }: { project: ProjectMod
     </Section>
   );
 }
-

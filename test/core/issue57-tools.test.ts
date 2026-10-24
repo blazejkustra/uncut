@@ -9,7 +9,11 @@ import { bladeFrame, planBladeSplit } from "../../apps/web/src/timeline/edit.ts"
 function keys() {
   let tool: Tool = "select";
   let clock = 0;
-  const k = makeToolKeys(() => tool, (t) => void (tool = t), () => clock);
+  const k = makeToolKeys(
+    () => tool,
+    (t) => void (tool = t),
+    () => clock,
+  );
   return { k, tool: () => tool, wait: (ms: number) => void (clock += ms) };
 }
 
@@ -56,7 +60,13 @@ function project(lockMusic = false): Project {
     media: [{ id: "m", kind: "video", name: "a.mp4", path: "/a.mp4", probe: { frames: 600, fps: 30, width: 320, height: 180, hasAudio: true } }],
     tracks: [
       { id: "main", kind: "video", role: "main", name: "Main", items: [clip("a", 60), clip("b", 60, { gap: 30 })] },
-      { id: "music", kind: "audio", name: "Music", items: [{ id: "s", type: "audio", media: "m", in: 0, start: 10, duration: 100 }], ...(lockMusic ? { locked: true } : {}) },
+      {
+        id: "music",
+        kind: "audio",
+        name: "Music",
+        items: [{ id: "s", type: "audio", media: "m", in: 0, start: 10, duration: 100 }],
+        ...(lockMusic ? { locked: true } : {}),
+      },
     ],
   };
 }
@@ -97,7 +107,19 @@ test("blade frame: snaps to the playhead, other items' edges and markers within 
 test("blade: a clip whose linked sound is locked (track or item) is refused, saying why", () => {
   const withMic = (trackLocked: boolean, itemLocked: boolean): Project => {
     const p = project();
-    return { ...p, tracks: [p.tracks[0]!, { id: "voice", kind: "audio", name: "Voice", items: [{ id: "mic", type: "audio", media: "m", in: 0, start: 90, duration: 60, linkedTo: "b", ...(itemLocked ? { locked: true } : {}) }], ...(trackLocked ? { locked: true } : {}) }] };
+    return {
+      ...p,
+      tracks: [
+        p.tracks[0]!,
+        {
+          id: "voice",
+          kind: "audio",
+          name: "Voice",
+          items: [{ id: "mic", type: "audio", media: "m", in: 0, start: 90, duration: 60, linkedTo: "b", ...(itemLocked ? { locked: true } : {}) }],
+          ...(trackLocked ? { locked: true } : {}),
+        },
+      ],
+    };
   };
   assert.match((planBladeSplit(withMic(true, false), "b", 110) as { problem: string }).problem, /linked sound is on the Voice track, which is locked/);
   assert.match((planBladeSplit(withMic(false, true), "b", 110) as { problem: string }).problem, /linked sound is locked/);

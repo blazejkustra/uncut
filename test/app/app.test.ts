@@ -162,10 +162,16 @@ test("the packaged server creates, edits and reopens a project (schemas and modu
   assert.equal(created.value.dir, dir);
   assert.equal(edited._tag, "Success", JSON.stringify(edited));
   assert.equal(refused._tag, "Failure");
-  assert.ok(refused.cause[0].error.details.some((d: any) => d.code === "unknown-module"), JSON.stringify(refused));
+  assert.ok(
+    refused.cause[0].error.details.some((d: any) => d.code === "unknown-module"),
+    JSON.stringify(refused),
+  );
   assert.deepEqual(reopened.value.project.tracks[0].items, [title]);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).tracks[0].items, [title]);
-  assert.deepEqual(recents.value.map((r: any) => r.dir), [dir]);
+  assert.deepEqual(
+    recents.value.map((r: any) => r.dir),
+    [dir],
+  );
   assert.deepEqual(app.errors, []);
   await done(app);
 });
@@ -187,7 +193,10 @@ test("one app per profile: a second launch with the same data dir exits, another
 test("Electron's profile goes to UNCUT_DATA_DIR, not the real ~/Library/Application Support/Uncut", T, async () => {
   const app = await launch();
   await done(app);
-  assert.ok(existsSync(join(scratch, "data", "electron", "Local Storage")) || existsSync(join(scratch, "data", "electron", "Preferences")), "the profile was written under the data dir");
+  assert.ok(
+    existsSync(join(scratch, "data", "electron", "Local Storage")) || existsSync(join(scratch, "data", "electron", "Preferences")),
+    "the profile was written under the data dir",
+  );
 });
 
 test("interrupting a test process kills the app it launched", T, async () => {

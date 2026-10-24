@@ -59,7 +59,12 @@ interface CacheFile {
 
 const VERSIONS: Readonly<Record<Analyzer, number>> = { loudness: LOUDNESS_VERSION, video: VIDEO_VERSION, transcript: TRANSCRIPT_VERSION, beats: BEATS_VERSION };
 const versionOf = (analyzer: Analyzer) => VERSIONS[analyzer];
-const SHAPES: Readonly<Record<Analyzer, (result: unknown) => boolean>> = { loudness: isResult, video: isVideoResult, transcript: isTranscriptResult, beats: isBeatsResult };
+const SHAPES: Readonly<Record<Analyzer, (result: unknown) => boolean>> = {
+  loudness: isResult,
+  video: isVideoResult,
+  transcript: isTranscriptResult,
+  beats: isBeatsResult,
+};
 const shapeOk = (analyzer: Analyzer, result: unknown) => SHAPES[analyzer](result);
 
 /** A cached result for this content and analyzer (and the analyzer's current version), if any. */
@@ -116,7 +121,11 @@ export interface AnalysisTarget {
 }
 
 /** A media entry of a project as an analysis target (relative paths resolve against the project). */
-export const targetOf = (dir: string, media: { readonly id: string; readonly kind: string; readonly path: string; readonly probe?: { readonly frames?: number; readonly hasAudio?: boolean } }, fps: number): AnalysisTarget => ({
+export const targetOf = (
+  dir: string,
+  media: { readonly id: string; readonly kind: string; readonly path: string; readonly probe?: { readonly frames?: number; readonly hasAudio?: boolean } },
+  fps: number,
+): AnalysisTarget => ({
   dir,
   mediaId: media.id,
   path: isAbsolute(media.path) ? media.path : resolve(dir, media.path),

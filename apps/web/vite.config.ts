@@ -15,7 +15,8 @@ const csp: Plugin = {
         // local server with their own CSP (D78).
         // D219: no plugins (object-src), no <base> rewriting relative URLs, no form posting anywhere;
         // first in <head>, before the script tag.
-        content: "default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: blob: http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src data:; frame-src http://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'none'",
+        content:
+          "default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: blob: http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src data:; frame-src http://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'none'",
       },
       injectTo: "head-prepend",
     },

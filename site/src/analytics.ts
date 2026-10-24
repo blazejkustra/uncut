@@ -8,7 +8,10 @@ import { CONSENT_KEY, type ConsentChoice, GA_MEASUREMENT_ID, decide, parseConsen
 
 type Gtag = (...args: Array<unknown>) => void;
 declare global {
-  interface Window { dataLayer?: Array<unknown>; gtag?: Gtag }
+  interface Window {
+    dataLayer?: Array<unknown>;
+    gtag?: Gtag;
+  }
 }
 
 const id = GA_MEASUREMENT_ID;
@@ -45,7 +48,10 @@ function loadTag(): void {
 
 /** Drops Google Analytics' own cookies (_ga, _ga_<id>) after a Reject, on every domain they may sit on. */
 function clearGaCookies(): void {
-  const names = document.cookie.split(";").map((c) => c.split("=")[0]!.trim()).filter((n) => n === "_ga" || n.startsWith("_ga_"));
+  const names = document.cookie
+    .split(";")
+    .map((c) => c.split("=")[0]!.trim())
+    .filter((n) => n === "_ga" || n.startsWith("_ga_"));
   const host = location.hostname;
   const domains = ["", host, `.${host}`, `.${host.split(".").slice(-2).join(".")}`];
   for (const n of names) for (const d of domains) document.cookie = `${n}=; Max-Age=0; Path=/${d ? `; Domain=${d}` : ""}`;
@@ -92,7 +98,12 @@ function openBanner(focus: boolean): void {
   section.append(p, row);
   banner = section;
   // The styles are only needed with the banner, so they load with it (CSP style-src 'self').
-  const show = () => { if (banner === section) { document.body.append(section); if (focus) accept.focus(); } };
+  const show = () => {
+    if (banner === section) {
+      document.body.append(section);
+      if (focus) accept.focus();
+    }
+  };
   if (document.querySelector('link[href="/analytics.css"]')) return show();
   const css = el("link", "");
   css.rel = "stylesheet";

@@ -86,7 +86,13 @@ export function rootProblem(dir: string, home = homedir()): string | undefined {
  * Folders a message points at (D194, --add-dir): absolute or ~/ paths in its text that exist, a
  * file's own folder, the project and the root folder left out. At most 8.
  */
-export function mentionedDirs(text: string, project: string, exists: (p: string) => "dir" | "file" | undefined, home = homedir(), real: (p: string) => string = realpathSync.native): Array<string> {
+export function mentionedDirs(
+  text: string,
+  project: string,
+  exists: (p: string) => "dir" | "file" | undefined,
+  home = homedir(),
+  real: (p: string) => string = realpathSync.native,
+): Array<string> {
   return namedFolders(text, project, exists, home, real).flatMap((f) => (f.problem ? [] : [f.dir]));
 }
 
@@ -103,10 +109,16 @@ export interface NamedFolder {
  * folder that can't be a root (rootProblem) comes with why; a file's folder that can't be is left
  * out (the file itself is what was meant). At most 8 usable ones.
  */
-export function namedFolders(text: string, project: string, exists: (p: string) => "dir" | "file" | undefined, home = homedir(), real: (p: string) => string = realpathSync.native): Array<NamedFolder> {
+export function namedFolders(
+  text: string,
+  project: string,
+  exists: (p: string) => "dir" | "file" | undefined,
+  home = homedir(),
+  real: (p: string) => string = realpathSync.native,
+): Array<NamedFolder> {
   const out = new Map<string, NamedFolder>();
   let usable = 0;
-  for (const m of text.matchAll(/(?:^|[\s"'`(<\[])((?:~|\$HOME|\$\{HOME\}|\/)(?:\\ |[^\s"'`)<>\]])*)/g)) {
+  for (const m of text.matchAll(/(?:^|[\s"'`(<[])((?:~|\$HOME|\$\{HOME\}|\/)(?:\\ |[^\s"'`)<>\]])*)/g)) {
     let p = m[1]!.replace(/\\ /g, " ").replace(/[.,;:!?]+$/, "");
     if (!/^(?:\/|~\/|\$HOME\/|\$\{HOME\}\/)./.test(p)) continue;
     p = absolute(p, project, home);

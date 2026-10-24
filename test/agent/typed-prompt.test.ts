@@ -47,7 +47,10 @@ test("typed prompt: the request asks to show itself typed", () => {
 
 test("typed prompt: the same words, or the start cut with an ellipsis", () => {
   assert.equal(typedMatches(A1, A1), true);
-  assert.equal(typedMatches("make a 28s launch film for Uncut, this app: one take on the beat, show me typing this prompt and the agent editing the video", A1), true);
+  assert.equal(
+    typedMatches("make a 28s launch film for Uncut, this app: one take on the beat, show me typing this prompt and the agent editing the video", A1),
+    true,
+  );
   assert.equal(typedMatches("Make a 28s launch film for Uncut, this app…", A1), true);
   assert.equal(typedMatches("Make a 28s launch film for Uncut, this app", A1), false, "cut without an ellipsis");
   assert.equal(typedMatches("Make a 28s…", A1), false, "too little kept");
@@ -61,9 +64,16 @@ test("typed prompt: the same words, or the start cut with an ellipsis", () => {
 });
 
 test("typed prompt: the composer's text read from the graphic's source", () => {
-  assert.deepEqual(composerTexts([FILM]), { texts: ["Cut a travel film from the drone shots, on the beat"], composer: true, named: ["Cut a travel film from the drone shots, on the beat"] });
+  assert.deepEqual(composerTexts([FILM]), {
+    texts: ["Cut a travel film from the drone shots, on the beat"],
+    composer: true,
+    named: ["Cut a travel film from the drone shots, on the beat"],
+  });
   assert.deepEqual(composerTexts([`uncutUI.editor({ composer: { text: 'It\\'s a reel', caret: true } })`]), { texts: ["It's a reel"], composer: true });
-  assert.deepEqual(composerTexts([`const typedPrompt = \`Cut my drone clips on the beat\`; el.textContent = typedPrompt.slice(0, n);`]), { texts: ["Cut my drone clips on the beat"], composer: false });
+  assert.deepEqual(composerTexts([`const typedPrompt = \`Cut my drone clips on the beat\`; el.textContent = typedPrompt.slice(0, n);`]), {
+    texts: ["Cut my drone clips on the beat"],
+    composer: false,
+  });
   assert.deepEqual(composerTexts([`const PROMPT_Y = 880; const title = "Edit videos by talking";`]), { texts: [], composer: false });
 });
 
@@ -80,7 +90,12 @@ test("typed prompt: the user's words with other line breaks, escapes or joins st
   assert.deepEqual(unread.findings, []);
   assert.match(unread.facts[0]!, /no composer text .*the request's words are in it/);
   // A hand-typed opening (a prompt-named const) beside a composer piece's follow-up still counts.
-  const both = typedPromptCheck([A1], [`<script>const typedPrompt = ${JSON.stringify(A1)}; type(typedPrompt);\nconst keys = [{ at: 20, piece: "composer", props: { text: "Make it warmer please" } }];</script>`]);
+  const both = typedPromptCheck(
+    [A1],
+    [
+      `<script>const typedPrompt = ${JSON.stringify(A1)}; type(typedPrompt);\nconst keys = [{ at: 20, piece: "composer", props: { text: "Make it warmer please" } }];</script>`,
+    ],
+  );
   assert.deepEqual(both.findings, []);
 });
 
@@ -92,14 +107,41 @@ test("typed prompt: a mismatch is an invented blocker with the user's words as t
   assert.equal(f.rule, "typed-prompt");
   assert.match(f.message, /types "Cut a travel film from the drone shots, on the beat", not the user's words/);
   assert.ok(f.message.includes(`type the user's own words in the composer: "${A1}"`));
-  const review = criticReview(parseCritic('{"scores":{"hook":8,"readability":8,"motion":8,"variety":8,"sound":8,"brand":8},"blockers":[],"defects":[],"fixes":[],"summary":"ok"}') as never, { round: 1, claims: [], checks: bad.findings, determinism: { checked: [], differed: [] }, looked: { sheet: true, phone: true }, revision: 1, turnId: "t", fps: 60 });
+  const review = criticReview(
+    parseCritic(
+      '{"scores":{"hook":8,"readability":8,"motion":8,"variety":8,"sound":8,"brand":8},"blockers":[],"defects":[],"fixes":[],"summary":"ok"}',
+    ) as never,
+    {
+      round: 1,
+      claims: [],
+      checks: bad.findings,
+      determinism: { checked: [], differed: [] },
+      looked: { sheet: true, phone: true },
+      revision: 1,
+      turnId: "t",
+      fps: 60,
+    },
+  );
   assert.equal(review.passed, false);
   assert.equal(review.blockers?.[0]?.kind, "invented");
-  const text = criticText({ round: 1, canvas: { width: 1080, height: 1350, fps: 60 }, frames: 1680, kit: [], claims: [], checks: bad.findings, determinism: { checked: [], differed: [] }, images: [], request: A1 });
+  const text = criticText({
+    round: 1,
+    canvas: { width: 1080, height: 1350, fps: 60 },
+    frames: 1680,
+    kit: [],
+    claims: [],
+    checks: bad.findings,
+    determinism: { checked: [], differed: [] },
+    images: [],
+    request: A1,
+  });
   assert.match(text, /<layout-checks>\nfails: The request asks to show its own prompt being typed/);
   assert.match(CRITIC_SYSTEM, /asks to show its own prompt being typed/);
 
-  const good = typedPromptCheck([A1], [FILM.replace("Cut a travel film from the drone shots, on the beat", "Make a 28s launch film for Uncut, this app: one take on the beat…")]);
+  const good = typedPromptCheck(
+    [A1],
+    [FILM.replace("Cut a travel film from the drone shots, on the beat", "Make a 28s launch film for Uncut, this app: one take on the beat…")],
+  );
   assert.deepEqual(good.findings, []);
   assert.match(good.facts[0]!, /measured in the graphics' source: the composer text is the user's message/);
 

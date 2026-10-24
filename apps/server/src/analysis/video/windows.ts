@@ -74,7 +74,12 @@ export const SMOOTH_SIGMA_S = 0.15;
  * pan speed, blur, brightness, clipping and frozen share. The path is built from the frame-to-frame
  * motion within each run of matched frames; a cut or an unmatched pair starts a new run.
  */
-export function windowsOf(samples: ReadonlyArray<FrameSample>, frozen: ReadonlyArray<{ start: number; end: number }>, patchWidth: number, end: number): Array<VideoWindow> {
+export function windowsOf(
+  samples: ReadonlyArray<FrameSample>,
+  frozen: ReadonlyArray<{ start: number; end: number }>,
+  patchWidth: number,
+  end: number,
+): Array<VideoWindow> {
   const n = samples.length;
   const fps = n > 1 && end > 0 ? n / end : 30;
   const sigma = SMOOTH_SIGMA_S * fps;

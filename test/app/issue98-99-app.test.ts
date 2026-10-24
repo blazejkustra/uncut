@@ -23,7 +23,8 @@ const apps = new Set<LaunchedApp>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shot = (page: Page, name: string) => page.screenshot({ path: `test-output/issue98-99-${name}.png` });
 const waitFor = (page: Page, selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
-const rect = (page: Page, selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number });
+const rect = (page: Page, selector: string) =>
+  page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number });
 const has = async (page: Page, selector: string) => (await page.$(selector)) !== null;
 const shiftCmd = async (page: Page, code: "KeyT" | "KeyF") => {
   await page.keyboard.down("Shift");
@@ -73,7 +74,22 @@ before(async () => {
       textLooks: 1,
       media: [],
       tracks: [
-        { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 0, duration: 90, text: "Launch day", transform: { x: 160, y: 440 }, style: { preset: "text.title", size: 140, weight: 700 } }] },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 90,
+              text: "Launch day",
+              transform: { x: 160, y: 440 },
+              style: { preset: "text.title", size: 140, weight: 700 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [] },
       ],
     }),
@@ -137,7 +153,10 @@ test("#98 #99: focus mode puts the agent on the right; the timeline animates", {
   assert.ok(Math.abs(agent.y - (top.y + top.height)) < 2 && Math.abs(agent.y + agent.height - win.h) < 2, "full height under the top bar");
   assert.ok(Math.abs(s.y + s.height - win.h) < 2, "the preview full height too");
   const input = await rect(page, "[data-testid=focus-agent] [data-testid=agent-input]");
-  assert.ok(input.x >= agent.x && input.x + input.width <= agent.x + agent.width + 1 && input.y > agent.y + agent.height / 2, "the composer at the bottom of the column");
+  assert.ok(
+    input.x >= agent.x && input.x + input.width <= agent.x + agent.width + 1 && input.y > agent.y + agent.height / 2,
+    "the composer at the bottom of the column",
+  );
 
   // The Leave focus button: square corners, icon, label and key on one centre line.
   const exit = await page.$eval("[data-testid=focus-exit]", (el) => {
@@ -158,7 +177,10 @@ test("#98 #99: focus mode puts the agent on the right; the timeline animates", {
   for (const k of ["icon", "text", "kbd"] as const) assert.ok(Math.abs(exit[k] - exit.box) <= 1, `${k} centred (${exit[k]} vs ${exit.box})`);
   await shot(page, "focus");
   const clip = await rect(page, "[data-testid=focus-exit]");
-  await page.screenshot({ path: "test-output/issue98-99-focus-exit.png", clip: { x: clip.x - 8, y: clip.y - 8, width: clip.width + 16, height: clip.height + 16 } });
+  await page.screenshot({
+    path: "test-output/issue98-99-focus-exit.png",
+    clip: { x: clip.x - 8, y: clip.y - 8, width: clip.width + 16, height: clip.height + 16 },
+  });
 
   await page.click("[data-testid=focus-exit]");
   await sleep(450);

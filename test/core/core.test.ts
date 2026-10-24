@@ -10,7 +10,12 @@ const project: Project = {
   canvas: { width: 1920, height: 1080, fps: 30 },
   media: [],
   tracks: [
-    { id: "text", kind: "text", name: "Text", items: [{ id: "hello", type: "text", start: 0, duration: 60, text: "Hi", transform: { x: 0, y: 0 }, style: { size: 100 } }] },
+    {
+      id: "text",
+      kind: "text",
+      name: "Text",
+      items: [{ id: "hello", type: "text", start: 0, duration: 60, text: "Hi", transform: { x: 0, y: 0 }, style: { size: 100 } }],
+    },
     { id: "main", kind: "video", role: "main", name: "Main", items: [] },
   ],
 };
@@ -60,7 +65,16 @@ const timeline: Project = {
       name: "Text",
       items: [
         { id: "plain", type: "text", start: 10, duration: 30, text: "Plain", transform: { x: 0, y: 0 }, style: { size: 100 } },
-        { id: "faded", type: "text", start: 90, duration: 20, text: "Fade", transform: { x: 0, y: 0 }, style: { size: 100 }, animation: { in: { module: "move.fade", duration: 10 } } },
+        {
+          id: "faded",
+          type: "text",
+          start: 90,
+          duration: 20,
+          text: "Fade",
+          transform: { x: 0, y: 0 },
+          style: { size: 100 },
+          animation: { in: { module: "move.fade", duration: 10 } },
+        },
       ],
     },
     { id: "hidden", kind: "video", name: "Hidden", hidden: true, items: [{ id: "ghost", type: "clip", media: "m", in: 0, start: 0, duration: 200 }] },
@@ -93,10 +107,34 @@ test("layout: main items back to back (a transition doesn't shift them), free it
 
 test("visualsAt: a crossfade is half before the cut and half after, the incoming clip fading in on top", () => {
   assert.deepEqual(at(49), [["a", 1, (100 + 49) / 30]], "before the window: only the outgoing clip");
-  assert.deepEqual(at(50), [["a", 1, (100 + 50) / 30], ["b", 0, (50 - 10) / 30]], "window opens: b starts 10 frames before its in-point, invisible");
-  assert.deepEqual(at(55), [["a", 1, (100 + 55) / 30], ["b", 0.25, (50 - 5) / 30]]);
-  assert.deepEqual(at(60), [["a", 1, (100 + 60) / 30], ["b", 0.5, 50 / 30]], "on the cut: half way, b at its in-point, a past its out-point");
-  assert.deepEqual(at(69), [["a", 1, (100 + 69) / 30], ["b", 0.95, (50 + 9) / 30]], "last frame of the window");
+  assert.deepEqual(
+    at(50),
+    [
+      ["a", 1, (100 + 50) / 30],
+      ["b", 0, (50 - 10) / 30],
+    ],
+    "window opens: b starts 10 frames before its in-point, invisible",
+  );
+  assert.deepEqual(at(55), [
+    ["a", 1, (100 + 55) / 30],
+    ["b", 0.25, (50 - 5) / 30],
+  ]);
+  assert.deepEqual(
+    at(60),
+    [
+      ["a", 1, (100 + 60) / 30],
+      ["b", 0.5, 50 / 30],
+    ],
+    "on the cut: half way, b at its in-point, a past its out-point",
+  );
+  assert.deepEqual(
+    at(69),
+    [
+      ["a", 1, (100 + 69) / 30],
+      ["b", 0.95, (50 + 9) / 30],
+    ],
+    "last frame of the window",
+  );
   assert.deepEqual(at(70), [["b", 1, (50 + 10) / 30]], "after the window: only the incoming clip");
   // A plain cut has no overlap.
   assert.deepEqual(ids(119), ["b"]);
@@ -106,7 +144,14 @@ test("visualsAt: a crossfade is half before the cut and half after, the incoming
 
 test("visualsAt: free-track items show from start to start + duration - 1, above the main track", () => {
   assert.deepEqual(ids(9), ["a"]);
-  assert.deepEqual(at(10), [["a", 1, (100 + 10) / 30], ["plain", 1, 0]], "first frame; text has no source time");
+  assert.deepEqual(
+    at(10),
+    [
+      ["a", 1, (100 + 10) / 30],
+      ["plain", 1, 0],
+    ],
+    "first frame; text has no source time",
+  );
   assert.deepEqual(ids(39), ["a", "plain"]);
   assert.deepEqual(ids(40), ["a"], "start + duration is already past it");
   // A move.fade in-animation ramps the text's opacity over its duration.
@@ -114,13 +159,16 @@ test("visualsAt: free-track items show from start to start + duration - 1, above
   assert.deepEqual([opacity(89), opacity(90), opacity(95), opacity(100), opacity(109), opacity(110)], [undefined, 0, 0.5, 1, 1, undefined]);
 });
 
-test("esc and textHtml escape <>&\" in text and keep [[accent]] markup", () => {
+test('esc and textHtml escape <>&" in text and keep [[accent]] markup', () => {
   assert.equal(esc(`<a href="x">&amp;</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;amp;&lt;/a&gt;");
   assert.equal(esc(42), "42");
   const item: Item = { id: "t1", type: "text", start: 0, duration: 30, text: `Hi <b>"you" & [[me]]</b>`, transform: { x: 960, y: 270 }, style: { size: 108 } };
   const plain = textHtml(item, timeline);
   assert.match(plain, /^<div class="pv-text" data-item="t1" style="left:50%;top:25%;width:max-content;max-width:50%;font-size:10cqh;font-weight:600;/);
-  assert.match(plain, /;opacity:1;text-shadow:0 2px 18px rgb\(0 0 0 \/ 45%\)">Hi &lt;b&gt;&quot;you&quot; &amp; <span class="accent">me<\/span>&lt;\/b&gt;<\/div>$/);
+  assert.match(
+    plain,
+    /;opacity:1;text-shadow:0 2px 18px rgb\(0 0 0 \/ 45%\)">Hi &lt;b&gt;&quot;you&quot; &amp; <span class="accent">me<\/span>&lt;\/b&gt;<\/div>$/,
+  );
   const styled = textHtml({ ...item, style: { size: 108, weight: 800 } }, timeline, { opacity: 0.5, selected: true });
   assert.match(styled, /^<div class="pv-text sel-box" /);
   assert.match(styled, /font-weight:800;/);
@@ -139,7 +187,11 @@ test("locked tracks and items refuse item edits from anyone; update_track still 
   };
   const s = createSession(locked);
   const refused = (op: unknown, actor: "user" | "agent" = "user") =>
-    assert.throws(() => applyEdit(s, { actor, ops: [op as never] }), (e: unknown) => e instanceof EditError && /locked/.test((e as Error).message), JSON.stringify(op));
+    assert.throws(
+      () => applyEdit(s, { actor, ops: [op as never] }),
+      (e: unknown) => e instanceof EditError && /locked/.test((e as Error).message),
+      JSON.stringify(op),
+    );
   for (const actor of ["user", "agent"] as const) {
     refused({ op: "trim_item", item: "hello", edge: "end", frames: 10 }, actor);
     refused({ op: "move_item", item: "hello", start: 100 }, actor);
@@ -152,7 +204,13 @@ test("locked tracks and items refuse item edits from anyone; update_track still 
     refused({ op: "delete_item", item: "c" }, actor);
   }
   // Unlocking (and hiding, muting) a locked track works, and then it edits normally.
-  const unlocked = applyEdit(s, { actor: "user", ops: [{ op: "update_track", track: "text", set: { hidden: true } }, { op: "update_track", track: "text", set: { locked: null } }] });
+  const unlocked = applyEdit(s, {
+    actor: "user",
+    ops: [
+      { op: "update_track", track: "text", set: { hidden: true } },
+      { op: "update_track", track: "text", set: { locked: null } },
+    ],
+  });
   const moved = applyEdit(unlocked, { actor: "agent", ops: [{ op: "move_item", item: "hello", start: 100 }] });
   assert.equal(moved.project.tracks[0]!.items[0]!.start, 100);
   assert.equal(applyEdit(s, { actor: "user", ops: [{ op: "update_item", item: "c", set: { locked: null } }] }).project.tracks[1]!.items[0]!.locked, undefined);
@@ -173,7 +231,12 @@ test("lock bypasses are closed: move into a locked track, update_track items/id,
     ],
   };
   const s = createSession(p);
-  const refused = (op: unknown, pattern: RegExp) => assert.throws(() => applyEdit(s, { actor: "agent", ops: [op as never] }), (e: unknown) => e instanceof EditError && pattern.test((e as Error).message), JSON.stringify(op));
+  const refused = (op: unknown, pattern: RegExp) =>
+    assert.throws(
+      () => applyEdit(s, { actor: "agent", ops: [op as never] }),
+      (e: unknown) => e instanceof EditError && pattern.test((e as Error).message),
+      JSON.stringify(op),
+    );
   refused({ op: "move_item", item: "hello", track: "vault", start: 100 }, /locked/);
   refused({ op: "update_track", track: "vault", set: { items: [] } }, /items/);
   refused({ op: "update_track", track: "keep", set: { items: [] } }, /items/);
@@ -190,14 +253,46 @@ test("trim and split: images keep in 0 and extend left; speed scales the source;
       { id: "v", kind: "video", name: "v.mp4", path: "/v.mp4", probe: { frames: 300 } },
     ],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 60, animation: { in: { module: "move.fade", duration: 40 }, out: { module: "move.fade", duration: 40 } }, fadeIn: 5 }] as Array<Item> },
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "i", type: "clip", media: "img", in: 0, duration: 30 }, { id: "f", type: "clip", media: "v", in: 10, duration: 40, speed: 2 }] as Array<Item> },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [
+          {
+            id: "t",
+            type: "text",
+            start: 0,
+            duration: 60,
+            animation: { in: { module: "move.fade", duration: 40 }, out: { module: "move.fade", duration: 40 } },
+            fadeIn: 5,
+          },
+        ] as Array<Item>,
+      },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "i", type: "clip", media: "img", in: 0, duration: 30 },
+          { id: "f", type: "clip", media: "v", in: 10, duration: 40, speed: 2 },
+        ] as Array<Item>,
+      },
     ],
   };
   let s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "trim_item", item: "i", edge: "start", frames: -20 }] });
   assert.deepEqual([s.project.tracks[1]!.items[0]!.in, s.project.tracks[1]!.items[0]!.duration], [0, 50]);
-  s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "trim_item", item: "f", edge: "start", frames: 5 }, { op: "split_item", item: "f", at: 10, newId: "f2" }] });
-  assert.deepEqual(s.project.tracks[1]!.items.map((i) => i.in), [0, 20, 40]);
+  s = applyEdit(createSession(p), {
+    actor: "user",
+    ops: [
+      { op: "trim_item", item: "f", edge: "start", frames: 5 },
+      { op: "split_item", item: "f", at: 10, newId: "f2" },
+    ],
+  });
+  assert.deepEqual(
+    s.project.tracks[1]!.items.map((i) => i.in),
+    [0, 20, 40],
+  );
   s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "split_item", item: "t", at: 20, newId: "t2" }] });
   const [a, b] = s.project.tracks[0]!.items;
   assert.deepEqual(a!.animation, { in: { module: "move.fade", duration: 20 } }, "clamped to the half");

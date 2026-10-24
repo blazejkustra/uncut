@@ -4,7 +4,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import worker, { dailySalt, handleRequest, memoryLimiter, MAX_BODY_BYTES, MAX_RECORDS, SALT_TTL_S, visitorOf, type Deps, type Env, type RateLimiter, type SaltStore } from "../../infra/telemetry-proxy/src/index.ts";
+import worker, {
+  dailySalt,
+  handleRequest,
+  memoryLimiter,
+  MAX_BODY_BYTES,
+  MAX_RECORDS,
+  SALT_TTL_S,
+  visitorOf,
+  type Deps,
+  type Env,
+  type RateLimiter,
+  type SaltStore,
+} from "../../infra/telemetry-proxy/src/index.ts";
 
 const APP_TOKEN = "a".repeat(64);
 const NEXT_TOKEN = "b".repeat(64);
@@ -44,7 +56,7 @@ function req(opts: { method?: string; path?: string; token?: string | null; body
   const token = opts.token === undefined ? APP_TOKEN : opts.token;
   if (token !== null && !opts.headers?.authorization) headers.authorization = `Bearer ${token}`;
   const method = opts.method ?? "POST";
-  const body = method === "GET" || method === "HEAD" ? undefined : opts.body === undefined ? payload() : opts.body ?? undefined;
+  const body = method === "GET" || method === "HEAD" ? undefined : opts.body === undefined ? payload() : (opts.body ?? undefined);
   return new Request(`https://uncut-telemetry.example.workers.dev${opts.path ?? "/v1/logs"}`, { method, headers, body });
 }
 
@@ -87,7 +99,14 @@ test("protobuf bodies pass through unvalidated with their content type", async (
 });
 
 test("missing, malformed or wrong tokens get 401 and nothing goes upstream", async () => {
-  for (const r of [req({ token: null }), req({ token: "wrong".repeat(13) }), req({ token: APP_TOKEN + "x" }), req({ token: APP_TOKEN.slice(1) }), req({ headers: { authorization: `Basic ${APP_TOKEN}` } }), req({ headers: { authorization: `Bearer  ${APP_TOKEN}` } })]) {
+  for (const r of [
+    req({ token: null }),
+    req({ token: "wrong".repeat(13) }),
+    req({ token: APP_TOKEN + "x" }),
+    req({ token: APP_TOKEN.slice(1) }),
+    req({ headers: { authorization: `Basic ${APP_TOKEN}` } }),
+    req({ headers: { authorization: `Bearer  ${APP_TOKEN}` } }),
+  ]) {
     const { res, up } = await run(r);
     assert.equal(res.status, 401);
     assert.equal(up.calls.length, 0);
@@ -133,7 +152,12 @@ test("bodies over 256 KB get 413, with or without Content-Length", async () => {
       c.enqueue(chunk);
     },
   });
-  const r = new Request("https://uncut-telemetry.example.workers.dev/v1/logs", { method: "POST", body: stream, headers: { authorization: `Bearer ${APP_TOKEN}`, "content-type": "application/x-protobuf" }, duplex: "half" } as RequestInit);
+  const r = new Request("https://uncut-telemetry.example.workers.dev/v1/logs", {
+    method: "POST",
+    body: stream,
+    headers: { authorization: `Bearer ${APP_TOKEN}`, "content-type": "application/x-protobuf" },
+    duplex: "half",
+  } as RequestInit);
   const { res, up } = await run(r);
   assert.equal(res.status, 413);
   assert.equal(up.calls.length, 0);
@@ -151,7 +175,12 @@ test("JSON validation: service.name must be uncut, records 1..100, OTLP shape", 
 });
 
 test("upstream errors become a bare 502 (or 429) and are never echoed", async () => {
-  for (const [status, expected] of [[400, 502], [401, 502], [500, 502], [429, 429]] as const) {
+  for (const [status, expected] of [
+    [400, 502],
+    [401, 502],
+    [500, 502],
+    [429, 429],
+  ] as const) {
     const { res, text } = await run(req(), env(), upstream(status));
     assert.equal(res.status, expected);
     assert.equal(text, "");
@@ -230,8 +259,14 @@ function kv() {
 const day1 = new Date("2026-10-16T08:00:00Z");
 const day1Late = new Date("2026-10-16T23:59:59Z");
 const day2 = new Date("2026-10-17T00:00:01Z");
-const forwarded = (up: ReturnType<typeof upstream>, i = 0) => JSON.parse(new TextDecoder().decode(up.calls[i]!.init.body as Uint8Array)) as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ attributes: Array<{ key: string; value: { stringValue: string } }> }> }> }> };
-const visitors = (up: ReturnType<typeof upstream>, i = 0) => forwarded(up, i).resourceLogs.flatMap((rl) => rl.scopeLogs.flatMap((sl) => sl.logRecords.map((lr) => lr.attributes.find((a) => a.key === "visitor_day")?.value.stringValue)));
+const forwarded = (up: ReturnType<typeof upstream>, i = 0) =>
+  JSON.parse(new TextDecoder().decode(up.calls[i]!.init.body as Uint8Array)) as {
+    resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ attributes: Array<{ key: string; value: { stringValue: string } }> }> }> }>;
+  };
+const visitors = (up: ReturnType<typeof upstream>, i = 0) =>
+  forwarded(up, i).resourceLogs.flatMap((rl) =>
+    rl.scopeLogs.flatMap((sl) => sl.logRecords.map((lr) => lr.attributes.find((a) => a.key === "visitor_day")?.value.stringValue)),
+  );
 async function send(e: Env, now: Date, ip = "203.0.113.7", records = 2) {
   const up = upstream();
   const res = await handleRequest(req({ body: payload(records), headers: { "cf-connecting-ip": ip } }), e, { upstreamFetch: up.fetch, now: () => now });
@@ -246,12 +281,26 @@ test("the daily salt is random, one per UTC day, stored with a ~1-day TTL", asyn
   assert.equal(await dailySalt(k.store, day1Late), a, "the same all day");
   const b = await dailySalt(k.store, day2);
   assert.notEqual(b, a, "a new one the next day");
-  assert.deepEqual(k.puts, [{ key: "salt:2026-10-16", ttl: SALT_TTL_S }, { key: "salt:2026-10-17", ttl: SALT_TTL_S }]);
+  assert.deepEqual(k.puts, [
+    { key: "salt:2026-10-16", ttl: SALT_TTL_S },
+    { key: "salt:2026-10-17", ttl: SALT_TTL_S },
+  ]);
   assert.ok(SALT_TTL_S <= 26 * 3600 && SALT_TTL_S >= 24 * 3600);
   // Not derived from the date: two stores make different salts for the same day.
   assert.notEqual(await dailySalt(kv().store, day1), a);
   assert.equal(await dailySalt(undefined, day1), undefined);
-  assert.equal(await dailySalt({ get: async () => { throw new Error("kv down"); }, put: async () => {} }, day1), undefined);
+  assert.equal(
+    await dailySalt(
+      {
+        get: async () => {
+          throw new Error("kv down");
+        },
+        put: async () => {},
+      },
+      day1,
+    ),
+    undefined,
+  );
 });
 
 test("visitor_day: same IP same day the same value, another day or IP another; the IP never goes upstream", async () => {
@@ -274,17 +323,28 @@ test("without KV (or with KV failing) no visitor_day is added and the body passe
   const up = await send(env(), day1);
   assert.deepEqual(visitors(up), [undefined, undefined]);
   assert.equal(new TextDecoder().decode(up.calls[0]!.init.body as Uint8Array), payload(2));
-  const broken: SaltStore = { get: async () => null, put: async () => { throw new Error("kv down"); } };
+  const broken: SaltStore = {
+    get: async () => null,
+    put: async () => {
+      throw new Error("kv down");
+    },
+  };
   assert.deepEqual(visitors(await send(env({ VISITOR_SALTS: broken }), day1)), [undefined, undefined]);
 });
 
 test("a visitor_day sent by the client is replaced, never forwarded as is", async () => {
   const k = kv();
-  const body = JSON.stringify({ resourceLogs: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: "uncut" } }] }, scopeLogs: [{ logRecords: [{ body: { stringValue: "app:start" }, attributes: [{ key: "visitor_day", value: { stringValue: "forged" } }] }] }] }] });
+  const body = JSON.stringify({
+    resourceLogs: [
+      {
+        resource: { attributes: [{ key: "service.name", value: { stringValue: "uncut" } }] },
+        scopeLogs: [{ logRecords: [{ body: { stringValue: "app:start" }, attributes: [{ key: "visitor_day", value: { stringValue: "forged" } }] }] }],
+      },
+    ],
+  });
   const up = upstream();
   await handleRequest(req({ body }), env({ VISITOR_SALTS: k.store }), { upstreamFetch: up.fetch, now: () => day1 });
   const attrs = forwarded(up).resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!.attributes.filter((a) => a.key === "visitor_day");
   assert.equal(attrs.length, 1);
   assert.notEqual(attrs[0]!.value.stringValue, "forged");
 });
-

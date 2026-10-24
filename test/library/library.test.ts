@@ -33,7 +33,20 @@ const KEY = "fs-test-key-0123456789abcdef";
 
 before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-library-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1.5", "-c:a", "libmp3lame", "-b:a", "64k", join(root, "tone.mp3")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=1.5",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "64k",
+    join(root, "tone.mp3"),
+  ]);
   mp3 = readFileSync(join(root, "tone.mp3"));
   stub = createServer((req, res) => {
     const s = { method: req.method!, url: req.url!, headers: req.headers };
@@ -76,7 +89,14 @@ const OV_PAGE = () => ({
   page_count: 12,
   results: [
     ovResult(),
-    ovResult({ id: "b0000000-0000-0000-0000-000000000001", title: "Boom", license: "by", license_version: "4.0", license_url: "https://creativecommons.org/licenses/by/4.0/", attribution: "" }),
+    ovResult({
+      id: "b0000000-0000-0000-0000-000000000001",
+      title: "Boom",
+      license: "by",
+      license_version: "4.0",
+      license_url: "https://creativecommons.org/licenses/by/4.0/",
+      attribution: "",
+    }),
     ovResult({ id: "c0000000-0000-0000-0000-000000000002", license: "by-nc" }),
     ovResult({ id: "d0000000-0000-0000-0000-000000000003", license: "sampling+" }),
     ovResult({ id: "e0000000-0000-0000-0000-000000000004", url: "http://cdn.example.com/x.mp3" }),
@@ -111,8 +131,10 @@ function serveTone(req: Seen, res: ServerResponse) {
   res.end(mp3);
 }
 
-const probe = async (path: string) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { encoding: "utf8" }).trim());
-const library = (over: Partial<Parameters<typeof soundLibrary>[0]> = {}) => soundLibrary({ sfxDir: resolve("assets/sfx"), freesoundKey: async () => undefined, probeSeconds: probe, ...over });
+const probe = async (path: string) =>
+  Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { encoding: "utf8" }).trim());
+const library = (over: Partial<Parameters<typeof soundLibrary>[0]> = {}) =>
+  soundLibrary({ sfxDir: resolve("assets/sfx"), freesoundKey: async () => undefined, probeSeconds: probe, ...over });
 const project = (name: string) => {
   const dir = join(root, name);
   mkdirSync(dir, { recursive: true });
@@ -148,14 +170,45 @@ test("parsing: other licences, non-https files and junk are dropped; credits fie
   assert.equal(openverseHit(ovResult({ id: "../../x" })), undefined);
   const { hit, fileUrl } = openverseHit(ovResult())!;
   assert.equal(fileUrl, `${base}/files/whoosh.mp3`);
-  assert.deepEqual({ ...hit, attribution: undefined }, { source: "openverse", id: "eab8a6e2-0ac8-4615-9e0d-ebde30523783", title: "Deep Whoosh #1", creator: "Kinoton", creatorUrl: "https://freesound.org/people/Kinoton", landingUrl: "https://freesound.org/people/Kinoton/sounds/351256", provider: "freesound", license: "cc0", licenseVersion: "1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/", attribution: undefined, seconds: 3.16, tags: ["whoosh", "swoosh"], filetype: "mp3" });
+  assert.deepEqual(
+    { ...hit, attribution: undefined },
+    {
+      source: "openverse",
+      id: "eab8a6e2-0ac8-4615-9e0d-ebde30523783",
+      title: "Deep Whoosh #1",
+      creator: "Kinoton",
+      creatorUrl: "https://freesound.org/people/Kinoton",
+      landingUrl: "https://freesound.org/people/Kinoton/sounds/351256",
+      provider: "freesound",
+      license: "cc0",
+      licenseVersion: "1.0",
+      licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+      attribution: undefined,
+      seconds: 3.16,
+      tags: ["whoosh", "swoosh"],
+      filetype: "mp3",
+    },
+  );
   // No attribution from the source: made in Openverse's words.
-  assert.equal(openverseHit(ovResult({ license: "by", license_version: "4.0", license_url: "https://creativecommons.org/licenses/by/4.0/", attribution: "" }))!.hit.attribution, '"Deep Whoosh #1" by Kinoton is licensed under CC BY 4.0. To view the terms, visit https://creativecommons.org/licenses/by/4.0/');
+  assert.equal(
+    openverseHit(ovResult({ license: "by", license_version: "4.0", license_url: "https://creativecommons.org/licenses/by/4.0/", attribution: "" }))!.hit
+      .attribution,
+    '"Deep Whoosh #1" by Kinoton is licensed under CC BY 4.0. To view the terms, visit https://creativecommons.org/licenses/by/4.0/',
+  );
   assert.deepEqual(freesoundLicense("http://creativecommons.org/publicdomain/zero/1.0/"), { license: "cc0", version: "1.0" });
   assert.deepEqual(freesoundLicense("https://creativecommons.org/licenses/by/3.0/"), { license: "by", version: "3.0" });
   assert.equal(freesoundLicense("https://creativecommons.org/licenses/by-nc/4.0/"), undefined);
   assert.equal(freesoundLicense("http://creativecommons.org/licenses/sampling+/1.0/"), undefined);
-  const fs = freesoundHit({ id: 534387, name: "Bruh Sound Effect #1", username: "Autellaem", license: "http://creativecommons.org/publicdomain/zero/1.0/", duration: 0.72, previews: { "preview-hq-mp3": "https://cdn.freesound.org/previews/534/534387_11868930-hq.mp3" }, tags: ["bruh"], url: "https://freesound.org/people/Autellaem/sounds/534387/" })!;
+  const fs = freesoundHit({
+    id: 534387,
+    name: "Bruh Sound Effect #1",
+    username: "Autellaem",
+    license: "http://creativecommons.org/publicdomain/zero/1.0/",
+    duration: 0.72,
+    previews: { "preview-hq-mp3": "https://cdn.freesound.org/previews/534/534387_11868930-hq.mp3" },
+    tags: ["bruh"],
+    url: "https://freesound.org/people/Autellaem/sounds/534387/",
+  })!;
   assert.equal(fs.hit.id, "534387");
   assert.equal(fs.fileUrl, "https://cdn.freesound.org/previews/534/534387_11868930-hq.mp3");
   assert.equal(fs.hit.license, "cc0");
@@ -174,7 +227,10 @@ test("search: results parsed, then the same search answered from the cache (no r
   assert.equal(seen.length, 1);
   assert.equal(r.source, "openverse");
   assert.equal(r.cached, false);
-  assert.deepEqual(r.hits.map((h) => h.id), ["eab8a6e2-0ac8-4615-9e0d-ebde30523783", "b0000000-0000-0000-0000-000000000001"]);
+  assert.deepEqual(
+    r.hits.map((h) => h.id),
+    ["eab8a6e2-0ac8-4615-9e0d-ebde30523783", "b0000000-0000-0000-0000-000000000001"],
+  );
   assert.deepEqual(r.left, { minute: 19, day: 180 });
   assert.equal(r.total, 240);
   assert.equal(r.pages, 12);
@@ -247,7 +303,11 @@ test("preview: a recent hit's file streamed through (Range passed on), nothing w
   assert.equal(part.status, 206);
   assert.equal(seen[0]!.headers.range, "bytes=10-19");
   assert.ok(Buffer.from(await part.arrayBuffer()).equals(mp3.subarray(10, 20)));
-  assert.equal(await lib.preview("openverse:00000000-0000-0000-0000-000000000000", undefined, new AbortController().signal), undefined, "not from a search: not fetched");
+  assert.equal(
+    await lib.preview("openverse:00000000-0000-0000-0000-000000000000", undefined, new AbortController().signal),
+    undefined,
+    "not from a search: not fetched",
+  );
   assert.deepEqual(readdirSync(root).sort(), before, "nothing saved");
 });
 
@@ -304,7 +364,31 @@ test("Freesound: needs the user's key, sends it only as the Authorization header
     const url = new URL(req.url, base);
     if (url.pathname === "/apiv2/search/text/") {
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ count: 1, results: [{ id: 534387, name: "Bruh Sound Effect #1", username: "Autellaem", license: "http://creativecommons.org/publicdomain/zero/1.0/", duration: 0.72, previews: { "preview-hq-mp3": `${base}/files/bruh.mp3` }, tags: ["bruh"], url: "https://freesound.org/people/Autellaem/sounds/534387/" }, { id: 2, name: "NC", username: "x", license: "https://creativecommons.org/licenses/by-nc/4.0/", previews: { "preview-hq-mp3": `${base}/files/nc.mp3` }, url: "https://freesound.org/people/x/sounds/2/" }] }));
+      return res.end(
+        JSON.stringify({
+          count: 1,
+          results: [
+            {
+              id: 534387,
+              name: "Bruh Sound Effect #1",
+              username: "Autellaem",
+              license: "http://creativecommons.org/publicdomain/zero/1.0/",
+              duration: 0.72,
+              previews: { "preview-hq-mp3": `${base}/files/bruh.mp3` },
+              tags: ["bruh"],
+              url: "https://freesound.org/people/Autellaem/sounds/534387/",
+            },
+            {
+              id: 2,
+              name: "NC",
+              username: "x",
+              license: "https://creativecommons.org/licenses/by-nc/4.0/",
+              previews: { "preview-hq-mp3": `${base}/files/nc.mp3` },
+              url: "https://freesound.org/people/x/sounds/2/",
+            },
+          ],
+        }),
+      );
     }
     if (url.pathname.startsWith("/files/")) return serveTone(req, res);
     res.writeHead(404).end();
@@ -312,7 +396,10 @@ test("Freesound: needs the user's key, sends it only as the Authorization header
   const lib = library({ freesoundKey: async () => KEY });
   assert.deepEqual((await lib.state()).sources, ["openverse", "freesound"]);
   const r = await lib.search({ kind: "sfx", query: "bruh", source: "freesound" });
-  assert.deepEqual(r.hits.map((h) => h.id), ["534387"]);
+  assert.deepEqual(
+    r.hits.map((h) => h.id),
+    ["534387"],
+  );
   assert.equal(seen[0]!.headers.authorization, `Token ${KEY}`);
   assert.ok(!seen[0]!.url.includes(KEY));
   seen = [];
@@ -323,7 +410,10 @@ test("Freesound: needs the user's key, sends it only as the Authorization header
     res.writeHead(401, { "content-type": "application/json" });
     res.end(JSON.stringify({ detail: `Invalid token ${KEY}` }));
   };
-  await assert.rejects(lib.search({ kind: "sfx", query: "boom", source: "freesound" }), (e: Error) => /didn't accept your key/.test(e.message) && !e.message.includes(KEY));
+  await assert.rejects(
+    lib.search({ kind: "sfx", query: "boom", source: "freesound" }),
+    (e: Error) => /didn't accept your key/.test(e.message) && !e.message.includes(KEY),
+  );
 });
 
 test("tests never reach the real APIs: without the stub base the request is refused", async () => {
@@ -338,7 +428,20 @@ test("tests never reach the real APIs: without the stub base the request is refu
 });
 
 test("review: replies can't point Uncut at this Mac or its network (https only, public addresses, every hop)", async () => {
-  for (const bad of ["http://example.com/a.mp3", "https://127.0.0.1/a.mp3", "https://10.0.0.8/a", "https://192.168.1.2/a", "https://172.20.0.1/a", "https://169.254.169.254/latest/meta-data", "https://[::1]/a", "https://[fc00::1]/a", "https://[fe80::1]/a", "https://[::ffff:127.0.0.1]/a", "https://100.64.0.1/a", "https://0.0.0.0/a"])
+  for (const bad of [
+    "http://example.com/a.mp3",
+    "https://127.0.0.1/a.mp3",
+    "https://10.0.0.8/a",
+    "https://192.168.1.2/a",
+    "https://172.20.0.1/a",
+    "https://169.254.169.254/latest/meta-data",
+    "https://[::1]/a",
+    "https://[fc00::1]/a",
+    "https://[fe80::1]/a",
+    "https://[::ffff:127.0.0.1]/a",
+    "https://100.64.0.1/a",
+    "https://0.0.0.0/a",
+  ])
     assert.ok(urlProblem(new URL(bad), false), bad);
   assert.equal(urlProblem(new URL("https://cdn.freesound.org/previews/1/1-hq.mp3"), false), undefined);
   assert.equal(urlProblem(new URL("https://93.184.216.34/a"), false), undefined);
@@ -348,11 +451,15 @@ test("review: replies can't point Uncut at this Mac or its network (https only, 
   for (const ip of ["8.8.8.8", "2606:4700::1111"]) assert.equal(isPublicAddress(ip), true, ip);
   for (const ip of ["127.0.0.1", "10.1.2.3", "169.254.169.254", "::1", "fd12::1", "::ffff:10.0.0.1", "not-an-ip"]) assert.equal(isPublicAddress(ip), false, ip);
   // D219: IPv4-compatible (::/96), mapped in hex, 6to4, site-local and local-use NAT64 addresses.
-  for (const ip of ["::", "::7f00:1", "::a00:1", "::ffff:7f00:1", "2002:7f00:1::1", "2002:a9fe:a9fe::1", "fec0::1", "64:ff9b:1::a00:1"]) assert.equal(isPublicAddress(ip), false, ip);
+  for (const ip of ["::", "::7f00:1", "::a00:1", "::ffff:7f00:1", "2002:7f00:1::1", "2002:a9fe:a9fe::1", "fec0::1", "64:ff9b:1::a00:1"])
+    assert.equal(isPublicAddress(ip), false, ip);
   for (const ip of ["2a00:1450:4001::200e", "::ffff:5db8:d822"]) assert.equal(isPublicAddress(ip), true, ip);
   // Outside tests a name that resolves to this Mac is refused at connect time (the checked lookup).
   const port = new URL(base).port;
-  await assert.rejects(getOnce(new URL(`https://localhost:${port}/files/x.mp3`), {}, new AbortController().signal, false), (e: NodeJS.ErrnoException) => e.code === "EPRIVATE");
+  await assert.rejects(
+    getOnce(new URL(`https://localhost:${port}/files/x.mp3`), {}, new AbortController().signal, false),
+    (e: NodeJS.ErrnoException) => e.code === "EPRIVATE",
+  );
   // A redirect hop to a private address is refused too.
   openverseStub();
   const inner = handler;
@@ -422,7 +529,13 @@ test("review: a dropped kept-alive socket is retried once for a GET", async () =
   assert.equal(await retryOnReset(async () => (++calls === 1 ? Promise.reject(reset) : "ok")), "ok");
   assert.equal(calls, 2);
   calls = 0;
-  await assert.rejects(retryOnReset(async () => (++calls, Promise.reject(reset))), /hang up/);
+  await assert.rejects(
+    retryOnReset(async () => (++calls, Promise.reject(reset))),
+    /hang up/,
+  );
   assert.equal(calls, 2, "once more, not for ever");
-  await assert.rejects(retryOnReset(async () => Promise.reject(new Error("other"))), /other/);
+  await assert.rejects(
+    retryOnReset(async () => Promise.reject(new Error("other"))),
+    /other/,
+  );
 });

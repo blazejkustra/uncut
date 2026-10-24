@@ -24,7 +24,20 @@ test("checkLink (Uncut's and the plugin's own): http(s) with a host only; no pas
   for (const check of [checkLink, pluginCheckLink]) {
     assert.deepEqual(check("  https://example.com/watch?v=abc  "), { url: "https://example.com/watch?v=abc" });
     assert.deepEqual(check("http://Example.com"), { url: "http://example.com/" });
-    for (const bad of ["", "   ", 42, undefined, "example.com/video", "file:///etc/passwd", "ftp://example.com/a", "javascript:alert(1)", "-o/tmp/x", "--exec=rm", "https://user:pw@example.com/v", `https://example.com/${"a".repeat(3000)}`]) {
+    for (const bad of [
+      "",
+      "   ",
+      42,
+      undefined,
+      "example.com/video",
+      "file:///etc/passwd",
+      "ftp://example.com/a",
+      "javascript:alert(1)",
+      "-o/tmp/x",
+      "--exec=rm",
+      "https://user:pw@example.com/v",
+      `https://example.com/${"a".repeat(3000)}`,
+    ]) {
       const r = check(bad);
       assert.ok("problem" in r, `refused: ${String(bad).slice(0, 40)}`);
     }
@@ -135,21 +148,36 @@ test("the fake yt-dlp with these arguments: title, progress and the file come ba
     // The plugin host gives the plugin (and so yt-dlp) an env without Uncut's variables; this calls
     // runYtDlp with the test's own env, so the test runner's (UNCUT_TEST_LAUNCH_MS on CI, #89) go first.
     for (const key of Object.keys(process.env)) if (key.startsWith("UNCUT_")) delete process.env[key];
-    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_AUDIO: join(root, "audio.m4a"), FAKE_YTDLP_TITLE: "Sunset: over/the sea", FAKE_YTDLP_LOG: join(root, "log") });
+    Object.assign(process.env, {
+      FAKE_YTDLP_VIDEO: join(root, "video.mp4"),
+      FAKE_YTDLP_AUDIO: join(root, "audio.m4a"),
+      FAKE_YTDLP_TITLE: "Sunset: over/the sea",
+      FAKE_YTDLP_LOG: join(root, "log"),
+    });
     for (const kind of ["video", "audio"] as const) {
       const lines: Array<ReturnType<typeof parseLine>> = [];
       const args = ytDlpArgs({ url: "https://example.com/v", kind, quality: "720", stem: `link-${kind}` });
       const r = await runYtDlp(join(root, "bin", "yt-dlp"), args, (l) => lines.push(parseLine(l)), new AbortController().signal, join(root, "out"));
       assert.equal(r.code, 0, r.stderr);
       const ext = kind === "audio" ? "m4a" : "mp4";
-      assert.deepEqual(lines.find((l) => l && "title" in l), { title: "Sunset: over/the sea" });
-      assert.deepEqual(lines.find((l) => l && "file" in l), { file: `link-${kind}.${ext}` }, "relative to the folder it ran in");
+      assert.deepEqual(
+        lines.find((l) => l && "title" in l),
+        { title: "Sunset: over/the sea" },
+      );
+      assert.deepEqual(
+        lines.find((l) => l && "file" in l),
+        { file: `link-${kind}.${ext}` },
+        "relative to the folder it ran in",
+      );
       const progress = lines.flatMap((l) => (l && "progress" in l ? [l.progress] : []));
       assert.equal(progress.length, 10);
       assert.equal(progress.at(-1), 1);
       assert.equal(readFileSync(join(root, "out", `link-${kind}.${ext}`), "utf8"), kind === "audio" ? "fake m4a bytes" : "fake mp4 bytes");
     }
-    const logged = readFileSync(join(root, "log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { argv: Array<string>; uncutEnv: number });
+    const logged = readFileSync(join(root, "log"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { argv: Array<string>; uncutEnv: number });
     assert.equal(logged.length, 2);
     for (const { argv, uncutEnv } of logged) {
       assert.ok(argv.includes("--ignore-config") && argv.includes("--no-playlist"));
@@ -167,14 +195,25 @@ test("cancel kills yt-dlp's whole process group (the child it started too)", asy
   const saved = { ...process.env };
   try {
     const pidFile = join(root, "child.pid");
-    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_SLEEP_MS: "20000", FAKE_YTDLP_PID_FILE: pidFile, FAKE_YTDLP_TEMP_ON_TERM: "1" });
+    Object.assign(process.env, {
+      FAKE_YTDLP_VIDEO: join(root, "video.mp4"),
+      FAKE_YTDLP_SLEEP_MS: "20000",
+      FAKE_YTDLP_PID_FILE: pidFile,
+      FAKE_YTDLP_TEMP_ON_TERM: "1",
+    });
     const controller = new AbortController();
     const args = ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "link-c" });
     const seen: Array<number> = [];
-    const done = runYtDlp(join(root, "bin", "yt-dlp"), args, (l) => {
-      const p = parseLine(l);
-      if (p && "progress" in p) seen.push(p.progress);
-    }, controller.signal, join(root, "out"));
+    const done = runYtDlp(
+      join(root, "bin", "yt-dlp"),
+      args,
+      (l) => {
+        const p = parseLine(l);
+        if (p && "progress" in p) seen.push(p.progress);
+      },
+      controller.signal,
+      join(root, "out"),
+    );
     const start = Date.now();
     while (!existsSync(pidFile) || seen.length === 0) {
       if (Date.now() - start > 10000) throw new Error("the fake never started");
@@ -201,7 +240,13 @@ test("a yt-dlp error comes back with its stderr, for plainYtDlpError", async () 
   const saved = { ...process.env };
   try {
     process.env.FAKE_YTDLP_ERROR = "ERROR: Unsupported URL: https://example.com/v";
-    const r = await runYtDlp(join(root, "bin", "yt-dlp"), ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "x" }), () => {}, new AbortController().signal, join(root, "out"));
+    const r = await runYtDlp(
+      join(root, "bin", "yt-dlp"),
+      ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "x" }),
+      () => {},
+      new AbortController().signal,
+      join(root, "out"),
+    );
     assert.equal(r.code, 1);
     assert.match(plainYtDlpError(r.stderr, r.code), /doesn't know how to import from that site/);
   } finally {
@@ -219,7 +264,13 @@ test("D266: a project folder with $HOME in its name: the download stays in its m
     Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), HOME: join(root, "home") });
     mkdirSync(join(root, "home"));
     const lines: Array<ReturnType<typeof parseLine>> = [];
-    const r = await runYtDlp(join(root, "bin", "yt-dlp"), ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "link-home" }), (l) => lines.push(parseLine(l)), new AbortController().signal, links);
+    const r = await runYtDlp(
+      join(root, "bin", "yt-dlp"),
+      ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "link-home" }),
+      (l) => lines.push(parseLine(l)),
+      new AbortController().signal,
+      links,
+    );
     assert.equal(r.code, 0, r.stderr);
     assert.deepEqual(readdirSync(links), ["link-home.mp4"]);
     assert.deepEqual(readdirSync(join(root, "home")), [], "nothing written where $HOME points");
@@ -256,11 +307,21 @@ test("D280: a catalog plugin, not bundled; Uncut calls it, the agent can't; no s
   assert.equal(isApproved(plugin, undefined), false, "off until the user allows it");
   assert.match(plugin.description ?? "", /^Import a video or audio file from a link using your own yt-dlp\./);
   for (const file of readdirSync(PLUGIN_DIR)) assert.doesNotMatch(readFileSync(join(PLUGIN_DIR, file), "utf8"), SITES, `no site named in ${file}`);
-  for (const file of ["apps/web/src/panels/library/ImportLinkDialog.tsx", "apps/web/src/panels/library/linkImport.ts", "apps/server/src/media/linkImport.ts", "apps/server/src/media/linkArgs.ts", "packages/contracts/src/link.ts"]) {
+  for (const file of [
+    "apps/web/src/panels/library/ImportLinkDialog.tsx",
+    "apps/web/src/panels/library/linkImport.ts",
+    "apps/server/src/media/linkImport.ts",
+    "apps/server/src/media/linkArgs.ts",
+    "packages/contracts/src/link.ts",
+  ]) {
     assert.doesNotMatch(readFileSync(file, "utf8"), SITES, `no site named in ${file}`);
   }
   assert.doesNotMatch(readFileSync("README.md", "utf8"), /yt-dlp|import from (a )?link/i, "the README doesn't mention it");
-  assert.equal(readdirSync(PLUGIN_DIR).filter((f) => !/\.(ts|json)$/.test(f) && f !== "icon.svg").length, 0, "top-level .ts and .json only, and its icon (what the app ships of a plugin)");
+  assert.equal(
+    readdirSync(PLUGIN_DIR).filter((f) => !/\.(ts|json)$/.test(f) && f !== "icon.svg").length,
+    0,
+    "top-level .ts and .json only, and its icon (what the app ships of a plugin)",
+  );
 });
 
 test("D280: the plugin's download through the plugin host: progress with steps, the file, and a cancel that leaves nothing", async () => {
@@ -268,7 +329,14 @@ test("D280: the plugin's download through the plugin host: progress with steps, 
   const saved = { ...process.env };
   const host = new PluginHost();
   try {
-    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_AUDIO: join(root, "audio.m4a"), FAKE_YTDLP_TITLE: "Sunset", FAKE_YTDLP_SLEEP_MS: "600", FAKE_YTDLP_PID_FILE: join(root, "child.pid"), UNCUT_SECRET_THING: "x" });
+    Object.assign(process.env, {
+      FAKE_YTDLP_VIDEO: join(root, "video.mp4"),
+      FAKE_YTDLP_AUDIO: join(root, "audio.m4a"),
+      FAKE_YTDLP_TITLE: "Sunset",
+      FAKE_YTDLP_SLEEP_MS: "600",
+      FAKE_YTDLP_PID_FILE: join(root, "child.pid"),
+      UNCUT_SECRET_THING: "x",
+    });
     const found = await discoverPlugins([{ source: "user", dir: resolve("plugins/catalog") }], { moduleIds: new Set(), toolNames: new Set() });
     const plugin = found.plugins.find((p) => p.id === LINK_PLUGIN_ID)!;
     const searchPath = `${join(root, "bin")}:/usr/bin:/bin`;
@@ -279,28 +347,66 @@ test("D280: the plugin's download through the plugin host: progress with steps, 
 
     const out = realpathSync(join(root, "out"));
     const seen: Array<{ p: number; message?: string | undefined }> = [];
-    const r = await host.call(plugin.spec, "download", { url: "https://example.com/v", kind: "video", quality: "720", folder: out, stem: "link-plug", searchPath }, undefined, undefined, undefined, {
-      timeoutMs: 30000,
-      onProgress: (p, _total, message) => seen.push({ p, message }),
-    });
+    const r = await host.call(
+      plugin.spec,
+      "download",
+      { url: "https://example.com/v", kind: "video", quality: "720", folder: out, stem: "link-plug", searchPath },
+      undefined,
+      undefined,
+      undefined,
+      {
+        timeoutMs: 30000,
+        onProgress: (p, _total, message) => seen.push({ p, message }),
+      },
+    );
     assert.equal(r.isError, undefined, JSON.stringify(r.content));
     assert.deepEqual(r.structured, { file: join(out, "link-plug.mp4"), title: "Sunset" });
     assert.equal(seen.filter((s) => !s.message).at(-1)?.p, 1);
-    assert.ok(seen.some((s) => s.message === "Joining video and sound…"), "a step comes as the progress message");
+    assert.ok(
+      seen.some((s) => s.message === "Joining video and sound…"),
+      "a step comes as the progress message",
+    );
 
     // A bad link or stem is refused by the plugin too, before yt-dlp runs.
-    for (const args of [{ url: "ftp://example.com/v", stem: "x" }, { url: "https://example.com/v", stem: "$HOME/x" }]) {
-      const bad = await host.call(plugin.spec, "download", { kind: "video", quality: "720", folder: out, searchPath, ...args }, undefined, undefined, undefined, { timeoutMs: 10000 });
+    for (const args of [
+      { url: "ftp://example.com/v", stem: "x" },
+      { url: "https://example.com/v", stem: "$HOME/x" },
+    ]) {
+      const bad = await host.call(
+        plugin.spec,
+        "download",
+        { kind: "video", quality: "720", folder: out, searchPath, ...args },
+        undefined,
+        undefined,
+        undefined,
+        { timeoutMs: 10000 },
+      );
       assert.equal(bad.isError, true);
     }
-    const failedRun = await host.call(plugin.spec, "download", { url: "https://example.com/unsupported", kind: "video", quality: "720", folder: out, stem: "link-bad", searchPath }, undefined, undefined, undefined, { timeoutMs: 10000 });
+    const failedRun = await host.call(
+      plugin.spec,
+      "download",
+      { url: "https://example.com/unsupported", kind: "video", quality: "720", folder: out, stem: "link-bad", searchPath },
+      undefined,
+      undefined,
+      undefined,
+      { timeoutMs: 10000 },
+    );
     assert.equal(failedRun.isError, true);
     assert.match(JSON.stringify(failedRun.content), /doesn't know how to import from that site/);
 
     // Cancel: the call's signal aborts; the plugin kills yt-dlp's group and removes the partial files.
     rmSync(join(root, "child.pid"), { force: true });
     const controller = new AbortController();
-    const slow = host.call(plugin.spec, "download", { url: "https://example.com/slow", kind: "audio", quality: "best", folder: out, stem: "link-slow", searchPath }, controller.signal, undefined, undefined, { timeoutMs: 60000 });
+    const slow = host.call(
+      plugin.spec,
+      "download",
+      { url: "https://example.com/slow", kind: "audio", quality: "best", folder: out, stem: "link-slow", searchPath },
+      controller.signal,
+      undefined,
+      undefined,
+      { timeoutMs: 60000 },
+    );
     for (let i = 0; i < 100 && !existsSync(join(root, "child.pid")); i++) await new Promise((res) => setTimeout(res, 50));
     const child = Number(readFileSync(join(root, "child.pid"), "utf8"));
     assert.ok(alive(child));
@@ -309,7 +415,11 @@ test("D280: the plugin's download through the plugin host: progress with steps, 
     assert.equal(cancelled.isError, true);
     for (let i = 0; i < 100 && (alive(child) || readdirSync(out).some((f) => f.startsWith("link-slow."))); i++) await new Promise((res) => setTimeout(res, 50));
     assert.ok(!alive(child), "yt-dlp's child is gone");
-    assert.deepEqual(readdirSync(out).filter((f) => f.startsWith("link-slow.")), [], "no partial files left");
+    assert.deepEqual(
+      readdirSync(out).filter((f) => f.startsWith("link-slow.")),
+      [],
+      "no partial files left",
+    );
   } finally {
     await host.stopAll();
     process.env = saved;

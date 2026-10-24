@@ -5,7 +5,18 @@
 // survives re-renders and falls away when the words it names are cut. Cutting goes through core
 // planTextCut, the same planner as the agent's transcript_edit, chained clip by clip into ONE
 // project.edit, so one ⌘Z restores it.
-import { editWords, planTextCut, speechItem, speechWords, transcriptScope, type CutWord, type EditWord, type SpeechEnvelope, type SpeechSegment, type TranscriptScope } from "@uncut/core/transcript";
+import {
+  editWords,
+  planTextCut,
+  speechItem,
+  speechWords,
+  transcriptScope,
+  type CutWord,
+  type EditWord,
+  type SpeechEnvelope,
+  type SpeechSegment,
+  type TranscriptScope,
+} from "@uncut/core/transcript";
 import { planMakeCaptions, type CaptionMode } from "@uncut/core/captions";
 import { useSyncExternalStore } from "react";
 
@@ -95,10 +106,19 @@ export const doneTranscripts = (entries: ReadonlyMap<string, TranscriptEntry>) =
  * D74); with a scope (D215), the words of its items in timeline order.
  */
 export const wordsOfEdit = (project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, scope?: TranscriptScope) =>
-  editWords(project, new Map([...transcripts].filter(([id]) => !scope || id === scope.media).map(([id, t]) => [id, speechWords(t.words, { segments: t.segments, silences: t.silences, seconds: t.seconds, envelope: t.envelope })])), scope ? new Set(scope.items) : undefined);
+  editWords(
+    project,
+    new Map(
+      [...transcripts]
+        .filter(([id]) => !scope || id === scope.media)
+        .map(([id, t]) => [id, speechWords(t.words, { segments: t.segments, silences: t.silences, seconds: t.seconds, envelope: t.envelope })]),
+    ),
+    scope ? new Set(scope.items) : undefined,
+  );
 
 /** D215: the scope the tab reads for `source` (undefined: the main track, or a source that's gone or now heard through Main). */
-export const scopeOf = (project: ProjectModel, source: string | undefined): TranscriptScope | undefined => (source === undefined ? undefined : transcriptScope(project, source));
+export const scopeOf = (project: ProjectModel, source: string | undefined): TranscriptScope | undefined =>
+  source === undefined ? undefined : transcriptScope(project, source);
 
 /** Two scopes are the same source when they read the same media from the same items. */
 export const scopeKey = (scope: TranscriptScope | undefined) => (scope ? `${scope.media}:${scope.items.join(",")}` : "main");
@@ -171,7 +191,12 @@ export interface CutPlan extends Plan {
 type Step = { readonly media: string; readonly request: Parameters<typeof planTextCut>[3] };
 
 /** planTextCut for each step against the project the previous one left, as one list of ops. */
-function chain(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, steps: ReadonlyArray<Step>, summary: (p: Omit<CutPlan, "summary" | "ops">, one: string | undefined) => string): CutPlan | { readonly problem: string } {
+function chain(
+  project: ProjectModel,
+  transcripts: ReadonlyMap<string, MediaTranscript>,
+  steps: ReadonlyArray<Step>,
+  summary: (p: Omit<CutPlan, "summary" | "ops">, one: string | undefined) => string,
+): CutPlan | { readonly problem: string } {
   let current = project;
   const ops: Array<CutPlan["ops"][number]> = [];
   const notes: Array<string> = [];
@@ -183,7 +208,12 @@ function chain(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTran
   for (const step of steps) {
     const t = transcripts.get(step.media);
     if (!t) continue;
-    const plan = planTextCut(current, step.media, { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, { ...step.request, silences: t.silences, envelope: t.envelope });
+    const plan = planTextCut(
+      current,
+      step.media,
+      { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments },
+      { ...step.request, silences: t.silences, envelope: t.envelope },
+    );
     if ("problem" in plan) return plan;
     if (!plan.ops.length) {
       notes.push(...plan.notes);
@@ -207,7 +237,12 @@ function chain(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTran
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** Cut the selected words: each clip's part of the selection only from that clip (D215: in a scope, from its items). */
-export function planCutWords(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, selected: ReadonlyArray<EditWord>, scope?: TranscriptScope): CutPlan | { readonly problem: string } {
+export function planCutWords(
+  project: ProjectModel,
+  transcripts: ReadonlyMap<string, MediaTranscript>,
+  selected: ReadonlyArray<EditWord>,
+  scope?: TranscriptScope,
+): CutPlan | { readonly problem: string } {
   if (!selected.length) return { problem: "Select words in the transcript to cut them." };
   const groups: Array<{ media: string; clip: string; from: number; to: number }> = [];
   for (const w of selected) {
@@ -233,15 +268,34 @@ const stepsOf = <R extends object>(project: ProjectModel, scope: TranscriptScope
   (scope ? [scope.media] : mediaOnMain(project)).map((media) => ({ media, request: { ...request, ...(scope ? { items: scope.items } : {}) } }));
 
 /** Remove the pauses at least `min` seconds long from every clip of every transcribed media on main (or the scope's items). */
-export function planRemovePauses(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, min: number, scope?: TranscriptScope): CutPlan | { readonly problem: string } {
+export function planRemovePauses(
+  project: ProjectModel,
+  transcripts: ReadonlyMap<string, MediaTranscript>,
+  min: number,
+  scope?: TranscriptScope,
+): CutPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
-  return chain(project, transcripts, stepsOf(project, scope, { pauses: { min } }), (p) => `Removed ${plural(p.pauses, "pause")} (${(p.framesRemoved / fps).toFixed(1)} s)`);
+  return chain(
+    project,
+    transcripts,
+    stepsOf(project, scope, { pauses: { min } }),
+    (p) => `Removed ${plural(p.pauses, "pause")} (${(p.framesRemoved / fps).toFixed(1)} s)`,
+  );
 }
 
 /** Remove the hesitation fillers (um, uh, yyy, eee) the same way. */
-export function planRemoveFillers(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, scope?: TranscriptScope): CutPlan | { readonly problem: string } {
+export function planRemoveFillers(
+  project: ProjectModel,
+  transcripts: ReadonlyMap<string, MediaTranscript>,
+  scope?: TranscriptScope,
+): CutPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
-  return chain(project, transcripts, stepsOf(project, scope, { fillers: true }), (p) => `Removed ${plural(p.fillers, "filler")} (${(p.framesRemoved / fps).toFixed(1)} s)`);
+  return chain(
+    project,
+    transcripts,
+    stepsOf(project, scope, { fillers: true }),
+    (p) => `Removed ${plural(p.fillers, "filler")} (${(p.framesRemoved / fps).toFixed(1)} s)`,
+  );
 }
 
 export interface CaptionsPlan extends Plan {
@@ -256,7 +310,12 @@ export interface CaptionsPlan extends Plan {
  * track; remade in place when the media has captions), each planned on the project the one before
  * leaves, as one edit.
  */
-export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, options: { readonly mode: CaptionMode; readonly look: string; readonly captionStyle?: string }, scope?: TranscriptScope): CaptionsPlan | { readonly problem: string } {
+export function planCaptions(
+  project: ProjectModel,
+  transcripts: ReadonlyMap<string, MediaTranscript>,
+  options: { readonly mode: CaptionMode; readonly look: string; readonly captionStyle?: string },
+  scope?: TranscriptScope,
+): CaptionsPlan | { readonly problem: string } {
   let current = project;
   const ops: Array<Plan["ops"][number]> = [];
   const items: Array<string> = [];
@@ -264,7 +323,15 @@ export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<str
   for (const media of scope ? [scope.media] : mediaOnMain(project)) {
     const t = transcripts.get(media);
     if (!t || !t.words.length) continue;
-    const plan = planMakeCaptions(current, { media, transcript: { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, silences: t.silences, envelope: t.envelope, mode: options.mode, look: options.look, ...(options.captionStyle ? { captionStyle: options.captionStyle } : {}) });
+    const plan = planMakeCaptions(current, {
+      media,
+      transcript: { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments },
+      silences: t.silences,
+      envelope: t.envelope,
+      mode: options.mode,
+      look: options.look,
+      ...(options.captionStyle ? { captionStyle: options.captionStyle } : {}),
+    });
     if ("problem" in plan) return plan;
     const next = draftOf(current, plan.ops);
     if ("problem" in next) return next;
@@ -273,6 +340,11 @@ export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<str
     remade ||= plan.remade;
     current = next.project;
   }
-  if (!ops.length) return { problem: scope ? "Transcribe it first: captions are made from the transcript." : "Transcribe the speech on the main track first: captions are made from the transcript." };
+  if (!ops.length)
+    return {
+      problem: scope
+        ? "Transcribe it first: captions are made from the transcript."
+        : "Transcribe the speech on the main track first: captions are made from the transcript.",
+    };
   return { ops, items, remade, summary: remade && items.length === 1 ? "Remake captions" : "Make captions" };
 }

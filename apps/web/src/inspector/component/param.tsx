@@ -20,7 +20,21 @@ import { labelOf, withProp, type Schema } from "./schema.ts";
  * A text field: typing shows in the preview at once (a local draft), saved after a pause, on blur
  * or Enter (⌘Enter when multi-line); Esc puts the saved value back.
  */
-export function TextParam({ value, multiline, disabled, testId, onDraft, onCommit }: { value: string; multiline: boolean; disabled: boolean; testId: string; onDraft: (v: string) => PreviewDraft | undefined; onCommit: (v: string, draft: PreviewDraft | undefined, from: ReturnType<typeof origin>) => void }) {
+export function TextParam({
+  value,
+  multiline,
+  disabled,
+  testId,
+  onDraft,
+  onCommit,
+}: {
+  value: string;
+  multiline: boolean;
+  disabled: boolean;
+  testId: string;
+  onDraft: (v: string) => PreviewDraft | undefined;
+  onCommit: (v: string, draft: PreviewDraft | undefined, from: ReturnType<typeof origin>) => void;
+}) {
   const [text, setText] = useState(value);
   const dirty = useRef(false);
   const from = useRef(origin());
@@ -70,17 +84,49 @@ export function TextParam({ value, multiline, disabled, testId, onDraft, onCommi
     }
   };
   return multiline ? (
-    <textarea className="field input text-area mono-area" data-testid={testId} value={text} rows={3} disabled={disabled} spellCheck={false} onChange={(e) => change(e.target.value)} onBlur={commit} onKeyDown={keys} />
+    <textarea
+      className="field input text-area mono-area"
+      data-testid={testId}
+      value={text}
+      rows={3}
+      disabled={disabled}
+      spellCheck={false}
+      onChange={(e) => change(e.target.value)}
+      onBlur={commit}
+      onKeyDown={keys}
+    />
   ) : (
-    <input className="field input" data-testid={testId} value={text} disabled={disabled} spellCheck={false} onChange={(e) => change(e.target.value)} onBlur={commit} onKeyDown={keys} />
+    <input
+      className="field input"
+      data-testid={testId}
+      value={text}
+      disabled={disabled}
+      spellCheck={false}
+      onChange={(e) => change(e.target.value)}
+      onBlur={commit}
+      onKeyDown={keys}
+    />
   );
 }
-
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** One param's control in its row, from its schema. */
-export function Param({ project, item, info, name, schema, disabled }: { project: ProjectModel; item: Item; info: ComponentInfo; name: string; schema: Schema; disabled: boolean }) {
+export function Param({
+  project,
+  item,
+  info,
+  name,
+  schema,
+  disabled,
+}: {
+  project: ProjectModel;
+  item: Item;
+  info: ComponentInfo;
+  name: string;
+  schema: Schema;
+  disabled: boolean;
+}) {
   const props = (item.props ?? {}) as Record<string, unknown>;
   // D266: a sticker saved before `enter` with the older pop: false renders with no way in: show "none".
   const value = info.id === "component.sticker" && name === "enter" && props.enter === undefined && props.pop === false ? "none" : props[name];
@@ -94,9 +140,13 @@ export function Param({ project, item, info, name, schema, disabled }: { project
     draft.current = undefined;
     send((p) => planComponentProps(p, item.id, withProp(p, item.id, name, next), summary), own, from);
   };
-  const preview = (next: unknown) => (draft.current = showDraft(project, planComponentProps(project, item.id, withProp(project, item.id, name, next), "")) ?? draft.current);
+  const preview = (next: unknown) =>
+    (draft.current = showDraft(project, planComponentProps(project, item.id, withProp(project, item.id, name, next), "")) ?? draft.current);
   // Reset: back to the manifest's default (or no value, when it has none and may be left out).
-  const reset = value !== undefined && !same(value, fallback) && (fallback !== undefined || !required) ? () => commit(fallback, `Reset ${label.toLowerCase()} of ${noun}`) : undefined;
+  const reset =
+    value !== undefined && !same(value, fallback) && (fallback !== undefined || !required)
+      ? () => commit(fallback, `Reset ${label.toLowerCase()} of ${noun}`)
+      : undefined;
   const testId = `param-${name}`;
   const unit = schema["x-unit"];
 
@@ -106,9 +156,25 @@ export function Param({ project, item, info, name, schema, disabled }: { project
     return (
       <Prop label={label} onReset={reset} testId={`${testId}-row`}>
         {short ? (
-          <Segmented testId={testId} options={options.map((o) => [o, o[0]!.toUpperCase() + o.slice(1)] as const)} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : undefined} disabled={disabled} onChange={(v) => commit(v, `Set ${label.toLowerCase()} of ${noun} to ${v}`)} />
+          <Segmented
+            testId={testId}
+            options={options.map((o) => [o, o[0]!.toUpperCase() + o.slice(1)] as const)}
+            value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : undefined}
+            disabled={disabled}
+            onChange={(v) => commit(v, `Set ${label.toLowerCase()} of ${noun} to ${v}`)}
+          />
         ) : (
-          <select className="pselect" data-testid={testId} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : ""} disabled={disabled} onChange={(e) => (e.target.value ? commit(e.target.value, `Set ${label.toLowerCase()} of ${noun} to ${e.target.value}`) : commit(undefined, `Clear ${label.toLowerCase()} of ${noun}`))}>
+          <select
+            className="pselect"
+            data-testid={testId}
+            value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : ""}
+            disabled={disabled}
+            onChange={(e) =>
+              e.target.value
+                ? commit(e.target.value, `Set ${label.toLowerCase()} of ${noun} to ${e.target.value}`)
+                : commit(undefined, `Clear ${label.toLowerCase()} of ${noun}`)
+            }
+          >
             {/* An optional choice without a default (a sticker's drawn art, D165) can be left unset. */}
             {!required && fallback === undefined && <option value="">None</option>}
             {options.map((o) => (
@@ -125,7 +191,14 @@ export function Param({ project, item, info, name, schema, disabled }: { project
   if (schema["x-control"] === "color") {
     return (
       <Prop label={label} onReset={reset} testId={`${testId}-row`}>
-        <SettledColorField project={project} testId={testId} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : undefined} disabled={disabled} onPreview={preview} onCommit={(c) => commit(c)} />
+        <SettledColorField
+          project={project}
+          testId={testId}
+          value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : undefined}
+          disabled={disabled}
+          onPreview={preview}
+          onCommit={(c) => commit(c)}
+        />
       </Prop>
     );
   }
@@ -137,7 +210,9 @@ export function Param({ project, item, info, name, schema, disabled }: { project
         multiline={multiline}
         disabled={disabled}
         testId={testId}
-        onDraft={(text) => showDraft(project, planComponentProps(project, item.id, withProp(project, item.id, name, text === "" && !required ? undefined : text), ""))}
+        onDraft={(text) =>
+          showDraft(project, planComponentProps(project, item.id, withProp(project, item.id, name, text === "" && !required ? undefined : text), ""))
+        }
         onCommit={(text, d, from) => commit(text === "" && !required ? undefined : text, undefined, d, from)}
       />
     );
@@ -161,9 +236,30 @@ export function Param({ project, item, info, name, schema, disabled }: { project
     return (
       <Prop label={label} onReset={reset} testId={`${testId}-row`}>
         {bounded ? (
-          <SliderNum testId={testId} value={n ?? schema.minimum!} min={schema.minimum!} max={schema.maximum!} step={step} unit={unit} disabled={disabled} onPreview={(v) => preview(round(v))} onCommit={(v) => commit(round(v))} />
+          <SliderNum
+            testId={testId}
+            value={n ?? schema.minimum!}
+            min={schema.minimum!}
+            max={schema.maximum!}
+            step={step}
+            unit={unit}
+            disabled={disabled}
+            onPreview={(v) => preview(round(v))}
+            onCommit={(v) => commit(round(v))}
+          />
         ) : (
-          <NumInput testId={testId} value={n} unit={unit} step={step} min={schema.minimum} max={schema.maximum} disabled={disabled} clearable={!required} onPreview={(v) => preview(round(v))} onCommit={(v) => commit(v === undefined ? undefined : round(v))} />
+          <NumInput
+            testId={testId}
+            value={n}
+            unit={unit}
+            step={step}
+            min={schema.minimum}
+            max={schema.maximum}
+            disabled={disabled}
+            clearable={!required}
+            onPreview={(v) => preview(round(v))}
+            onCommit={(v) => commit(v === undefined ? undefined : round(v))}
+          />
         )}
       </Prop>
     );
@@ -173,7 +269,13 @@ export function Param({ project, item, info, name, schema, disabled }: { project
     return (
       <Prop label={label} onReset={reset} testId={`${testId}-row`}>
         <div className="prop-toggle">
-          <Toggle testId={testId} label={label} value={on} disabled={disabled} onChange={(v) => commit(v ? true : fallback === true ? false : undefined, `${v ? "Turn on" : "Turn off"} ${label.toLowerCase()} of ${noun}`)} />
+          <Toggle
+            testId={testId}
+            label={label}
+            value={on}
+            disabled={disabled}
+            onChange={(v) => commit(v ? true : fallback === true ? false : undefined, `${v ? "Turn on" : "Turn off"} ${label.toLowerCase()} of ${noun}`)}
+          />
         </div>
       </Prop>
     );
@@ -184,13 +286,21 @@ export function Param({ project, item, info, name, schema, disabled }: { project
     // Only images the preview and export can draw in a component (no TIFF or HEIC).
     const images = project.media.filter((m) => m.kind === "image" && COMPONENT_IMAGE.test(m.path));
     return (
-      <Prop label={label} onReset={value !== undefined && !required ? () => commit(undefined, `Remove ${label.toLowerCase()} of ${noun}`) : undefined} testId={`${testId}-row`}>
+      <Prop
+        label={label}
+        onReset={value !== undefined && !required ? () => commit(undefined, `Remove ${label.toLowerCase()} of ${noun}`) : undefined}
+        testId={`${testId}-row`}
+      >
         <select
           className="pselect"
           data-testid={testId}
           value={typeof id === "string" ? id : ""}
           disabled={disabled}
-          onChange={(e) => (e.target.value ? commit({ media: e.target.value }, `Set ${label.toLowerCase()} of ${noun}`) : commit(undefined, `Remove ${label.toLowerCase()} of ${noun}`))}
+          onChange={(e) =>
+            e.target.value
+              ? commit({ media: e.target.value }, `Set ${label.toLowerCase()} of ${noun}`)
+              : commit(undefined, `Remove ${label.toLowerCase()} of ${noun}`)
+          }
         >
           <option value="">{images.length ? "None" : "No images"}</option>
           {images.map((m) => (

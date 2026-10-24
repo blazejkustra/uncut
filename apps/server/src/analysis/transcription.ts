@@ -38,7 +38,17 @@ export async function sweepStaleTranscriptTemp(dir = tmpdir(), now = Date.now())
       if (!m) return;
       const pid = m[1] ? Number(m[1]) : undefined;
       if (pid === process.pid) return;
-      if (pid !== undefined ? pidAlive(pid) : now - (await stat(join(dir, name)).then((s) => s.mtimeMs, () => now)) < 3600_000) return;
+      if (
+        pid !== undefined
+          ? pidAlive(pid)
+          : now -
+              (await stat(join(dir, name)).then(
+                (s) => s.mtimeMs,
+                () => now,
+              )) <
+            3600_000
+      )
+        return;
       await rm(join(dir, name), { recursive: true, force: true }).catch(() => {});
     }),
   );
@@ -113,32 +123,57 @@ export interface SpeechRequest {
   readonly seconds?: number | undefined;
   readonly timeoutMs: number;
 }
-export type Transcribe = (request: SpeechRequest, options: { readonly signal: AbortSignal; readonly onProgress: (fraction: number) => void; readonly runner?: Runner | undefined }) => Promise<Speech>;
+export type Transcribe = (
+  request: SpeechRequest,
+  options: { readonly signal: AbortSignal; readonly onProgress: (fraction: number) => void; readonly runner?: Runner | undefined },
+) => Promise<Speech>;
 
 /** whisper-cli run here, through the analysis runner (tests: they watch what's spawned). */
 export const transcribeDirect: Transcribe = (request, { signal, onProgress, runner }) =>
-  transcribeWav({ audio: request.audio, model: request.model, bin: request.bin, language: request.language, seconds: request.seconds }, { signal, onProgress, timeoutMs: request.timeoutMs, run: runner ?? spawnRunner });
+  transcribeWav(
+    { audio: request.audio, model: request.model, bin: request.bin, language: request.language, seconds: request.seconds },
+    { signal, onProgress, timeoutMs: request.timeoutMs, run: runner ?? spawnRunner },
+  );
 
 /** The bundled Whisper plugin's id and its one call. */
 export const WHISPER_PLUGIN = "whisper.transcribe";
 export const WHISPER_TOOL = "transcribe";
 
-type CallResult = { readonly isError?: boolean; readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>; readonly structured?: unknown };
+type CallResult = {
+  readonly isError?: boolean;
+  readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
+  readonly structured?: unknown;
+};
 /**
  * The plugin's answer as a Transcribe: `call` runs the plugin's tool (Plugins.callPlugin); an error
  * result is thrown as its text, a cancelled call as Cancelled, and an answer without words and
  * segments is refused.
  */
 export const pluginTranscribe =
-  (call: (args: Record<string, unknown>, options: { readonly signal: AbortSignal; readonly timeoutMs: number; readonly onProgress: (progress: number, total: number | undefined) => void }) => Promise<CallResult>): Transcribe =>
+  (
+    call: (
+      args: Record<string, unknown>,
+      options: { readonly signal: AbortSignal; readonly timeoutMs: number; readonly onProgress: (progress: number, total: number | undefined) => void },
+    ) => Promise<CallResult>,
+  ): Transcribe =>
   async (request, { signal, onProgress }) => {
     const result = await call(
-      { audio: request.audio, model: request.model, bin: request.bin, language: request.language, ...(request.seconds !== undefined ? { seconds: request.seconds } : {}), timeoutSeconds: Math.ceil(request.timeoutMs / 1000) },
+      {
+        audio: request.audio,
+        model: request.model,
+        bin: request.bin,
+        language: request.language,
+        ...(request.seconds !== undefined ? { seconds: request.seconds } : {}),
+        timeoutSeconds: Math.ceil(request.timeoutMs / 1000),
+      },
       // A little longer than whisper's own limit, so the plugin's "took too long" is what's said.
       { signal, timeoutMs: request.timeoutMs + 30_000, onProgress: (progress, total) => onProgress(Math.min(1, Math.max(0, progress / (total ?? 100)))) },
     );
     if (signal.aborted) throw new Cancelled();
-    const text = result.content.map((c) => c.text ?? "").join(" ").trim();
+    const text = result.content
+      .map((c) => c.text ?? "")
+      .join(" ")
+      .trim();
     if (result.isError) throw new Error(text || "The Whisper plugin couldn't transcribe it.");
     const speech = result.structured as Speech | undefined;
     if (!speech || !Array.isArray(speech.words) || !Array.isArray(speech.segments)) throw new Error("The Whisper plugin answered without words.");
@@ -164,7 +199,12 @@ export interface TranscribeOptions {
  * owns and removes), the speech model (`options.transcribe`, with whisper-cli and `model`, a
  * ggml file) turns it into words.
  */
-export async function analyzeTranscript(ffmpeg: string, whisper: { readonly bin: string; readonly model: string; readonly modelId: string }, path: string, options: TranscribeOptions): Promise<TranscriptResult> {
+export async function analyzeTranscript(
+  ffmpeg: string,
+  whisper: { readonly bin: string; readonly model: string; readonly modelId: string },
+  path: string,
+  options: TranscribeOptions,
+): Promise<TranscriptResult> {
   const runner = options.runner ?? spawnRunner;
   const language = options.language ?? "auto";
   const timeoutMs = Math.max(60 * 60_000, (options.seconds ?? 0) * 4000);
@@ -194,12 +234,14 @@ export async function analyzeTranscript(ffmpeg: string, whisper: { readonly bin:
     }
     if (options.signal.aborted) throw new Cancelled();
     const seconds = decoded > 0 ? decoded : (options.seconds ?? duration);
-    const parsed = await options.transcribe(
-      { audio: wav, bin: whisper.bin, model: whisper.model, modelId: whisper.modelId, language, seconds, timeoutMs },
-      { signal: options.signal, runner: options.runner, onProgress: (fraction) => options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * fraction)) },
-    ).catch((error: unknown) => {
-      throw options.signal.aborted || error instanceof Stopped ? new Cancelled() : error;
-    });
+    const parsed = await options
+      .transcribe(
+        { audio: wav, bin: whisper.bin, model: whisper.model, modelId: whisper.modelId, language, seconds, timeoutMs },
+        { signal: options.signal, runner: options.runner, onProgress: (fraction) => options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * fraction)) },
+      )
+      .catch((error: unknown) => {
+        throw options.signal.aborted || error instanceof Stopped ? new Cancelled() : error;
+      });
     if (options.signal.aborted) throw new Cancelled();
     return {
       hasAudio: true,
@@ -227,11 +269,32 @@ export function isTranscriptResult(value: unknown): value is TranscriptResult {
   if (r.seconds !== undefined && !num(r.seconds)) return false;
   if (r.language !== undefined && typeof r.language !== "string") return false;
   if (!Array.isArray(r.words) || !Array.isArray(r.segments)) return false;
-  const wordsOk = r.words.every((w) => w && typeof w === "object" && typeof (w as TranscriptWord).text === "string" && num((w as TranscriptWord).start) && num((w as TranscriptWord).end) && num((w as TranscriptWord).p));
+  const wordsOk = r.words.every(
+    (w) =>
+      w &&
+      typeof w === "object" &&
+      typeof (w as TranscriptWord).text === "string" &&
+      num((w as TranscriptWord).start) &&
+      num((w as TranscriptWord).end) &&
+      num((w as TranscriptWord).p),
+  );
   const n = r.words.length;
   const segmentsOk = r.segments.every((s) => {
     const x = s as TranscriptSegment;
-    return x && typeof x === "object" && typeof x.text === "string" && num(x.start) && num(x.end) && Array.isArray(x.words) && x.words.length === 2 && Number.isInteger(x.words[0]) && Number.isInteger(x.words[1]) && x.words[0] >= 0 && x.words[1] <= n && x.words[0] <= x.words[1];
+    return (
+      x &&
+      typeof x === "object" &&
+      typeof x.text === "string" &&
+      num(x.start) &&
+      num(x.end) &&
+      Array.isArray(x.words) &&
+      x.words.length === 2 &&
+      Number.isInteger(x.words[0]) &&
+      Number.isInteger(x.words[1]) &&
+      x.words[0] >= 0 &&
+      x.words[1] <= n &&
+      x.words[0] <= x.words[1]
+    );
   });
   return wordsOk && segmentsOk;
 }

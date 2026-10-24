@@ -66,7 +66,12 @@ function project(media: string): Project {
 
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0]) => {
   await page.keyboard.down("Meta");
   await page.keyboard.press(key);
@@ -80,11 +85,18 @@ async function goTo(frame: number) {
   await page.keyboard.up("Shift");
   for (let i = 0; i < frame % 30; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 10000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 10000 },
+  );
   await sleep(250);
 }
 const ssim = (a: string, b: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 async function screenshotSpace(): Promise<"srgb" | "p3"> {
@@ -106,7 +118,16 @@ async function screenshotSpace(): Promise<"srgb" | "p3"> {
 }
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 
@@ -125,102 +146,118 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("D133: every new transition drawn in the preview mid-way matches the export (SSIM ≥ 0.97); the panel's search, kinds, length and animated thumbnails", { skip, timeout: 900000 }, async () => {
-  const saveAs = join(root, "out", "All.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
-  page = app.page;
-  await waitForWelcome(page);
-  await page.click("[data-testid=open-project]");
-  await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
-  for (const [i, t] of NEW.entries()) await page.waitForSelector(`[data-testid=transition-marker][data-item="c${i + 1}"][data-module="${t.id}"]`);
+test(
+  "D133: every new transition drawn in the preview mid-way matches the export (SSIM ≥ 0.97); the panel's search, kinds, length and animated thumbnails",
+  { skip, timeout: 900000 },
+  async () => {
+    const saveAs = join(root, "out", "All.mp4");
+    app = await launchApp({
+      command: APP,
+      env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+    });
+    page = app.page;
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
+    for (const [i, t] of NEW.entries()) await page.waitForSelector(`[data-testid=transition-marker][data-item="c${i + 1}"][data-module="${t.id}"]`);
 
-  // The preview mid-way through each.
-  await page.click("[data-testid=timeline]");
-  await page.keyboard.press("Escape");
-  const space = await screenshotSpace();
-  const checks = NEW.map((t, i) => ({ t, frame: CLIP * (i + 1) - (t.color ? 3 : 0) }));
-  const preview = new Map<number, string>();
-  for (const { t, frame } of checks) {
-    await goTo(frame);
-    const path = out(`transitions-all-${t.id.slice("transition.".length)}.png`);
-    await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path });
-    preview.set(frame, space === "p3" ? toSrgb(path) : path);
-  }
+    // The preview mid-way through each.
+    await page.click("[data-testid=timeline]");
+    await page.keyboard.press("Escape");
+    const space = await screenshotSpace();
+    const checks = NEW.map((t, i) => ({ t, frame: CLIP * (i + 1) - (t.color ? 3 : 0) }));
+    const preview = new Map<number, string>();
+    for (const { t, frame } of checks) {
+      await goTo(frame);
+      const path = out(`transitions-all-${t.id.slice("transition.".length)}.png`);
+      await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path });
+      preview.set(frame, space === "p3" ? toSrgb(path) : path);
+    }
 
-  // Export (Standard, loudness as mixed) and compare.
-  await meta("e");
-  await page.waitForSelector("[data-testid=export-form]");
-  await page.click("[data-testid=quality-standard]");
-  await page.click("[data-testid=loudness-off]");
-  await page.click("[data-testid=export-change]");
-  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "All.mp4");
-  await page.click("[data-testid=export-start]");
-  await page.waitForSelector("[data-testid=export-job]");
-  let phase = "";
-  for (let i = 0; i < 6000 && phase !== "done" && phase !== "failed"; i++) {
-    phase = await page.$eval("[data-testid=export-job]", (el) => (el as HTMLElement).dataset.phase ?? "");
-    await sleep(100);
-  }
-  assert.equal(phase, "done", await page.$eval("[data-testid=export-job]", (el) => el.textContent ?? ""));
-  const scores: Array<string> = [];
-  const low: Array<string> = [];
-  for (const { t, frame } of checks) {
-    const exported = out(`transitions-all-${t.id.slice("transition.".length)}-export.png`);
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-update", "1", exported]);
-    const score = ssim(preview.get(frame)!, exported);
-    scores.push(`${t.id} ${score.toFixed(4)}`);
-    if (!(score >= 0.97)) low.push(`${t.id} at ${frame}: ${score}`);
-  }
-  console.log(`  export vs preview SSIM (screenshots in ${space}):\n    ${scores.join("\n    ")}`);
-  check(NO_REAL_GPU, low.length === 0, `preview vs export: ${low.join("; ")}`);
-  await page.keyboard.press("Escape");
+    // Export (Standard, loudness as mixed) and compare.
+    await meta("e");
+    await page.waitForSelector("[data-testid=export-form]");
+    await page.click("[data-testid=quality-standard]");
+    await page.click("[data-testid=loudness-off]");
+    await page.click("[data-testid=export-change]");
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "All.mp4");
+    await page.click("[data-testid=export-start]");
+    await page.waitForSelector("[data-testid=export-job]");
+    let phase = "";
+    for (let i = 0; i < 6000 && phase !== "done" && phase !== "failed"; i++) {
+      phase = await page.$eval("[data-testid=export-job]", (el) => (el as HTMLElement).dataset.phase ?? "");
+      await sleep(100);
+    }
+    assert.equal(phase, "done", await page.$eval("[data-testid=export-job]", (el) => el.textContent ?? ""));
+    const scores: Array<string> = [];
+    const low: Array<string> = [];
+    for (const { t, frame } of checks) {
+      const exported = out(`transitions-all-${t.id.slice("transition.".length)}-export.png`);
+      execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-update", "1", exported]);
+      const score = ssim(preview.get(frame)!, exported);
+      scores.push(`${t.id} ${score.toFixed(4)}`);
+      if (!(score >= 0.97)) low.push(`${t.id} at ${frame}: ${score}`);
+    }
+    console.log(`  export vs preview SSIM (screenshots in ${space}):\n    ${scores.join("\n    ")}`);
+    check(NO_REAL_GPU, low.length === 0, `preview vs export: ${low.join("; ")}`);
+    await page.keyboard.press("Escape");
 
-  // The panel: all tiles, thumbnails still until hovered (D240).
-  await page.click("[data-testid=rail-transitions]");
-  await page.waitForSelector("[data-testid=transitions-library]");
-  const tiles = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
-  assert.deepEqual(tiles, TRANSITIONS.map((t) => t.id));
-  const styleNow = () => page.$eval("[data-testid=transition-tile][data-module='transition.clock'] .tr-b", (el) => (el as HTMLElement).style.clipPath + (el as HTMLElement).style.visibility);
-  await page.mouse.move(5, 5);
-  const still = [await styleNow()];
-  for (let i = 0; i < 2; i++) {
+    // The panel: all tiles, thumbnails still until hovered (D240).
+    await page.click("[data-testid=rail-transitions]");
+    await page.waitForSelector("[data-testid=transitions-library]");
+    const tiles = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
+    assert.deepEqual(
+      tiles,
+      TRANSITIONS.map((t) => t.id),
+    );
+    const styleNow = () =>
+      page.$eval(
+        "[data-testid=transition-tile][data-module='transition.clock'] .tr-b",
+        (el) => (el as HTMLElement).style.clipPath + (el as HTMLElement).style.visibility,
+      );
+    await page.mouse.move(5, 5);
+    const still = [await styleNow()];
+    for (let i = 0; i < 2; i++) {
+      await sleep(370);
+      still.push(await styleNow());
+    }
+    assert.equal(new Set(still).size, 1, `the clock thumbnail holds still unhovered: ${still.join(" | ")}`);
+    assert.equal(await page.$("[data-testid=transition-thumb][data-playing]"), null);
+    await page.hover("[data-testid=transition-tile][data-module='transition.clock'] .tile-name");
+    await page.waitForSelector("[data-testid=transition-tile][data-module='transition.clock'] [data-testid=transition-thumb][data-playing=true]");
+    const s1 = await styleNow();
     await sleep(370);
-    still.push(await styleNow());
-  }
-  assert.equal(new Set(still).size, 1, `the clock thumbnail holds still unhovered: ${still.join(" | ")}`);
-  assert.equal(await page.$("[data-testid=transition-thumb][data-playing]"), null);
-  await page.hover("[data-testid=transition-tile][data-module='transition.clock'] .tile-name");
-  await page.waitForSelector("[data-testid=transition-tile][data-module='transition.clock'] [data-testid=transition-thumb][data-playing=true]");
-  const s1 = await styleNow();
-  await sleep(370);
-  const s2 = await styleNow();
-  await sleep(370);
-  const s3 = await styleNow();
-  assert.ok(s1 !== s2 || s2 !== s3, `the clock thumbnail animates while hovered: ${s1} | ${s2} | ${s3}`);
-  await page.mouse.move(5, 5);
-  await page.waitForFunction(() => !document.querySelector("[data-testid=transition-thumb][data-playing]"));
-  // No kind filters or length chips; the search stays.
-  assert.equal(await page.$("[data-testid=transition-kind]"), null);
-  assert.equal(await page.$("[data-testid=transition-length]"), null);
-  await page.type("[data-testid=transition-search]", "wipe");
-  const wipes = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
-  assert.deepEqual(wipes, ["transition.wipe", "transition.wipe-left", "transition.wipe-up", "transition.wipe-down", "transition.clock"]);
-  await sleep(600);
-  await page.screenshot({ path: out("transitions-panel.png") });
-  await page.click("[data-testid=transition-search-clear]");
-  await page.click("[data-testid=transition-search]");
-  await page.type("[data-testid=transition-search]", "nothing like this");
-  await page.waitForSelector("[data-testid=transition-empty]", { timeout: 5000 }).catch(async (e) => {
-    throw new Error(`${(e as Error).message}; search value ${JSON.stringify(await page.$eval("[data-testid=transition-search]", (el) => (el as HTMLInputElement).value))}, active ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120))}`);
-  });
-  await page.click("[data-testid=transition-search-clear]");
+    const s2 = await styleNow();
+    await sleep(370);
+    const s3 = await styleNow();
+    assert.ok(s1 !== s2 || s2 !== s3, `the clock thumbnail animates while hovered: ${s1} | ${s2} | ${s3}`);
+    await page.mouse.move(5, 5);
+    await page.waitForFunction(() => !document.querySelector("[data-testid=transition-thumb][data-playing]"));
+    // No kind filters or length chips; the search stays.
+    assert.equal(await page.$("[data-testid=transition-kind]"), null);
+    assert.equal(await page.$("[data-testid=transition-length]"), null);
+    await page.type("[data-testid=transition-search]", "wipe");
+    const wipes = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
+    assert.deepEqual(wipes, ["transition.wipe", "transition.wipe-left", "transition.wipe-up", "transition.wipe-down", "transition.clock"]);
+    await sleep(600);
+    await page.screenshot({ path: out("transitions-panel.png") });
+    await page.click("[data-testid=transition-search-clear]");
+    await page.click("[data-testid=transition-search]");
+    await page.type("[data-testid=transition-search]", "nothing like this");
+    await page.waitForSelector("[data-testid=transition-empty]", { timeout: 5000 }).catch(async (e) => {
+      throw new Error(
+        `${(e as Error).message}; search value ${JSON.stringify(await page.$eval("[data-testid=transition-search]", (el) => (el as HTMLInputElement).value))}, active ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120))}`,
+      );
+    });
+    await page.click("[data-testid=transition-search-clear]");
 
-  // A click on a tile puts it on the selected cut; the cut's length (12 frames) is kept on a change of type.
-  await page.click('[data-testid=transition-marker][data-item="c1"]');
-  await page.waitForSelector("[data-testid=inspector-transition][data-item=c1]");
-  const rev = await revision();
-  await page.click("[data-testid=transition-tile][data-module='transition.wipe-up']");
-  await waitRevision(rev + 1);
-  assert.deepEqual(onDisk().tracks[0]!.items[1]!.transitionIn, { module: "transition.wipe-up", duration: LENGTH });
-  assert.deepEqual(app.errors, []);
-});
+    // A click on a tile puts it on the selected cut; the cut's length (12 frames) is kept on a change of type.
+    await page.click('[data-testid=transition-marker][data-item="c1"]');
+    await page.waitForSelector("[data-testid=inspector-transition][data-item=c1]");
+    const rev = await revision();
+    await page.click("[data-testid=transition-tile][data-module='transition.wipe-up']");
+    await waitRevision(rev + 1);
+    assert.deepEqual(onDisk().tracks[0]!.items[1]!.transitionIn, { module: "transition.wipe-up", duration: LENGTH });
+    assert.deepEqual(app.errors, []);
+  },
+);

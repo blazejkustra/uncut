@@ -54,7 +54,14 @@ test("create makes the D12 folder with a valid empty project and opens it", T, a
     assert.equal(project.name, "First");
     assert.deepEqual(project.canvas, { width: 1920, height: 1080, fps: 30 });
     assert.deepEqual(project.media, []);
-    assert.deepEqual(project.tracks.map((t: any) => [t.kind, t.role ?? null, t.items.length]), [["text", null, 0], ["video", "main", 0], ["audio", null, 0]]);
+    assert.deepEqual(
+      project.tracks.map((t: any) => [t.kind, t.role ?? null, t.items.length]),
+      [
+        ["text", null, 0],
+        ["video", "main", 0],
+        ["audio", null, 0],
+      ],
+    );
     assert.deepEqual(await s.ok("project.get"), snap);
 
     const custom = await s.ok("project.create", { parentDir: root, name: "Vertical", canvas: { width: 1080, height: 1920, fps: 60 } });
@@ -101,7 +108,11 @@ test("edit saves atomically, survives a reopen, and undo/redo walk it back and f
     const edited = await s.ok("project.edit", { ops: [addTitle], summary: "Add a title" });
     assert.deepEqual({ revision: edited.revision, canUndo: edited.canUndo, canRedo: edited.canRedo }, { revision: 1, canUndo: true, canRedo: false });
     assert.deepEqual(onDisk(dir).tracks[0].items, [title]);
-    assert.deepEqual(readdirSync(dir).filter((f) => f.includes(".tmp")), [], "no temp files left behind");
+    assert.deepEqual(
+      readdirSync(dir).filter((f) => f.includes(".tmp")),
+      [],
+      "no temp files left behind",
+    );
   } finally {
     await s.end();
   }
@@ -146,7 +157,10 @@ test("an invalid or malformed edit is refused with details and leaves the file a
     const overlap = await s.fail("project.edit", { ops: [{ op: "insert_item", track: "text", item: { ...title, id: "again", start: 30 } }] });
     assert.equal(overlap._tag, "EditRefused");
     assert.match(overlap.message, /invalid/);
-    assert.ok(overlap.details.some((d: any) => d.code === "overlap" && d.path === "/tracks/text/items/again"), JSON.stringify(overlap.details));
+    assert.ok(
+      overlap.details.some((d: any) => d.code === "overlap" && d.path === "/tracks/text/items/again"),
+      JSON.stringify(overlap.details),
+    );
 
     const missing = await s.fail("project.edit", { ops: [{ op: "delete_item", item: "ghost" }] });
     assert.deepEqual([missing._tag, missing.message], ["EditRefused", 'Item "ghost" does not exist']);
@@ -155,7 +169,12 @@ test("an invalid or malformed edit is refused with details and leaves the file a
     assert.equal(malformed._tag, "EditRefused");
 
     // All or nothing: a valid op followed by a bad one changes nothing.
-    const mixed = await s.fail("project.edit", { ops: [{ op: "update_item", item: "hello", set: { text: "Changed" } }, { op: "delete_item", item: "ghost" }] });
+    const mixed = await s.fail("project.edit", {
+      ops: [
+        { op: "update_item", item: "hello", set: { text: "Changed" } },
+        { op: "delete_item", item: "ghost" },
+      ],
+    });
     assert.equal(mixed._tag, "EditRefused");
 
     assert.equal(readFileSync(join(dir, "project.json"), "utf8"), before);
@@ -181,10 +200,22 @@ test("opening a missing or invalid folder is a typed error with readable details
 
     const invalid = join(root, "Invalid.uncut");
     mkdirSync(invalid);
-    writeFileSync(join(invalid, "project.json"), JSON.stringify({ format: "uncut/0", name: "Bad", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "t", kind: "text", name: "T", items: [] }] }));
+    writeFileSync(
+      join(invalid, "project.json"),
+      JSON.stringify({
+        format: "uncut/0",
+        name: "Bad",
+        canvas: { width: 1920, height: 1080, fps: 30 },
+        media: [],
+        tracks: [{ id: "t", kind: "text", name: "T", items: [] }],
+      }),
+    );
     const rules = await s.fail("project.open", { dir: invalid });
     assert.equal(rules.reason, "invalid");
-    assert.deepEqual(rules.details.map((d: any) => d.code), ["main-track-count"]);
+    assert.deepEqual(
+      rules.details.map((d: any) => d.code),
+      ["main-track-count"],
+    );
     assert.match(rules.details[0].message, /exactly one main track/);
     // A failed open doesn't open anything.
     assert.equal((await s.fail("project.get")).reason, "no-project");
@@ -202,7 +233,13 @@ test("recents are newest first, persist across a restart and drop deleted folder
     await s.ok("project.create", { parentDir: root, name: "R2" });
     await s.ok("project.open", { dir: join(root, "R1.uncut") });
     const list = await s.ok("recents.list");
-    assert.deepEqual(list.map((r: any) => [r.name, r.dir]), [["R1", join(root, "R1.uncut")], ["R2", join(root, "R2.uncut")]]);
+    assert.deepEqual(
+      list.map((r: any) => [r.name, r.dir]),
+      [
+        ["R1", join(root, "R1.uncut")],
+        ["R2", join(root, "R2.uncut")],
+      ],
+    );
     assert.ok(list.every((r: any) => !Number.isNaN(Date.parse(r.openedAt))));
   } finally {
     await s.end();
@@ -212,11 +249,17 @@ test("recents are newest first, persist across a restart and drop deleted folder
   rmSync(join(root, "R1.uncut"), { recursive: true });
   s = await session();
   try {
-    assert.deepEqual((await s.ok("recents.list")).map((r: any) => r.name), ["R2"]);
+    assert.deepEqual(
+      (await s.ok("recents.list")).map((r: any) => r.name),
+      ["R2"],
+    );
   } finally {
     await s.end();
   }
-  assert.deepEqual(JSON.parse(readFileSync(join(data(), "recents.json"), "utf8")).map((r: any) => r.name), ["R2"]);
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(data(), "recents.json"), "utf8")).map((r: any) => r.name),
+    ["R2"],
+  );
 });
 
 const tempFiles = (dir: string) => readdirSync(dir).filter((f) => f.includes(".tmp"));
@@ -235,7 +278,10 @@ test("prototype keys in ops are refused and can't produce an unopenable project.
     ]) {
       const error = await s.fail("project.edit", { ops: [JSON.parse(raw)] });
       assert.equal(error._tag, "EditRefused", raw);
-      assert.ok(error.details.some((d: any) => d.code === "unsafe-key"), JSON.stringify(error.details));
+      assert.ok(
+        error.details.some((d: any) => d.code === "unsafe-key"),
+        JSON.stringify(error.details),
+      );
     }
     assert.equal(readFileSync(join(dir, "project.json"), "utf8"), before);
     const reopened = await s.ok("project.open", { dir });
@@ -261,7 +307,11 @@ test("malformed ops are refused by the edit-ops schema, as are empty edits and r
     for (const [ops, code] of cases) {
       const error = await s.fail("project.edit", { ops });
       assert.equal(error._tag, "EditRefused", JSON.stringify(ops));
-      assert.deepEqual(error.details.map((d: any) => d.code), [code], JSON.stringify(error.details));
+      assert.deepEqual(
+        error.details.map((d: any) => d.code),
+        [code],
+        JSON.stringify(error.details),
+      );
     }
     assert.equal(readFileSync(join(dir, "project.json"), "utf8"), before);
   } finally {
@@ -298,7 +348,9 @@ test("a hand edit to project.json is never overwritten: edits are refused until 
     hand.tracks[0].items[0].text = "Typed by hand";
     writeFileSync(file, JSON.stringify(hand, null, 2));
 
-    for (const [tag, payload] of [["project.edit", { ops: [{ op: "update_item", item: "hello", set: { duration: 90 } }] }], ["project.undo"]] as Array<[string, unknown?]>) {
+    for (const [tag, payload] of [["project.edit", { ops: [{ op: "update_item", item: "hello", set: { duration: 90 } }] }], ["project.undo"]] as Array<
+      [string, unknown?]
+    >) {
       const error = await s.fail(tag, payload);
       assert.deepEqual([error._tag, error.reason], ["ProjectError", "changed-on-disk"], tag);
     }
@@ -332,7 +384,15 @@ test("clients hanging up mid-save never leave disk and memory disagreeing, nor t
     const { port, token } = s.server.ready;
     for (let i = 0; i < 40; i++) {
       const ws = await openSocket(`ws://127.0.0.1:${port}/ws?token=${token}`);
-      ws.send(JSON.stringify({ _tag: "Request", id: "1", tag: "project.edit", payload: { ops: [{ op: "update_item", item: `t${i}`, set: { text: `edit ${i}` } }] }, headers: [] }));
+      ws.send(
+        JSON.stringify({
+          _tag: "Request",
+          id: "1",
+          tag: "project.edit",
+          payload: { ops: [{ op: "update_item", item: `t${i}`, set: { text: `edit ${i}` } }] },
+          headers: [],
+        }),
+      );
       // Hang up at varying points: before, during and after the server's save.
       await new Promise((r) => setTimeout(r, (i * 7) % 60));
       ws.close();
@@ -363,7 +423,10 @@ test("a symlinked project.json stays a symlink; saves go through to its target",
     assert.ok(lstatSync(join(dir, "project.json")).isSymbolicLink());
     assert.deepEqual(JSON.parse(readFileSync(real, "utf8")).tracks[0].items, [title]);
     assert.deepEqual(tempFiles(dir), []);
-    assert.deepEqual(readdirSync(root).filter((f) => f.includes(".tmp")), []);
+    assert.deepEqual(
+      readdirSync(root).filter((f) => f.includes(".tmp")),
+      [],
+    );
   } finally {
     await s.end();
   }
@@ -403,11 +466,17 @@ test("recents dedupe by real path and drop entries whose project.json is gone", 
     symlinkSync(join(root, "Dedupe.uncut"), link);
     const viaLink = await s.ok("project.open", { dir: link });
     assert.equal(viaLink.dir, join(root, "Dedupe.uncut"));
-    assert.deepEqual((await s.ok("recents.list")).map((r: any) => r.dir), [join(root, "Dedupe.uncut")]);
+    assert.deepEqual(
+      (await s.ok("recents.list")).map((r: any) => r.dir),
+      [join(root, "Dedupe.uncut")],
+    );
 
     await s.ok("project.create", { parentDir: root, name: "Emptied" });
     rmSync(join(root, "Emptied.uncut", "project.json"));
-    assert.deepEqual((await s.ok("recents.list")).map((r: any) => r.name), ["Dedupe"]);
+    assert.deepEqual(
+      (await s.ok("recents.list")).map((r: any) => r.name),
+      ["Dedupe"],
+    );
   } finally {
     await s.end();
   }
@@ -461,7 +530,11 @@ test("project.subscribe streams the open project: now, then every change, in ord
     await s.ok("project.close");
     await watch.until((v, i, all) => all.at(-1) === null);
     const revisions = watch.values.filter(Boolean).map((v) => v.revision);
-    assert.deepEqual(revisions, [...revisions].sort((a, b) => a - b), "never goes backwards");
+    assert.deepEqual(
+      revisions,
+      [...revisions].sort((a, b) => a - b),
+      "never goes backwards",
+    );
     // A late subscriber gets the current state straight away.
     const late = s.subscribe("project.subscribe");
     await late.until((v) => v === null);

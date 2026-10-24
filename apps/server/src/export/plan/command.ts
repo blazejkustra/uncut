@@ -29,7 +29,11 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       // at the effects' size), then the other picture effects and the box as for any clip.
       if (!shaded || !geo) throw new Error(`no shader frames for ${layer.item.id}`);
       inputs.push("-i", shaded);
-      graph.push(`[${index}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+      graph.push(
+        `[${index}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[e${k}]`,
+        ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
+        ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+      );
       chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
     } else if (layer.kind === "video") {
       const source = videoSource(layer, index, opts, W, H, fps);
@@ -60,8 +64,18 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       const looped = [`loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`];
       if (geo && layer.fx) {
         // Picture effects (D136): once on the still when nothing in them moves, else per frame.
-        if (layer.fx.fx.shake) graph.push(`[${index}:v:0]${looped.join(",")},setpts=N[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
-        else graph.push(...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts), `[e${k}]${looped.join(",")},setpts=N[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        if (layer.fx.fx.shake)
+          graph.push(
+            `[${index}:v:0]${looped.join(",")},setpts=N[e${k}]`,
+            ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
+            ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+          );
+        else
+          graph.push(
+            ...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts),
+            `[e${k}]${looped.join(",")},setpts=N[p${k}]`,
+            ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+          );
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else if (geo && same(geo.map((p) => p.cw)) && same(geo.map((p) => p.ch))) {
         // A still in a box of one size: made into its box once, then repeated.
@@ -203,7 +217,18 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     "[vout]",
     "-map",
     "[aout]",
-    ...(opts.subtitles ? ["-map", `${subtitleInput}:s:0`, "-c:s", "mov_text", "-metadata:s:s:0", `language=${opts.subtitles.language}`, "-disposition:s:0", opts.subtitles.show ? "default" : "0"] : []),
+    ...(opts.subtitles
+      ? [
+          "-map",
+          `${subtitleInput}:s:0`,
+          "-c:s",
+          "mov_text",
+          "-metadata:s:s:0",
+          `language=${opts.subtitles.language}`,
+          "-disposition:s:0",
+          opts.subtitles.show ? "default" : "0",
+        ]
+      : []),
     ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
     "-pix_fmt",
     "yuv420p",
@@ -241,6 +266,8 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
  * some frames leaves a picture missing (seen with too many inputs at once). The export fails then.
  */
 export function silentFailure(stderr: string): string | undefined {
-  const line = stderr.split("\n").find((l) => /\[swscaler[^\]]*\].*(error|fail|cannot|invalid)/i.test(l) || /Error while (filtering|processing)|Failed to inject frame/i.test(l));
+  const line = stderr
+    .split("\n")
+    .find((l) => /\[swscaler[^\]]*\].*(error|fail|cannot|invalid)/i.test(l) || /Error while (filtering|processing)|Failed to inject frame/i.test(l));
   return line?.trim();
 }

@@ -52,7 +52,10 @@ function readDenied(error: unknown, path: string): string | undefined {
  * At most `max` skipped entries, and when there are more, how many in all and per reason, so a
  * folder of a thousand sidecar files doesn't flood the reply.
  */
-export function capSkipped<T extends { readonly reason: string }>(list: ReadonlyArray<T>, max = 20): { skipped: Array<T>; skippedTotal?: number; skippedByReason?: Record<string, number> } {
+export function capSkipped<T extends { readonly reason: string }>(
+  list: ReadonlyArray<T>,
+  max = 20,
+): { skipped: Array<T>; skippedTotal?: number; skippedByReason?: Record<string, number> } {
   if (list.length <= max) return { skipped: [...list] };
   const byReason: Record<string, number> = {};
   for (const s of list) byReason[s.reason] = (byReason[s.reason] ?? 0) + 1;
@@ -67,7 +70,8 @@ export function capSkipped<T extends { readonly reason: string }>(list: Readonly
 export function refusal(real: string, projectReal: string, shown: string): string | undefined {
   if (inside(real, join(projectReal, ".cache"))) return `${shown} is in the project's cache (.cache), which holds Uncut's own files, not footage.`;
   if (real === projectReal) return `${shown} is the project's own folder. Import footage from the folder where it lives.`;
-  if (inside(real, projectReal) && !inside(real, join(projectReal, "media"))) return `${shown} is inside the project's folder, which holds Uncut's own files. Import footage from the folder where it lives.`;
+  if (inside(real, projectReal) && !inside(real, join(projectReal, "media")))
+    return `${shown} is inside the project's folder, which holds Uncut's own files. Import footage from the folder where it lives.`;
   return undefined;
 }
 
@@ -137,7 +141,9 @@ export async function planImport(paths: ReadonlyArray<unknown>, projectDir: stri
     }
   }
   if (files.length > max) {
-    return { refused: `That's ${files.length} media files; media_import takes at most ${max} per call. Import them in smaller groups (pass paths with up to ${max} files).` };
+    return {
+      refused: `That's ${files.length} media files; media_import takes at most ${max} per call. Import them in smaller groups (pass paths with up to ${max} files).`,
+    };
   }
   return { files, skipped };
 }
@@ -155,7 +161,9 @@ export function sheetFrames(start: number, end: number, every: number | undefine
     const count = Math.ceil(length / every);
     if (count > max) {
       const wider = Math.ceil(length / max);
-      return { refused: `Every ${every} frames over ${length} frames is ${count} cells; a sheet holds at most ${max}. Use every ≥ ${wider}, or a shorter range.` };
+      return {
+        refused: `Every ${every} frames over ${length} frames is ${count} cells; a sheet holds at most ${max}. Use every ≥ ${wider}, or a shorter range.`,
+      };
     }
     return Array.from({ length: count }, (_, i) => start + i * every);
   }
@@ -265,8 +273,14 @@ export async function listFolder(dir: string, max = 40): Promise<FolderListing |
     return undefined;
   }
   const shown = entries.filter((e) => !e.name.startsWith(".") && (e.isFile() || e.isDirectory() || e.isSymbolicLink()));
-  const folders = shown.filter((e) => e.isDirectory()).map((e) => `${e.name}/`).sort(byName);
-  const files = shown.filter((e) => !e.isDirectory()).map((e) => e.name).sort(byName);
+  const folders = shown
+    .filter((e) => e.isDirectory())
+    .map((e) => `${e.name}/`)
+    .sort(byName);
+  const files = shown
+    .filter((e) => !e.isDirectory())
+    .map((e) => e.name)
+    .sort(byName);
   const ext = (n: string) => extname(n).toLowerCase();
   return {
     files: files.length,
@@ -282,6 +296,8 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /** "12 files (3 videos, 8 images) and 2 folders": a listing in words. */
 export function listingWords(l: FolderListing): string {
-  const kinds = [l.videos ? plural(l.videos, "video") : "", l.images ? plural(l.images, "image") : "", l.sounds ? plural(l.sounds, "sound") : ""].filter(Boolean);
+  const kinds = [l.videos ? plural(l.videos, "video") : "", l.images ? plural(l.images, "image") : "", l.sounds ? plural(l.sounds, "sound") : ""].filter(
+    Boolean,
+  );
   return `${plural(l.files, "file")}${kinds.length && l.files ? ` (${kinds.join(", ")})` : ""}${l.folders ? ` and ${plural(l.folders, "folder")}` : ""}`;
 }

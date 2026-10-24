@@ -125,14 +125,25 @@ test("an empty project gets a title and a lower third, plays them at their frame
   assert.equal(await page.$("[data-testid=timeline-empty]"), null);
   await waitFor(page, '.pv-text[data-item="title-1"]');
   const saved = onDisk().tracks.find((t: { id: string }) => t.id === "text").items[0];
-  assert.deepEqual(saved, { id: "title-1", type: "text", start: 0, duration: 90, text: "Title", transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 130, weight: 700 } });
+  assert.deepEqual(saved, {
+    id: "title-1",
+    type: "text",
+    start: 0,
+    duration: 90,
+    text: "Title",
+    transform: { x: 154, y: 410 },
+    style: { preset: "text.title", size: 130, weight: 700 },
+  });
 
   // At 2 s the Text track is taken for the next 3 s, so a lower third goes on a new text track on top.
   await page.click("[data-testid=timeline]");
   await goTo(page, 60, 30);
   await page.click("[data-testid=text-preset][data-preset=lower-third]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 2);
-  assert.deepEqual((await items(page)).find((i) => i.id === "lower-third-1"), { id: "lower-third-1", type: "text", start: 60, duration: 90, track: "text-1" });
+  assert.deepEqual(
+    (await items(page)).find((i) => i.id === "lower-third-1"),
+    { id: "lower-third-1", type: "text", start: 60, duration: 90, track: "text-1" },
+  );
   assert.deepEqual(await trackIds(page), ["text-1", "text", "main", "audio"]);
   assert.equal(await text(page, "timecode"), "00:00:02:00 / 00:00:05:00");
   await page.screenshot({ path: out("preview-text-editor.png") });
@@ -181,11 +192,14 @@ test("an empty project gets a title and a lower third, plays them at their frame
   await meta(page, "KeyZ");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1);
   assert.deepEqual(await trackIds(page), ["text", "main", "audio"]);
-  assert.ok(await frameOf(page) <= 90, "the playhead is clamped to the shorter project (at most its end)");
+  assert.ok((await frameOf(page)) <= 90, "the playhead is clamped to the shorter project (at most its end)");
   await page.click("[data-testid=undo]");
   await waitFor(page, "[data-testid=timeline-empty]");
   assert.equal(await page.$(".pv-text"), null);
-  assert.deepEqual(onDisk().tracks.map((t: { items: unknown[] }) => t.items.length), [0, 0, 0]);
+  assert.deepEqual(
+    onDisk().tracks.map((t: { items: unknown[] }) => t.items.length),
+    [0, 0, 0],
+  );
   await meta(page, "KeyZ", true);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1);
 
@@ -196,7 +210,10 @@ test("an empty project gets a title and a lower third, plays them at their frame
   await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === 90);
   assert.equal(await text(page, "timecode"), "00:00:03:00 / 00:00:03:00");
   assert.equal(await page.$(".pv-text"), null, "nothing is drawn at the end");
-  assert.deepEqual(await page.$$eval("[data-testid=step-forward],[data-testid=to-end]", (b) => (b as Array<HTMLButtonElement>).map((x) => x.disabled)), [true, true]);
+  assert.deepEqual(await page.$$eval("[data-testid=step-forward],[data-testid=to-end]", (b) => (b as Array<HTMLButtonElement>).map((x) => x.disabled)), [
+    true,
+    true,
+  ]);
   await page.keyboard.press("ArrowRight");
   await sleep(100);
   assert.equal(await frameOf(page), 90, "→ stops at the end");
@@ -217,22 +234,50 @@ test("an empty project gets a title and a lower third, plays them at their frame
 
 /** SSIM between two images, both scaled to 480×270 grey. 1 means identical. */
 function ssim(a: string, b: string) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 }
 /** Best SSIM between a preview shot and any source frame within ±0.1 s of `seconds`. */
 function bestMatch(src: string, shot: string, seconds: number, tag: string) {
   const pattern = out(`preview-src-${tag}-%02d.png`);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(Math.max(0, seconds - 0.1)), "-i", src, "-t", "0.2", "-map", "0:v:0", "-vf", "scale=480:270", pattern]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    String(Math.max(0, seconds - 0.1)),
+    "-i",
+    src,
+    "-t",
+    "0.2",
+    "-map",
+    "0:v:0",
+    "-vf",
+    "scale=480:270",
+    pattern,
+  ]);
   let best = 0;
-  for (let i = 1; existsSync(pattern.replace("%02d", String(i).padStart(2, "0"))); i++) best = Math.max(best, ssim(shot, pattern.replace("%02d", String(i).padStart(2, "0"))));
+  for (let i = 1; existsSync(pattern.replace("%02d", String(i).padStart(2, "0"))); i++)
+    best = Math.max(best, ssim(shot, pattern.replace("%02d", String(i).padStart(2, "0"))));
   return best;
 }
 const videos = (page: Page) =>
   page.$$eval("video[data-item]", (els) =>
     els.map((e) => {
       const v = e as HTMLVideoElement;
-      return { id: v.dataset.item, src: v.src, time: v.currentTime, paused: v.paused, seeking: v.seeking, ready: v.readyState, opacity: Number(v.style.opacity) };
+      return {
+        id: v.dataset.item,
+        src: v.src,
+        time: v.currentTime,
+        paused: v.paused,
+        seeking: v.seeking,
+        ready: v.readyState,
+        opacity: Number(v.style.opacity),
+      };
     }),
   );
 /** Put the playhead on exactly `target`: click the ruler near it, then step with the arrow keys. */
@@ -258,8 +303,12 @@ function rgbCenter(png: string) {
 }
 async function settle(page: Page) {
   // D221: 4K footage under a scrub canvas seeks its <video> once the playhead rests; the canvas goes once it has.
-  await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), { timeout: 10000 });
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), { timeout: 10000 });
+  await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), {
+    timeout: 10000,
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), {
+    timeout: 10000,
+  });
   await sleep(150);
 }
 
@@ -332,14 +381,21 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
   // A frame step moves the video by exactly 1 / fps, each way.
   const before = await frameOf(page);
   const t0Video = (await videos(page))[0]!.time;
-  for (const [key, delta] of [["ArrowRight", 1], ["ArrowRight", 1], ["ArrowLeft", -1]] as const) {
+  for (const [key, delta] of [
+    ["ArrowRight", 1],
+    ["ArrowRight", 1],
+    ["ArrowLeft", -1],
+  ] as const) {
     const was = await frameOf(page);
     const wasTime = (await videos(page))[0]!.time;
     await page.keyboard.press(key);
     await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, was + delta);
     await settle(page);
     const now = (await videos(page))[0]!.time;
-    assert.ok(Math.abs(now - wasTime - delta / fps) < 0.25 / fps, `${key}: video moved ${(now - wasTime).toFixed(4)} s, expected ${(delta / fps).toFixed(4)} s`);
+    assert.ok(
+      Math.abs(now - wasTime - delta / fps) < 0.25 / fps,
+      `${key}: video moved ${(now - wasTime).toFixed(4)} s, expected ${(delta / fps).toFixed(4)} s`,
+    );
   }
   assert.ok(Math.abs((await videos(page))[0]!.time - t0Video - 1 / fps) < 0.25 / fps);
 
@@ -375,7 +431,14 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
   await seekTo(page, frames - fps, fps);
   await settle(page);
   let vs = await videos(page);
-  assert.deepEqual(vs.map((v) => [v.id, v.opacity]).sort(), [["clip-1", 1], ["clip-2", 0]], `warm-up: ${JSON.stringify(vs)}`);
+  assert.deepEqual(
+    vs.map((v) => [v.id, v.opacity]).sort(),
+    [
+      ["clip-1", 1],
+      ["clip-2", 0],
+    ],
+    `warm-up: ${JSON.stringify(vs)}`,
+  );
   assert.ok(vs.find((v) => v.id === "clip-2")!.time < 0.5 / fps, "the next clip waits on its first frame");
   // Last frame of clip 1, then the boundary frame shows clip 2 from its start.
   await seekTo(page, frames - 1, fps);
@@ -388,7 +451,11 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frames);
   await settle(page);
   vs = await videos(page);
-  assert.deepEqual(vs.map((v) => [v.id, v.opacity]), [["clip-2", 1]], `after the cut: ${JSON.stringify(vs)}`);
+  assert.deepEqual(
+    vs.map((v) => [v.id, v.opacity]),
+    [["clip-2", 1]],
+    `after the cut: ${JSON.stringify(vs)}`,
+  );
   assert.ok(vs[0]!.time < 0.5 / fps, `clip 2 starts at its first frame (${vs[0]!.time})`);
   const cutShot = await shotPreview(page, "cut");
   const atStart = bestMatch(src, cutShot, 0, "cut-start");
@@ -408,7 +475,12 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
         const start = performance.now();
         const sample = () => {
           const v = [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].find((e) => e.style.opacity === "1");
-          got.push({ f: Number(frame.dataset.frame), id: v?.dataset.item, time: v?.currentTime ?? NaN, stable: !!v && !v.paused && !v.seeking && v.readyState >= 3 });
+          got.push({
+            f: Number(frame.dataset.frame),
+            id: v?.dataset.item,
+            time: v?.currentTime ?? NaN,
+            stable: !!v && !v.paused && !v.seeking && v.readyState >= 3,
+          });
           if (performance.now() - start > 3000) {
             window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
             return done(got);
@@ -429,7 +501,9 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
   }
   drifts.sort((a, b) => a - b);
   const p90 = drifts[Math.floor(drifts.length * 0.9)]!;
-  t.diagnostic(`playback across the cut: ${samples.length} samples, ${drifts.length} stable, drift median ${(drifts[drifts.length >> 1]! * 1000).toFixed(0)} ms, p90 ${(p90 * 1000).toFixed(0)} ms, max ${(drifts.at(-1)! * 1000).toFixed(0)} ms`);
+  t.diagnostic(
+    `playback across the cut: ${samples.length} samples, ${drifts.length} stable, drift median ${(drifts[drifts.length >> 1]! * 1000).toFixed(0)} ms, p90 ${(p90 * 1000).toFixed(0)} ms, max ${(drifts.at(-1)! * 1000).toFixed(0)} ms`,
+  );
   assert.ok(samples.some((s) => s.f < frames - 30) && samples.some((s) => s.f > frames + 30), `played across the cut: ${samples[0]!.f}…${samples.at(-1)!.f}`);
   assert.ok(samples.some((s) => s.stable && s.id === "clip-1") && samples.some((s) => s.stable && s.id === "clip-2"), "both clips played");
   assert.ok(p90 < 4 / fps, `video and clock drift apart: p90 ${p90.toFixed(3)} s`);
@@ -447,8 +521,26 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
 test("a relinked file and another project with the same media ids show their own footage", { skip, timeout: 120000 }, async () => {
   const red = join(root, "red.mp4");
   const blue = join(root, "blue.mp4");
-  for (const [path, colour] of [[red, "red"], [blue, "blue"]] as const) {
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${colour}:size=320x180:rate=30`, "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", path]);
+  for (const [path, colour] of [
+    [red, "red"],
+    [blue, "blue"],
+  ] as const) {
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${colour}:size=320x180:rate=30`,
+      "-t",
+      "2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      path,
+    ]);
   }
   const probe = { frames: 60, fps: 30, width: 320, height: 180, hasAudio: false };
   const write = (dir: string, name: string, path: string) => {
@@ -509,7 +601,10 @@ test("a relinked file and another project with the same media ids show their own
   // Nothing asked the server for media that isn't in the open project (that would be a 404 here).
   // A 503 is "not now, try later": a filmstrip still being made when its project closed (the open
   // switched projects mid-strip on a slow machine, #89), not a request for the wrong media.
-  assert.deepEqual(app.errors.filter((e) => !/status of 503/.test(e)), []);
+  assert.deepEqual(
+    app.errors.filter((e) => !/status of 503/.test(e)),
+    [],
+  );
   await app.close();
   apps.delete(app);
 });

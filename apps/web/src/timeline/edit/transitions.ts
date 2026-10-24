@@ -1,5 +1,15 @@
 // Transition and track-flag planners (edit.ts), and how a cut fits its transition.
-import { type Cut, cutsOf, transitionName, transitionLimits, transitionInfo, defaultFrames, overlaps, handleBefore, handleAfter } from "@uncut/core/transitions";
+import {
+  type Cut,
+  cutsOf,
+  transitionName,
+  transitionLimits,
+  transitionInfo,
+  defaultFrames,
+  overlaps,
+  handleBefore,
+  handleAfter,
+} from "@uncut/core/transitions";
 import type { TimedModule } from "@uncut/core/types";
 import type { ProjectModel, Track } from "../../state/project.ts";
 import { type Plan, findItem, lockOf, secondsLabel } from "./base.ts";
@@ -23,7 +33,11 @@ export function nearestCut(project: ProjectModel, frame: number): Cut | undefine
  * a changed type keeps the length; every length is clamped to the module's limits and the cut's
  * (core transitionLimits: half the shorter clip, the media handles). No ops when nothing changes.
  */
-export function planSetTransition(project: ProjectModel, itemId: string, next: { readonly module: string; readonly duration?: number } | null): Plan | { readonly problem: string } {
+export function planSetTransition(
+  project: ProjectModel,
+  itemId: string,
+  next: { readonly module: string; readonly duration?: number } | null,
+): Plan | { readonly problem: string } {
   const placed = findItem(project, itemId);
   if (!placed || placed.track.role !== "main") return { problem: "Transitions go between two clips on the main track." };
   if (placed.index === 0) return { problem: "The first clip on the main track has nothing to transition from." };
@@ -42,7 +56,11 @@ export function planSetTransition(project: ProjectModel, itemId: string, next: {
   const transition: TimedModule = { module: next.module, duration };
   if (before && before.module === transition.module && before.duration === duration) return { ops: [], summary: "" };
   const name = transitionName(next.module).toLowerCase();
-  const summary = !before ? `Added ${name}` : before.module !== next.module ? `Changed transition to ${name}` : `Changed transition to ${secondsLabel(duration, project.canvas.fps)}`;
+  const summary = !before
+    ? `Added ${name}`
+    : before.module !== next.module
+      ? `Changed transition to ${name}`
+      : `Changed transition to ${secondsLabel(duration, project.canvas.fps)}`;
   return { ops: [{ op: "set_transition", item: itemId, transition }], summary };
 }
 
@@ -59,7 +77,10 @@ export function planTrackFlag(project: ProjectModel, trackId: string, flag: Trac
   if (flag === "solo") {
     const { solo: _, ...rest } = track.mixer ?? {};
     const mixer = on ? { ...rest, solo: true } : rest;
-    return { ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }], summary: `${on ? "Solo" : "Unsolo"} ${track.name}` };
+    return {
+      ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }],
+      summary: `${on ? "Solo" : "Unsolo"} ${track.name}`,
+    };
   }
   const verb = { hidden: on ? "Hide" : "Show", locked: on ? "Lock" : "Unlock", mute: on ? "Mute" : "Unmute" }[flag];
   const set = flag === "mute" ? { mixer: { ...track.mixer, mute: on } } : { [flag]: on ? true : null };
@@ -72,7 +93,9 @@ export function planTrackFlag(project: ProjectModel, trackId: string, flag: Trac
  * not, with a short word for a tile ("Needs 0.3 s more footage", "Clips too short") and the
  * planner's sentence.
  */
-export type CutFit = { readonly fits: true; readonly max: number; readonly clamped: boolean } | { readonly fits: false; readonly short: string; readonly problem: string };
+export type CutFit =
+  | { readonly fits: true; readonly max: number; readonly clamped: boolean }
+  | { readonly fits: false; readonly short: string; readonly problem: string };
 export function cutFit(project: ProjectModel, cutId: string, module: string, wanted?: number): CutFit {
   const limits = transitionLimits(project, cutId, module);
   if (!("problem" in limits)) return { fits: true, max: limits.max, clamped: wanted !== undefined && wanted > limits.max };

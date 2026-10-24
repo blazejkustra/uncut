@@ -71,7 +71,8 @@ export function installFocusRules(): () => void {
   const onKeyDownCapture = (e: KeyboardEvent) => {
     byPointer = false;
     tabbing = e.key === "Tab";
-    if (e.key === " " || e.key === "Escape" || e.key === "Tab" || e.metaKey || e.ctrlKey || ["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(e.key)) return;
+    if (e.key === " " || e.key === "Escape" || e.key === "Tab" || e.metaKey || e.ctrlKey || ["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(e.key))
+      return;
     const field = fieldOf(e.target);
     if (field) chosen = field;
   };

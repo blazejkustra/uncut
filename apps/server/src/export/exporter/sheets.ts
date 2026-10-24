@@ -40,12 +40,23 @@ export interface MediaFrame {
  * A moment past the end of the video stream (its probed length can include longer sound) shows
  * the stream's last frame, and says so through `seconds`.
  */
-export async function mediaFramesWith(bin: string, path: string, seconds: ReadonlyArray<number>, width: number, fps: number, signal: AbortSignal): Promise<Array<MediaFrame>> {
+export async function mediaFramesWith(
+  bin: string,
+  path: string,
+  seconds: ReadonlyArray<number>,
+  width: number,
+  fps: number,
+  signal: AbortSignal,
+): Promise<Array<MediaFrame>> {
   const caps = await capsOf(bin);
   const temp = await makeTemp();
   let streamEnd: Promise<number | undefined> | undefined;
   const videoEnd = () =>
-    (streamEnd ??= run(join(dirname(bin), "ffprobe"), ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration:format=duration", "-of", "json", path], signal).then(
+    (streamEnd ??= run(
+      join(dirname(bin), "ffprobe"),
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration:format=duration", "-of", "json", path],
+      signal,
+    ).then(
       (r) => {
         try {
           const j = JSON.parse(r.stdout) as { streams?: Array<{ duration?: string }>; format?: { duration?: string } };
@@ -63,7 +74,32 @@ export async function mediaFramesWith(bin: string, path: string, seconds: Readon
       const file = join(temp, `cell-${i}.jpg`);
       const pullAt = async (at: number) => {
         const pick = sourceFramePick(at, fps);
-        const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", path, "-map", "0:v:0", "-vf", `${pick.filter},scale=${Math.max(16, Math.round(width / 2) * 2)}:-2`, "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
+        const r = await run(
+          bin,
+          [
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-v",
+            "error",
+            ...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []),
+            ...pick.seekArgs,
+            "-i",
+            path,
+            "-map",
+            "0:v:0",
+            "-vf",
+            `${pick.filter},scale=${Math.max(16, Math.round(width / 2) * 2)}:-2`,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "4",
+            "-update",
+            "1",
+            file,
+          ],
+          signal,
+        );
         // Past the end of the picture ffmpeg writes nothing (and, since 7, exits with an error saying so).
         if (r.code !== 0 && /Nothing was written into output file|received no packets/.test(r.stderr)) return undefined;
         if (r.code !== 0) throw new Error(`Couldn't read ${basename(path)} at ${at.toFixed(2)} s: ${ffmpegError(r.stderr) || `ffmpeg exited with ${r.code}`}`);

@@ -18,7 +18,19 @@ const GROUPS: ReadonlyArray<[string, (d: CaptureDevice) => boolean]> = [
   ["Can't record yet", (d) => !d.recordable && !d.bootable],
 ];
 
-export function DevicePicker({ devices, value, onChange, disabled, recording }: { devices: ReadonlyArray<CaptureDevice>; value: CaptureDevice | undefined; onChange: (id: string) => void; disabled?: boolean; recording: ReadonlySet<string> }) {
+export function DevicePicker({
+  devices,
+  value,
+  onChange,
+  disabled,
+  recording,
+}: {
+  devices: ReadonlyArray<CaptureDevice>;
+  value: CaptureDevice | undefined;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  recording: ReadonlySet<string>;
+}) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -28,7 +40,15 @@ export function DevicePicker({ devices, value, onChange, disabled, recording }: 
   const close = () => (setOpen(false), setQuery(""));
   return (
     <>
-      <button ref={anchor} className="device-picker" data-testid="capture-device-picker" data-id={value?.id ?? ""} disabled={disabled} title={value ? `${value.name} (${value.id})` : "Choose a device"} onClick={() => (open ? close() : setOpen(true))}>
+      <button
+        ref={anchor}
+        className="device-picker"
+        data-testid="capture-device-picker"
+        data-id={value?.id ?? ""}
+        disabled={disabled}
+        title={value ? `${value.name} (${value.id})` : "Choose a device"}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
         <Icon className="device-picker-icon" />
         <span className="device-picker-text">
           <span className="device-picker-name">{value?.name ?? "Choose a device"}</span>

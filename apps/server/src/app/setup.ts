@@ -50,7 +50,8 @@ const run = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIM
 // D218, D277: Claude Code's probes get the environment the agent's claude gets (as sessionEnv:
 // claudeEnv, whatever Claude Code signs in with, plus the sign-in variables of its user settings),
 // so the sign-in row is the agent's.
-const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) => runProbe(command, args, { timeoutMs, env: claudeEnv(process.env) });
+const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) =>
+  runProbe(command, args, { timeoutMs, env: claudeEnv(process.env) });
 
 /** Why a found tool couldn't answer, in words. */
 const problem = (path: string, result: ProbeResult): string =>
@@ -122,9 +123,7 @@ export const codexAccount = (bin: string, timeoutMs = AUTH_TIMEOUT_MS * 2) =>
 
 /** Runs one probe so that nothing it does (a typed failure or a defect) reaches the others. */
 const isolated = (base: Base, probe: () => Promise<SetupCheck>) =>
-  Effect.tryPromise(probe).pipe(
-    Effect.catchCause(() => Effect.succeed(errorRow(base, `Something went wrong while checking ${base.name}.`))),
-  );
+  Effect.tryPromise(probe).pipe(Effect.catchCause(() => Effect.succeed(errorRow(base, `Something went wrong while checking ${base.name}.`))));
 
 const capitalize = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 
@@ -140,7 +139,11 @@ const claudeSignIn = (status: { authMethod?: unknown; apiProvider?: unknown; sub
       return { status: "ready" as const, detail: `Signed in with a Claude account${plan}` };
     }
     case "api_key":
-      return { status: "ready" as const, detail: keySource === "environment" ? `Signed in with an API key. ${ENV_KEY_NOTE}` : "Signed in with an API key. Agent usage is billed to that API account." };
+      return {
+        status: "ready" as const,
+        detail:
+          keySource === "environment" ? `Signed in with an API key. ${ENV_KEY_NOTE}` : "Signed in with an API key. Agent usage is billed to that API account.",
+      };
     // D219: CLAUDE_CODE_OAUTH_TOKEN, the long-lived token `claude setup-token` makes from a Claude account.
     case "oauth_token":
       return { status: "ready" as const, detail: "Signed in with a Claude account (a long-lived token from claude setup-token)" };
@@ -196,7 +199,12 @@ export const layer = Layer.effect(
         return { ...found, status: "warning", detail: "Found. This version can't report whether it's signed in; run claude once to make sure." };
       }
       if (!status.loggedIn) {
-        return { ...found, status: "needs-login", detail: "Installed, but not signed in.", fix: { text: "Sign in (or set up the API key or cloud provider you use with Claude Code):", command: "claude auth login" } };
+        return {
+          ...found,
+          status: "needs-login",
+          detail: "Installed, but not signed in.",
+          fix: { text: "Sign in (or set up the API key or cloud provider you use with Claude Code):", command: "claude auth login" },
+        };
       }
       // Only the plan is shown; the account's email and organisation stay out of the app.
       return { ...found, ...claudeSignIn(status, apiKeySource(process.env)) };
@@ -219,11 +227,26 @@ export const layer = Layer.effect(
       const found = { ...base, path: bin, ...(version ? { version } : {}) };
       // Issue #106: its app-server says whether it's signed in (a ChatGPT plan, an API key) or needs no sign-in (a local or custom provider).
       const account = await codexAccount(bin);
-      if (account.kind === "failed") return { ...found, status: "warning", detail: `Found, but it couldn't report its sign-in (${account.message}). Run codex once to make sure.` };
+      if (account.kind === "failed")
+        return { ...found, status: "warning", detail: `Found, but it couldn't report its sign-in (${account.message}). Run codex once to make sure.` };
       if (account.kind === "signed-out") {
-        return { ...found, status: "needs-login", detail: "Installed, but not signed in.", fix: { text: "Sign in with your ChatGPT plan (or `codex login --with-api-key` for an OpenAI API key):", command: "codex login" } };
+        return {
+          ...found,
+          status: "needs-login",
+          detail: "Installed, but not signed in.",
+          fix: { text: "Sign in with your ChatGPT plan (or `codex login --with-api-key` for an OpenAI API key):", command: "codex login" },
+        };
       }
-      return { ...found, status: "ready", detail: account.kind === "chatgpt" ? `Signed in with ChatGPT${account.plan ? ` (${capitalize(account.plan)})` : ""}.` : account.kind === "apiKey" ? "Signed in with an OpenAI API key; usage is billed to that API account." : "Ready: its config.toml uses a provider that needs no OpenAI sign-in." };
+      return {
+        ...found,
+        status: "ready",
+        detail:
+          account.kind === "chatgpt"
+            ? `Signed in with ChatGPT${account.plan ? ` (${capitalize(account.plan)})` : ""}.`
+            : account.kind === "apiKey"
+              ? "Signed in with an OpenAI API key; usage is billed to that API account."
+              : "Ready: its config.toml uses a provider that needs no OpenAI sign-in.",
+      };
     });
 
     const argent = isolated({ id: "argent", name: "Argent", optional: true }, async () => {
@@ -250,7 +273,13 @@ export const layer = Layer.effect(
       if (!ffmpegPath || !ffprobePath) {
         const missing = [!ffmpegPath && "ffmpeg", !ffprobePath && "ffprobe"].filter(Boolean).join(" and ");
         const somewhere = ffmpegPath ?? ffprobePath;
-        return { ...base, status: "missing", ...(somewhere ? { path: somewhere } : {}), detail: `${missing} not found. Thumbnails, waveforms and export need both.`, fix };
+        return {
+          ...base,
+          status: "missing",
+          ...(somewhere ? { path: somewhere } : {}),
+          detail: `${missing} not found. Thumbnails, waveforms and export need both.`,
+          fix,
+        };
       }
       const versionRun = await run(ffmpegPath, ["-version"]);
       if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(ffmpegPath, versionRun), ffmpegPath);

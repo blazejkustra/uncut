@@ -101,7 +101,11 @@ export const brandActions = {
       return false;
     }
     const draft = state.agentDraft;
-    set({ agentDraft: insertBrief(draft, result.value.text, at ?? draft.length), agentFocus: state.agentFocus + 1, panelRequest: { panel: "agent", seq: nextPanelSeq() } });
+    set({
+      agentDraft: insertBrief(draft, result.value.text, at ?? draft.length),
+      agentFocus: state.agentFocus + 1,
+      panelRequest: { panel: "agent", seq: nextPanelSeq() },
+    });
     return true;
   },
   /** D232: where skills come from: Settings, the plugins (Uncut's setup, its Capture step). */

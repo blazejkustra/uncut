@@ -13,8 +13,14 @@ export function drawEndCard({ props, w, h, target }: Draw) {
   const bg = typeof props.background === "string" ? color(target, props.background, DEFAULT_THEME.colors.bg) : undefined;
   const parts: Array<string> = [];
   if (logo) parts.push(`<img src="${logo}" alt="" style="display:block;height:${px(128 * k)};max-width:${px(w * 0.6)};object-fit:contain">`);
-  if (title) parts.push(`<div style="font-family:${DM_SANS};font-weight:700;font-size:${px(92 * k)};line-height:1.08;letter-spacing:-0.02em;color:${fg(target)};--accent:${accent(target)};text-align:center;max-width:${px(w * 0.86)}">${markup(title)}</div>`);
-  if (code) parts.push(`<div style="font-family:${DM_MONO};font-weight:500;font-size:${px(40 * k)};line-height:1.2;color:${fg(target)};padding:${px(18 * k)} ${px(34 * k)};border-radius:${px(16 * k)};background:rgb(128 128 128 / 16%);border:${px(1.5 * k)} solid rgb(128 128 128 / 30%);white-space:pre">${esc(code)}</div>`);
+  if (title)
+    parts.push(
+      `<div style="font-family:${DM_SANS};font-weight:700;font-size:${px(92 * k)};line-height:1.08;letter-spacing:-0.02em;color:${fg(target)};--accent:${accent(target)};text-align:center;max-width:${px(w * 0.86)}">${markup(title)}</div>`,
+    );
+  if (code)
+    parts.push(
+      `<div style="font-family:${DM_MONO};font-weight:500;font-size:${px(40 * k)};line-height:1.2;color:${fg(target)};padding:${px(18 * k)} ${px(34 * k)};border-radius:${px(16 * k)};background:rgb(128 128 128 / 16%);border:${px(1.5 * k)} solid rgb(128 128 128 / 30%);white-space:pre">${esc(code)}</div>`,
+    );
   if (url) parts.push(`<div style="font-family:${DM_MONO};font-weight:400;font-size:${px(32 * k)};line-height:1.2;color:${mute(target)}">${esc(url)}</div>`);
   return `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${px(40 * k)};${bg ? `background:${bg};` : ""}">${parts.join("")}</div>`;
 }
@@ -52,7 +58,11 @@ interface Bar {
   readonly accent?: boolean;
 }
 const barsOf = (v: unknown): Array<Bar> =>
-  Array.isArray(v) ? v.filter((b): b is Bar => !!b && typeof b === "object" && typeof (b as Bar).value === "number" && Number.isFinite((b as Bar).value)).map((b) => ({ label: str(b.label), value: Math.max(0, b.value), accent: b.accent === true })) : [];
+  Array.isArray(v)
+    ? v
+        .filter((b): b is Bar => !!b && typeof b === "object" && typeof (b as Bar).value === "number" && Number.isFinite((b as Bar).value))
+        .map((b) => ({ label: str(b.label), value: Math.max(0, b.value), accent: b.accent === true }))
+    : [];
 
 export function drawChart({ props, w, h, target }: Draw) {
   const bars = barsOf(props.bars);
@@ -103,7 +113,11 @@ export interface TerminalLine {
  */
 export function terminalState(props: { readonly [key: string]: unknown }, local: number, fps: number): { lines: Array<TerminalLine>; idle: boolean } {
   const speed = typeof props.speed === "number" && props.speed > 0 ? props.speed : 30;
-  const list = Array.isArray(props.lines) ? props.lines.filter((l): l is { text: string; kind?: string; at?: number } => !!l && typeof l === "object" && typeof (l as { text?: unknown }).text === "string") : [];
+  const list = Array.isArray(props.lines)
+    ? props.lines.filter(
+        (l): l is { text: string; kind?: string; at?: number } => !!l && typeof l === "object" && typeof (l as { text?: unknown }).text === "string",
+      )
+    : [];
   let clock = typeof props.typeFrom === "number" ? Math.max(0, props.typeFrom) : 0;
   const lines: Array<TerminalLine> = [];
   let typing = false;
@@ -151,7 +165,9 @@ export function drawTerminal({ props, w, h, local, fps, target }: Draw) {
   );
   if (state.idle) rows.push(`<div style="white-space:pre;color:#F2F1EE">${promptHtml}${cursor}</div>`);
   const title = str(props.title);
-  const dots = [0, 1, 2].map((i) => `<i style="display:block;width:${px(14 * k)};height:${px(14 * k)};border-radius:50%;background:#3A3A3F;margin-right:${px(9 * k)}"></i>`).join("");
+  const dots = [0, 1, 2]
+    .map(() => `<i style="display:block;width:${px(14 * k)};height:${px(14 * k)};border-radius:50%;background:#3A3A3F;margin-right:${px(9 * k)}"></i>`)
+    .join("");
   return (
     `<div style="position:absolute;inset:0;border-radius:${px(18 * k)};background:#141416;border:${px(Math.max(1, 1.5 * k))} solid #2C2C30;overflow:hidden">` +
     `<div style="position:relative;height:${px(bar)};display:flex;align-items:center;padding:0 ${px(20 * k)};background:#1D1D20;border-bottom:${px(Math.max(1, k))} solid #0E0E10">${dots}` +
@@ -170,14 +186,19 @@ const clockLabel = (s: number) => {
   return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`;
 };
 /** DM Sans has no tabular figures: each character in a cell of fixed width, so a changing number never moves its neighbours. */
-const cells = (text: string) => [...text].map((c) => `<span style="display:inline-block;text-align:center;width:${/[0-9]/.test(c) ? "0.57em" : "0.27em"}">${esc(c)}</span>`).join("");
+const cells = (text: string) =>
+  [...text].map((c) => `<span style="display:inline-block;text-align:center;width:${/[0-9]/.test(c) ? "0.57em" : "0.27em"}">${esc(c)}</span>`).join("");
 
 /**
  * What an agent log shows at `local` frames: the source second (srcAt + seconds × speed), the run's
  * clock (from runStart, stopping at durationMs), the token count reached, the lines in, and whether
  * the run is done.
  */
-export function agentLogState(props: { readonly [key: string]: unknown }, local: number, fps: number): { src: number; clock: number; tokens: number; lines: number; done: boolean } {
+export function agentLogState(
+  props: { readonly [key: string]: unknown },
+  local: number,
+  fps: number,
+): { src: number; clock: number; tokens: number; lines: number; done: boolean } {
   const speed = numOr(props.speed, 1) > 0 ? numOr(props.speed, 1) : 1;
   const src = Math.max(0, numOr(props.srcAt, 0)) + (Math.max(0, local) / fps) * speed;
   const runStart = numOr(props.runStart, 0);
@@ -188,7 +209,9 @@ export function agentLogState(props: { readonly [key: string]: unknown }, local:
     const t = k && typeof k === "object" ? (k as { t?: unknown; cum?: unknown }) : {};
     if (typeof t.t === "number" && typeof t.cum === "number" && t.t <= src) tokens = t.cum;
   }
-  const lines = (Array.isArray(props.lines) ? props.lines : []).filter((l) => !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && (l as { t: number }).t <= src).length;
+  const lines = (Array.isArray(props.lines) ? props.lines : []).filter(
+    (l) => !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && (l as { t: number }).t <= src,
+  ).length;
   return { src, clock, tokens, lines, done: Number.isFinite(length) && src >= runStart + length };
 }
 
@@ -197,7 +220,10 @@ export function drawAgentLog({ props, w, h, local, fps, target }: Draw) {
   const size = numOr(props.size, 19) * k;
   const state = agentLogState(props, local, fps);
   const title = str(props.title);
-  const list = (Array.isArray(props.lines) ? props.lines : []).filter((l): l is { t: number; tool?: string; text: string } => !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && typeof (l as { text?: unknown }).text === "string");
+  const list = (Array.isArray(props.lines) ? props.lines : []).filter(
+    (l): l is { t: number; tool?: string; text: string } =>
+      !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && typeof (l as { text?: unknown }).text === "string",
+  );
   // Only the lines that can be on screen: the log is bottom-anchored and clipped above, and a line
   // takes at least one row (size × 1.45 + its 12 px gap), so the last ceil(area ÷ row) + 1 are all
   // that can show (a long log stays a few KB of HTML a frame).
@@ -212,7 +238,9 @@ export function drawAgentLog({ props, w, h, local, fps, target }: Draw) {
         : `<div style="margin-top:${px(12 * k)};color:#ECECEE">${esc(l.text)}</div>`,
     )
     .join("");
-  const dots = ["#FF5F57", "#FEBC2E", "#28C840"].map((c) => `<i style="display:block;width:${px(12 * k)};height:${px(12 * k)};border-radius:50%;background:${c}"></i>`).join("");
+  const dots = ["#FF5F57", "#FEBC2E", "#28C840"]
+    .map((c) => `<i style="display:block;width:${px(12 * k)};height:${px(12 * k)};border-radius:50%;background:${c}"></i>`)
+    .join("");
   const label = str(props.tokenLabel)
     .split("\n")
     .map((part) => esc(part))

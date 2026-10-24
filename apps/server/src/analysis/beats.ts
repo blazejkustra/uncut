@@ -26,7 +26,27 @@
 //    changes, so a drop that brings in a sustained bass barely moves it; the level does.
 import { Cancelled, ffmpegError, NO_AUDIO_STREAM, pcmArgs, spawnRunner, type Runner } from "./analysisRunner.ts";
 import { fft, fftTables } from "./fft.ts";
-import { WINDOW, HOP, BAND_LOW, BAND_HIGH, SAMPLE_RATE, BANDS, LOW_HZ, PEAK_DECAY, ABS_FLOOR, RANGE_DB, MAX_S, FRAME_RATE, PRE_AVG_S, POST_AVG_S, MIN_GAP_S, DELTA, MIN_ONSETS, MIN_CONFIDENCE, timeoutFor } from "./beats/params.ts";
+import {
+  WINDOW,
+  HOP,
+  BAND_LOW,
+  BAND_HIGH,
+  SAMPLE_RATE,
+  BANDS,
+  LOW_HZ,
+  PEAK_DECAY,
+  ABS_FLOOR,
+  RANGE_DB,
+  MAX_S,
+  FRAME_RATE,
+  PRE_AVG_S,
+  POST_AVG_S,
+  MIN_GAP_S,
+  DELTA,
+  MIN_ONSETS,
+  MIN_CONFIDENCE,
+  timeoutFor,
+} from "./beats/params.ts";
 import { quantile, vertex, estimateTempo, trackBeats, bpmOf } from "./beats/tempo.ts";
 export { SAMPLE_RATE, WINDOW, HOP, FRAME_RATE, MIN_BPM, MAX_BPM, MIN_CONFIDENCE, timeoutFor } from "./beats/params.ts";
 export { estimateTempo, trackBeats, bpmOf } from "./beats/tempo.ts";
@@ -255,7 +275,10 @@ export class OnsetEnvelope {
  */
 export function beatLevels(beats: ReadonlyArray<number>, power: Float32Array): Array<number> {
   if (!beats.length || !power.length) return [];
-  const gaps = beats.slice(1).map((b, i) => b - beats[i]!).sort((a, b) => a - b);
+  const gaps = beats
+    .slice(1)
+    .map((b, i) => b - beats[i]!)
+    .sort((a, b) => a - b);
   const period = gaps.length ? gaps[gaps.length >> 1]! : 0.5;
   const frameOf = (t: number) => Math.max(0, Math.min(power.length, Math.round((t - ONSET_LAG_S) * FRAME_RATE)));
   const raw = beats.map((b, i) => {
@@ -318,11 +341,20 @@ export function pickOnsets(env: Float32Array): Array<Onset> {
 export function beatsFromEnvelope(env: Float32Array, seconds: number, lowPower?: Float32Array): BeatsResult {
   const onsets = pickOnsets(env);
   const tempo = onsets.length >= MIN_ONSETS ? estimateTempo(env) : undefined;
-  if (!tempo || tempo.clarity < MIN_CONFIDENCE) return { hasAudio: true, seconds: r3(seconds), bpm: null, confidence: Math.round((tempo?.clarity ?? 0) * 100) / 100, beats: [], onsets };
+  if (!tempo || tempo.clarity < MIN_CONFIDENCE)
+    return { hasAudio: true, seconds: r3(seconds), bpm: null, confidence: Math.round((tempo?.clarity ?? 0) * 100) / 100, beats: [], onsets };
   const beats = trackBeats(env, tempo.period).map((f) => Math.max(0, timeOf(f)));
   const bpm = bpmOf(beats, (60 * FRAME_RATE) / tempo.period);
   const levels = lowPower ? beatLevels(beats, lowPower) : [];
-  return { hasAudio: true, seconds: r3(seconds), bpm: Math.round(bpm * 100) / 100, confidence: Math.round(tempo.clarity * 100) / 100, beats: beats.map(r3), onsets, ...(levels.length ? { beatLevels: levels } : {}) };
+  return {
+    hasAudio: true,
+    seconds: r3(seconds),
+    bpm: Math.round(bpm * 100) / 100,
+    confidence: Math.round(tempo.clarity * 100) / 100,
+    beats: beats.map(r3),
+    onsets,
+    ...(levels.length ? { beatLevels: levels } : {}),
+  };
 }
 
 /** The same from mono float samples at SAMPLE_RATE. */

@@ -5,7 +5,17 @@
 // (D240): a transition's length is set on the cut (Inspector, the marker's edges), and the length new
 // ones get is in Settings › App. Drag a tile onto a cut between two main-track clips; or select a cut and click the tile; or
 // + puts it on the cut nearest the playhead.
-import { defaultFrames, incomingFx, irisRadius, maskClipPath, outgoingFx, TRANSITIONS, type TransitionFx, type TransitionInfo, type TransitionKind } from "@uncut/core/transitions";
+import {
+  defaultFrames,
+  incomingFx,
+  irisRadius,
+  maskClipPath,
+  outgoingFx,
+  TRANSITIONS,
+  type TransitionFx,
+  type TransitionInfo,
+  type TransitionKind,
+} from "@uncut/core/transitions";
 import { Plus, X } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -233,7 +243,14 @@ export function TransitionsLibrary({ project }: { project: Project }) {
       <div className="lib-section">
         <div className="music-filters">
           <div className="tr-search">
-            <input className="field input" data-testid="transition-search" placeholder="Search transitions" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+            <input
+              className="field input"
+              data-testid="transition-search"
+              placeholder="Search transitions"
+              value={query}
+              spellCheck={false}
+              onChange={(e) => setQuery(e.target.value)}
+            />
             {query && (
               <Tooltip label="Clear">
                 <button className="icon-btn" data-testid="transition-search-clear" onClick={() => setQuery("")}>
@@ -252,53 +269,53 @@ export function TransitionsLibrary({ project }: { project: Project }) {
           {shown.map((t) => {
             const fit = target ? cutFit(project, target.id, t.id, wantedOn(t)) : undefined;
             return (
-            <div
-              key={t.id}
-              className={`tile tr-tile ${fit && !fit.fits ? "unfit" : ""}`}
-              data-testid="transition-tile"
-              data-module={t.id}
-              data-fit={fit ? (!fit.fits ? "no" : fit.clamped ? "clamped" : "yes") : undefined}
-              role="button"
-              tabIndex={0}
-              aria-disabled={!online || (fit && !fit.fits)}
-              draggable={false}
-              title={fit && !fit.fits ? fit.problem : `${t.name}: ${t.description}`}
-              onPointerEnter={() => setHovered(t.id)}
-              onPointerLeave={() => setHovered((h) => (h === t.id ? undefined : h))}
-              onFocus={() => setFocused(t.id)}
-              onBlur={() => setFocused((f) => (f === t.id ? undefined : f))}
-              onPointerDown={(e) => online && startTileDrag(e, t)}
-              onClick={(e) => !dragged && apply(t, e, false)}
-              onKeyDown={(e) => {
-                // Keys on the + belong to it (its click), not to the tile as well.
-                if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
-                e.preventDefault();
-                if (online) void actions.applyTransition(t.id);
-              }}
-            >
-              <div className="tr-thumb-wrap">
-                <TransitionThumb t={t} playing={playing === t.id} />
-                <Tooltip label={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`}>
-                  <button className="tile-add" data-testid="transition-add" disabled={!online} onClick={(e) => apply(t, e, true)}>
-                    <Plus />
-                  </button>
-                </Tooltip>
+              <div
+                key={t.id}
+                className={`tile tr-tile ${fit && !fit.fits ? "unfit" : ""}`}
+                data-testid="transition-tile"
+                data-module={t.id}
+                data-fit={fit ? (!fit.fits ? "no" : fit.clamped ? "clamped" : "yes") : undefined}
+                role="button"
+                tabIndex={0}
+                aria-disabled={!online || (fit && !fit.fits)}
+                draggable={false}
+                title={fit && !fit.fits ? fit.problem : `${t.name}: ${t.description}`}
+                onPointerEnter={() => setHovered(t.id)}
+                onPointerLeave={() => setHovered((h) => (h === t.id ? undefined : h))}
+                onFocus={() => setFocused(t.id)}
+                onBlur={() => setFocused((f) => (f === t.id ? undefined : f))}
+                onPointerDown={(e) => online && startTileDrag(e, t)}
+                onClick={(e) => !dragged && apply(t, e, false)}
+                onKeyDown={(e) => {
+                  // Keys on the + belong to it (its click), not to the tile as well.
+                  if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                  e.preventDefault();
+                  if (online) void actions.applyTransition(t.id);
+                }}
+              >
+                <div className="tr-thumb-wrap">
+                  <TransitionThumb t={t} playing={playing === t.id} />
+                  <Tooltip label={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`}>
+                    <button className="tile-add" data-testid="transition-add" disabled={!online} onClick={(e) => apply(t, e, true)}>
+                      <Plus />
+                    </button>
+                  </Tooltip>
+                </div>
+                <div className="tile-name">{t.name}</div>
+                <div className="tile-sub" data-testid="transition-default">
+                  {fit && !fit.fits ? (
+                    <span className="tr-unfit" data-testid="transition-unfit">
+                      {fit.short}
+                    </span>
+                  ) : fit?.clamped ? (
+                    <span data-testid="transition-clamped" title={`The clips at this cut leave room for ${secondsLabel(fit.max, fps)}`}>
+                      {secondsLabel(fit.max, fps)} max here
+                    </span>
+                  ) : (
+                    secondsLabel(target ? wantedOn(t) : lengthOf(t), fps)
+                  )}
+                </div>
               </div>
-              <div className="tile-name">{t.name}</div>
-              <div className="tile-sub" data-testid="transition-default">
-                {fit && !fit.fits ? (
-                  <span className="tr-unfit" data-testid="transition-unfit">
-                    {fit.short}
-                  </span>
-                ) : fit?.clamped ? (
-                  <span data-testid="transition-clamped" title={`The clips at this cut leave room for ${secondsLabel(fit.max, fps)}`}>
-                    {secondsLabel(fit.max, fps)} max here
-                  </span>
-                ) : (
-                  secondsLabel(target ? wantedOn(t) : lengthOf(t), fps)
-                )}
-              </div>
-            </div>
             );
           })}
         </div>

@@ -7,7 +7,12 @@ export interface ComponentBlock {
   readonly fullFrame?: boolean;
   readonly animated?: boolean;
   readonly defaults?: { readonly [key: string]: unknown };
-  readonly screens?: { readonly [device: string]: { readonly size: { readonly width: number; readonly height: number }; readonly screen: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly radius?: number } } };
+  readonly screens?: {
+    readonly [device: string]: {
+      readonly size: { readonly width: number; readonly height: number };
+      readonly screen: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly radius?: number };
+    };
+  };
 }
 
 /** What a renderer gets: the item's props, its box size (canvas px), the local frame and the target. */
@@ -32,7 +37,8 @@ export interface ComponentInfo {
   readonly render: (d: Draw) => string;
 }
 
-export const manifestOf = (json: unknown) => json as ModuleManifest & { readonly component: ComponentBlock; readonly description: string; readonly params: ComponentInfo["params"] };
+export const manifestOf = (json: unknown) =>
+  json as ModuleManifest & { readonly component: ComponentBlock; readonly description: string; readonly params: ComponentInfo["params"] };
 
 // ---- shared bits ----
 

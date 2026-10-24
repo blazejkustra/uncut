@@ -1,5 +1,19 @@
 import type { ProjectSnapshot } from "@uncut/contracts";
-import { Check, Focus, Minimize2, PanelBottom, PanelLeft, PanelRight, Redo2, RefreshCw, Settings as SettingsIcon, Share, TriangleAlert, Undo2, X } from "lucide-react";
+import {
+  Check,
+  Focus,
+  Minimize2,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Redo2,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Share,
+  TriangleAlert,
+  Undo2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useBeatsLoading } from "../audio/beats.ts";
@@ -31,7 +45,8 @@ import { Wordmark } from "./Wordmark.tsx";
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
-  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft, environment, environmentProblem } = useApp();
+  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft, environment, environmentProblem } =
+    useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
   // history.db can't be used (D71): said once per project and problem, dismissable.
@@ -234,7 +249,19 @@ function LayoutToggles({ shown }: { shown: Panels }) {
   );
 }
 
-function TopBar({ snapshot, project, online, unsaved, shown }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean; shown: Panels }) {
+function TopBar({
+  snapshot,
+  project,
+  online,
+  unsaved,
+  shown,
+}: {
+  snapshot: ProjectSnapshot;
+  project: Project;
+  online: boolean;
+  unsaved: boolean;
+  shown: Panels;
+}) {
   const { exportJobs, exportJobId, environment } = useApp();
   const remote = environment.kind === "remote";
   const job = exportJobs.find((j) => j.id === exportJobId && j.projectDir === snapshot.dir);
@@ -255,7 +282,10 @@ function TopBar({ snapshot, project, online, unsaved, shown }: { snapshot: Proje
         {unsaved ? "Not saved" : online ? "Saved" : "Offline"}
       </div>
       {/* Nothing left to undo in this opening: the tip says why (the Tooltip shows on a disabled button too). */}
-      <Tooltip label={snapshot.canUndo || !snapshot.undoStop ? "Undo" : snapshot.undoStop} {...(snapshot.canUndo || !snapshot.undoStop ? { shortcut: "undo" as const } : {})}>
+      <Tooltip
+        label={snapshot.canUndo || !snapshot.undoStop ? "Undo" : snapshot.undoStop}
+        {...(snapshot.canUndo || !snapshot.undoStop ? { shortcut: "undo" as const } : {})}
+      >
         <button className="icon-btn" data-testid="undo" aria-label="Undo" disabled={!online || !snapshot.canUndo} onClick={() => void actions.undo()}>
           <Undo2 />
         </button>
@@ -265,7 +295,14 @@ function TopBar({ snapshot, project, online, unsaved, shown }: { snapshot: Proje
           <Redo2 />
         </button>
       </Tooltip>
-      <button className="btn export-btn" title="Export the video (⌘E)" data-testid="export-button" data-running={running} disabled={!online} onClick={actions.openExport}>
+      <button
+        className="btn export-btn"
+        title="Export the video (⌘E)"
+        data-testid="export-button"
+        data-running={running}
+        disabled={!online}
+        onClick={actions.openExport}
+      >
         <Share />
         {running && job ? (job.phase === "rendering" ? `Exporting ${Math.round(job.progress * 100)}%` : "Exporting…") : "Export"}
       </button>

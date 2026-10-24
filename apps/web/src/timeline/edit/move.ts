@@ -74,7 +74,8 @@ export function planMove(project: ProjectModel, itemId: string, trackId: string,
   if (snapped) start = Math.max(0, start + snapped.shift);
   const landing = nearestFreeSpot(target, item.id, start, item.duration);
   const snapAt = snapped && landing === start ? snapped.at : undefined;
-  if (target.id === track.id && landing === placed.start) return { ops: [], summary: "", track: target.id, start: landing, ...(snapAt !== undefined ? { snapAt } : {}) };
+  if (target.id === track.id && landing === placed.start)
+    return { ops: [], summary: "", track: target.id, start: landing, ...(snapAt !== undefined ? { snapAt } : {}) };
   // Off main: the clip after it loses the transition from it (its own goes with the move).
   const leaving = track.role === "main" ? dropTransitions([track.items[placed.index + 1]]) : [];
   return {
@@ -97,7 +98,13 @@ export type NewTrackSide = "top" | "bottom";
  * take it, e.g. a clip from Main onto a text track: a new video track under that text track). It
  * keeps its start (snapped like a move).
  */
-export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: NewTrackSide | { readonly index: number }, desiredStart: number, snap?: Snap): MovePlan | { readonly problem: string } {
+export function planMoveToNewTrack(
+  project: ProjectModel,
+  itemId: string,
+  side: NewTrackSide | { readonly index: number },
+  desiredStart: number,
+  snap?: Snap,
+): MovePlan | { readonly problem: string } {
   const placed = findItem(project, itemId);
   if (!placed) return { problem: "That item isn't in the project any more." };
   const locked = lockOf(placed);
@@ -170,7 +177,14 @@ export interface GroupMovePlan extends Plan {
  * time only (the lane offset is ignored). Items linked to a main clip of the group (D123, D215)
  * get no op of their own: they follow their clip, still linked.
  */
-export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>, delta: number, laneOffset: number, lanes: ReadonlyArray<string>, snap?: Snap): GroupMovePlan | { readonly problem: string } {
+export function planGroupMove(
+  project: ProjectModel,
+  ids: ReadonlyArray<string>,
+  delta: number,
+  laneOffset: number,
+  lanes: ReadonlyArray<string>,
+  snap?: Snap,
+): GroupMovePlan | { readonly problem: string } {
   const placed = [...new Set(ids)].map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined && p.item.type !== "captions");
   if (!placed.length) return { problem: "Nothing to move." };
   for (const p of placed) {
@@ -182,14 +196,19 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
   let shift = Math.round(delta);
   const minStart = Math.min(...placed.map((p) => p.start));
   shift = Math.max(shift, -minStart);
-  const snapped = nearestSnap(placed.flatMap((p) => [p.start + shift, p.start + p.item.duration + shift]), snap);
+  const snapped = nearestSnap(
+    placed.flatMap((p) => [p.start + shift, p.start + p.item.duration + shift]),
+    snap,
+  );
   if (snapped) shift = Math.max(-minStart, shift + snapped.shift);
   // D215: a group dragged onto the main track goes on it (a take: its picture on Main, its sounds
   // linked under it) at the cut nearest where it's dropped, instead of being refused.
-  const ontoMain = lanesBy ? placed.find((p) => {
-    const from = lanes.indexOf(p.track.id);
-    return from !== -1 && project.tracks.find((t) => t.id === lanes[from + lanesBy])?.role === "main";
-  }) : undefined;
+  const ontoMain = lanesBy
+    ? placed.find((p) => {
+        const from = lanes.indexOf(p.track.id);
+        return from !== -1 && project.tracks.find((t) => t.id === lanes[from + lanesBy])?.role === "main";
+      })
+    : undefined;
   if (ontoMain) {
     const put = planPutOnMain(project, ontoMain.item.id, { frame: ontoMain.start + shift });
     if ("problem" in put) return put;
@@ -224,9 +243,15 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
     if (!outside || mine.some((b) => end > b.start && start < b.end)) return { problem: `Something on the ${target.name} track is in the way.` };
     mine.push({ start, end });
     landing.set(target.id, mine);
-    if (shift !== 0 || target.id !== p.track.id) ops.push({ op: "move_item", item: p.item.id, ...(target.id !== p.track.id ? { track: target.id } : {}), start });
+    if (shift !== 0 || target.id !== p.track.id)
+      ops.push({ op: "move_item", item: p.item.id, ...(target.id !== p.track.id ? { track: target.id } : {}), start });
   }
-  return { ops, summary: `Move ${placed.length} items`, delta: shift, ...(snapped && shift - Math.round(delta) === snapped.shift ? { snapAt: snapped.at } : {}) };
+  return {
+    ops,
+    summary: `Move ${placed.length} items`,
+    delta: shift,
+    ...(snapped && shift - Math.round(delta) === snapped.shift ? { snapAt: snapped.at } : {}),
+  };
 }
 
 /**
@@ -255,7 +280,12 @@ export function planLayer(project: ProjectModel, itemId: string, dir: -1 | 1): M
   const gone: Array<Op> = alone ? [{ op: "delete_track", track: track.id }] : [];
   const word = dir < 0 ? "forward" : "backward";
   if (next && fitsTrack(item, next) && !next.locked && next.role !== "main" && free(next)) {
-    return { ops: [{ op: "move_item", item: item.id, track: next.id, start }, ...gone], summary: `${dir < 0 ? "Bring" : "Send"} ${item.name ?? item.id} ${word}`, track: next.id, start };
+    return {
+      ops: [{ op: "move_item", item: item.id, track: next.id, start }, ...gone],
+      summary: `${dir < 0 ? "Bring" : "Send"} ${item.name ?? item.id} ${word}`,
+      track: next.id,
+      start,
+    };
   }
   const kind = TRACK_KINDS[item.type];
   const id = uniqueId(project, kind === "text" ? "text-track" : "video-track");

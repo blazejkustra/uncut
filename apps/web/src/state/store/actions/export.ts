@@ -21,7 +21,18 @@ export const exportActions = {
     return typeof picked === "string" ? picked : null;
   },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number }; motionBlur?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: {
+    output: string;
+    quality: ExportQuality;
+    loudness: ExportLoudness;
+    targetLufs?: number;
+    overwrite?: boolean;
+    subtitles?: ExportSubtitles;
+    burnCaptions?: boolean;
+    range?: { from: number; to: number };
+    video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number };
+    motionBlur?: boolean;
+  }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);
@@ -30,7 +41,10 @@ export const exportActions = {
   },
   cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
   /** D105: just the subtitles as a .srt / .vtt file; the saved file, or the server's refusal. */
-  async exportSubtitles(input: { output: string; overwrite?: boolean }): Promise<{ readonly path: string; readonly cues: number } | { readonly reason?: string; readonly message: string }> {
+  async exportSubtitles(input: {
+    output: string;
+    overwrite?: boolean;
+  }): Promise<{ readonly path: string; readonly cues: number } | { readonly reason?: string; readonly message: string }> {
     const result = await call((c) => c["export.subtitles"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     set({ exportFolder: input.output.slice(0, input.output.lastIndexOf("/")) || "/" });

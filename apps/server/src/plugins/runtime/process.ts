@@ -53,8 +53,18 @@ interface Command {
 async function resolveCommand(spec: ProcessSpec, sdkDir: string): Promise<Command> {
   if (spec.command === "node") {
     const register = join(sdkDir, "register.ts");
-    if (!(await stat(register).then((s) => s.isFile(), () => false))) throw new Error(`Uncut's plugin SDK is missing at ${sdkDir}`);
-    return { file: process.execPath, env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}, flags: ["--import", pathToFileURL(join(sdkDir, "register.ts")).href] };
+    if (
+      !(await stat(register).then(
+        (s) => s.isFile(),
+        () => false,
+      ))
+    )
+      throw new Error(`Uncut's plugin SDK is missing at ${sdkDir}`);
+    return {
+      file: process.execPath,
+      env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {},
+      flags: ["--import", pathToFileURL(join(sdkDir, "register.ts")).href],
+    };
   }
   if (spec.command.includes("/")) {
     const outside = new Error(`its command ${spec.command} is outside its folder`);
@@ -96,7 +106,12 @@ export class PluginProcess {
     this.spec = spec;
     this.onRequest = onRequest;
     // Its own process group, so stopping it also stops whatever it started.
-    this.child = spawn(command.file, [...command.flags, ...spec.args], { cwd: spec.dir, env: { ...pluginEnv(process.env), ...command.env }, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    this.child = spawn(command.file, [...command.flags, ...spec.args], {
+      cwd: spec.dir,
+      env: { ...pluginEnv(process.env), ...command.env },
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: true,
+    });
     this.exited = new Promise((done) => {
       const finish = (code: number | null, signal: NodeJS.Signals | null) => {
         if (this.gone) return;
@@ -166,7 +181,8 @@ export class PluginProcess {
           const p = typeof params?.progressToken === "number" ? this.pending.get(params.progressToken) : undefined;
           // D280: the optional message (a step in words, e.g. Import from link's), at most 200 characters.
           const message = typeof params?.message === "string" && params.message.trim() ? params.message.trim().slice(0, 200) : undefined;
-          if (p?.onProgress && typeof params!.progress === "number" && Number.isFinite(params!.progress)) p.onProgress(params!.progress, typeof params!.total === "number" && params!.total > 0 ? params!.total : undefined, message);
+          if (p?.onProgress && typeof params!.progress === "number" && Number.isFinite(params!.progress))
+            p.onProgress(params!.progress, typeof params!.total === "number" && params!.total > 0 ? params!.total : undefined, message);
           return;
         }
         // A request from the plugin: ping is answered, nothing else is offered. Notifications need no answer.
@@ -180,10 +196,12 @@ export class PluginProcess {
           return this.write({ id: reqId, error: { code: -32000, message: `Uncut works on at most ${MAX_PLUGIN_REQUESTS} requests from a plugin at once.` } });
         }
         this.serving++;
-        answer.then(
-          (result) => this.write({ id: reqId, result: result ?? {} }),
-          (error) => this.write({ id: reqId, error: { code: -32000, message: messageOf(error).slice(0, 2000) } }),
-        ).finally(() => this.serving--);
+        answer
+          .then(
+            (result) => this.write({ id: reqId, result: result ?? {} }),
+            (error) => this.write({ id: reqId, error: { code: -32000, message: messageOf(error).slice(0, 2000) } }),
+          )
+          .finally(() => this.serving--);
         return;
       }
       if (typeof m.id !== "number") return;
@@ -191,7 +209,10 @@ export class PluginProcess {
       if (!p) return;
       this.pending.delete(m.id);
       if (m.error !== undefined && m.error !== null) {
-        const message = typeof m.error === "object" && typeof (m.error as { message?: unknown }).message === "string" ? (m.error as { message: string }).message : JSON.stringify(m.error);
+        const message =
+          typeof m.error === "object" && typeof (m.error as { message?: unknown }).message === "string"
+            ? (m.error as { message: string }).message
+            : JSON.stringify(m.error);
         p.reject(new Error(`${this.spec.name} answered with an error: ${message.slice(0, 2000)}`));
       } else p.resolve(m.result);
     } catch (error) {
@@ -214,7 +235,9 @@ export class PluginProcess {
       return proc;
     } catch (error) {
       proc.kill("SIGKILL");
-      throw new Error(`Couldn't start ${spec.name}: ${error instanceof PluginTimeout ? `it didn't answer within ${START_TIMEOUT_MS / 1000} s` : messageOf(error)}.`);
+      throw new Error(
+        `Couldn't start ${spec.name}: ${error instanceof PluginTimeout ? `it didn't answer within ${START_TIMEOUT_MS / 1000} s` : messageOf(error)}.`,
+      );
     }
   }
 
@@ -245,7 +268,13 @@ export class PluginProcess {
    * With `onProgress`, the request carries `_meta.progressToken` (its id) and the plugin's
    * notifications/progress for it are passed on.
    */
-  request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal, onProgress?: (progress: number, total: number | undefined, message?: string) => void): Promise<unknown> {
+  request(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    onProgress?: (progress: number, total: number | undefined, message?: string) => void,
+  ): Promise<unknown> {
     if (!this.alive) return Promise.reject(new Error(`${this.spec.name} isn't running`));
     // A turn that ended before the call got here (during a cold start or a backoff wait).
     if (signal?.aborted) return Promise.reject(new PluginCancelled("The call was cancelled: the agent turn ended."));
@@ -272,7 +301,9 @@ export class PluginProcess {
         onProgress,
       });
       const withToken =
-        onProgress && params && typeof params === "object" ? { ...(params as Record<string, unknown>), _meta: { ...((params as { _meta?: Record<string, unknown> })._meta ?? {}), progressToken: id } } : params;
+        onProgress && params && typeof params === "object"
+          ? { ...(params as Record<string, unknown>), _meta: { ...(params as { _meta?: Record<string, unknown> })._meta, progressToken: id } }
+          : params;
       this.write({ id, method, ...(withToken === undefined ? {} : { params: withToken }) });
     });
   }

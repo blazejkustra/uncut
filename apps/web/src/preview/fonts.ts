@@ -26,7 +26,9 @@ export function loadFonts(): Promise<unknown> {
 const kitFaces = new Map<string, FontFace>();
 
 /** Make the kit's font files the ones the page has: adds new ones, drops the ones no longer there. */
-export async function syncKitFonts(wanted: ReadonlyArray<{ readonly key: string; readonly family: string; readonly weight?: number | undefined; readonly url: string }>): Promise<void> {
+export async function syncKitFonts(
+  wanted: ReadonlyArray<{ readonly key: string; readonly family: string; readonly weight?: number | undefined; readonly url: string }>,
+): Promise<void> {
   const keys = new Set(wanted.map((w) => w.key));
   for (const [key, face] of kitFaces) {
     if (keys.has(key)) continue;

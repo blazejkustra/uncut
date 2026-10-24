@@ -108,7 +108,11 @@ export class ShaderRunner {
   private upload(src: ShaderSource): GPUTexture {
     if (!this.source || this.source.width !== src.width || this.source.height !== src.height) {
       this.source?.destroy();
-      this.source = this.device.createTexture({ size: [src.width, src.height], format: "rgba8unorm", usage: TEXTURE.TEXTURE_BINDING | TEXTURE.COPY_DST | TEXTURE.RENDER_ATTACHMENT });
+      this.source = this.device.createTexture({
+        size: [src.width, src.height],
+        format: "rgba8unorm",
+        usage: TEXTURE.TEXTURE_BINDING | TEXTURE.COPY_DST | TEXTURE.RENDER_ATTACHMENT,
+      });
     }
     if (src.kind === "rgba") this.device.queue.writeTexture({ texture: this.source }, src.data, { bytesPerRow: src.width * 4 }, [src.width, src.height]);
     else this.device.queue.copyExternalImageToTexture({ source: src.source }, { texture: this.source }, [src.width, src.height]);

@@ -96,7 +96,28 @@ const savedSkimming = () => {
     return true;
   }
 };
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), linkOverlays: savedLink(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [], hover: undefined, hoverMedia: undefined, skimming: savedSkimming() };
+let state: PlaybackState = {
+  frame: 0,
+  playing: false,
+  frames: 1,
+  end: 0,
+  fps: 30,
+  selected: undefined,
+  cut: undefined,
+  zoom: 1,
+  snapping: savedSnapping(),
+  linkOverlays: savedLink(),
+  draft: undefined,
+  bottom: "timeline",
+  gainKey: undefined,
+  rate: 1,
+  markIn: undefined,
+  markOut: undefined,
+  also: [],
+  hover: undefined,
+  hoverMedia: undefined,
+  skimming: savedSkimming(),
+};
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -162,7 +183,21 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [], hover: undefined, hoverMedia: undefined });
+    set({
+      frame: 0,
+      playing: false,
+      selected: undefined,
+      cut: undefined,
+      gainKey: undefined,
+      zoom: 1,
+      draft: undefined,
+      rate: 1,
+      markIn: undefined,
+      markOut: undefined,
+      also: [],
+      hover: undefined,
+      hoverMedia: undefined,
+    });
   },
 
   play(rate = 1) {
@@ -238,11 +273,16 @@ export const playback = {
     follower = fn;
   },
 
-  select: (id: string | undefined) => (id === state.selected && state.cut === undefined && state.gainKey === undefined && !state.also.length ? undefined : set({ selected: id, cut: undefined, gainKey: undefined, also: [] })),
+  select: (id: string | undefined) =>
+    id === state.selected && state.cut === undefined && state.gainKey === undefined && !state.also.length
+      ? undefined
+      : set({ selected: id, cut: undefined, gainKey: undefined, also: [] }),
   /** Select the cut before main item `id` (its transition, if it has one); undefined clears it. */
-  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined, gainKey: undefined, also: [] })),
+  selectCut: (id: string | undefined) =>
+    id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined, gainKey: undefined, also: [] }),
   /** Select item `id` and its volume key `index` (in frame order), D83; undefined selects just the item. */
-  selectGainKey: (id: string, index: number | undefined) => (id === state.selected && index === state.gainKey && state.cut === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: index, also: [] })),
+  selectGainKey: (id: string, index: number | undefined) =>
+    id === state.selected && index === state.gainKey && state.cut === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: index, also: [] }),
 
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),

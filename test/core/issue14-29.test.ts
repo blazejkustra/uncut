@@ -70,7 +70,10 @@ test("#14: welcome and editor sizes are remembered on their own, clamped to each
     writeWindowSizes(dir, { welcome: { width: 700, height: 600 }, editor: { width: 1500, height: 900, x: 10, y: 20 } });
     assert.deepEqual(readWindowSizes(dir), { welcome: { width: 700, height: 600 }, editor: { width: 1500, height: 900, x: 10, y: 20 } });
     writeFileSync(join(dir, "window.json"), JSON.stringify({ welcome: { width: 100, height: 100 }, editor: { width: "x" } }));
-    assert.deepEqual(readWindowSizes(dir), { welcome: { width: WINDOW_MODES.welcome.minWidth, height: WINDOW_MODES.welcome.minHeight }, editor: { width: 1280, height: 800 } });
+    assert.deepEqual(readWindowSizes(dir), {
+      welcome: { width: WINDOW_MODES.welcome.minWidth, height: WINDOW_MODES.welcome.minHeight },
+      editor: { width: 1280, height: 800 },
+    });
     writeFileSync(join(dir, "window.json"), "not json");
     assert.equal(readWindowSizes(dir).editor.width, 1280);
   } finally {

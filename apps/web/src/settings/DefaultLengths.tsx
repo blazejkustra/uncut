@@ -13,7 +13,11 @@ export function DefaultLengths() {
       <div className="group-label">New items</div>
       <div className="kv-row">
         <span className="muted">Transition length</span>
-        <select data-testid="settings-transition-length" value={transition ?? ""} onChange={(e) => setTransitionSeconds(e.target.value === "" ? undefined : Number(e.target.value))}>
+        <select
+          data-testid="settings-transition-length"
+          value={transition ?? ""}
+          onChange={(e) => setTransitionSeconds(e.target.value === "" ? undefined : Number(e.target.value))}
+        >
           {TRANSITION_LENGTHS.map((s) => (
             <option key={String(s)} value={s ?? ""}>
               {s === undefined ? "Each transition's own" : `${s} s`}
@@ -23,11 +27,27 @@ export function DefaultLengths() {
       </div>
       <div className="kv-row">
         <span className="muted">Photo length</span>
-        <NumberField label="s" testId="settings-still-seconds" value={still} step={0.5} min={DEFAULT_RANGE.min} max={DEFAULT_RANGE.max} onCommit={(v) => setDefaultSeconds("still", v)} />
+        <NumberField
+          label="s"
+          testId="settings-still-seconds"
+          value={still}
+          step={0.5}
+          min={DEFAULT_RANGE.min}
+          max={DEFAULT_RANGE.max}
+          onCommit={(v) => setDefaultSeconds("still", v)}
+        />
       </div>
       <div className="kv-row">
         <span className="muted">Text length</span>
-        <NumberField label="s" testId="settings-text-seconds" value={text} step={0.5} min={DEFAULT_RANGE.min} max={DEFAULT_RANGE.max} onCommit={(v) => setDefaultSeconds("text", v)} />
+        <NumberField
+          label="s"
+          testId="settings-text-seconds"
+          value={text}
+          step={0.5}
+          min={DEFAULT_RANGE.min}
+          max={DEFAULT_RANGE.max}
+          onCommit={(v) => setDefaultSeconds("text", v)}
+        />
       </div>
     </div>
   );

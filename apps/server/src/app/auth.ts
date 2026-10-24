@@ -37,7 +37,7 @@ export function presentedToken(headers: Readonly<Record<string, string | Readonl
   return url?.searchParams.get(TOKEN_QUERY_PARAM) ?? null;
 }
 
-export const isLoopbackHost = (host: string) => host === "127.0.0.1" || host === "::1" || host === "localhost" || /^127\./.test(host);
+export const isLoopbackHost = (host: string) => host === "127.0.0.1" || host === "::1" || host === "localhost" || host.startsWith("127.");
 
 /** Whether a request's Origin may talk to this server (see the header). */
 export function originAllowed(origin: string | undefined, loopbackBind: boolean, extra: ReadonlyArray<string> = []): boolean {
@@ -83,7 +83,8 @@ export interface GateOptions {
 }
 
 /** Paths that check a secret of their own instead of the server token. */
-const ownSecret = (pathname: string) => pathname === AGENT_BRIDGE_PATH || pathname.startsWith(`${AGENT_BRIDGE_PATH}/`) || pathname.startsWith(`${GRAPHIC_PATH}/`);
+const ownSecret = (pathname: string) =>
+  pathname === AGENT_BRIDGE_PATH || pathname.startsWith(`${AGENT_BRIDGE_PATH}/`) || pathname.startsWith(`${GRAPHIC_PATH}/`);
 
 /**
  * Installs the gate on a Node HTTP server: requests and upgrades it refuses never reach the

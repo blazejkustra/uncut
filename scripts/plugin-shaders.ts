@@ -22,7 +22,13 @@ const SELF = fileURLToPath(import.meta.url);
 const RESOLVE_MS = 20_000;
 
 type Resolved = Readonly<Record<string, { readonly wgsl: string } | { readonly problems: ReadonlyArray<string> }>>;
-type ShaderEntry = { readonly id: string; readonly source: string; readonly export: string; readonly params: ReadonlyArray<ShaderParam>; readonly wgsl: string };
+type ShaderEntry = {
+  readonly id: string;
+  readonly source: string;
+  readonly export: string;
+  readonly params: ReadonlyArray<ShaderParam>;
+  readonly wgsl: string;
+};
 
 /** The child's side: import the file, resolve each export with its params. */
 async function child(file: string, wanted: ReadonlyArray<{ readonly export: string; readonly params: ReadonlyArray<ShaderParam> }>) {
@@ -30,7 +36,8 @@ async function child(file: string, wanted: ReadonlyArray<{ readonly export: stri
   // D219: what's left of the outside world for the plugin's code: no network (fetch, WebSocket,
   // EventSource) and no way to load a Node module past the resolve hook below.
   for (const name of ["fetch", "WebSocket", "EventSource", "XMLHttpRequest"]) Reflect.deleteProperty(globalThis, name);
-  for (const name of ["getBuiltinModule", "binding", "_linkedBinding", "dlopen"]) Object.defineProperty(process, name, { value: undefined, configurable: false, writable: false });
+  for (const name of ["getBuiltinModule", "binding", "_linkedBinding", "dlopen"])
+    Object.defineProperty(process, name, { value: undefined, configurable: false, writable: false });
   // The plugin's files may import TypeGPU (Uncut's copy, wherever the plugin is) and its own
   // .ts files next to it; nothing else.
   const here = pathToFileURL(`${dirname(file)}/`).href;
@@ -65,7 +72,9 @@ async function child(file: string, wanted: ReadonlyArray<{ readonly export: stri
  */
 function packageDirs(names: ReadonlyArray<string>, from: string, out = new Set<string>()): Set<string> {
   for (const name of names) {
-    const found = (createRequire(join(from, "package.json")).resolve.paths(name) ?? []).map((d) => join(d, name)).find((d) => existsSync(join(d, "package.json")));
+    const found = (createRequire(join(from, "package.json")).resolve.paths(name) ?? [])
+      .map((d) => join(d, name))
+      .find((d) => existsSync(join(d, "package.json")));
     if (!found) continue;
     const real = realpathSync(found);
     // Node reads package.json through the link too (node_modules/<name> → .pnpm/…).
@@ -97,7 +106,11 @@ export function childReadable(): Array<string> {
 }
 
 /** Resolve a source file's exports in the locked-down child; a failure of the child is a problem for each. */
-export function resolveSource(dir: string, source: string, wanted: ReadonlyArray<{ readonly export: string; readonly params: ReadonlyArray<ShaderParam> }>): Resolved {
+export function resolveSource(
+  dir: string,
+  source: string,
+  wanted: ReadonlyArray<{ readonly export: string; readonly params: ReadonlyArray<ShaderParam> }>,
+): Resolved {
   // Real paths: the permission model compares them after symlinks (macOS's /var is /private/var).
   let real: string;
   try {
@@ -108,13 +121,22 @@ export function resolveSource(dir: string, source: string, wanted: ReadonlyArray
   const file = join(real, source);
   const failAll = (why: string): Resolved => Object.fromEntries(wanted.map((w) => [w.export, { problems: [why] }]));
   try {
-    const stdout = execFileSync(process.execPath, ["--permission", ...childReadable().map((p) => `--allow-fs-read=${p}`), `--allow-fs-read=${real}`, SELF, "--child", file, JSON.stringify(wanted)], { encoding: "utf8", timeout: RESOLVE_MS, env: {}, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 << 20 });
+    const stdout = execFileSync(
+      process.execPath,
+      ["--permission", ...childReadable().map((p) => `--allow-fs-read=${p}`), `--allow-fs-read=${real}`, SELF, "--child", file, JSON.stringify(wanted)],
+      { encoding: "utf8", timeout: RESOLVE_MS, env: {}, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 << 20 },
+    );
     const line = stdout.trim().split("\n").at(-1) ?? "";
     return JSON.parse(line) as Resolved;
   } catch (error) {
     const e = error as { signal?: string; stderr?: string; message: string };
     if (e.signal === "SIGTERM") return failAll(`resolving ${source} took longer than ${RESOLVE_MS / 1000} s`);
-    const said = (e.stderr ?? "").trim().split("\n").filter((l) => /Error|error/.test(l)).at(0) ?? e.message.split("\n")[0]!;
+    const said =
+      (e.stderr ?? "")
+        .trim()
+        .split("\n")
+        .filter((l) => /Error|error/.test(l))
+        .at(0) ?? e.message.split("\n")[0]!;
     return failAll(`resolving ${source} failed: ${said.trim()}`);
   }
 }
@@ -149,11 +171,16 @@ export function checkPluginShaders(dir: string, { write = false, where = dir }: 
   }
   const resolved = new Map<ShaderEntry, string>();
   for (const [source, list] of bySource) {
-    const answers = resolveSource(dir, source, list.map((e) => ({ export: e.export, params: e.params })));
+    const answers = resolveSource(
+      dir,
+      source,
+      list.map((e) => ({ export: e.export, params: e.params })),
+    );
     for (const e of list) {
       const a = answers[e.export];
       if (!a) problems.push(`${where}: the shader effect ${e.id}: ${source} gave no answer for ${e.export}.`);
-      else if ("problems" in a) for (const p of a.problems) problems.push(`${where}: the shader effect ${e.id} (${source}, ${e.export}): ${p.replace(/\.$/, "")}.`);
+      else if ("problems" in a)
+        for (const p of a.problems) problems.push(`${where}: the shader effect ${e.id} (${source}, ${e.export}): ${p.replace(/\.$/, "")}.`);
       else resolved.set(e, a.wgsl);
     }
   }

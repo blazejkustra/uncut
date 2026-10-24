@@ -44,7 +44,11 @@ export function pickIdentity(identities: ReadonlyArray<Identity>, wanted?: strin
     const hit = identities.find((i) => i.hash === w.toUpperCase() || i.name === w || i.name.includes(w));
     if (!hit) return { problem: `No signing identity "${w}" in the keychain (security find-identity -v -p codesigning lists them).` };
     if (isDeveloperId(hit)) return { identity: hit, shareable: true };
-    return { identity: hit, shareable: false, warning: `"${hit.name}" is not a Developer ID Application identity: this build is LOCAL-ONLY (signed, not notarized). Other Macs will refuse it; it is not copied to release/.` };
+    return {
+      identity: hit,
+      shareable: false,
+      warning: `"${hit.name}" is not a Developer ID Application identity: this build is LOCAL-ONLY (signed, not notarized). Other Macs will refuse it; it is not copied to release/.`,
+    };
   }
   const hit = identities.find(isDeveloperId);
   if (hit) return { identity: hit, shareable: true };
@@ -110,7 +114,8 @@ export function storeCredentialsHint(auth: NotaryAuth): string {
 }
 
 /** Whether notarytool's error output means the keychain profile isn't there. */
-export const isMissingProfile = (output: string) => /No Keychain password item found|could not find.*profile|profile.*not found|No credentials found/i.test(output);
+export const isMissingProfile = (output: string) =>
+  /No Keychain password item found|could not find.*profile|profile.*not found|No credentials found/i.test(output);
 
 /** `notarytool submit --wait --output-format json`'s answer: the submission id and its status. */
 export function parseNotarySubmit(output: string): { readonly id: string; readonly status: string; readonly message?: string } | undefined {
@@ -120,7 +125,11 @@ export function parseNotarySubmit(output: string): { readonly id: string; readon
   try {
     const json = JSON.parse(output.slice(start, end + 1)) as { id?: unknown; status?: unknown; message?: unknown };
     if (typeof json.id !== "string") return undefined;
-    return { id: json.id, status: typeof json.status === "string" ? json.status : "Unknown", ...(typeof json.message === "string" ? { message: json.message } : {}) };
+    return {
+      id: json.id,
+      status: typeof json.status === "string" ? json.status : "Unknown",
+      ...(typeof json.message === "string" ? { message: json.message } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -230,7 +239,10 @@ export const TELEMETRY_KEYCHAIN_SERVICE = "uncut-telemetry-app-token";
  * UNCUT_TELEMETRY_TOKEN in the environment (CI's secret) wins; else `security find-generic-password
  * -s uncut-telemetry-app-token -w`'s stdout when it succeeded; else none and an inert build.
  */
-export function telemetryToken(envToken: string | undefined, keychain: { readonly code: number; readonly out: string } | undefined): { readonly token?: string; readonly line: string } {
+export function telemetryToken(
+  envToken: string | undefined,
+  keychain: { readonly code: number; readonly out: string } | undefined,
+): { readonly token?: string; readonly line: string } {
   if (envToken?.trim()) return { token: envToken.trim(), line: "Telemetry app token: from UNCUT_TELEMETRY_TOKEN." };
   const fromKeychain = keychain && keychain.code === 0 ? keychain.out.trim() : "";
   if (fromKeychain) return { token: fromKeychain, line: `Telemetry app token: from the keychain (${TELEMETRY_KEYCHAIN_SERVICE}).` };

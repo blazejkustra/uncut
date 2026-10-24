@@ -6,7 +6,18 @@ import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { componentDefaults, applyEdit, createSession, EditError, loadModules, validateOps, validateProject, describeOp, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  componentDefaults,
+  applyEdit,
+  createSession,
+  EditError,
+  loadModules,
+  validateOps,
+  validateProject,
+  describeOp,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, videoEnd } from "../../packages/core/src/timeline/mediaPlan.ts";
 
 const modules = await loadModules("spec/modules/builtin");
@@ -25,7 +36,12 @@ const base: Project = {
     { id: "long", kind: "audio", name: "long.m4a", path: "/long.m4a", probe: { frames: 3000, hasAudio: true } },
   ],
   tracks: [
-    { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 200, duration: 60, text: "Hi", transform: { x: 100, y: 100 }, style: { size: 96 } }] },
+    {
+      id: "text",
+      kind: "text",
+      name: "Text",
+      items: [{ id: "t1", type: "text", start: 200, duration: 60, text: "Hi", transform: { x: 100, y: 100 }, style: { size: 96 } }],
+    },
     { id: "overlay", kind: "video", name: "Overlay", items: [{ id: "pip", type: "clip", media: "m", in: 0, start: 160, duration: 60 }] },
     {
       id: "main",
@@ -40,7 +56,25 @@ const base: Project = {
       ],
     },
     { id: "music", kind: "audio", name: "Music", items: [{ id: "bed", type: "audio", media: "song", in: 0, start: 30, duration: 200, fadeIn: 30 }] },
-    { id: "music2", kind: "audio", name: "Music 2", items: [{ id: "bed2", type: "audio", media: "long", in: 0, start: 0, duration: 2000, gainKeys: [{ frame: 100, db: -6 }, { frame: 1500, db: -12 }] }] },
+    {
+      id: "music2",
+      kind: "audio",
+      name: "Music 2",
+      items: [
+        {
+          id: "bed2",
+          type: "audio",
+          media: "long",
+          in: 0,
+          start: 0,
+          duration: 2000,
+          gainKeys: [
+            { frame: 100, db: -6 },
+            { frame: 1500, db: -12 },
+          ],
+        },
+      ],
+    },
   ],
 };
 
@@ -52,7 +86,10 @@ function apply(project: Project, ops: ReadonlyArray<Op>) {
 const items = (p: Project) => p.tracks.flatMap((t) => t.items);
 
 test("F8 (D167): Remove from project takes the media and every item using it in one edit; the file stays", () => {
-  assert.deepEqual(mediaUses(base, "m").map((u) => u.item.id), ["pip", "a", "c"]);
+  assert.deepEqual(
+    mediaUses(base, "m").map((u) => u.item.id),
+    ["pip", "a", "c"],
+  );
   assert.deepEqual([...usedMediaIds(base)].sort(), ["long", "m", "n", "song"]);
   const plan = planRemoveMedia(base, "m");
   assert.ok("ops" in plan, "problem" in plan ? plan.problem : "");
@@ -68,7 +105,10 @@ test("F8 (D167): Remove from project takes the media and every item using it in 
   assert.equal(session.log.length, 1);
   assert.ok(!session.project.media.some((m) => m.id === "m"));
   assert.ok(!items(session.project).some((i) => i.media === "m"));
-  assert.deepEqual(session.project.tracks.find((t) => t.role === "main")!.items.map((i) => i.id), ["b", "d"]);
+  assert.deepEqual(
+    session.project.tracks.find((t) => t.role === "main")!.items.map((i) => i.id),
+    ["b", "d"],
+  );
   assert.ok(existsSync(clipFile), "the file on disk is untouched");
   assert.match(describeOp(plan.ops.at(-1)!, base), /Removed media a\.mp4 \(m\)/);
   // An unused media: just the media op.
@@ -81,8 +121,17 @@ test("F8 (D167): Remove from project takes the media and every item using it in 
 
 test("F8 (D167): the engine refuses delete_media while an item uses it; captions count; locks refuse the plan", () => {
   assert.throws(() => apply(base, [{ op: "delete_media", media: "m" }]), EditError);
-  const withCaptions: Project = { ...base, tracks: [...base.tracks, { id: "cap", kind: "text", name: "Captions", items: [{ id: "cc", type: "captions", source: "n", start: 0, duration: 300, words: [] } as never] }] };
-  assert.deepEqual(mediaUses(withCaptions, "n").map((u) => u.item.id), ["b", "d", "cc"]);
+  const withCaptions: Project = {
+    ...base,
+    tracks: [
+      ...base.tracks,
+      { id: "cap", kind: "text", name: "Captions", items: [{ id: "cc", type: "captions", source: "n", start: 0, duration: 300, words: [] } as never] },
+    ],
+  };
+  assert.deepEqual(
+    mediaUses(withCaptions, "n").map((u) => u.item.id),
+    ["b", "d", "cc"],
+  );
   const locked: Project = { ...base, tracks: base.tracks.map((t) => (t.id === "overlay" ? { ...t, locked: true } : t)) };
   const refused = planRemoveMedia(locked, "m");
   assert.ok("problem" in refused);
@@ -123,7 +172,12 @@ test("F27 (D169): Fit to video loops a shorter sound to the end of the picture; 
   assert.ok("problem" in planFitToVideo(late, "bed"));
   assert.ok("problem" in planFitToVideo(base, "a"));
   // Another sound on the track in the way.
-  const crowded: Project = { ...base, tracks: base.tracks.map((t) => (t.id === "music" ? { ...t, items: [...t.items, { id: "hit", type: "audio" as const, media: "song", in: 0, start: 400, duration: 30 }] } : t)) };
+  const crowded: Project = {
+    ...base,
+    tracks: base.tracks.map((t) =>
+      t.id === "music" ? { ...t, items: [...t.items, { id: "hit", type: "audio" as const, media: "song", in: 0, start: 400, duration: 30 }] } : t,
+    ),
+  };
   const blocked = planFitToVideo(crowded, "bed");
   assert.ok("problem" in blocked);
   assert.match(blocked.problem, /in the way at 13\.3 s/);
@@ -133,9 +187,29 @@ test("F8 (D167, review fix): an element showing the media (an image frame's imag
   const withFrame: Project = {
     ...base,
     media: [...base.media, { id: "pic", kind: "image", name: "pic.png", path: "/pic.png", probe: { width: 800, height: 600 } } as never],
-    tracks: [...base.tracks, { id: "el", kind: "video", name: "Elements", items: [{ id: "frame", type: "component", component: "component.image-frame", start: 0, duration: 90, props: { ...componentDefaults("component.image-frame"), image: { media: "pic" } } } as never] }],
+    tracks: [
+      ...base.tracks,
+      {
+        id: "el",
+        kind: "video",
+        name: "Elements",
+        items: [
+          {
+            id: "frame",
+            type: "component",
+            component: "component.image-frame",
+            start: 0,
+            duration: 90,
+            props: { ...componentDefaults("component.image-frame"), image: { media: "pic" } },
+          } as never,
+        ],
+      },
+    ],
   };
-  assert.deepEqual(mediaUses(withFrame, "pic").map((u) => u.item.id), ["frame"]);
+  assert.deepEqual(
+    mediaUses(withFrame, "pic").map((u) => u.item.id),
+    ["frame"],
+  );
   assert.ok(usedMediaIds(withFrame).has("pic"), "the Used badge");
   assert.throws(() => apply(withFrame, [{ op: "delete_media", media: "pic" }]), EditError);
   const plan = planRemoveMedia(withFrame, "pic");

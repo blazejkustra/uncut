@@ -41,7 +41,12 @@ const skillsPlugin = (id: string, skills: Array<Record<string, unknown>>) => ({
   runtime: { type: "data" },
   contributes: { skills },
 });
-const skill = (name: string, extra: Record<string, unknown> = {}) => ({ name, description: `When ${name} fits.`, instructions: `Do ${name}.\n\nReview checklist\n- ${name} is done`, ...extra });
+const skill = (name: string, extra: Record<string, unknown> = {}) => ({
+  name,
+  description: `When ${name} fits.`,
+  instructions: `Do ${name}.\n\nReview checklist\n- ${name} is done`,
+  ...extra,
+});
 
 test("plugin skills are discovered: a skills-only data plugin works, the first plugin with a name has it, a bad name is refused", async () => {
   const dir = join(root, "found");
@@ -55,11 +60,21 @@ test("plugin skills are discovered: a skills-only data plugin works, the first p
   }
   const found = await discoverPlugins([{ source: "user", dir }], { moduleIds: new Set(), toolNames: new Set() });
   const acme = found.plugins.find((p) => p.id === "acme.pack")!;
-  assert.deepEqual(acme.contributions.skills!.map((x) => [x.name, x.title, x.plugin, x.pluginName]), [["cold-open", "Cold open", "acme.pack", "Pack acme.pack"], ["end-card", "end-card", "acme.pack", "Pack acme.pack"]]);
+  assert.deepEqual(
+    acme.contributions.skills!.map((x) => [x.name, x.title, x.plugin, x.pluginName]),
+    [
+      ["cold-open", "Cold open", "acme.pack", "Pack acme.pack"],
+      ["end-card", "end-card", "acme.pack", "Pack acme.pack"],
+    ],
+  );
   assert.match(acme.warnings.join("\n"), /Its skill cold-open is left out: it has another skill with that name\./);
   assert.ok(!acme.warnings.some((w) => /no agent tools/.test(w)), "skills are a contribution");
   const merged = mergeSkills(found.plugins.map((p) => p.contributions));
-  assert.deepEqual(merged.map((x) => `${x.plugin}:${x.name}`), ["acme.pack:cold-open", "acme.pack:end-card", "other.pack:lower-thirds"], "the first plugin with a name has it");
+  assert.deepEqual(
+    merged.map((x) => `${x.plugin}:${x.name}`),
+    ["acme.pack:cold-open", "acme.pack:end-card", "other.pack:lower-thirds"],
+    "the first plugin with a name has it",
+  );
   assert.match(found.broken.find((b) => b.id === "bad.pack")!.problem, /doesn't match the module format: \/contributes\/skills\/0\/name/);
   assert.ok(validateModule(skillsPlugin("x.y", [{ name: "x" }])).length > 0, "description and instructions are required");
 
@@ -68,8 +83,14 @@ test("plugin skills are discovered: a skills-only data plugin works, the first p
   const own = bundled.plugins.find((p) => p.id === "uncut.skills")!;
   assert.equal(own.runs, false);
   assert.deepEqual(own.warnings, []);
-  assert.deepEqual(own.contributions.skills!.map((x) => x.name), Object.values(BUILTIN_IDS));
-  assert.deepEqual(bundledSkills().map((x) => x.name), Object.values(BUILTIN_IDS));
+  assert.deepEqual(
+    own.contributions.skills!.map((x) => x.name),
+    Object.values(BUILTIN_IDS),
+  );
+  assert.deepEqual(
+    bundledSkills().map((x) => x.name),
+    Object.values(BUILTIN_IDS),
+  );
 });
 
 test("the system prompt lists every installed skill's name and description; skill_read is a tool", () => {
@@ -77,33 +98,49 @@ test("the system prompt lists every installed skill's name and description; skil
   const argv = sessionArgs({ cfg: "/tmp/m.json", skills });
   const system = argv[argv.indexOf("--append-system-prompt") + 1]!;
   assert.ok(system.endsWith(skillsPrompt(skills)));
-  assert.match(system, /\n\nSkills \(installed in Uncut; skill_read \{"name": …\} gives one's instructions; the user calls one with \/name\):\n- launch-promo: A 15 to 30 s launch film/);
+  assert.match(
+    system,
+    /\n\nSkills \(installed in Uncut; skill_read \{"name": …\} gives one's instructions; the user calls one with \/name\):\n- launch-promo: A 15 to 30 s launch film/,
+  );
   assert.match(system, /\n- make-brand-kit: Builds a brand kit from a link or dropped logos and pictures/);
   for (const x of skills) assert.ok(system.includes(`- ${x.name}: ${x.description}`), x.name);
   assert.ok(!system.includes(skills[0]!.instructions.slice(0, 80)), "instructions only on skill_read (progressive disclosure)");
   const tool = mcpTools().find((t) => t.name === "skill_read")!;
   assert.deepEqual((tool.inputSchema as { required: Array<string> }).required, ["name"]);
   assert.ok((LOOK_TOOLS as ReadonlyArray<string>).includes("skill_read"), "reading a skill is fine in Look only");
-  assert.ok(!("use" in ((mcpTools().find((t) => t.name === "brief_write")!.inputSchema as { properties: object }).properties)), "brief_write turns nothing on");
+  assert.ok(!("use" in (mcpTools().find((t) => t.name === "brief_write")!.inputSchema as { properties: object }).properties), "brief_write turns nothing on");
   const none = sessionArgs({ cfg: "/tmp/m.json" });
   assert.ok(!/\n\nSkills \(installed/.test(none[none.indexOf("--append-system-prompt") + 1]!));
 });
 
 test("a /name in a message calls an installed skill: never a path or a file, sent as words with its instructions", () => {
   const names = bundledSkills().map((x) => x.name);
-  assert.deepEqual(calledSkills("/launch-promo then /sound-design, (/motion-craft) and /launch-promo again", names), ["launch-promo", "sound-design", "motion-craft"]);
+  assert.deepEqual(calledSkills("/launch-promo then /sound-design, (/motion-craft) and /launch-promo again", names), [
+    "launch-promo",
+    "sound-design",
+    "motion-craft",
+  ]);
   assert.deepEqual(calledSkills("see /tmp/launch-promo, ~/x/sound-design, a/launch-promo, /launch-promo.mp4, /Users/me and /not-a-skill", names), []);
   assert.deepEqual(calledSkills("the end: /explainer.", names), ["explainer"]);
-  assert.equal(skillCallsAsWords("/make-brand-kit for acme.com, files in /tmp/make-brand-kit", ["make-brand-kit"]), "(skill make-brand-kit) for acme.com, files in /tmp/make-brand-kit");
+  assert.equal(
+    skillCallsAsWords("/make-brand-kit for acme.com, files in /tmp/make-brand-kit", ["make-brand-kit"]),
+    "(skill make-brand-kit) for acme.com, files in /tmp/make-brand-kit",
+  );
   assert.equal(skillCallsAsWords("/explainer stays", []), "/explainer stays");
   const block = skillBlocks([{ id: "make-brand-kit", name: "Make a brand kit", body: "Ask first." }]);
-  assert.equal(block, `<skill name="make-brand-kit" title="Make a brand kit">\nThe user called the skill make-brand-kit (/make-brand-kit) for this message: follow its instructions.\nAsk first.\n</skill>`);
+  assert.equal(
+    block,
+    `<skill name="make-brand-kit" title="Make a brand kit">\nThe user called the skill make-brand-kit (/make-brand-kit) for this message: follow its instructions.\nAsk first.\n</skill>`,
+  );
 });
 
 test("old projects: builtin- skill ids in active.json and brief.json read as the skills' names; the rubric takes either", async () => {
   const dir = join(root, "old");
   mkdirSync(join(dir, "brand"), { recursive: true });
-  writeFileSync(join(dir, "brand", "active.json"), JSON.stringify({ kit: "acme", skills: ["builtin-launch-promo", "my-own", "launch-promo", "builtin-sound-design"] }));
+  writeFileSync(
+    join(dir, "brand", "active.json"),
+    JSON.stringify({ kit: "acme", skills: ["builtin-launch-promo", "my-own", "launch-promo", "builtin-sound-design"] }),
+  );
   assert.deepEqual(await readActive(dir), { kit: "acme", skills: ["launch-promo", "my-own", "sound-design"] });
   assert.deepEqual(normBrief({ film: "x", skills: ["builtin-motion-craft", "explainer"] })!.skills, ["motion-craft", "explainer"]);
   assert.equal(skillIdOf("builtin-brand-application"), BUILTIN_IDS.brand);
@@ -123,7 +160,7 @@ test("on the server: brand.get lists the bundled plugin's skills, and a user plu
   try {
     const before = await client.ok("brand.get", {});
     const own = before.skills.filter((x: { plugin?: string }) => x.plugin === "uncut.skills");
-    assert.deepEqual(own.map((x: { id: string }) => x.id).sort(), [...Object.values(BUILTIN_IDS)].sort());
+    assert.deepEqual(own.map((x: { id: string }) => x.id).sort(), Object.values(BUILTIN_IDS).sort());
     assert.ok(own.every((x: { builtin?: boolean; pluginName?: string }) => x.builtin && x.pluginName === "Uncut skills"));
     assert.ok(!before.skills.some((x: { id: string }) => x.id === "cold-open"), "not allowed yet");
     const list = await client.ok("plugins.list", {});

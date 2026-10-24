@@ -28,7 +28,8 @@ export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | unde
           ? Effect.tryPromise({ try: async () => (await writeActive(d.projectDir!, active), state(d)), catch: failed })
           : Effect.fail(new BrandError({ reason: "no-project", message: "Open a project to choose its kit." })),
       ),
-    addFile: (kit: string, scope: BrandScope, path: string) => run(async (d) => ({ name: await addKitFile(d, kit, scope, expandHome(path)), state: await state(d) })),
+    addFile: (kit: string, scope: BrandScope, path: string) =>
+      run(async (d) => ({ name: await addKitFile(d, kit, scope, expandHome(path)), state: await state(d) })),
     // D198: logos and fonts from a file, a folder or an https address.
     importFiles: (kit: string, scope: BrandScope, source: string) =>
       run(async (d) => {

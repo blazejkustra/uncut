@@ -11,7 +11,10 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "project_read":
       return "Read the timeline";
     case "timeline_edit":
-      if (args.dryRun === true) return typeof args.summary === "string" && args.summary.trim() ? `Planned ${args.summary.trim().replace(/^./, (c) => c.toLowerCase())}` : "Planned an edit";
+      if (args.dryRun === true)
+        return typeof args.summary === "string" && args.summary.trim()
+          ? `Planned ${args.summary.trim().replace(/^./, (c) => c.toLowerCase())}`
+          : "Planned an edit";
       return typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "Edited the timeline";
     case "modules_list":
       return typeof args.kind === "string" ? `Checked the ${args.kind} modules` : "Checked the installed modules";
@@ -37,23 +40,24 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       const picture = new Set(["video", "shots", "motion", "stability"]);
       const only = (n: string) => names.length > 0 && names.every((x) => x === n);
       const rhythm = new Set(["beats", "rhythm", "onsets", "tempo"]);
-      const what = names.length > 0 && names.every((x) => x === "transcript" || x === "transcription")
-        ? "Transcribed"
-        : names.length > 0 && names.every((x) => rhythm.has(x))
-        ? "Found the beats in"
-        : only("silence")
-        ? "Found the silences in"
-        : only("loudness")
-          ? "Measured the loudness of"
-          : only("shots")
-            ? "Found the shots in"
-            : only("stability") || only("motion")
-              ? "Measured the camera motion of"
-              : !names.length || names.every((x) => sound.has(x))
-                ? "Analysed the sound of"
-                : names.length && names.every((x) => picture.has(x))
-                  ? "Analysed the picture of"
-                  : "Analysed";
+      const what =
+        names.length > 0 && names.every((x) => x === "transcript" || x === "transcription")
+          ? "Transcribed"
+          : names.length > 0 && names.every((x) => rhythm.has(x))
+            ? "Found the beats in"
+            : only("silence")
+              ? "Found the silences in"
+              : only("loudness")
+                ? "Measured the loudness of"
+                : only("shots")
+                  ? "Found the shots in"
+                  : only("stability") || only("motion")
+                    ? "Measured the camera motion of"
+                    : !names.length || names.every((x) => sound.has(x))
+                      ? "Analysed the sound of"
+                      : names.length && names.every((x) => picture.has(x))
+                        ? "Analysed the picture of"
+                        : "Analysed";
       return typeof args.media === "string" ? `${what} ${args.media}` : "Analysed media";
     }
     case "media_rank": {
@@ -87,19 +91,46 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return of ? `Made ${how} for ${of}` : `Made ${how}`;
     }
     case "subtitles_export": {
-      const format = typeof args.path === "string" && /\.vtt$/i.test(args.path) ? "WebVTT" : typeof args.path === "string" && /\.srt$/i.test(args.path) ? "SRT" : args.format === "vtt" ? "WebVTT" : "SRT";
+      const format =
+        typeof args.path === "string" && /\.vtt$/i.test(args.path)
+          ? "WebVTT"
+          : typeof args.path === "string" && /\.srt$/i.test(args.path)
+            ? "SRT"
+            : args.format === "vtt"
+              ? "WebVTT"
+              : "SRT";
       return typeof args.path === "string" ? `Saved the subtitles as ${shortName(args.path)}` : `Saved the subtitles as ${format}`;
     }
     case "export_video":
-      return typeof args.folder === "string" && args.folder.trim() ? `Exported the video to ${shortName(args.folder.trim().replace(/\/+$/, ""))}` : "Exported the video";
+      return typeof args.folder === "string" && args.folder.trim()
+        ? `Exported the video to ${shortName(args.folder.trim().replace(/\/+$/, ""))}`
+        : "Exported the video";
     case "graphic_write":
       if (typeof args.from === "string") return `Edited the graphic ${args.from.replace(/^graphics\//, "")}`;
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
     case "shader_write":
       return typeof args.name === "string" ? `Wrote the shader effect ${args.name}` : "Wrote a shader effect";
     case "generate_media": {
-      const what = args.kind === "video" ? "a video" : args.kind === "audio" ? "a sound" : args.generator === "generate.sound" ? "a sound" : args.generator === "generate.veo" ? "a video" : "a picture";
-      const by = args.generator === "generate.gpt-image" ? " with GPT Image" : args.generator === "generate.veo" ? " with Veo" : args.generator === "generate.sound" ? " with ElevenLabs" : args.generator === "generate.svg" ? " from SVG" : "";
+      const what =
+        args.kind === "video"
+          ? "a video"
+          : args.kind === "audio"
+            ? "a sound"
+            : args.generator === "generate.sound"
+              ? "a sound"
+              : args.generator === "generate.veo"
+                ? "a video"
+                : "a picture";
+      const by =
+        args.generator === "generate.gpt-image"
+          ? " with GPT Image"
+          : args.generator === "generate.veo"
+            ? " with Veo"
+            : args.generator === "generate.sound"
+              ? " with ElevenLabs"
+              : args.generator === "generate.svg"
+                ? " from SVG"
+                : "";
       // A plugin's generators (#107, #108).
       if (args.generator === "generate.elevenlabs.voiceover") return "Generated a voiceover with ElevenLabs";
       if (args.generator === "generate.elevenlabs.music") return "Generated music with ElevenLabs";
@@ -110,7 +141,9 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "argent_boot":
       return typeof args.device === "string" && args.device.trim() ? `Asked to boot ${args.device.trim().slice(0, 60)}` : "Looked for simulators to boot";
     case "media_search":
-      return typeof args.query === "string" && args.query.trim() ? `Searched other projects for "${args.query.trim().slice(0, 60)}"` : "Looked through other projects' media";
+      return typeof args.query === "string" && args.query.trim()
+        ? `Searched other projects for "${args.query.trim().slice(0, 60)}"`
+        : "Looked through other projects' media";
     case "project_check":
       return "Checked the video against the taste checks";
     case "library_search": {
@@ -125,7 +158,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       const select = Array.isArray(args.select) ? args.select.find((s): s is string => typeof s === "string") : undefined;
       const at = [...(typeof args.frame === "number" ? [`frame ${args.frame}`] : []), ...(select ? [select] : [])];
       if (at.length) parts.push(`pointed at ${at.join(" and ")}`);
-      if (typeof args.panel === "string") parts.push(`opened ${args.panel === "agent" ? "the Agent tab" : `the ${args.panel[0]!.toUpperCase()}${args.panel.slice(1)} panel`}`);
+      if (typeof args.panel === "string")
+        parts.push(`opened ${args.panel === "agent" ? "the Agent tab" : `the ${args.panel[0]!.toUpperCase()}${args.panel.slice(1)} panel`}`);
       const text = parts.join(", ") || "pointed at the editor";
       return `${text[0]!.toUpperCase()}${text.slice(1)}`;
     }
@@ -150,11 +184,15 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "brand_read":
       return typeof args.file === "string" ? `Read ${shortName(args.file)} from the brand kit` : "Read the brand kit";
     case "brand_write":
-      return args.style ? `Wrote a style guide into ${typeof args.name === "string" ? args.name : typeof args.kit === "string" ? args.kit : "the brand kit"}` : `Saved the brand kit${typeof args.name === "string" ? ` ${args.name}` : ""}`;
+      return args.style
+        ? `Wrote a style guide into ${typeof args.name === "string" ? args.name : typeof args.kit === "string" ? args.kit : "the brand kit"}`
+        : `Saved the brand kit${typeof args.name === "string" ? ` ${args.name}` : ""}`;
     case "reference_frames":
       return typeof args.path === "string" ? `Looked over the reference ${shortName(args.path)}` : "Looked over a reference";
     case "beat_grid":
-      return Array.isArray(args.snap) && args.snap.length ? `Put ${args.snap.length} moment${args.snap.length === 1 ? "" : "s"} on the beat` : "Read the beat grid";
+      return Array.isArray(args.snap) && args.snap.length
+        ? `Put ${args.snap.length} moment${args.snap.length === 1 ? "" : "s"} on the beat`
+        : "Read the beat grid";
     default:
       return plugin ? `Used ${tool} from ${plugin}` : `Used ${tool}`;
   }
@@ -280,10 +318,12 @@ const PRESENT: ReadonlyArray<[string, string]> = [
  */
 export function doingLabel(tool: string, input: unknown, plugin?: string, project?: string): string {
   const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  if (tool === "timeline_edit" && args.dryRun !== true) return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
+  if (tool === "timeline_edit" && args.dryRun !== true)
+    return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
   if (tool === "graphic_write" && typeof args.from === "string") return `Editing graphic ${args.from.replace(/^graphics\//, "")}`;
   if (tool === "graphic_write") return typeof args.name === "string" && args.name.trim() ? `Writing graphic ${args.name.trim()}` : "Writing a graphic";
-  if (tool === "shader_write") return typeof args.name === "string" && args.name.trim() ? `Writing shader effect ${args.name.trim()}` : "Writing a shader effect";
+  if (tool === "shader_write")
+    return typeof args.name === "string" && args.name.trim() ? `Writing shader effect ${args.name.trim()}` : "Writing a shader effect";
   const past = stepLabel(tool, input, plugin, project);
   const hit = PRESENT.find(([from]) => past.startsWith(from));
   return hit ? `${hit[1]}${past.slice(hit[0].length)}` : past;
@@ -295,7 +335,8 @@ export function doingLabel(tool: string, input: unknown, plugin?: string, projec
  */
 export function partialFields(json: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const re = /"(name|topic|summary|path|media|source|device|kind|generator|query|mode|id|folder|panel|question|file|kit|url|command|file_path|pattern|description)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
+  const re =
+    /"(name|topic|summary|path|media|source|device|kind|generator|query|mode|id|folder|panel|question|file|kit|url|command|file_path|pattern|description)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
   for (let m = re.exec(json); m; m = re.exec(json)) {
     if (out[m[1]!] !== undefined) continue;
     try {

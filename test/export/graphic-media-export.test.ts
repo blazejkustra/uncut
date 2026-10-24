@@ -79,7 +79,9 @@ app.whenReady().then(async () => {
 
 // The editor's stand-in: the graphic's iframe, render(t) by postMessage, and media asked of it
 // answered as apps/web/src/preview/graphicMedia.ts does (only the graphic's own iframe).
-const hostPage = (src: string) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H}px}</style></head><body>
+const hostPage = (
+  src: string,
+) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H}px}</style></head><body>
 <iframe sandbox="allow-scripts" src="${src}"></iframe>
 <script>
 const frame = document.querySelector("iframe");
@@ -122,7 +124,29 @@ before(async () => {
   writeFileSync(join(dir, "graphics", "footage.html"), FOOTAGE);
   // A generated clip (testsrc2: every frame differs; tagged BT.709) and a still.
   clipPath = join(root, "clip.mp4");
-  const c = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-t", "3", "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", clipPath]);
+  const c = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=1280x720:rate=30",
+    "-t",
+    "3",
+    "-c:v",
+    "libx264",
+    "-g",
+    "30",
+    "-pix_fmt",
+    "yuv420p",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    clipPath,
+  ]);
   assert.equal(c.status, 0, String(c.stderr));
   const still = join(root, "still.png");
   const s = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "testsrc=size=200x100", "-frames:v", "1", still]);
@@ -138,7 +162,13 @@ before(async () => {
       return res.end(hostPage("/media/graphic/footage.html"));
     }
     if (url.pathname === "/media/graphic/footage.html") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "no-store", "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`, "x-content-type-options": "nosniff" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store",
+        "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`,
+        "x-content-type-options": "nosniff",
+      });
       return res.end(doc);
     }
     if (url.pathname.startsWith("/media/graphic-media/")) {
@@ -177,14 +207,27 @@ after(async () => {
   else rmSync(root, { recursive: true, force: true });
 });
 
-const exportFrame = (local: number, out: string) => raster.render({ kind: "graphic", width: W, height: H, doc, t: local / canvas.fps, info: graphicInfo({ duration: 60, props: {} }, canvas, local), out, name: "footage" });
+const exportFrame = (local: number, out: string) =>
+  raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: local / canvas.fps,
+    info: graphicInfo({ duration: 60, props: {} }, canvas, local),
+    out,
+    name: "footage",
+  });
 
 async function previewFrames(frames: ReadonlyArray<{ local: number; out: string }>) {
   const electron = createRequire(import.meta.url)("electron") as unknown as string;
   const main = join(root, "preview-main.cjs");
   writeFileSync(main, PREVIEW_MAIN);
   const jobs = frames.map((f) => ({ t: f.local / canvas.fps, info: graphicInfo({ duration: 60, props: {} }, canvas, f.local), out: f.out }));
-  const env: NodeJS.ProcessEnv = { ...process.env, UNCUT_PREVIEW_JOBS: JSON.stringify({ url: `http://127.0.0.1:${port}/host.html`, width: W, height: H, jobs, profile: join(root, "preview-profile") }) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    UNCUT_PREVIEW_JOBS: JSON.stringify({ url: `http://127.0.0.1:${port}/host.html`, width: W, height: H, jobs, profile: join(root, "preview-profile") }),
+  };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electron, [main], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
@@ -249,8 +292,22 @@ test("a graphic drawing a project video's frames: exact frames in the export, th
   const plain = rgbaOf(join(root, `source-15.png`));
   const plainAt = (x: number, y: number) => [...plain.subarray((y * W + x) * 4, (y * W + x) * 4 + 3)];
   const differs = (a: Array<number>, b: Array<number>) => Math.abs(a[0]! - b[0]!) + Math.abs(a[1]! - b[1]!) + Math.abs(a[2]! - b[2]!) > 30;
-  assert.ok([[W - 60, 20], [W - 30, 50], [W - 90, 40]].some(([x, y]) => differs(at(x!, y!), plainAt(x!, y!))), "the <img> marker drew the still");
-  assert.ok([[20, H - 20], [60, H - 10], [100, H - 30]].some(([x, y]) => differs(at(x!, y!), plainAt(x!, y!))), "the CSS url() marker drew the still");
+  assert.ok(
+    [
+      [W - 60, 20],
+      [W - 30, 50],
+      [W - 90, 40],
+    ].some(([x, y]) => differs(at(x!, y!), plainAt(x!, y!))),
+    "the <img> marker drew the still",
+  );
+  assert.ok(
+    [
+      [20, H - 20],
+      [60, H - 10],
+      [100, H - 30],
+    ].some(([x, y]) => differs(at(x!, y!), plainAt(x!, y!))),
+    "the CSS url() marker drew the still",
+  );
 
   // The preview's way: the same moments.
   const previews = locals.map((local) => ({ local, out: join(root, `preview-${local}.png`) }));

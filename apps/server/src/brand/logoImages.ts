@@ -9,7 +9,14 @@ import { extname, join } from "node:path";
 
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../export/rasterizer.ts";
 
-const MIME: Readonly<Record<string, string>> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
+const MIME: Readonly<Record<string, string>> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
 const BACKDROP: Readonly<Record<string, string>> = { light: "#ffffff", dark: "#111111", mark: "#808080" };
 const MAX_BYTES = 5 * 1024 * 1024;
 export const LOGO_PICTURE = { width: 640, height: 360 } as const;

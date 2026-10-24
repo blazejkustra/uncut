@@ -15,7 +15,12 @@ import { runProbe } from "../media/probe.ts";
 import { safeUploadName } from "../app/remote.ts";
 
 /** The media source module a take is stored with. */
-export const TAKE_MODULE: Record<TakeKind, string> = { voiceover: "capture.microphone", camera: "capture.camera", screen: "capture.screen", system: "capture.system" };
+export const TAKE_MODULE: Record<TakeKind, string> = {
+  voiceover: "capture.microphone",
+  camera: "capture.camera",
+  screen: "capture.screen",
+  system: "capture.system",
+};
 const DEFAULT_NAME: Record<TakeKind, string> = { voiceover: "Voiceover", camera: "Camera", screen: "Screen", system: "Mac sound" };
 /** D211: a multi-source take's files in its own folder (media/captures/<take>/). */
 export const MULTI_FILE: Record<TakeKind, string> = { screen: "screen.mp4", camera: "camera.mp4", voiceover: "mic.m4a", system: "system.m4a" };
@@ -31,7 +36,8 @@ const inside = (dir: string, file: string) => {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** 20261013-101500, like Argent's takes (D98). */
-export const stamp = (d = new Date()) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+export const stamp = (d = new Date()) =>
+  `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 
 /** "Voiceover 20261013-101500.m4a": the given name (made safe) or the kind's, the time, the extension. */
 export function takeFileName(kind: TakeKind, name: string | undefined, at = new Date()) {
@@ -41,9 +47,33 @@ export function takeFileName(kind: TakeKind, name: string | undefined, at = new 
 
 /** ffmpeg's arguments for a take (`-n`: never over an existing file). */
 export function ffmpegArgs(kind: TakeKind, input: string, output: string, fps: number, encoder: "libx264" | "h264_videotoolbox" = "libx264"): Array<string> {
-  if (audioOnly(kind)) return ["-v", "error", "-nostdin", "-n", "-i", input, "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", output];
+  if (audioOnly(kind))
+    return ["-v", "error", "-nostdin", "-n", "-i", input, "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", output];
   const video = encoder === "libx264" ? ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"] : ["-c:v", "h264_videotoolbox", "-b:v", "12M"];
-  return ["-v", "error", "-nostdin", "-n", "-i", input, ...video, "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", String(fps), "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart", output];
+  return [
+    "-v",
+    "error",
+    "-nostdin",
+    "-n",
+    "-i",
+    input,
+    ...video,
+    "-pix_fmt",
+    "yuv420p",
+    "-vf",
+    "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+    "-r",
+    String(fps),
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    "-ar",
+    "48000",
+    "-movflags",
+    "+faststart",
+    output,
+  ];
 }
 
 /**
@@ -52,7 +82,11 @@ export function ffmpegArgs(kind: TakeKind, input: string, output: string, fps: n
  * uploaded, D108, is never converted or removed); else a sentence. `mediaPaths`: the project's
  * media paths as stored (relative to the project or absolute).
  */
-export async function uploadedTake(path: string, projectDir: string, mediaPaths: ReadonlyArray<string> = []): Promise<{ readonly file: string } | { readonly problem: string }> {
+export async function uploadedTake(
+  path: string,
+  projectDir: string,
+  mediaPaths: ReadonlyArray<string> = [],
+): Promise<{ readonly file: string } | { readonly problem: string }> {
   if (typeof path !== "string" || !isAbsolute(path)) return { problem: "The recording's path isn't absolute." };
   if (!TAKE_UPLOAD_NAME.test(basename(path))) return { problem: "That file isn't a recording from the Capture tab, so it wasn't touched." };
   try {
@@ -101,7 +135,12 @@ export async function convertTake(input: {
   let target = "";
   for (let n = 1; n < 100; n++) {
     const candidate = join(real, n === 1 ? file : `${stem} ${n}${ext}`);
-    if (!(await stat(candidate).then(() => true, () => false))) {
+    if (
+      !(await stat(candidate).then(
+        () => true,
+        () => false,
+      ))
+    ) {
       target = candidate;
       break;
     }

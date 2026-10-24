@@ -41,7 +41,15 @@ function StickerButton({ s, online }: { s: StickerEntry; online: boolean }) {
         clearDraggedComponentProps();
       }}
     >
-      {s.art ? <span className="sticker-art" style={art?.size ? { aspectRatio: `${art.size[0]} / ${art.size[1]}` } : undefined} dangerouslySetInnerHTML={{ __html: STICKER_ART[s.art]!.svg }} /> : <span className="sticker-emoji">{s.emoji}</span>}
+      {s.art ? (
+        <span
+          className="sticker-art"
+          style={art?.size ? { aspectRatio: `${art.size[0]} / ${art.size[1]}` } : undefined}
+          dangerouslySetInnerHTML={{ __html: STICKER_ART[s.art]!.svg }}
+        />
+      ) : (
+        <span className="sticker-emoji">{s.emoji}</span>
+      )}
     </button>
   );
 }

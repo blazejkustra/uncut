@@ -41,11 +41,16 @@ test("latest-mac.yml has electron-builder's shape: version, zip first then dmg, 
 });
 
 test("electron-updater's MacUpdater picks the zip from it on Apple silicon", () => {
-  const { MacUpdater } = desktopRequire("electron-updater/out/MacUpdater") as { MacUpdater: { filterFilesForArch: (files: Array<{ url: URL; info: { url: string } }>, arm: boolean) => Array<{ info: { url: string } }> } };
+  const { MacUpdater } = desktopRequire("electron-updater/out/MacUpdater") as {
+    MacUpdater: { filterFilesForArch: (files: Array<{ url: URL; info: { url: string } }>, arm: boolean) => Array<{ info: { url: string } }> };
+  };
   const base = new URL("https://github.com/blazejkustra/uncut/releases/download/v0.0.2/");
   const files = ["Uncut-0.0.2-arm64-mac.zip", "Uncut-0.0.2-20261016-arm64.dmg"].map((u) => ({ url: new URL(u, base), info: { url: u } }));
   const picked = MacUpdater.filterFilesForArch(files, true).filter((f) => f.info.url.endsWith(".zip"));
-  assert.deepEqual(picked.map((f) => f.info.url), ["Uncut-0.0.2-arm64-mac.zip"]);
+  assert.deepEqual(
+    picked.map((f) => f.info.url),
+    ["Uncut-0.0.2-arm64-mac.zip"],
+  );
 });
 
 test("blockmaps: the loader dist:signed uses finds electron-builder's builder; base64 sha512 and size of the file", async () => {
@@ -77,9 +82,15 @@ test("dist:signed writes the feed after the DMG is stapled, from the stapled app
 
 test("release.yml: a tag needs the certificate (no dmg-only release), drafts the dmg plus the feed, tag = app version", () => {
   const yml = readFileSync(".github/workflows/release.yml", "utf8");
-  assert.match(yml, /- name: A tag needs the certificate\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type == 'tag'\n\s+run: \|\n[^\n]*::error::[^\n]*\n\s+exit 1/);
+  assert.match(
+    yml,
+    /- name: A tag needs the certificate\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type == 'tag'\n\s+run: \|\n[^\n]*::error::[^\n]*\n\s+exit 1/,
+  );
   assert.match(yml, /- name: Ad-hoc dmg[^\n]*\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type != 'tag'/);
-  assert.match(yml, /- name: Draft release\n\s+if: env\.HAS_CERT == 'true' && github\.ref_type == 'tag'\n[^]*?gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml --draft/);
+  assert.match(
+    yml,
+    /- name: Draft release\n\s+if: env\.HAS_CERT == 'true' && github\.ref_type == 'tag'\n[^]*?gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml --draft/,
+  );
   assert.equal((yml.match(/gh release create/g) ?? []).length, 1, "the only release is the signed one");
   assert.match(yml, /workflow_dispatch:/);
   assert.match(yml, /"\$GITHUB_REF_NAME" != "v\$VERSION"/);
@@ -88,7 +99,10 @@ test("release.yml: a tag needs the certificate (no dmg-only release), drafts the
 test("electron-builder publishes nothing itself; the app gets its feed from its own config (no app-update.yml in Resources)", () => {
   const builder = readFileSync("apps/desktop/electron-builder.yml", "utf8");
   assert.match(builder, /^publish: null$/m);
-  const pkg = JSON.parse(readFileSync("apps/desktop/package.json", "utf8")) as { devDependencies: Record<string, string>; dependencies?: Record<string, string> };
+  const pkg = JSON.parse(readFileSync("apps/desktop/package.json", "utf8")) as {
+    devDependencies: Record<string, string>;
+    dependencies?: Record<string, string>;
+  };
   assert.equal(pkg.devDependencies["electron-updater"], "6.8.10", "bundled into main.cjs by esbuild, like everything else");
   assert.equal(pkg.dependencies?.["electron-updater"], undefined);
 });

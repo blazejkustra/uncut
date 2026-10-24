@@ -5,10 +5,16 @@ import { type LookDef, LOOK, lookInfo, num, type AdjustKey, ADJUST, adjustOf, NO
 
 // ---- edits ----
 
-type Plan = { readonly ops: ReadonlyArray<{ op: "update_item"; item: string; set: Record<string, unknown> }>; readonly summary: string } | { readonly problem: string };
+type Plan =
+  | { readonly ops: ReadonlyArray<{ op: "update_item"; item: string; set: Record<string, unknown> }>; readonly summary: string }
+  | { readonly problem: string };
 
 interface Target {
-  readonly tracks: ReadonlyArray<{ readonly kind: string; readonly locked?: boolean; readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name">> }>;
+  readonly tracks: ReadonlyArray<{
+    readonly kind: string;
+    readonly locked?: boolean;
+    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name">>;
+  }>;
   readonly media?: ReadonlyArray<{ readonly id: string; readonly kind: string; readonly name?: string; readonly path?: string }>;
 }
 
@@ -26,11 +32,19 @@ function clipOf(project: Target, id: string): { item: Pick<Item, "id" | "type" |
   return { problem: "Pick a clip first." };
 }
 
-const setEffects = (id: string, list: ReadonlyArray<ModuleUse>, summary: string): Plan => ({ ops: [{ op: "update_item", item: id, set: { effects: list.length ? list : null } }], summary });
+const setEffects = (id: string, list: ReadonlyArray<ModuleUse>, summary: string): Plan => ({
+  ops: [{ op: "update_item", item: id, set: { effects: list.length ? list : null } }],
+  summary,
+});
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /** Give a clip a look (one look per clip: it replaces the one it had), or with undefined take it off. */
-export function planSetLook(project: Target, itemId: string, look: string | undefined, opts: { intensity?: number; custom?: LookDef; label?: string } = {}): Plan {
+export function planSetLook(
+  project: Target,
+  itemId: string,
+  look: string | undefined,
+  opts: { intensity?: number; custom?: LookDef; label?: string } = {},
+): Plan {
   const c = clipOf(project, itemId);
   if ("problem" in c) return c;
   const list = [...(c.item.effects ?? [])];
@@ -44,13 +58,21 @@ export function planSetLook(project: Target, itemId: string, look: string | unde
   if (!info && !opts.custom) return { problem: `There's no filter called ${look}.` };
   const before = at >= 0 ? ((list[at]!.params ?? {}) as Record<string, unknown>) : undefined;
   const intensity = num(opts.intensity ?? (before?.look === look ? before?.intensity : undefined), 0, 1, 1);
-  const params: Record<string, unknown> = { look, intensity: Math.round(intensity * 100) / 100, ...(opts.custom ? { custom: opts.custom, label: opts.label ?? look } : {}) };
+  const params: Record<string, unknown> = {
+    look,
+    intensity: Math.round(intensity * 100) / 100,
+    ...(opts.custom ? { custom: opts.custom, label: opts.label ?? look } : {}),
+  };
   // An off filter (bypass, F18) stays off while its intensity changes; a new filter is on.
   const entry = { module: LOOK, params, ...(at >= 0 && list[at]!.bypass && before?.look === look ? { bypass: true } : {}) };
   if (at >= 0) list[at] = entry;
   else list.unshift(entry);
   const name = info?.name ?? opts.label ?? look;
-  return setEffects(itemId, list, opts.intensity !== undefined && before?.look === look ? `Set ${name} on ${c.name} to ${pct(intensity)}` : `Filter ${name} on ${c.name}`);
+  return setEffects(
+    itemId,
+    list,
+    opts.intensity !== undefined && before?.look === look ? `Set ${name} on ${c.name} to ${pct(intensity)}` : `Filter ${name} on ${c.name}`,
+  );
 }
 
 /** Change a clip's Adjust (a patch of its values; 0 is neutral); an all-neutral Adjust is removed. */
@@ -72,12 +94,18 @@ export function planAdjust(project: Target, itemId: string, patch: Partial<Recor
   else return { problem: "Nothing to reset." };
   const keys = patch === "reset" ? [] : (Object.keys(patch) as Array<AdjustKey>);
   const info = keys.length === 1 ? ADJUST_INFO.find((a) => a.key === keys[0]) : undefined;
-  const summary = patch === "reset" ? `Reset the adjustments of ${c.name}` : info ? `Set ${info.name.toLowerCase()} of ${c.name} to ${adjustWord(info.key, next[info.key])}` : `Adjust ${c.name}`;
+  const summary =
+    patch === "reset"
+      ? `Reset the adjustments of ${c.name}`
+      : info
+        ? `Set ${info.name.toLowerCase()} of ${c.name} to ${adjustWord(info.key, next[info.key])}`
+        : `Adjust ${c.name}`;
   return setEffects(itemId, list, summary);
 }
 
 /** An Adjust value as the Inspector shows it: stops for exposure, −100 to 100 for the rest. */
-export const adjustWord = (key: AdjustKey, v: number) => (key === "exposure" ? `${v > 0 ? "+" : ""}${Math.round(v * 100) / 100} EV` : `${v > 0 ? "+" : ""}${Math.round(v * 100)}`);
+export const adjustWord = (key: AdjustKey, v: number) =>
+  key === "exposure" ? `${v > 0 ? "+" : ""}${Math.round(v * 100) / 100} EV` : `${v > 0 ? "+" : ""}${Math.round(v * 100)}`;
 
 /** Add an effect to a clip (with its defaults), or with `params` change the one it has. */
 export function planEffect(project: Target, itemId: string, module: string, params?: Record<string, number>): Plan {
@@ -88,14 +116,20 @@ export function planEffect(project: Target, itemId: string, module: string, para
   const list = [...(c.item.effects ?? [])];
   const at = list.findIndex((e) => e.module === module);
   const base = at >= 0 ? effectParams(module, list[at]!.params) : effectParams(module, {});
-  const next = effectParams(module, { ...base, ...(params ?? {}) });
+  const next = effectParams(module, { ...base, ...params });
   const entry = { module, ...(info.params.length ? { params: next } : {}), ...(at >= 0 && list[at]!.bypass ? { bypass: true } : {}) };
   if (at >= 0) {
     if (!params) return { problem: `${c.name} already has ${info.name.toLowerCase()}.` };
     list[at] = entry;
     const keys = Object.keys(params);
     const p = keys.length === 1 ? info.params.find((d) => d.key === keys[0]) : undefined;
-    return setEffects(itemId, list, p ? `Set ${info.name.toLowerCase()} ${p.name.toLowerCase()} on ${c.name} to ${Math.round(next[p.key]! * 100) / 100}${p.unit ? ` ${p.unit}` : ""}` : `Change ${info.name.toLowerCase()} on ${c.name}`);
+    return setEffects(
+      itemId,
+      list,
+      p
+        ? `Set ${info.name.toLowerCase()} ${p.name.toLowerCase()} on ${c.name} to ${Math.round(next[p.key]! * 100) / 100}${p.unit ? ` ${p.unit}` : ""}`
+        : `Change ${info.name.toLowerCase()} on ${c.name}`,
+    );
   }
   list.push(entry);
   return setEffects(itemId, list, `Add ${info.name.toLowerCase()} to ${c.name}`);
@@ -107,7 +141,14 @@ export function planRemoveEffect(project: Target, itemId: string, module: string
   if ("problem" in c) return c;
   const list = (c.item.effects ?? []).filter((e) => e.module !== module);
   if (list.length === (c.item.effects ?? []).length) return { problem: "That clip doesn't have it." };
-  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : module === SHADER ? "the shader effect" : (effectInfo(module)?.name.toLowerCase() ?? module);
+  const name =
+    module === LOOK
+      ? "the filter"
+      : module === ADJUST
+        ? "the adjustments"
+        : module === SHADER
+          ? "the shader effect"
+          : (effectInfo(module)?.name.toLowerCase() ?? module);
   return setEffects(itemId, list, `Remove ${name} from ${c.name}`);
 }
 
@@ -125,7 +166,14 @@ export function planEffectBypass(project: Target, itemId: string, module: string
   if (!list[at]!.bypass === on) return { problem: on ? "It's already on." : "It's already off." };
   const { bypass: _, ...rest } = list[at]!;
   list[at] = on ? rest : { ...rest, bypass: true };
-  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : module === SHADER ? "the shader effect" : (effectInfo(module)?.name.toLowerCase() ?? module);
+  const name =
+    module === LOOK
+      ? "the filter"
+      : module === ADJUST
+        ? "the adjustments"
+        : module === SHADER
+          ? "the shader effect"
+          : (effectInfo(module)?.name.toLowerCase() ?? module);
   return setEffects(itemId, list, `Turn ${name} on ${c.name} ${on ? "on" : "off"}`);
 }
 

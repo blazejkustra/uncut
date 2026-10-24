@@ -93,7 +93,11 @@ test("the gate: token by query or Bearer, 401 without, 403 for a web origin, fil
   ws.close();
   await assert.rejects(openSocket(`ws://127.0.0.1:${port}/ws?token=nope`));
   const upgrade = await new Promise<string>((done) => {
-    const sock = netConnect(port, "127.0.0.1", () => sock.write(`GET /ws?token=${token} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: https://evil.example\r\n\r\n`));
+    const sock = netConnect(port, "127.0.0.1", () =>
+      sock.write(
+        `GET /ws?token=${token} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: https://evil.example\r\n\r\n`,
+      ),
+    );
     let text = "";
     sock.on("data", (d) => (text += d));
     sock.on("close", () => done(text));
@@ -150,7 +154,11 @@ test("files.list: a folder's entries (dirs first, projects marked, hidden left o
 });
 
 const upload = (port: number, token: string, name: string, body: Uint8Array<ArrayBuffer> | string) =>
-  fetch(`http://127.0.0.1:${port}/api/upload?name=${encodeURIComponent(name)}`, { method: "POST", body, headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" } });
+  fetch(`http://127.0.0.1:${port}/api/upload?name=${encodeURIComponent(name)}`, {
+    method: "POST",
+    body,
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" },
+  });
 
 test("uploads: into the open project's media/uploads/, a safe name, never over a file, capped, never through a symlink out", T, async () => {
   const s = await headless("up", ["--port", "0"], { UNCUT_UPLOAD_MAX_BYTES: "1000" });
@@ -222,7 +230,29 @@ test("download: a finished export streams byte for byte (and by range); nothing 
   mkdirSync(join(root, "dl-projects"), { recursive: true });
   const snap = await client.ok("project.create", { parentDir: join(root, "dl-projects"), name: "Down" });
   const clip = join(root, "clip.mp4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-f", "lavfi", "-i", "sine=duration=1", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=1",
+    "-t",
+    "1",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    clip,
+  ]);
   // Up as an upload, imported from media/uploads/ (as a drop on a remote does).
   const up = await (await upload(port, token, "clip.mp4", readFileSync(clip))).json();
   assert.equal(up.path, join(snap.dir, "media", "uploads", "clip.mp4"));
@@ -231,7 +261,10 @@ test("download: a finished export streams byte for byte (and by range); nothing 
   const project = (await client.ok("project.get", {})).project;
   const media = project.media[0];
   assert.equal(media.path, "media/uploads/clip.mp4", "stored inside the project");
-  await client.ok("project.edit", { ops: [{ op: "insert_item", track: "main", item: { id: "c1", type: "clip", media: media.id, in: 0, duration: 30 } }], summary: "clip" });
+  await client.ok("project.edit", {
+    ops: [{ op: "insert_item", track: "main", item: { id: "c1", type: "clip", media: media.id, in: 0, duration: 30 } }],
+    summary: "clip",
+  });
   const output = join(root, "dl-out.mp4");
   const started = await client.ok("export.start", { output, quality: "draft", loudness: "off" });
   assert.equal((await get(port, `/api/export/${started.jobId}`, { authorization: `Bearer ${token}` })).status, 404, "not before it's done");

@@ -172,10 +172,17 @@ interface ArgentInfo {
 
 async function argentInfo(): Promise<ArgentInfo> {
   if (!findArgent()) return { installed: false, problem: "Argent isn't installed." };
-  const run = await runArgent(["--version"], { timeoutMs: 15_000 }).catch((error) => ({ code: 1, stdout: "", stderr: messageOf(error), timedOut: false, aborted: false }));
+  const run = await runArgent(["--version"], { timeoutMs: 15_000 }).catch((error) => ({
+    code: 1,
+    stdout: "",
+    stderr: messageOf(error),
+    timedOut: false,
+    aborted: false,
+  }));
   const version = /\d+\.\d+\.\d+/.exec(run.stdout)?.[0];
   if (run.code !== 0 || !version) return { installed: true, problem: `Argent didn't say its version: ${lastLine(run)}` };
-  if (compareVersions(version, MIN_VERSION) < 0) return { installed: true, version, problem: `Argent ${version} is too old: recording needs ${MIN_VERSION} or newer. Update it with: ${INSTALL}` };
+  if (compareVersions(version, MIN_VERSION) < 0)
+    return { installed: true, version, problem: `Argent ${version} is too old: recording needs ${MIN_VERSION} or newer. Update it with: ${INSTALL}` };
   return { installed: true, version };
 }
 
@@ -209,7 +216,10 @@ export function toDevice(raw: Json): Device | undefined {
     if (state !== "device") return no(state === "offline" ? "Offline" : state === "unauthorized" ? "Not authorised for USB debugging" : "Not ready");
     return { id, platform, name: str(raw.avdName)?.replace(/_/g, " ") ?? name, state, recordable: true };
   }
-  if (platform === "chromium") return no(raw.electron === true || /electron/i.test(String(raw.browser ?? "")) ? "Electron apps can't be recorded yet" : "Chromium apps can't be recorded yet");
+  if (platform === "chromium")
+    return no(
+      raw.electron === true || /electron/i.test(String(raw.browser ?? "")) ? "Electron apps can't be recorded yet" : "Chromium apps can't be recorded yet",
+    );
   if (platform === "vega") return no("Fire TV (Vega) can't be recorded yet");
   return no(`${platform} devices can't be recorded yet`);
 }
@@ -224,7 +234,19 @@ async function listDevices(): Promise<{ argent: ArgentInfo; devices: ReadonlyArr
   const running = new Set(raw.flatMap((d) => (d.platform === "android" && str(d.avdName) ? [str(d.avdName)!] : [])));
   const avds = (Array.isArray(result.avds) ? (result.avds as Array<Json>) : []).flatMap((a) => {
     const name = str(a.name);
-    return name && !running.has(name) ? [{ id: `avd:${name}`, platform: "android", name: name.replace(/_/g, " "), state: "stopped", recordable: false, reason: "Not running", bootable: true } satisfies Device] : [];
+    return name && !running.has(name)
+      ? [
+          {
+            id: `avd:${name}`,
+            platform: "android",
+            name: name.replace(/_/g, " "),
+            state: "stopped",
+            recordable: false,
+            reason: "Not running",
+            bootable: true,
+          } satisfies Device,
+        ]
+      : [];
   });
   return { argent, devices: [...devices, ...avds] };
 }
@@ -234,7 +256,10 @@ async function recordableDevice(id: string): Promise<Device> {
   if (!argent.installed) throw new Refusal(`Argent isn't installed, so nothing can be recorded. The user can install it with: ${INSTALL}`);
   if (argent.problem) throw new Refusal(argent.problem);
   const device = devices.find((d) => d.id === id);
-  if (!device) throw new Refusal(`There's no device ${id}. argent_list_devices lists the ones Argent sees${devices.length ? `: ${devices.map((d) => d.id).join(", ")}` : " (none right now)"}.`);
+  if (!device)
+    throw new Refusal(
+      `There's no device ${id}. argent_list_devices lists the ones Argent sees${devices.length ? `: ${devices.map((d) => d.id).join(", ")}` : " (none right now)"}.`,
+    );
   if (!device.recordable) throw new Refusal(`${device.name} (${device.id}) can't be recorded: ${device.reason}.`);
   return device;
 }
@@ -247,9 +272,11 @@ export interface Prep {
 
 export function prepOf(args: Json): Prep {
   const orientation = str(args.orientation);
-  if (orientation !== undefined && !(ORIENTATIONS as ReadonlyArray<string>).includes(orientation)) throw new Refusal(`orientation must be one of ${ORIENTATIONS.join(", ")}.`);
+  if (orientation !== undefined && !(ORIENTATIONS as ReadonlyArray<string>).includes(orientation))
+    throw new Refusal(`orientation must be one of ${ORIENTATIONS.join(", ")}.`);
   const bundleId = str(args.bundleId);
-  if (bundleId !== undefined && !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,200}$/.test(bundleId)) throw new Refusal("bundleId must look like com.example.app (letters, digits, dots, dashes, underscores).");
+  if (bundleId !== undefined && !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,200}$/.test(bundleId))
+    throw new Refusal("bundleId must look like com.example.app (letters, digits, dots, dashes, underscores).");
   return { ...(orientation ? { orientation: orientation as Prep["orientation"] } : {}), ...(bundleId ? { bundleId } : {}) };
 }
 
@@ -283,7 +310,6 @@ interface Context {
   readonly flowsDir?: string;
 }
 
-
 interface Recording {
   readonly device: string;
   readonly startedAt: number;
@@ -302,8 +328,18 @@ interface Recording {
 /** Recordings running now, by device: one per device (Argent's own rule). */
 const recordings = new Map<string, Recording>();
 
-const safeName = (name: string) => name.replace(/\.mp4$/i, "").replace(/[^A-Za-z0-9 _.-]+/g, "-").replace(/^[-. ]+|[-. ]+$/g, "").slice(0, 80) || "recording";
-const stamp = (at: Date) => at.toISOString().replace(/\.\d+Z$/, "").replace(/[-:]/g, "").replace("T", "-");
+const safeName = (name: string) =>
+  name
+    .replace(/\.mp4$/i, "")
+    .replace(/[^A-Za-z0-9 _.-]+/g, "-")
+    .replace(/^[-. ]+|[-. ]+$/g, "")
+    .slice(0, 80) || "recording";
+const stamp = (at: Date) =>
+  at
+    .toISOString()
+    .replace(/\.\d+Z$/, "")
+    .replace(/[-:]/g, "")
+    .replace("T", "-");
 
 async function uniqueFile(dir: string, name: string) {
   for (let n = 1; ; n++) {
@@ -317,7 +353,12 @@ function detachedStop(device: string, cwd: string) {
   const bin = findArgent();
   if (!bin) return;
   try {
-    spawn(bin, ["run", "screen-recording-stop", "--args", JSON.stringify({ udid: device }), "--json"], { cwd: existsSync(cwd) ? cwd : process.cwd(), env: argentEnv(), stdio: "ignore", detached: true }).unref();
+    spawn(bin, ["run", "screen-recording-stop", "--args", JSON.stringify({ udid: device }), "--json"], {
+      cwd: existsSync(cwd) ? cwd : process.cwd(),
+      env: argentEnv(),
+      stdio: "ignore",
+      detached: true,
+    }).unref();
   } catch {}
 }
 
@@ -335,7 +376,12 @@ async function sweepScratch(captureDir: string) {
   }
 }
 
-async function startRecording(device: Device, context: Context, options: { showTouches: boolean; limitSeconds: number; name?: string | undefined; trimStatic?: boolean }, signal?: AbortSignal): Promise<Recording> {
+async function startRecording(
+  device: Device,
+  context: Context,
+  options: { showTouches: boolean; limitSeconds: number; name?: string | undefined; trimStatic?: boolean },
+  signal?: AbortSignal,
+): Promise<Recording> {
   if (!context.captureDir) throw new Refusal("No project is open, so there's nowhere to save a recording. Open a project first.");
   if (recordings.has(device.id)) throw new Refusal(`${device.name} is already being recorded. Stop that recording first.`);
   await mkdir(context.captureDir, { recursive: true });
@@ -344,10 +390,26 @@ async function startRecording(device: Device, context: Context, options: { showT
   // one, so this keeps its file out of the user's own projects.
   const scratch = await mkdtemp(join(context.captureDir, ".argent-take-"));
   await mkdir(join(scratch, ".argent"), { recursive: true });
-  const recording: Recording = { device: device.id, startedAt: Date.now(), scratch, captureDir: context.captureDir, label: device.name, ...(options.name ? { name: options.name } : {}) };
+  const recording: Recording = {
+    device: device.id,
+    startedAt: Date.now(),
+    scratch,
+    captureDir: context.captureDir,
+    label: device.name,
+    ...(options.name ? { name: options.name } : {}),
+  };
   recordings.set(device.id, recording);
   try {
-    await argentTool("screen-recording-start", { udid: device.id, timeLimitSeconds: Math.max(1, Math.min(MAX_SECONDS, Math.ceil(options.limitSeconds))), trimStatic: options.trimStatic === true, showTouches: options.showTouches }, { cwd: scratch, ...(signal ? { signal } : {}) });
+    await argentTool(
+      "screen-recording-start",
+      {
+        udid: device.id,
+        timeLimitSeconds: Math.max(1, Math.min(MAX_SECONDS, Math.ceil(options.limitSeconds))),
+        trimStatic: options.trimStatic === true,
+        showTouches: options.showTouches,
+      },
+      { cwd: scratch, ...(signal ? { signal } : {}) },
+    );
   } catch (error) {
     recordings.delete(device.id);
     // Cancelled (or it failed) while starting: it may have started anyway, so stop it.
@@ -392,7 +454,8 @@ async function stopRecording(id: string, options: { discard?: boolean; name?: st
     throw lastError;
   }
   try {
-    const video = typeof result.video === "string" ? result.video : str((result.video as Json | undefined)?.path) ?? str((result.video as Json | undefined)?.hostPath);
+    const video =
+      typeof result.video === "string" ? result.video : (str((result.video as Json | undefined)?.path) ?? str((result.video as Json | undefined)?.hostPath));
     if (!video || !existsSync(video)) throw new Error(`argent didn't hand over the recording${result.warning ? ` (${String(result.warning)})` : ""}`);
     const inScratch = !relative(recording.scratch, video).startsWith("..");
     if (options.discard) {
@@ -405,7 +468,8 @@ async function stopRecording(id: string, options: { discard?: boolean; name?: st
     if (inScratch) await rename(video, file).catch(async () => (await copyFile(video, file), await rm(video, { force: true })));
     else await copyFile(video, file);
     const bytes = (await stat(file)).size;
-    const seconds = typeof result.durationMs === "number" ? Math.round(result.durationMs / 100) / 10 : Math.round((Date.now() - recording.startedAt) / 100) / 10;
+    const seconds =
+      typeof result.durationMs === "number" ? Math.round(result.durationMs / 100) / 10 : Math.round((Date.now() - recording.startedAt) / 100) / 10;
     return { path: file, seconds, bytes, ...(str(result.warning) ? { warning: str(result.warning)! } : {}) };
   } finally {
     await rm(recording.scratch, { recursive: true, force: true });
@@ -444,10 +508,14 @@ const isInside = (dir: string, file: string) => {
 async function resolveFlow(flow: string, context: Context, origin: "arg" | "stored"): Promise<string> {
   const { projectDir, flowsDir } = context;
   if (!projectDir || !flowsDir) throw new Refusal("No project is open, so there are no flows to replay.");
-  if (isAbsolute(flow) || flow.split(/[\\/]/).includes("..")) throw new Refusal(`The flow ${flow} has to be ${origin === "arg" ? "a saved flow's name or a path under the project's flows/ folder (flows/login.yaml); copy the flow there first" : "a path inside the project"}.`);
+  if (isAbsolute(flow) || flow.split(/[\\/]/).includes(".."))
+    throw new Refusal(
+      `The flow ${flow} has to be ${origin === "arg" ? "a saved flow's name or a path under the project's flows/ folder (flows/login.yaml); copy the flow there first" : "a path inside the project"}.`,
+    );
   let file: string;
   if (!flow.includes("/") && !/\.ya?ml$/i.test(flow)) file = join(flowsDir, `${flow}.yaml`);
-  else if (origin === "arg" && !flow.startsWith("flows/")) throw new Refusal(`The flow ${flow} has to be a saved flow's name or a path under the project's flows/ folder (flows/login.yaml).`);
+  else if (origin === "arg" && !flow.startsWith("flows/"))
+    throw new Refusal(`The flow ${flow} has to be a saved flow's name or a path under the project's flows/ folder (flows/login.yaml).`);
   else file = resolve(projectDir, flow);
   if (!/\.ya?ml$/i.test(file)) throw new Refusal(`The flow ${flow} isn't a .yaml file.`);
   let real: string;
@@ -457,7 +525,8 @@ async function resolveFlow(flow: string, context: Context, origin: "arg" | "stor
     throw new Refusal(`There's no flow at ${relative(projectDir, file)}.`);
   }
   const root = await realpath(origin === "arg" ? flowsDir : projectDir).catch(() => undefined);
-  if (!root || !isInside(root, real)) throw new Refusal(`The flow ${flow} leads outside the project's ${origin === "arg" ? "flows/ folder" : "folder"}, so it isn't replayed.`);
+  if (!root || !isInside(root, real))
+    throw new Refusal(`The flow ${flow} leads outside the project's ${origin === "arg" ? "flows/ folder" : "folder"}, so it isn't replayed.`);
   return real;
 }
 
@@ -468,7 +537,11 @@ async function keepFlow(file: string, context: Context, saveAs: string | undefin
   const [flowsDir, projectDir, real] = await Promise.all([realpath(context.flowsDir), realpath(context.projectDir), realpath(file)]);
   let kept = real;
   if (saveAs || !isInside(flowsDir, real)) {
-    const name = (saveAs ?? basename(real)).replace(/\.ya?ml$/i, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "flow";
+    const name =
+      (saveAs ?? basename(real))
+        .replace(/\.ya?ml$/i, "")
+        .replace(/[^A-Za-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "flow";
     kept = join(flowsDir, `${name}.yaml`);
     if (kept !== real) {
       // Never write through a symlink someone left in flows/.
@@ -498,9 +571,19 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * One take: start the recording, play the flow or wait the seconds, stop it. The recording is
  * stopped whatever happens (a failed flow, a cancelled call); only a finished take is kept.
  */
-async function recordTake(device: Device, context: Context, plan: { seconds?: number; flowFile?: string; showTouches: boolean; name?: string | undefined; prep?: Prep }, signal: AbortSignal): Promise<Take> {
+async function recordTake(
+  device: Device,
+  context: Context,
+  plan: { seconds?: number; flowFile?: string; showTouches: boolean; name?: string | undefined; prep?: Prep },
+  signal: AbortSignal,
+): Promise<Take> {
   if (plan.prep) await prepare(device, plan.prep, signal);
-  const recording = await startRecording(device, context, { showTouches: plan.showTouches, limitSeconds: plan.flowFile ? MAX_SECONDS : (plan.seconds ?? 0) + 5, name: plan.name }, signal);
+  const recording = await startRecording(
+    device,
+    context,
+    { showTouches: plan.showTouches, limitSeconds: plan.flowFile ? MAX_SECONDS : (plan.seconds ?? 0) + 5, name: plan.name },
+    signal,
+  );
   let failure: unknown;
   try {
     if (signal.aborted) throw new Error("cancelled");
@@ -511,8 +594,12 @@ async function recordTake(device: Device, context: Context, plan: { seconds?: nu
   }
   if (failure !== undefined) {
     // The flow's (or the cancel's) error is the one that counts; a failed stop is only added to it.
-    const stopped = await stopRecording(device.id, { discard: true }).then(() => undefined, (error: unknown) => error);
-    if (stopped && failure instanceof Error) failure.message += ` (and stopping the recording failed too: ${messageOf(stopped)}; it was asked to stop again in the background)`;
+    const stopped = await stopRecording(device.id, { discard: true }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (stopped && failure instanceof Error)
+      failure.message += ` (and stopping the recording failed too: ${messageOf(stopped)}; it was asked to stop again in the background)`;
     throw failure;
   }
   return (await stopRecording(device.id, { name: plan.name }))!;
@@ -535,11 +622,26 @@ async function listTool(): Promise<Result> {
   const structured = { argent: { ...argent, install: INSTALL, minVersion: MIN_VERSION }, devices };
   if (!argent.installed) return text(`Argent isn't installed, so there are no devices to record. The user can install it with: ${INSTALL}`, structured, true);
   if (argent.problem) return text(argent.problem, structured, true);
-  return text(JSON.stringify({ devices, note: devices.some((d) => d.recordable) ? "Record a device whose recordable is true with argent_record." : "Nothing can be recorded right now: boot an iOS simulator or Android emulator first (the user does that, or Argent's own tools)." }), structured);
+  return text(
+    JSON.stringify({
+      devices,
+      note: devices.some((d) => d.recordable)
+        ? "Record a device whose recordable is true with argent_record."
+        : "Nothing can be recorded right now: boot an iOS simulator or Android emulator first (the user does that, or Argent's own tools).",
+    }),
+    structured,
+  );
 }
 
 function takeResult(take: Take, device: Device, flow: string | undefined, declare: UncutDeclaration): Result {
-  const info = { path: take.path, seconds: take.seconds, bytes: take.bytes, device: device.id, ...(flow ? { flow } : {}), ...(take.warning ? { warning: take.warning } : {}) };
+  const info = {
+    path: take.path,
+    seconds: take.seconds,
+    bytes: take.bytes,
+    device: device.id,
+    ...(flow ? { flow } : {}),
+    ...(take.warning ? { warning: take.warning } : {}),
+  };
   return text(JSON.stringify(info), { ...info, uncut: declare });
 }
 
@@ -558,7 +660,18 @@ async function recordTool({ args, context, signal }: Call): Promise<Result> {
   const prep = prepOf(args);
   const device = await recordableDevice(deviceId);
   const flow = flowFile ? await keepFlow(flowFile, context, saveFlow) : undefined;
-  const take = await recordTake(device, context, { ...(seconds !== undefined ? { seconds } : {}), ...(flowFile ? { flowFile } : {}), showTouches: bool(args.showTouches, false), name: str(args.name), prep }, signal);
+  const take = await recordTake(
+    device,
+    context,
+    {
+      ...(seconds !== undefined ? { seconds } : {}),
+      ...(flowFile ? { flowFile } : {}),
+      showTouches: bool(args.showTouches, false),
+      name: str(args.name),
+      prep,
+    },
+    signal,
+  );
   const source = { module: MODULE_ID, device: device.id, ...(flow ? { flow } : {}) };
   return takeResult(take, device, flow, { media: { path: take.path, ...(str(args.name) ? { name: str(args.name) } : {}), source } });
 }
@@ -571,18 +684,22 @@ async function reshootTool({ args, context, signal }: Call): Promise<Result> {
   const media = project.media?.find((m) => m.id === mediaId);
   if (!media) throw new Refusal(`There's no media ${mediaId} in the project.`);
   const source = (media.source && typeof media.source === "object" ? media.source : {}) as Json;
-  if (source.module !== MODULE_ID) throw new Refusal(`${mediaId} wasn't recorded with Argent, so it can't be re-shot. Record a new take with argent_record instead.`);
+  if (source.module !== MODULE_ID)
+    throw new Refusal(`${mediaId} wasn't recorded with Argent, so it can't be re-shot. Record a new take with argent_record instead.`);
   const deviceId = str(source.device);
   if (!deviceId) throw new Refusal(`${mediaId} doesn't say which device it was recorded on.`);
   const flowArg = str(args.flow) ?? str(source.flow);
-  if (!flowArg) throw new Refusal(`${mediaId} was recorded on a timer, not from a flow, so there's nothing to replay. Pass flow (a saved flow) to re-shoot it from one.`);
+  if (!flowArg)
+    throw new Refusal(`${mediaId} was recorded on a timer, not from a flow, so there's nothing to replay. Pass flow (a saved flow) to re-shoot it from one.`);
   const overrun = args.overrun === "hold" ? "hold" : "trim";
   const flowFile = await resolveFlow(flowArg, context, str(args.flow) ? "arg" : "stored");
   const device = await recordableDevice(deviceId);
   const flow = await keepFlow(flowFile, context, undefined);
   const name = safeName(`${String(media.name ?? mediaId).replace(/\.mp4$/i, "")} reshoot`);
   const take = await recordTake(device, context, { flowFile, showTouches: bool(args.showTouches, false), name }, signal);
-  return takeResult(take, device, flow, { replace: { media: mediaId, path: take.path, overrun, source: { ...source, module: MODULE_ID, device: device.id, ...(flow ? { flow } : {}) } } });
+  return takeResult(take, device, flow, {
+    replace: { media: mediaId, path: take.path, overrun, source: { ...source, module: MODULE_ID, device: device.id, ...(flow ? { flow } : {}) } },
+  });
 }
 
 // The Capture tab's Record and Stop (D98): not listed for the agent, called by Uncut itself.
@@ -590,10 +707,15 @@ async function captureStartTool({ args, context }: Call): Promise<Result> {
   const deviceId = str(args.device);
   if (!deviceId) throw new Refusal("Pass device.");
   const prep = prepOf(args);
-  const max = typeof args.maxSeconds === "number" && Number.isFinite(args.maxSeconds) ? Math.max(1, Math.min(MAX_SECONDS, Math.ceil(args.maxSeconds))) : MAX_SECONDS;
+  const max =
+    typeof args.maxSeconds === "number" && Number.isFinite(args.maxSeconds) ? Math.max(1, Math.min(MAX_SECONDS, Math.ceil(args.maxSeconds))) : MAX_SECONDS;
   const device = await recordableDevice(deviceId);
   await prepare(device, prep);
-  const recording = await startRecording(device, context, { showTouches: bool(args.showTouches, false), limitSeconds: max, trimStatic: bool(args.trimStatic, false) });
+  const recording = await startRecording(device, context, {
+    showTouches: bool(args.showTouches, false),
+    limitSeconds: max,
+    trimStatic: bool(args.trimStatic, false),
+  });
   const info = { device: device.id, startedAt: new Date(recording.startedAt).toISOString(), limitSeconds: max };
   return text(JSON.stringify(info), info);
 }

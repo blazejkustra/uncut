@@ -10,7 +10,19 @@
 import { readdir, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
-import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureOptions, type CaptureOrientation, type CaptureState, type MultiLayout, type MultiPart, type ProjectSnapshot, type TakeKind } from "@uncut/contracts";
+import {
+  ANALYZERS,
+  CaptureError,
+  type Analyzer,
+  type CaptureDevice,
+  type CaptureOptions,
+  type CaptureOrientation,
+  type CaptureState,
+  type MultiLayout,
+  type MultiPart,
+  type ProjectSnapshot,
+  type TakeKind,
+} from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -81,7 +93,11 @@ export const applyDeclared = (input: {
       const found = yield* Effect.promise(() => capturedFile(m.path, dir));
       if ("problem" in found) return { problem: `${plugin.name}'s recording wasn't imported: ${found.problem}.` };
       return yield* media.importCapture({ openId, dir, path: found.file, name: str(m.name), source: sourceOf(m.source, plugin), turnId }).pipe(
-        Effect.map((result): Applied | { problem: string } => (result.entries.length ? { kind: "imported", result } : { problem: `The recording wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "nothing was added"}` })),
+        Effect.map((result): Applied | { problem: string } =>
+          result.entries.length
+            ? { kind: "imported", result }
+            : { problem: `The recording wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "nothing was added"}` },
+        ),
         Effect.catch((error) => Effect.succeed({ problem: `The recording wasn't imported: ${error.message}` })),
       );
     }
@@ -94,21 +110,25 @@ export const applyDeclared = (input: {
       // What the old file had been analysed for is analysed again for the new one (the cache is
       // by content, so nothing stale is read; this has the results ready). The old file is
       // never overwritten, so its cache can still be looked up after the swap.
-      return yield* media.replaceMedia({ openId, dir, mediaId, path: found.file, source: sourceOf(r.source, plugin), overrun: r.overrun === "hold" ? "hold" : "trim", turnId }).pipe(
-        Effect.flatMap((result) =>
-          Effect.gen(function* () {
-            const oldPath = isAbsolute(result.previousPath) ? result.previousPath : resolve(dir, result.previousPath);
-            const had: Array<Analyzer> = [];
-            for (const analyzer of ANALYZERS) {
-              const cached = yield* Effect.promise(() => cachedFor({ dir, mediaId, path: oldPath, kind: result.entry.kind }, analyzer).catch(() => undefined));
-              if (cached) had.push(analyzer);
-            }
-            if (had.length) yield* analysis.start(mediaId, had).pipe(Effect.ignore);
-            return { kind: "replaced", result, analyses: had } as Applied;
-          }),
-        ),
-        Effect.catch((error) => Effect.succeed({ problem: `The new take wasn't swapped in: ${error.message}` })),
-      );
+      return yield* media
+        .replaceMedia({ openId, dir, mediaId, path: found.file, source: sourceOf(r.source, plugin), overrun: r.overrun === "hold" ? "hold" : "trim", turnId })
+        .pipe(
+          Effect.flatMap((result) =>
+            Effect.gen(function* () {
+              const oldPath = isAbsolute(result.previousPath) ? result.previousPath : resolve(dir, result.previousPath);
+              const had: Array<Analyzer> = [];
+              for (const analyzer of ANALYZERS) {
+                const cached = yield* Effect.promise(() =>
+                  cachedFor({ dir, mediaId, path: oldPath, kind: result.entry.kind }, analyzer).catch(() => undefined),
+                );
+                if (cached) had.push(analyzer);
+              }
+              if (had.length) yield* analysis.start(mediaId, had).pipe(Effect.ignore);
+              return { kind: "replaced", result, analyses: had } as Applied;
+            }),
+          ),
+          Effect.catch((error) => Effect.succeed({ problem: `The new take wasn't swapped in: ${error.message}` })),
+        );
     }
     return undefined;
   });
@@ -117,14 +137,25 @@ export const applyDeclared = (input: {
 export const appliedNote = (applied: Applied, fps: number) => {
   if (applied.kind === "imported") {
     return {
-      imported: applied.result.entries.map((e) => ({ id: e.id, name: e.name, path: e.path, ...(e.probe.frames ? { frames: e.probe.frames, seconds: Number((e.probe.frames / fps).toFixed(2)) } : {}), ...(e.probe.width ? { width: e.probe.width, height: e.probe.height } : {}), hasAudio: e.probe.hasAudio })),
+      imported: applied.result.entries.map((e) => ({
+        id: e.id,
+        name: e.name,
+        path: e.path,
+        ...(e.probe.frames ? { frames: e.probe.frames, seconds: Number((e.probe.frames / fps).toFixed(2)) } : {}),
+        ...(e.probe.width ? { width: e.probe.width, height: e.probe.height } : {}),
+        hasAudio: e.probe.hasAudio,
+      })),
       ...(applied.result.snapshot ? { revision: applied.result.snapshot.revision } : {}),
       note: "The recording is in the project as media (an edit of this turn: Undo turn removes it). Place it with timeline_edit; frames are project frames.",
     };
   }
   const { entry, warnings, snapshot } = applied.result;
   return {
-    replaced: { id: entry.id, path: entry.path, ...(entry.probe.frames ? { frames: entry.probe.frames, seconds: Number((entry.probe.frames / fps).toFixed(2)) } : {}) },
+    replaced: {
+      id: entry.id,
+      path: entry.path,
+      ...(entry.probe.frames ? { frames: entry.probe.frames, seconds: Number((entry.probe.frames / fps).toFixed(2)) } : {}),
+    },
     ...(snapshot ? { revision: snapshot.revision } : {}),
     ...(warnings.length ? { warnings } : {}),
     ...(applied.analyses.length ? { reanalysing: applied.analyses } : {}),
@@ -155,7 +186,9 @@ export interface CaptureShape {
   /** D211: a multi-source take's parts into media/captures/<take>/, one user edit, start-aligned and grouped with `placeAt`. */
   readonly saveMulti: (input: SaveMultiInput) => Effect.Effect<SavedMulti, CaptureError>;
   /** D144: the same for the agent's screen_record: an edit of its turn (Undo turn removes it). */
-  readonly saveForTurn: (input: SaveTakeInput & { readonly turnId: string; readonly dir: string }) => Effect.Effect<SavedTake & { readonly snapshot?: ProjectSnapshot | undefined; readonly path: string }, CaptureError>;
+  readonly saveForTurn: (
+    input: SaveTakeInput & { readonly turnId: string; readonly dir: string },
+  ) => Effect.Effect<SavedTake & { readonly snapshot?: ProjectSnapshot | undefined; readonly path: string }, CaptureError>;
 }
 
 export interface SaveTakeInput {
@@ -179,7 +212,14 @@ export interface SavedMulti {
   /** The take's folder, relative to the project (media/captures/Take 20261015-101500). */
   readonly folder: string;
   readonly media: ReadonlyArray<{ readonly mediaId: string; readonly kind: TakeKind; readonly name: string; readonly file: string }>;
-  readonly items: ReadonlyArray<{ readonly itemId: string; readonly trackId: string; readonly kind: TakeKind; readonly start: number; readonly in: number; readonly duration: number }>;
+  readonly items: ReadonlyArray<{
+    readonly itemId: string;
+    readonly trackId: string;
+    readonly kind: TakeKind;
+    readonly start: number;
+    readonly in: number;
+    readonly duration: number;
+  }>;
   readonly group?: string;
 }
 
@@ -219,7 +259,10 @@ export const layer = Layer.effect(
     const state = Effect.gen(function* () {
       const open = yield* projects.current;
       const result = yield* plugins.callPlugin(ARGENT_PLUGIN, "argent_list_devices", {}, { projectDir: open?.dir });
-      const structured = (result.structured && typeof result.structured === "object" ? result.structured : {}) as { argent?: { installed?: unknown; version?: unknown; problem?: unknown }; devices?: unknown };
+      const structured = (result.structured && typeof result.structured === "object" ? result.structured : {}) as {
+        argent?: { installed?: unknown; version?: unknown; problem?: unknown };
+        devices?: unknown;
+      };
       if (!result.plugin) return yield* new CaptureError({ reason: "unavailable", message: textOf(result) });
       const argent = structured.argent;
       if (!argent) return yield* failed(textOf(result) || "Argent's plugin didn't answer.");
@@ -228,14 +271,29 @@ export const layer = Layer.effect(
         const id = str(x.id);
         if (!id) return [];
         const reason = str(x.reason);
-        return [{ id, platform: str(x.platform) ?? "unknown", name: str(x.name) ?? id, state: str(x.state) ?? "unknown", recordable: x.recordable === true, ...(reason ? { reason } : {}), ...(x.bootable === true ? { bootable: true } : {}) }];
+        return [
+          {
+            id,
+            platform: str(x.platform) ?? "unknown",
+            name: str(x.name) ?? id,
+            state: str(x.state) ?? "unknown",
+            recordable: x.recordable === true,
+            ...(reason ? { reason } : {}),
+            ...(x.bootable === true ? { bootable: true } : {}),
+          },
+        ];
       });
       const version = str(argent.version);
       const problem = str(argent.problem);
       const flows = open
         ? yield* Effect.promise(() =>
             readdir(join(open.dir, "flows"))
-              .then((names) => names.filter((n) => /\.ya?ml$/i.test(n) && !n.startsWith(".")).map((n) => n.replace(/\.ya?ml$/i, "")).sort())
+              .then((names) =>
+                names
+                  .filter((n) => /\.ya?ml$/i.test(n) && !n.startsWith("."))
+                  .map((n) => n.replace(/\.ya?ml$/i, ""))
+                  .sort(),
+              )
               .catch(() => [] as Array<string>),
           )
         : [];
@@ -292,7 +350,9 @@ export const layer = Layer.effect(
         if (booting.has(device)) return yield* failed("That device is booting already.");
         booting.add(device);
         const open = yield* projects.current;
-        const result = yield* plugins.callPlugin(ARGENT_PLUGIN, "argent_capture_boot", { device }, { projectDir: open?.dir }).pipe(Effect.ensuring(Effect.sync(() => booting.delete(device))));
+        const result = yield* plugins
+          .callPlugin(ARGENT_PLUGIN, "argent_capture_boot", { device }, { projectDir: open?.dir })
+          .pipe(Effect.ensuring(Effect.sync(() => booting.delete(device))));
         if (result.isError || !result.plugin) return yield* failed(textOf(result) || "Argent couldn't boot it.");
         const s = (result.structured && typeof result.structured === "object" ? result.structured : {}) as Record<string, unknown>;
         const id = str(s.device);
@@ -329,7 +389,9 @@ export const layer = Layer.effect(
           const open = yield* projects.current;
           if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: takes go into its media folder." });
           if (input.dir !== undefined && input.dir !== open.dir) return yield* failed("The project changed while recording, so the take wasn't added.");
-          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) => (typeof m.path === "string" ? [m.path] : []));
+          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) =>
+            typeof m.path === "string" ? [m.path] : [],
+          );
           const found = yield* Effect.promise(() => uploadedTake(input.path, open.dir, mediaPaths));
           if ("problem" in found) return yield* failed(found.problem);
           const ffmpeg = yield* Effect.promise(async () => {
@@ -339,7 +401,9 @@ export const layer = Layer.effect(
           if (!ffmpeg) return yield* failed("ffmpeg isn't installed, so the take can't be saved (brew install ffmpeg). The recording is in media/uploads.");
           const fps = (open.project as { canvas?: { fps?: number } }).canvas?.fps ?? 30;
           const converted = yield* Effect.promise(() =>
-            convertTake({ ffmpeg, env: withoutApiKey(process.env), projectDir: open.dir, upload: found.file, kind: input.kind, name: input.name, fps }).catch((error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` })),
+            convertTake({ ffmpeg, env: withoutApiKey(process.env), projectDir: open.dir, upload: found.file, kind: input.kind, name: input.name, fps }).catch(
+              (error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` }),
+            ),
           );
           if ("problem" in converted) return yield* failed(converted.problem);
           const device = str(input.device);
@@ -350,7 +414,9 @@ export const layer = Layer.effect(
               dir: open.dir,
               path: converted.file,
               source: { module: TAKE_MODULE[input.kind], ...(device ? { device: device.slice(0, 200) } : {}) },
-              ...(placeAt !== undefined ? { place: { frame: placeAt, placement: input.kind === "voiceover" || input.kind === "system" ? input.kind : ("video" as const) } } : {}),
+              ...(placeAt !== undefined
+                ? { place: { frame: placeAt, placement: input.kind === "voiceover" || input.kind === "system" ? input.kind : ("video" as const) } }
+                : {}),
               ...(input.turnId ? { turnId: input.turnId } : {}),
             })
             .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
@@ -377,7 +443,9 @@ export const layer = Layer.effect(
           const parts = input.parts;
           if (!parts.length || parts.length > 4) return yield* failed("A take records one to four sources.");
           if (new Set(parts.map((p) => p.kind)).size !== parts.length) return yield* failed("Each source can be in a take once.");
-          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) => (typeof m.path === "string" ? [m.path] : []));
+          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) =>
+            typeof m.path === "string" ? [m.path] : [],
+          );
           const uploads: Array<string> = [];
           for (const part of parts) {
             const found = yield* Effect.promise(() => uploadedTake(part.path, open.dir, mediaPaths));
@@ -395,13 +463,30 @@ export const layer = Layer.effect(
           let folder = "";
           for (let n = 1; n < 100 && !folder; n++) {
             const candidate = n === 1 ? base : `${base} ${n}`;
-            if (!(yield* Effect.promise(() => stat(join(open.dir, "media", "captures", candidate)).then(() => true, () => false)))) folder = candidate;
+            if (
+              !(yield* Effect.promise(() =>
+                stat(join(open.dir, "media", "captures", candidate)).then(
+                  () => true,
+                  () => false,
+                ),
+              ))
+            )
+              folder = candidate;
           }
           if (!folder) return yield* failed("Too many takes with that name in media/captures.");
           const files: Array<string> = [];
           for (const [i, part] of parts.entries()) {
             const converted = yield* Effect.promise(() =>
-              convertTake({ ffmpeg, env: withoutApiKey(process.env), projectDir: open.dir, upload: uploads[i]!, kind: part.kind, fps, subfolder: folder, fileName: MULTI_FILE[part.kind] }).catch((error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` })),
+              convertTake({
+                ffmpeg,
+                env: withoutApiKey(process.env),
+                projectDir: open.dir,
+                upload: uploads[i]!,
+                kind: part.kind,
+                fps,
+                subfolder: folder,
+                fileName: MULTI_FILE[part.kind],
+              }).catch((error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` })),
             );
             if ("problem" in converted) return yield* failed(converted.problem);
             files.push(converted.file);
@@ -413,14 +498,21 @@ export const layer = Layer.effect(
               dir: open.dir,
               parts: parts.map((part, i) => {
                 const device = str(part.device);
-                return { path: files[i]!, name: `${folder} ${MULTI_PART_NAME[part.kind]}`, kind: part.kind, offsetMs: Number.isFinite(part.offsetMs) ? Math.max(0, part.offsetMs) : 0, source: { module: TAKE_MODULE[part.kind], ...(device ? { device: device.slice(0, 200) } : {}), take: folder } };
+                return {
+                  path: files[i]!,
+                  name: `${folder} ${MULTI_PART_NAME[part.kind]}`,
+                  kind: part.kind,
+                  offsetMs: Number.isFinite(part.offsetMs) ? Math.max(0, part.offsetMs) : 0,
+                  source: { module: TAKE_MODULE[part.kind], ...(device ? { device: device.slice(0, 200) } : {}), take: folder },
+                };
               }),
               frame: placeAt,
               layout: input.layout,
               summary: `Record ${folder}`,
             })
             .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
-          if (result.entries.length !== parts.length) return yield* failed(`The take wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "a part is missing"}`);
+          if (result.entries.length !== parts.length)
+            return yield* failed(`The take wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "a part is missing"}`);
           const byFile = new Map(parts.map((p) => [MULTI_FILE[p.kind], p.kind]));
           const kindOf = new Map(result.entries.map((e) => [e.id, byFile.get(basename(e.path))!]));
           const shortest = Math.min(...result.entries.map((e) => e.probe.frames ?? 0));
@@ -430,7 +522,14 @@ export const layer = Layer.effect(
             seconds: Number((frames / fps).toFixed(2)),
             folder: `media/captures/${folder}`,
             media: result.entries.map((e) => ({ mediaId: e.id, kind: kindOf.get(e.id)!, name: e.name, file: e.path })),
-            items: (result.multi?.items ?? []).map((it) => ({ itemId: it.itemId, trackId: it.trackId, kind: it.kind, start: it.start, in: it.in, duration: it.duration })),
+            items: (result.multi?.items ?? []).map((it) => ({
+              itemId: it.itemId,
+              trackId: it.trackId,
+              kind: it.kind,
+              start: it.start,
+              in: it.in,
+              duration: it.duration,
+            })),
             ...(result.multi?.group ? { group: result.multi.group } : {}),
           } satisfies SavedMulti;
         }),

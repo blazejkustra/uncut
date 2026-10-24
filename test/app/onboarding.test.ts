@@ -58,7 +58,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 const codexInShell = () => {
   const r = spawnSync(process.env.SHELL || "/bin/zsh", ["-ilc", "command -v codex"], {
-    env: { HOME: homedir(), USER: process.env.USER, LOGNAME: process.env.USER, TMPDIR: process.env.TMPDIR, SHELL: process.env.SHELL || "/bin/zsh", PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+    env: {
+      HOME: homedir(),
+      USER: process.env.USER,
+      LOGNAME: process.env.USER,
+      TMPDIR: process.env.TMPDIR,
+      SHELL: process.env.SHELL || "/bin/zsh",
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+    },
     encoding: "utf8",
     timeout: 20000,
   });
@@ -143,7 +150,11 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   assert.equal(await attr(page, "whisper-model", "data-installed"), "false");
   assert.equal(await attr(page, "whisper-model", "data-model"), "large-v3-turbo-q5_0");
   assert.match(await text(page, "whisper-model-status"), /Not downloaded yet \(574 MB\)/);
-  assert.deepEqual(await page.$$eval("[data-testid=whisper-model-select] option", (els) => els.map((e) => (e as HTMLOptionElement).value)), ["large-v3-turbo-q5_0", "small", "base"]);
+  assert.deepEqual(await page.$$eval("[data-testid=whisper-model-select] option", (els) => els.map((e) => (e as HTMLOptionElement).value)), [
+    "large-v3-turbo-q5_0",
+    "small",
+    "base",
+  ]);
   assert.deepEqual(modelRequests, [], "nothing downloaded at start");
   await page.select("[data-testid=whisper-model-select]", "base");
   await waitFor(page, "[data-testid=whisper-model][data-model=base]");

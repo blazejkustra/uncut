@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
-const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" }).split("\0").filter((f) => f && existsSync(f));
+const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
+  .split("\0")
+  .filter((f) => f && existsSync(f));
 /** The only Markdown that's published; the scans below cover them like any other text file. */
 const PUBLIC_MD = ["README.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md"];
 /** The blog's posts are published too (the website's content), and only straight in that folder. */
@@ -38,25 +40,35 @@ test("git ls-files sees the repo", () => {
 test("README.md, CONTRIBUTING.md and the PR template are published and go through every check below", () => {
   for (const f of PUBLIC_MD) {
     assert.ok(files.includes(f), `${f} is ignored or missing`);
-    assert.ok(texts.some((t) => t.file === f), `${f} is not scanned`);
+    assert.ok(
+      texts.some((t) => t.file === f),
+      `${f} is not scanned`,
+    );
   }
 });
 
 test("no real home folder or temp paths", () => {
   // Placeholders in examples and comments are fine: /Users/me, /Users/you, /Users/x, /Users/<name>.
   const PLACEHOLDER = /^\/Users\/((me|you|x|Shared)\b|<name>)/;
-  assert.deepEqual(scan(/\/Users\/[^\s"'`/)]+/, (m) => PLACEHOLDER.test(m)), []);
+  assert.deepEqual(
+    scan(/\/Users\/[^\s"'`/)]+/, (m) => PLACEHOLDER.test(m)),
+    [],
+  );
   assert.deepEqual(scan(/\/private\/var\/folders\/\S+|\/var\/folders\/[a-z0-9_]{2}\/\S+/), []);
 });
 
 test("no email addresses", () => {
   // Reserved example domains and .local hosts are placeholders; the lockfile carries upstream metadata.
-  const placeholder = (m: string) => /@(example\.(com|org|net|invalid)|[\w.-]+\.(invalid|local|test))$/i.test(m) || /^git@/.test(m);
+  const placeholder = (m: string) => /@(example\.(com|org|net|invalid)|[\w.-]+\.(invalid|local|test))$/i.test(m) || m.startsWith("git@");
   // THIRD_PARTY_NOTICES quotes upstream licences verbatim, copyright lines included (D278). The
   // README's Privacy section names the controller's contact, the one address the author publishes,
   // and the website's privacy page (site/src/app/privacy/page.tsx) repeats it.
-  const contact = (m: string, file: string) => (file === "README.md" || file === "site/src/app/privacy/page.tsx") && m === ["kustrablazej", "gmail.com"].join("@");
-  const hits = scan(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/, (m, file) => file === "pnpm-lock.yaml" || file === "THIRD_PARTY_NOTICES" || contact(m, file) || placeholder(m))
+  const contact = (m: string, file: string) =>
+    (file === "README.md" || file === "site/src/app/privacy/page.tsx") && m === ["kustrablazej", "gmail.com"].join("@");
+  const hits = scan(
+    /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/,
+    (m, file) => file === "pnpm-lock.yaml" || file === "THIRD_PARTY_NOTICES" || contact(m, file) || placeholder(m),
+  )
     // npm scopes (@uncut/core) and versions (react@19.2.6) aren't addresses.
     .filter((h) => !/: @?[\w.-]+@\d/.test(h));
   assert.deepEqual(hits, []);
@@ -65,7 +77,10 @@ test("no email addresses", () => {
 test("no Software Mansion domain", () => {
   const domain = ["swmansion", "com"].join(".");
   // Except where THIRD_PARTY_NOTICES quotes a bundled package's licence verbatim (typegpu's, D278).
-  assert.deepEqual(scan(new RegExp(domain.replace(".", "\\."), "i"), (_m, file) => file === "THIRD_PARTY_NOTICES"), []);
+  assert.deepEqual(
+    scan(new RegExp(domain.replace(".", "\\."), "i"), (_m, file) => file === "THIRD_PARTY_NOTICES"),
+    [],
+  );
 });
 
 test("no file over 5 MB but the bundled music and fonts", () => {
@@ -74,14 +89,33 @@ test("no file over 5 MB but the bundled music and fonts", () => {
 });
 
 test("no footage, no .md, no fixtures", () => {
-  assert.deepEqual(files.filter((f) => /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)), [], "footage");
-  assert.deepEqual(files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f) && !BLOG_POST.test(f)), [], ".md files stay private but README.md, CONTRIBUTING.md, the PR template and the blog's posts (the user's rule)");
-  assert.deepEqual(files.filter((f) => f.startsWith("fixtures/") || f.startsWith("planning/")), [], "fixtures and planning");
+  assert.deepEqual(
+    files.filter((f) => /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)),
+    [],
+    "footage",
+  );
+  assert.deepEqual(
+    files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f) && !BLOG_POST.test(f)),
+    [],
+    ".md files stay private but README.md, CONTRIBUTING.md, the PR template and the blog's posts (the user's rule)",
+  );
+  assert.deepEqual(
+    files.filter((f) => f.startsWith("fixtures/") || f.startsWith("planning/")),
+    [],
+    "fixtures and planning",
+  );
 });
 
 test("nothing that looks like a secret", () => {
   // Real keys are long; the tests' stand-ins (sk-test-…, sk-ant-api03-SECRETVALUE123) are short on purpose.
-  const patterns = [/\bsk-(ant-|proj-)?[A-Za-z0-9_-]{40,}/, /\bgh[pousr]_[A-Za-z0-9]{30,}/, /\bgithub_pat_[A-Za-z0-9_]{30,}/, /\bAKIA[0-9A-Z]{16}\b/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bxox[baprs]-[A-Za-z0-9-]{10,}/];
+  const patterns = [
+    /\bsk-(ant-|proj-)?[A-Za-z0-9_-]{40,}/,
+    /\bgh[pousr]_[A-Za-z0-9]{30,}/,
+    /\bgithub_pat_[A-Za-z0-9_]{30,}/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}/,
+  ];
   for (const re of patterns) assert.deepEqual(scan(re), [], re.source);
 });
 

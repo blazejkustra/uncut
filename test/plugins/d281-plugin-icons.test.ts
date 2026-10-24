@@ -40,7 +40,19 @@ const plugin = (parent: string, folder: string, icon: string | undefined, files:
   const dir = join(parent, folder);
   mkdirSync(dir, { recursive: true });
   const id = `acme.${folder}`;
-  writeFileSync(join(dir, "uncut.module.json"), JSON.stringify({ manifest: "uncut.module/0", id, kind: "pack", name: folder, version: "1.0.0", ...(icon ? { icon } : {}), runtime: { type: "data" }, contributes: { looks: [{ id: `${id}.card`, name: "Card", look: { size: 0.05, weight: 600, x: 0.5, y: 0.5 } }] } }));
+  writeFileSync(
+    join(dir, "uncut.module.json"),
+    JSON.stringify({
+      manifest: "uncut.module/0",
+      id,
+      kind: "pack",
+      name: folder,
+      version: "1.0.0",
+      ...(icon ? { icon } : {}),
+      runtime: { type: "data" },
+      contributes: { looks: [{ id: `${id}.card`, name: "Card", look: { size: 0.05, weight: 600, x: 0.5, y: 0.5 } }] },
+    }),
+  );
   for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
   return realpathSync(dir);
 };
@@ -78,7 +90,8 @@ test("checkPluginIcon: scripts, handlers, links, images, styles, outside URLs an
 test("the schema: icon is a .svg file name at the top of the plugin's folder", () => {
   const base = { manifest: "uncut.module/0", id: "acme.x", kind: "pack", name: "X", version: "1.0.0", runtime: { type: "data" } };
   assert.deepEqual(validateModule({ ...base, icon: "icon.svg" }), []);
-  for (const bad of ["../icon.svg", "icons/icon.svg", "/tmp/icon.svg", ".icon.svg", "icon.png", "icon.svg.js", ""]) assert.ok(validateModule({ ...base, icon: bad }).length > 0, `${JSON.stringify(bad)} accepted`);
+  for (const bad of ["../icon.svg", "icons/icon.svg", "/tmp/icon.svg", ".icon.svg", "icon.png", "icon.svg.js", ""])
+    assert.ok(validateModule({ ...base, icon: bad }).length > 0, `${JSON.stringify(bad)} accepted`);
 });
 
 test("discovery: a good icon comes through to PluginInfo; a bad, missing or linked-out one is a warning, not a skip", async () => {
@@ -97,9 +110,17 @@ test("discovery: a good icon comes through to PluginInfo; a bad, missing or link
   const by = new Map(found.plugins.map((p) => [p.name, p]));
   assert.match(by.get("good")!.icon!, /^data:image\/svg\+xml;base64,/);
   assert.deepEqual(by.get("good")!.warnings, []);
-  for (const [name, why] of [["script", /<script>/], ["missing", /can't read it/], ["linked", /outside the plugin's folder/], ["big", /bigger than 32 KB/]] as const) {
+  for (const [name, why] of [
+    ["script", /<script>/],
+    ["missing", /can't read it/],
+    ["linked", /outside the plugin's folder/],
+    ["big", /bigger than 32 KB/],
+  ] as const) {
     assert.equal(by.get(name)!.icon, undefined, `${name} has no icon`);
-    assert.ok(by.get(name)!.warnings.some((w) => /^Its icon icon\.svg is left out: /.test(w) && why.test(w)), `${name}: ${by.get(name)!.warnings.join(" | ")}`);
+    assert.ok(
+      by.get(name)!.warnings.some((w) => w.startsWith("Its icon icon.svg is left out: ") && why.test(w)),
+      `${name}: ${by.get(name)!.warnings.join(" | ")}`,
+    );
   }
   assert.equal(by.get("none")!.icon, undefined);
   assert.deepEqual(by.get("none")!.warnings, []);
@@ -118,7 +139,8 @@ test("every repo plugin, bundled and catalog, has an icon that passes, and the p
   );
   assert.deepEqual(found.broken, []);
   const ids = found.plugins.map((p) => p.id).sort();
-  for (const id of ["argent.capture", "uncut.skills", "whisper.transcribe", "uncut.link-import", "uncut.example-kit", "typegpu.effects", "taste.extra"]) assert.ok(ids.includes(id), `${id} found`);
+  for (const id of ["argent.capture", "uncut.skills", "whisper.transcribe", "uncut.link-import", "uncut.example-kit", "typegpu.effects", "taste.extra"])
+    assert.ok(ids.includes(id), `${id} found`);
   for (const p of found.plugins) {
     assert.match(p.icon ?? "", /^data:image\/svg\+xml;base64,/, `${p.id} has an icon`);
     assert.ok(!p.warnings.some((w) => /icon/.test(w)), `${p.id}: ${p.warnings.join(" | ")}`);

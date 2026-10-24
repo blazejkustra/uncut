@@ -29,7 +29,8 @@ const apps = new Set<LaunchedApp>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shot = (page: Page, name: string) => page.screenshot({ path: resolve("test-output", `${name}.png`) });
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => ((el as HTMLElement).innerText ?? "").trim());
-const seconds = (file: string) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }));
+const seconds = (file: string) =>
+  Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }));
 
 before(async () => {
   if (skip) return;
@@ -38,7 +39,19 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue16-17-")));
   const dir = join(root, "Rec.uncut");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Rec", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "text", kind: "text", name: "Text", items: [] }, { id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Rec",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      media: [],
+      tracks: [
+        { id: "text", kind: "text", name: "Text", items: [] },
+        { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+      ],
+    }),
+  );
   writeFileSync(join(root, "argent.jsonl"), "");
 });
 after(async () => {
@@ -51,7 +64,14 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
   const dir = join(root, "Rec.uncut");
   const app = await launchApp({
     command: APP,
-    env: { ARGENT_BIN: FAKE_ARGENT, FAKE_ARGENT_NODE: process.execPath, FAKE_ARGENT_LOG: join(root, "argent.jsonl"), UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) },
+    env: {
+      ARGENT_BIN: FAKE_ARGENT,
+      FAKE_ARGENT_NODE: process.execPath,
+      FAKE_ARGENT_LOG: join(root, "argent.jsonl"),
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir]),
+    },
   });
   apps.add(app);
   const { page, browser } = app;
@@ -68,10 +88,14 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     await page.waitForSelector("[data-testid=capture-pick-source]", { timeout: 15000 });
     await page.click("[data-testid=capture-pick-source]");
     await page.waitForSelector(`${screenTile} img`, { timeout: 15000 });
-    await page.waitForFunction((sel) => {
-      const img = document.querySelector<HTMLImageElement>(`${sel} img`);
-      return !!img && img.complete && img.naturalWidth === 160 && img.src.startsWith("data:image/png");
-    }, { timeout: 10000 }, screenTile);
+    await page.waitForFunction(
+      (sel) => {
+        const img = document.querySelector<HTMLImageElement>(`${sel} img`);
+        return !!img && img.complete && img.naturalWidth === 160 && img.src.startsWith("data:image/png");
+      },
+      { timeout: 10000 },
+      screenTile,
+    );
     assert.equal(await page.$eval(screenTile, (el) => (el as HTMLElement).dataset.picture), "thumbnail");
     assert.equal(await page.$eval(windowTile, (el) => (el as HTMLElement).dataset.picture), "none");
     assert.ok(await page.$(`${windowTile} [data-testid=capture-source-placeholder]`));
@@ -82,19 +106,37 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     // #17: the microphone: a styled picker, the meter with a peak mark and a dB scale, option chips.
     await page.click("[data-testid=capture-src-screen]");
     await page.click("[data-testid=capture-src-voiceover]");
-    await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, { timeout: 15000 });
+    await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, {
+      timeout: 15000,
+    });
     assert.ok(await page.$(".picker [data-testid=capture-mic-device]"), "the device list is the app's picker");
-    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.peak ?? 0) > 0.05, { timeout: 15000 });
-    const peak = await page.$eval("[data-testid=capture-mic-level]", (el) => ({ level: Number((el as HTMLElement).dataset.level), peak: Number((el as HTMLElement).dataset.peak) }));
+    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.peak ?? 0) > 0.05, {
+      timeout: 15000,
+    });
+    const peak = await page.$eval("[data-testid=capture-mic-level]", (el) => ({
+      level: Number((el as HTMLElement).dataset.level),
+      peak: Number((el as HTMLElement).dataset.peak),
+    }));
     assert.ok(peak.peak >= peak.level, `the peak holds at or above the level: ${JSON.stringify(peak)}`);
     assert.ok(await page.$("[data-testid=capture-level-peak]"));
-    assert.deepEqual(await page.$$eval("[data-testid=capture-level-scale] span", (els) => els.map((e) => e.textContent)), ["-60", "-40", "-20", "-12", "-6", "0"]);
+    assert.deepEqual(await page.$$eval("[data-testid=capture-level-scale] span", (els) => els.map((e) => e.textContent)), [
+      "-60",
+      "-40",
+      "-20",
+      "-12",
+      "-6",
+      "0",
+    ]);
     assert.match(await text(page, "[data-testid=capture-level-db]"), /^-?\d+ dB$|^-∞ dB$/);
     assert.equal(await page.$eval("[data-testid=capture-play-timeline]", (el) => (el as HTMLInputElement).checked), true);
     await page.click("[data-testid=capture-mute-timeline]");
     assert.equal(await page.$eval("[data-testid=capture-mute-timeline]", (el) => (el as HTMLInputElement).checked), false, "an option toggles");
     await page.click("[data-testid=capture-mute-timeline]");
-    assert.equal(await page.$$eval(".capture-this-mac input[type=checkbox]", (els) => els.every((e) => e.closest(".opt-row .opt-check"))), true, "options are checkboxes in a row, not chips (D263)");
+    assert.equal(
+      await page.$$eval(".capture-this-mac input[type=checkbox]", (els) => els.every((e) => e.closest(".opt-row .opt-check"))),
+      true,
+      "options are checkboxes in a row, not chips (D263)",
+    );
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-this-mac]")), "no dots or stars between words");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(page, "issue17-mic");
@@ -142,7 +184,9 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     await shot(page, "issue17-screen-recording");
     await shot(mini, "issue17-mini");
     await mini.click("[data-testid=mini-stop]");
-    await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
+    await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), {
+      timeout: 60000,
+    });
     assert.match(app.output(), /\[test\] mini recorder stop/);
     await eventually(() => /\[test\] mini recorder closed/.test(app.output()));
     assert.match(app.output(), /\[test\] mini recorder closed/);

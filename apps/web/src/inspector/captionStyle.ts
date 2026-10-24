@@ -24,5 +24,8 @@ export const setDefaultCaptionStyle = (id: string) => {
   } catch {}
   for (const l of listeners) l();
 };
-export const useDefaultCaptionStyle = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => current);
-
+export const useDefaultCaptionStyle = () =>
+  useSyncExternalStore(
+    (l) => (listeners.add(l), () => void listeners.delete(l)),
+    () => current,
+  );

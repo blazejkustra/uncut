@@ -3,7 +3,18 @@
 // planners the editor uses; and what the agent is told (project_read, every message).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, EditError, loadModules, sectionsNote, undoTurn, validateOps, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  EditError,
+  loadModules,
+  sectionsNote,
+  undoTurn,
+  validateOps,
+  validateProject,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection } from "../../packages/core/src/timeline/sections.ts";
 import { planReplaceRange } from "../../packages/core/src/timeline/arrange.ts";
 import { expandArrangeOps } from "../../apps/server/src/agent/tools/expand.ts";
@@ -81,8 +92,19 @@ test("marking: a valid section in the project, overlapping marks cut out of each
   assert.deepEqual(user(both, removed.ops).sections, [{ id: "section-1", start: 150, end: 200, state: "locked" }]);
   assert.ok("problem" in planMarkSection(base, 40, 40, "locked"));
   // Overlapping or empty sections in project.json are invalid.
-  const bad = { ...base, sections: [{ id: "s1", start: 10, end: 50, state: "locked" as const }, { id: "s2", start: 40, end: 40, state: "redo" as const }] };
-  assert.deepEqual(validateProject(bad, modules).map((p) => p.code).sort(), ["section-overlap", "section-range"]);
+  const bad = {
+    ...base,
+    sections: [
+      { id: "s1", start: 10, end: 50, state: "locked" as const },
+      { id: "s2", start: 40, end: 40, state: "redo" as const },
+    ],
+  };
+  assert.deepEqual(
+    validateProject(bad, modules)
+      .map((p) => p.code)
+      .sort(),
+    ["section-overlap", "section-range"],
+  );
 });
 
 test("a ripple before a locked section is refused, the user's and the agent's alike", () => {
@@ -110,7 +132,10 @@ test("edits around a locked section that leave it as it was go through", () => {
   agent(locked, [{ op: "delete_item", item: "c3" }]);
   // A split of the clip it's in (before the section): the half in it is renamed and keeps playing the same frames.
   const split = agent(locked, [{ op: "split_item", item: "c2", at: 10, newId: "c2b" }]);
-  assert.deepEqual(split.tracks[0]!.items.map((i) => i.id), ["c1", "c2", "c2b", "c3"]);
+  assert.deepEqual(
+    split.tracks[0]!.items.map((i) => i.id),
+    ["c1", "c2", "c2b", "c3"],
+  );
   // A replaced fragment before it (an overwrite, nothing moves), planned by the agent's replace_range.
   const ops = expandArrangeOps(locked, [{ op: "replace_range", item: "c1", from: 30, to: 60, media: "m-b", in: 100 }]);
   assert.ok(!("problem" in ops), JSON.stringify(ops));
@@ -122,14 +147,62 @@ test("edits around a locked section that leave it as it was go through", () => {
 
 test("a split or trim outside a locked section of a keyed clip that reaches into it goes through", () => {
   // c2 (120–270) zooms in over its whole length: its keys reach into the lock.
-  const keyed = user(base, [{ op: "update_item", item: "c2", set: { keys: [{ frame: 0, scale: 1 }, { frame: 150, scale: 2, ease: "inOut" }], gainKeys: [{ frame: 0, db: -6 }, { frame: 150, db: 0 }] } }]);
+  const keyed = user(base, [
+    {
+      op: "update_item",
+      item: "c2",
+      set: {
+        keys: [
+          { frame: 0, scale: 1 },
+          { frame: 150, scale: 2, ease: "inOut" },
+        ],
+        gainKeys: [
+          { frame: 0, db: -6 },
+          { frame: 150, db: 0 },
+        ],
+      },
+    },
+  ]);
   const lockedKeyed = mark(keyed, 150, 240, "locked");
   // Split before the lock: the half in it gets a key at the cut and the values in the lock stay the same.
   const split = agent(lockedKeyed, [{ op: "split_item", item: "c2", at: 10, newId: "c2b" }]);
-  assert.deepEqual(split.tracks[0]!.items.map((i) => i.id), ["c1", "c2", "c2b", "c3"]);
+  assert.deepEqual(
+    split.tracks[0]!.items.map((i) => i.id),
+    ["c1", "c2", "c2b", "c3"],
+  );
   // But keys changed inside it are refused.
-  refused(() => agent(lockedKeyed, [{ op: "update_item", item: "c2", set: { keys: [{ frame: 0, scale: 1 }, { frame: 150, scale: 3 }] } }]), /locked-section/);
-  refused(() => user(lockedKeyed, [{ op: "update_item", item: "c2", set: { gainKeys: [{ frame: 0, db: -6 }, { frame: 150, db: 6 }] } }]), /locked-section/);
+  refused(
+    () =>
+      agent(lockedKeyed, [
+        {
+          op: "update_item",
+          item: "c2",
+          set: {
+            keys: [
+              { frame: 0, scale: 1 },
+              { frame: 150, scale: 3 },
+            ],
+          },
+        },
+      ]),
+    /locked-section/,
+  );
+  refused(
+    () =>
+      user(lockedKeyed, [
+        {
+          op: "update_item",
+          item: "c2",
+          set: {
+            gainKeys: [
+              { frame: 0, db: -6 },
+              { frame: 150, db: 6 },
+            ],
+          },
+        },
+      ]),
+    /locked-section/,
+  );
 });
 
 test("captions over a locked section: a word fixed outside it goes through, one inside it is refused", () => {
@@ -139,9 +212,13 @@ test("captions over a locked section: a word fixed outside it goes through, one 
     { text: "world", start: 11, end: 12 },
   ];
   const withCaptions = user(locked, [{ op: "add_track", track: { id: "cap", kind: "text", name: "Captions", items: [] } }]);
-  const captioned = user({ ...withCaptions, sections: [] }, [{ op: "insert_item", track: "cap", item: { id: "cc", type: "captions", source: "m-a", coversMain: true, start: 0, duration: 360, words } as never }]);
+  const captioned = user({ ...withCaptions, sections: [] }, [
+    { op: "insert_item", track: "cap", item: { id: "cc", type: "captions", source: "m-a", coversMain: true, start: 0, duration: 360, words } as never },
+  ]);
   const both = { ...captioned, sections: locked.sections! };
-  assert.deepEqual(agent(both, [{ op: "update_item", item: "cc", set: { edits: [{ word: 0, text: "Hello" }] } }]).tracks.at(-1)!.items[0]!.edits, [{ word: 0, text: "Hello" }]);
+  assert.deepEqual(agent(both, [{ op: "update_item", item: "cc", set: { edits: [{ word: 0, text: "Hello" }] } }]).tracks.at(-1)!.items[0]!.edits, [
+    { word: 0, text: "Hello" },
+  ]);
   refused(() => agent(both, [{ op: "update_item", item: "cc", set: { edits: [{ word: 1, text: "World" }] } }]), /locked-section/);
 });
 
@@ -173,7 +250,10 @@ test("only the user unlocks: the agent can't remove, move or resize a lock, but 
     refused(() => agent(flagged, [{ op: "update_project", set: { sections } }]), /only the user can unlock/);
   }
   // Unlock and ripple in one edit: refused for the agent, allowed for the user.
-  const unlockAndTrim: Array<Op> = [{ op: "update_project", set: { sections: [redo] } }, { op: "trim_item", item: "c1", edge: "end", frames: 10 }];
+  const unlockAndTrim: Array<Op> = [
+    { op: "update_project", set: { sections: [redo] } },
+    { op: "trim_item", item: "c1", edge: "end", frames: 10 },
+  ];
   refused(() => agent(flagged, unlockAndTrim), /only the user/);
   assert.equal(user(flagged, unlockAndTrim).tracks[0]!.items[0]!.duration, 110);
   // The agent redid the flagged part and clears its mark; the lock stays.

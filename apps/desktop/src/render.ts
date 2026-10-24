@@ -53,7 +53,16 @@ import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import { GRAPHIC_CENSUS } from "../../../packages/core/src/visual/census.ts";
-import { BLUR_REFINE, blurFarPairs, blurLevels, blurMoving, blurRefinable, blurSignature, blurStep, type BlurSignature } from "../../../packages/core/src/visual/motionBlur.ts";
+import {
+  BLUR_REFINE,
+  blurFarPairs,
+  blurLevels,
+  blurMoving,
+  blurRefinable,
+  blurSignature,
+  blurStep,
+  type BlurSignature,
+} from "../../../packages/core/src/visual/motionBlur.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
 import dmMonoRegular from "../../../assets/fonts/DMMono-Regular.woff2";
 import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
@@ -169,7 +178,14 @@ interface ProbeRequest {
 /** A frame sequence (D291), see the header: open, frames (graphic, html, hold), close. */
 type SeqRequest =
   | { readonly id: number; readonly kind: "seq-open"; readonly width: number; readonly height: number; readonly out: string }
-  | { readonly id: number; readonly kind: "seq-graphic"; readonly doc: string; readonly ts: ReadonlyArray<number>; readonly info: unknown; readonly name?: string }
+  | {
+      readonly id: number;
+      readonly kind: "seq-graphic";
+      readonly doc: string;
+      readonly ts: ReadonlyArray<number>;
+      readonly info: unknown;
+      readonly name?: string;
+    }
   | { readonly id: number; readonly kind: "seq-html"; readonly css: string; readonly html: string }
   | { readonly id: number; readonly kind: "seq-hold"; readonly count: number }
   | { readonly id: number; readonly kind: "seq-close" };
@@ -195,7 +211,13 @@ const isRunRequest = (v: unknown): v is RunRequest => {
   const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
   if (!size(r.width) || !size(r.height) || typeof r.doc !== "string" || typeof r.info !== "object" || r.info === null) return false;
   if (!Array.isArray(r.frames) || r.frames.length < 1 || r.frames.length > MAX_RUN_FRAMES || !r.frames.every(num)) return false;
-  if (r.ts !== undefined && (!Array.isArray(r.ts) || r.ts.length !== r.frames.length || !r.ts.every((x) => Array.isArray(x) && x.length >= 1 && x.length <= MAX_SUBFRAMES && x.every(num)))) return false;
+  if (
+    r.ts !== undefined &&
+    (!Array.isArray(r.ts) ||
+      r.ts.length !== r.frames.length ||
+      !r.ts.every((x) => Array.isArray(x) && x.length >= 1 && x.length <= MAX_SUBFRAMES && x.every(num)))
+  )
+    return false;
   return (r.name === undefined || typeof r.name === "string") && (r.fresh === undefined || typeof r.fresh === "boolean");
 };
 type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest | RunRequest;
@@ -203,14 +225,33 @@ type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | Seq
 const MAX_SUBFRAMES = 64;
 
 const isSeqRequest = (v: unknown): v is SeqRequest => {
-  const r = v as { id?: unknown; kind?: unknown; width?: unknown; height?: unknown; out?: unknown; doc?: unknown; ts?: unknown; name?: unknown; css?: unknown; html?: unknown; count?: unknown };
+  const r = v as {
+    id?: unknown;
+    kind?: unknown;
+    width?: unknown;
+    height?: unknown;
+    out?: unknown;
+    doc?: unknown;
+    ts?: unknown;
+    name?: unknown;
+    css?: unknown;
+    html?: unknown;
+    count?: unknown;
+  };
   if (typeof r !== "object" || r === null || !Number.isInteger(r.id) || typeof r.kind !== "string" || !r.kind.startsWith("seq-")) return false;
   const size = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 8192;
   switch (r.kind) {
     case "seq-open":
       return size(r.width) && size(r.height) && typeof r.out === "string";
     case "seq-graphic":
-      return typeof r.doc === "string" && Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t)) && (r.name === undefined || typeof r.name === "string");
+      return (
+        typeof r.doc === "string" &&
+        Array.isArray(r.ts) &&
+        r.ts.length >= 1 &&
+        r.ts.length <= MAX_SUBFRAMES &&
+        r.ts.every((t) => typeof t === "number" && Number.isFinite(t)) &&
+        (r.name === undefined || typeof r.name === "string")
+      );
     case "seq-html":
       return typeof r.css === "string" && typeof r.html === "string";
     case "seq-hold":
@@ -225,7 +266,8 @@ const isSeqRequest = (v: unknown): v is SeqRequest => {
 /** A thrown value as a sentence: an Error's message, a DOMException-like object's name and message, else String() of it. */
 const messageOf = (error: unknown): string => {
   const e = error as { name?: unknown; message?: unknown } | null | undefined;
-  if (e && typeof e === "object" && typeof e.message === "string" && e.message) return `${typeof e.name === "string" && e.name && e.name !== "Error" && !(error instanceof Error) ? `${e.name}: ` : ""}${e.message}`;
+  if (e && typeof e === "object" && typeof e.message === "string" && e.message)
+    return `${typeof e.name === "string" && e.name && e.name !== "Error" && !(error instanceof Error) ? `${e.name}: ` : ""}${e.message}`;
   const s = error === undefined || error === null ? "" : String(error);
   return s && s !== "[object Object]" ? s : "it failed without saying why";
 };
@@ -288,11 +330,27 @@ const isRequest = (v: unknown): v is Request => {
     if ((r.kind !== undefined && r.kind !== "graphic") || !within(r.outWidth, r.width!) || !within(r.outHeight, r.height!)) return false;
   }
   if (r.kind === "graphic")
-    return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string") && (r.census === undefined || (typeof r.census === "number" && r.census > 0 && r.census < 1)) && (r.ts === undefined || (Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t))));
+    return (
+      typeof r.doc === "string" &&
+      typeof r.t === "number" &&
+      Number.isFinite(r.t) &&
+      (r.name === undefined || typeof r.name === "string") &&
+      (r.census === undefined || (typeof r.census === "number" && r.census > 0 && r.census < 1)) &&
+      (r.ts === undefined ||
+        (Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t))))
+    );
   if ((r.kind as unknown) === "shader") {
     const sr = v as Partial<ShaderRequest>;
     const floats = (a: unknown, max: number) => Array.isArray(a) && a.length <= max && a.every((x) => typeof x === "number" && Number.isFinite(x));
-    return typeof sr.code === "string" && sr.code.length <= 64 * 1024 && floats(sr.frame, 4) && sr.frame!.length === 4 && (sr.params === undefined || floats(sr.params, 256)) && typeof sr.input === "string" && (sr.name === undefined || typeof sr.name === "string");
+    return (
+      typeof sr.code === "string" &&
+      sr.code.length <= 64 * 1024 &&
+      floats(sr.frame, 4) &&
+      sr.frame!.length === 4 &&
+      (sr.params === undefined || floats(sr.params, 256)) &&
+      typeof sr.input === "string" &&
+      (sr.name === undefined || typeof sr.name === "string")
+    );
   }
   return r.kind === undefined && typeof r.css === "string" && typeof r.html === "string";
 };
@@ -316,7 +374,9 @@ async function main() {
   session.defaultSession.setPermissionCheckHandler(() => false);
   // No network for anything drawn here (a graphic's script included): only data: URLs load.
   // The shader page loads only from Uncut's own scheme (served here, from nothing a page names).
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => callback({ cancel: !details.url.startsWith("data:") && !details.url.startsWith(`${SHADER_SCHEME}://uncut/`) && !isMediaUrl(details.url) }));
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) =>
+    callback({ cancel: !details.url.startsWith("data:") && !details.url.startsWith(`${SHADER_SCHEME}://uncut/`) && !isMediaUrl(details.url) }),
+  );
   // D290: a graphic's project media, asked of the server (renderMedia.ts).
   handleMedia(protocol, reply);
   // The picture of the shader frame being drawn (its input file), fetched by the shader page.
@@ -399,10 +459,14 @@ async function main() {
   };
   // D292: an output size shrinks the capture (laid out and checked at full size) before it's encoded.
   const save = (out: string, size?: { readonly outWidth?: number; readonly outHeight?: number }) => (full: Electron.NativeImage) => {
-    const image = size?.outWidth && size.outHeight && (size.outWidth !== full.getSize().width || size.outHeight !== full.getSize().height) ? full.resize({ width: size.outWidth, height: size.outHeight, quality: "best" }) : full;
+    const image =
+      size?.outWidth && size.outHeight && (size.outWidth !== full.getSize().width || size.outHeight !== full.getSize().height)
+        ? full.resize({ width: size.outWidth, height: size.outHeight, quality: "best" })
+        : full;
     writeFileSync(out, /\.jpe?g$/i.test(out) ? image.toJPEG(85) : image.toPNG());
   };
-  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest, expected: number) => save(r.out, r)(await grab(target, r.width, r.height, expected));
+  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest, expected: number) =>
+    save(r.out, r)(await grab(target, r.width, r.height, expected));
   const newGraphicWindow = () => {
     const gw = new BrowserWindow(windowOptions);
     gw.webContents.setFrameRate(FRAME_RATE);
@@ -423,7 +487,12 @@ async function main() {
   // Without `take` (a rehearsal) nothing is captured: render(t) runs as the export calls it, without
   // the frames a capture waits for.
   // `limitMs` (a motion-blur refinement, D309): the whole call ends by then, whatever it's doing.
-  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take?: (image: Electron.NativeImage) => void | Promise<void>, limitMs?: number) => {
+  const renderGraphic = async (
+    r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">,
+    ts: ReadonlyArray<number>,
+    take?: (image: Electron.NativeImage) => void | Promise<void>,
+    limitMs?: number,
+  ) => {
     if (!graphicWin || graphicWin.isDestroyed()) {
       graphicWin = newGraphicWindow();
       graphicDoc = "";
@@ -466,7 +535,9 @@ async function main() {
           current = t;
           const expected = nextMark();
           phase = fresh && !image ? "first" : "render";
-          await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`);
+          await gw.webContents.executeJavaScript(
+            `window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`,
+          );
           phase = "capture";
           captureFrom = Date.now();
           try {
@@ -493,8 +564,13 @@ async function main() {
     const probe = (): Promise<Probe> => {
       if (gw.isDestroyed()) return Promise.resolve(undefined);
       const asked = gw.webContents
-        .executeJavaScript(`({ fonts: document.fonts.status, doc: document.readyState, pending: window.__uncutMedia && window.__uncutMedia.stats ? window.__uncutMedia.stats().pending : 0 })`)
-        .then((x: Probe) => x ?? {}, () => undefined);
+        .executeJavaScript(
+          `({ fonts: document.fonts.status, doc: document.readyState, pending: window.__uncutMedia && window.__uncutMedia.stats ? window.__uncutMedia.stats().pending : 0 })`,
+        )
+        .then(
+          (x: Probe) => x ?? {},
+          () => undefined,
+        );
       let wait: NodeJS.Timeout | undefined;
       return Promise.race([asked, new Promise<undefined>((done) => (wait = setTimeout(() => done(undefined), PROBE_MS)))]).finally(() => clearTimeout(wait));
     };
@@ -522,7 +598,12 @@ async function main() {
       const at = ts.length ? ` at ${(current ?? ts[0]!).toFixed(ts.length > 1 ? 4 : 2)} s` : "";
       const which = phase === "load" || phase === "first" ? `${at} (its first frame, the document just loaded)` : at;
       const pictures = got ? `; ${got} project picture${got === 1 ? "" : "s"} (uncut.frame) came in during it` : "";
-      const pendingList = media.length ? `${media.slice(0, 3).map((x) => `${x.id} at ${x.t.toFixed(2)} s`).join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}` : "";
+      const pendingList = media.length
+        ? `${media
+            .slice(0, 3)
+            .map((x) => `${x.id} at ${x.t.toFixed(2)} s`)
+            .join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}`
+        : "";
       const why = fetching
         ? `: it was still fetching project media${pendingList ? ` (${pendingList})` : ""}${pictures}: ask uncut.frame for fewer or smaller pictures, fetch them together (Promise.all) rather than one after another, or fetch them once and reuse them`
         : !page
@@ -608,16 +689,24 @@ async function main() {
     })();
     let timer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${name}the shader took longer than ${SHADER_FRAME_MS / 1000} s to draw a frame`)), SHADER_FRAME_MS)))]);
+      await Promise.race([
+        work,
+        new Promise(
+          (_, reject) =>
+            (timer = setTimeout(() => reject(new Error(`${name}the shader took longer than ${SHADER_FRAME_MS / 1000} s to draw a frame`)), SHADER_FRAME_MS)),
+        ),
+      ]);
     } catch (error) {
       work.catch(() => {});
       shaderInput = undefined;
-      const message = messageOf(error).replace(/^Error invoking remote method[^:]*: /, "").replace(/^(Uncaught )?Error: /, "");
-      if (!/^no-webgpu: /.test(message) && shaderWin && !shaderWin.isDestroyed()) {
+      const message = messageOf(error)
+        .replace(/^Error invoking remote method[^:]*: /, "")
+        .replace(/^(Uncaught )?Error: /, "");
+      if (!message.startsWith("no-webgpu: ") && shaderWin && !shaderWin.isDestroyed()) {
         shaderWin.destroy();
         shaderWin = undefined;
       }
-      throw new Error(/^no-webgpu: /.test(message) || message.startsWith(name) ? message : `${name}${message}`);
+      throw new Error(message.startsWith("no-webgpu: ") || message.startsWith(name) ? message : `${name}${message}`);
     } finally {
       clearTimeout(timer);
     }
@@ -714,12 +803,20 @@ async function main() {
     // (the right mean where it's transparent), then made straight like the PNG path's.
     if (r.ts.length === 1) {
       let frame: Buffer | undefined;
-      await renderGraphic({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, (image) => void (frame = bitmapOf(image, s)));
+      await renderGraphic(
+        { width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) },
+        r.ts,
+        (image) => void (frame = bitmapOf(image, s)),
+      );
       unpremultiply(frame!);
       return seqWrite(frame!);
     }
     const sum = (s.sum ??= new Uint16Array(s.width * s.height * 4));
-    const { frame, samples } = await blurred({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, sum);
+    const { frame, samples } = await blurred(
+      { width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) },
+      r.ts,
+      sum,
+    );
     unpremultiply(frame);
     await seqWrite(frame);
     return { samples };
@@ -799,7 +896,10 @@ async function main() {
     if (r.fresh) graphicDoc = "";
     for (const [i, local] of r.frames.entries()) {
       try {
-        await renderGraphic({ width: r.width, height: r.height, doc: r.doc, info: { ...r.info, frame: local }, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts?.[i] ?? [local / Number(r.info.fps || 30)]);
+        await renderGraphic(
+          { width: r.width, height: r.height, doc: r.doc, info: { ...r.info, frame: local }, ...(r.name !== undefined ? { name: r.name } : {}) },
+          r.ts?.[i] ?? [local / Number(r.info.fps || 30)],
+        );
       } catch (error) {
         throw new Error(`at its frame ${local}: ${messageOf(error)}`);
       }
@@ -828,9 +928,10 @@ async function main() {
     }
     if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out, r));
     if (r.kind === "shader") return renderShader(r);
-    if (r.kind === "shader-probe") return probeShader().catch((error: Error) => {
-      throw new Error((error.message.match(/no-webgpu: .*/) ?? [`no-webgpu: ${error.message}`])[0]);
-    });
+    if (r.kind === "shader-probe")
+      return probeShader().catch((error: Error) => {
+        throw new Error((error.message.match(/no-webgpu: .*/) ?? [`no-webgpu: ${error.message}`])[0]);
+      });
     await capture(win, r, await drawHtml(r));
   };
 
@@ -849,7 +950,13 @@ async function main() {
     // sent (the export sends a few ahead, D309).
     chain = chain.then(() =>
       (process.stdout.write(`${JSON.stringify({ uncut: "render-started", id: request.id })}\n`), render(request)).then(
-        (done) => void reply({ id: request.id, ok: true, ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}), ...(done && typeof done === "object" && "samples" in done ? { samples: done.samples } : {}) }),
+        (done) =>
+          void reply({
+            id: request.id,
+            ok: true,
+            ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}),
+            ...(done && typeof done === "object" && "samples" in done ? { samples: done.samples } : {}),
+          }),
         (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),
       ),
     );

@@ -9,11 +9,35 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { checkRef, gitClone, gitEnv, installPlugin, InstallError, parseSource, sweepLeftovers, swapHooks, type InstallContext } from "../../apps/server/src/plugins/install.ts";
+import {
+  checkRef,
+  gitClone,
+  gitEnv,
+  installPlugin,
+  InstallError,
+  parseSource,
+  sweepLeftovers,
+  swapHooks,
+  type InstallContext,
+} from "../../apps/server/src/plugins/install.ts";
 import { PluginHost } from "../../apps/server/src/plugins/plugins.ts";
 import { connect, killAll, startServer } from "../helpers/server.ts";
 
@@ -37,7 +61,12 @@ const folder = (patch: Record<string, unknown> = {}) => {
   writeFileSync(join(dir, "uncut.module.json"), JSON.stringify({ ...manifest, ...patch }, null, 2));
   return dir;
 };
-const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "init.defaultBranch=main", ...args], { cwd, env: gitEnv(), encoding: "utf8" }).trim();
+const git = (cwd: string, ...args: Array<string>) =>
+  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "init.defaultBranch=main", ...args], {
+    cwd,
+    env: gitEnv(),
+    encoding: "utf8",
+  }).trim();
 
 const context = (pluginsRoot: string, extra: Partial<InstallContext> = {}): InstallContext => ({
   pluginsRoot,
@@ -68,8 +97,25 @@ test("sources, refs and git's environment", () => {
   assert.equal(checkRef(" v1.2 "), "v1.2");
   assert.equal(checkRef(""), undefined);
   for (const bad of ["-u", "--upload-pack=x", "a..b", "a b", "x/"]) assert.throws(() => checkRef(bad), /isn't a branch or tag/);
-  const env = gitEnv({ PATH: "/usr/bin", HOME: "/h", HTTPS_PROXY: "http://proxy", GIT_DIR: "/x", GIT_CONFIG_PARAMETERS: "'core.sshCommand=evil'", OPENAI_API_KEY: "k" });
-  assert.deepEqual(Object.keys(env).sort(), ["GIT_ALLOW_PROTOCOL", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_SSH_COMMAND", "GIT_TERMINAL_PROMPT", "HOME", "LANG", "LC_ALL", "PATH"]);
+  const env = gitEnv({
+    PATH: "/usr/bin",
+    HOME: "/h",
+    HTTPS_PROXY: "http://proxy",
+    GIT_DIR: "/x",
+    GIT_CONFIG_PARAMETERS: "'core.sshCommand=evil'",
+    OPENAI_API_KEY: "k",
+  });
+  assert.deepEqual(Object.keys(env).sort(), [
+    "GIT_ALLOW_PROTOCOL",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_NOSYSTEM",
+    "GIT_SSH_COMMAND",
+    "GIT_TERMINAL_PROMPT",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+  ]);
   assert.equal(env.GIT_TERMINAL_PROMPT, "0");
   assert.equal(env.GIT_ALLOW_PROTOCOL, "file:https:ssh:git");
 });
@@ -105,10 +151,17 @@ test("install from a folder: copied into <dataDir>/plugins/<id>; the refusals", 
   const notJson = folder();
   writeFileSync(join(notJson, "uncut.module.json"), "{");
   await refused(installPlugin({ source: notJson }, ctx), /isn't valid JSON/);
-  await refused(installPlugin({ source: folder({ apiVersion: "uncut.module/2" }) }, ctx), /written for the plugin format uncut.module\/2, which is newer than this Uncut understands/);
+  await refused(
+    installPlugin({ source: folder({ apiVersion: "uncut.module/2" }) }, ctx),
+    /written for the plugin format uncut.module\/2, which is newer than this Uncut understands/,
+  );
   await refused(installPlugin({ source: folder({ id: "transition.crossfade" }) }, ctx), /belongs to a built-in module/);
   await refused(installPlugin({ source: folder({ runtime: { type: "html" } }) }, ctx), /only "process" and "data" plugins/);
-  await refused(installPlugin({ source: folder({ id: "whisper.transcribe" }) }, ctx), /like Whisper \(on this Mac\), which ships with Uncut/, "replaces-bundled");
+  await refused(
+    installPlugin({ source: folder({ id: "whisper.transcribe" }) }, ctx),
+    /like Whisper \(on this Mac\), which ships with Uncut/,
+    "replaces-bundled",
+  );
   const replaced = await installPlugin({ source: folder({ id: "whisper.transcribe" }), replaceBundled: true }, ctx);
   assert.equal(replaced.id, "whisper.transcribe");
   await refused(installPlugin({ source: src, ref: "main" }, ctx), /only goes with a git URL/);
@@ -165,7 +218,10 @@ test("install from a git repository: a shallow clone of a local bare repo, at a 
   assert.equal(tagged.ref, "v1");
   assert.ok(!existsSync(join(tagged.dir, "extra.txt")));
   // No temp clones left behind.
-  assert.deepEqual(readdirSync(tmpdir()).filter((f) => f.startsWith("uncut-plugin-") && existsSync(join(tmpdir(), f, "clone"))), []);
+  assert.deepEqual(
+    readdirSync(tmpdir()).filter((f) => f.startsWith("uncut-plugin-") && existsSync(join(tmpdir(), f, "clone"))),
+    [],
+  );
 
   await refused(installPlugin({ source: url, ref: "nope" }, ctx), /Couldn't clone .* at nope: /, "io");
   await refused(installPlugin({ source: `file://${join(root, "missing.git")}` }, ctx), /Couldn't clone file:\/\/.*missing\.git: /, "io");
@@ -242,7 +298,10 @@ test("on the server: install → needs approval (with where it came from) → al
 
     await client.ok("plugins.approve", { id: row.id, dir: row.dir, capabilities: row.capabilities });
     const after = await client.ok("plugins.uninstall", { id: "installed.fake" });
-    assert.equal(after.some((p: any) => p.id === "installed.fake"), false);
+    assert.equal(
+      after.some((p: any) => p.id === "installed.fake"),
+      false,
+    );
     assert.ok(!existsSync(join(data, "plugins", "installed.fake")));
     assert.equal(settings().pluginApprovals["installed.fake"], undefined);
     assert.equal(settings().pluginInstalls["installed.fake"], undefined);
@@ -268,11 +327,28 @@ test("review fixes: the swap waits for beforeSwap (a failure aborts), rolls back
   await installPlugin({ source: src }, context(plugins, { beforeSwap: async () => void (seen = readFileSync(join(dest, "version.txt"), "utf8")) }));
   assert.equal(seen, "old");
   assert.equal(readFileSync(join(dest, "version.txt"), "utf8"), "new");
-  await refused(installPlugin({ source: folder({ id: "swap.fake", apiVersion: "uncut.module/9" }) }, context(plugins, { beforeSwap: async () => void calls.push("refused") })), /newer/);
+  await refused(
+    installPlugin(
+      { source: folder({ id: "swap.fake", apiVersion: "uncut.module/9" }) },
+      context(plugins, { beforeSwap: async () => void calls.push("refused") }),
+    ),
+    /newer/,
+  );
   assert.ok(!calls.includes("refused"));
   // A failing beforeSwap (the approval couldn't be removed) aborts: nothing replaced, nothing left.
   writeFileSync(join(src, "version.txt"), "newer");
-  await refused(installPlugin({ source: src }, context(plugins, { beforeSwap: async () => { throw new Error("settings.json is read-only"); } })), /wasn't installed: settings.json is read-only/, "io");
+  await refused(
+    installPlugin(
+      { source: src },
+      context(plugins, {
+        beforeSwap: async () => {
+          throw new Error("settings.json is read-only");
+        },
+      }),
+    ),
+    /wasn't installed: settings.json is read-only/,
+    "io",
+  );
   assert.equal(readFileSync(join(dest, "version.txt"), "utf8"), "new");
   assert.deepEqual(readdirSync(plugins), ["swap.fake"]);
 
@@ -303,7 +379,10 @@ test("review fixes: the swap waits for beforeSwap (a failure aborts), rolls back
   git(work, "add", ".");
   git(work, "commit", "-q", "-m", "big");
   const gitBin = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
-  await refused(gitClone(gitBin, `file://${work}`, undefined, join(root, "clone-capped"), undefined, 64 * 1024), /bigger than 0 MB, so Uncut stopped cloning it/);
+  await refused(
+    gitClone(gitBin, `file://${work}`, undefined, join(root, "clone-capped"), undefined, 64 * 1024),
+    /bigger than 0 MB, so Uncut stopped cloning it/,
+  );
   await refused(installPlugin({ source: `file://${work}` }, context(join(root, "data-big", "plugins"), { maxCloneBytes: 64 * 1024 })), /stopped cloning it/);
   assert.ok(!existsSync(join(root, "data-big", "plugins", "fake.capture")));
 

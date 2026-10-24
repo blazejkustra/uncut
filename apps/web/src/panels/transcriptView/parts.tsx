@@ -17,7 +17,17 @@ import { Tooltip } from "../../ui/Tooltip.tsx";
  * the shared Popover, which is drawn over everything and kept inside the window, so a narrow panel
  * can't clip it.
  */
-export function CaptionsButton({ project, media, disabled, transcribed }: { project: ProjectModel; media: ReadonlyArray<string>; disabled: boolean; transcribed: boolean }) {
+export function CaptionsButton({
+  project,
+  media,
+  disabled,
+  transcribed,
+}: {
+  project: ProjectModel;
+  media: ReadonlyArray<string>;
+  disabled: boolean;
+  transcribed: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CaptionMode>(captionChoice.mode);
   const [look, setLook] = useState(captionChoice.look);
@@ -48,7 +58,14 @@ export function CaptionsButton({ project, media, disabled, transcribed }: { proj
           <div className="tx-pop-label">Show</div>
           <div className="tx-modes" role="radiogroup">
             {CAPTION_MODES.map((m) => (
-              <button key={m} role="radio" aria-checked={mode === m} className={mode === m ? "active" : ""} data-testid={`captions-mode-${m}`} onClick={() => setMode(m)}>
+              <button
+                key={m}
+                role="radio"
+                aria-checked={mode === m}
+                className={mode === m ? "active" : ""}
+                data-testid={`captions-mode-${m}`}
+                onClick={() => setMode(m)}
+              >
                 {CAPTION_MODE_NAMES[m]}
               </button>
             ))}
@@ -79,7 +96,23 @@ export function CaptionsButton({ project, media, disabled, transcribed }: { proj
   );
 }
 
-export function Untranscribed({ mediaId, name, online, whisperReady, checking, modelMissing, modelLabel }: { mediaId: string; name: string; online: boolean; whisperReady: boolean; checking: boolean; modelMissing: boolean; modelLabel: string }) {
+export function Untranscribed({
+  mediaId,
+  name,
+  online,
+  whisperReady,
+  checking,
+  modelMissing,
+  modelLabel,
+}: {
+  mediaId: string;
+  name: string;
+  online: boolean;
+  whisperReady: boolean;
+  checking: boolean;
+  modelMissing: boolean;
+  modelLabel: string;
+}) {
   const app = useApp();
   const job = activeAnalyses(app, mediaId).find((j) => j.analyzer === "transcript");
   if (job) {
@@ -89,7 +122,13 @@ export function Untranscribed({ mediaId, name, online, whisperReady, checking, m
         <div className="tx-state-row">
           <span className="tx-state-text">{analysisText(job)}</span>
           <Tooltip label="Stop transcribing">
-            <button className="icon-btn" data-testid="tx-cancel" aria-label="Stop transcribing" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
+            <button
+              className="icon-btn"
+              data-testid="tx-cancel"
+              aria-label="Stop transcribing"
+              disabled={!online}
+              onClick={() => void actions.cancelAnalysis(job.id)}
+            >
               <X />
             </button>
           </Tooltip>
@@ -116,7 +155,8 @@ export function Untranscribed({ mediaId, name, online, whisperReady, checking, m
   return (
     <div className="tx-state" data-testid="tx-untranscribed">
       <span className="tx-state-text">
-        <strong>{name}</strong> isn't transcribed yet.{modelMissing ? ` The first transcript downloads the speech model (${modelLabel}).` : ""} It runs on this Mac.
+        <strong>{name}</strong> isn't transcribed yet.{modelMissing ? ` The first transcript downloads the speech model (${modelLabel}).` : ""} It runs on this
+        Mac.
       </span>
       <div className="tx-state-row">
         <button className="btn primary" data-testid="tx-transcribe" disabled={!online || checking} onClick={() => void actions.transcribe(mediaId)}>
@@ -147,7 +187,7 @@ export function PlayheadWord({ words, container }: { words: ReadonlyArray<EditWo
     let at = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (words[mid]!.start <= frame) (at = mid), (lo = mid + 1);
+      if (words[mid]!.start <= frame) ((at = mid), (lo = mid + 1));
       else hi = mid - 1;
     }
     return at >= 0 && frame < words[at]!.end ? wordKey(words[at]!) : undefined;

@@ -13,7 +13,9 @@ export default function SiteHeader() {
           <span>Uncut</span>
         </a>
         <nav aria-label="Main">
-          <a className="nav-link" href="/blog/">Blog</a>
+          <a className="nav-link" href="/blog/">
+            Blog
+          </a>
           <StarButton />
           <a className="btn-nav" href={DOWNLOAD_URL}>
             <AppleMark />

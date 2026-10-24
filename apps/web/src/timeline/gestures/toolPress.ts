@@ -44,14 +44,26 @@ export function makeToolPress(ctx: ToolPressCtx) {
     const placed = id ? findItem(project, id) : undefined;
     if (!placed || !lane || !lanesRef.current || placed.item.type === "captions") return undefined;
     const snapOn = getPlayback().snapping && !e.metaKey;
-    const at = bladeFrame(project, placed.item.id, frameAt(e.clientX), snapOn ? { playhead: getPlayback().frame, threshold: SNAP_PX / ppf, beats: { beats: getBeats().map, ppf } } : undefined);
+    const at = bladeFrame(
+      project,
+      placed.item.id,
+      frameAt(e.clientX),
+      snapOn ? { playhead: getPlayback().frame, threshold: SNAP_PX / ppf, beats: { beats: getBeats().map, ppf } } : undefined,
+    );
     if (!(placed.start < at.frame && at.frame < placed.start + placed.item.duration)) return undefined;
     const r = lane.getBoundingClientRect();
     const top = r.top - lanesRef.current.getBoundingClientRect().top;
     // D248: the line says what the click would do: planBladeSplit's refusal (locks, a locked linked sound, a transition).
     const plan = planBladeSplit(project, placed.item.id, at.frame);
     const refused = "problem" in plan ? plan.problem : undefined;
-    return { item: placed.item.id, frame: at.frame, ...(at.snapAt !== undefined ? { snapAt: at.snapAt } : {}), top, height: r.height, ...(refused ? { refused } : {}) };
+    return {
+      item: placed.item.id,
+      frame: at.frame,
+      ...(at.snapAt !== undefined ? { snapAt: at.snapAt } : {}),
+      top,
+      height: r.height,
+      ...(refused ? { refused } : {}),
+    };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {

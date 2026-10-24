@@ -41,14 +41,42 @@ export function musicLibraryRoot(env: NodeJS.ProcessEnv = process.env): string |
   return join(homedir(), "Music");
 }
 
-export const xmlCandidates = (root: string) => [join(root, "Music", "Library.xml"), join(root, "iTunes", "iTunes Music Library.xml"), join(root, "iTunes", "iTunes Library.xml")];
-export const mediaCandidates = (root: string) => [join(root, "Music", "Media.localized", "Music"), join(root, "Music", "Media", "Music"), join(root, "Music", "Media.localized"), join(root, "Music", "Media"), join(root, "iTunes", "iTunes Media", "Music"), join(root, "iTunes", "iTunes Music")];
+export const xmlCandidates = (root: string) => [
+  join(root, "Music", "Library.xml"),
+  join(root, "iTunes", "iTunes Music Library.xml"),
+  join(root, "iTunes", "iTunes Library.xml"),
+];
+export const mediaCandidates = (root: string) => [
+  join(root, "Music", "Media.localized", "Music"),
+  join(root, "Music", "Media", "Music"),
+  join(root, "Music", "Media.localized"),
+  join(root, "Music", "Media"),
+  join(root, "iTunes", "iTunes Media", "Music"),
+  join(root, "iTunes", "iTunes Music"),
+];
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 /** A character reference's character; one that names no character (past U+10FFFF, a surrogate) is U+FFFD. */
 const codePoint = (n: number) => (Number.isInteger(n) && n >= 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : "\uFFFD");
-export const decodeXml = (s: string) => s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (_, e: string) => (e === "lt" ? "<" : e === "gt" ? ">" : e === "amp" ? "&" : e === "quot" ? '"' : e === "apos" ? "'" : codePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1)))));
-const part = (s: string | undefined) => (s ?? "").replace(/[\/\u0000-\u001f]+/g, " ").trim().slice(0, 120);
+export const decodeXml = (s: string) =>
+  s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (_, e: string) =>
+    e === "lt"
+      ? "<"
+      : e === "gt"
+        ? ">"
+        : e === "amp"
+          ? "&"
+          : e === "quot"
+            ? '"'
+            : e === "apos"
+              ? "'"
+              : codePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))),
+  );
+const part = (s: string | undefined) =>
+  (s ?? "")
+    .replace(/[/\u0000-\u001f]+/g, " ")
+    .trim()
+    .slice(0, 120);
 
 /** One track of the XML: its keys and values (strings, numbers, booleans). */
 export type XmlTrack = Readonly<Record<string, string | number | boolean>>;
@@ -124,7 +152,11 @@ export const SCAN_SLICE = 250;
  * (D262): read in chunks (the file is never held whole), yielding between chunks and every
  * SCAN_SLICE tracks so the server keeps answering. Returns how many tracks were read.
  */
-export async function scanLibraryXml(file: string, visit: (t: XmlTrack) => boolean, opts: { readonly chunkBytes?: number; readonly onSlice?: (ms: number) => void } = {}): Promise<number> {
+export async function scanLibraryXml(
+  file: string,
+  visit: (t: XmlTrack) => boolean,
+  opts: { readonly chunkBytes?: number; readonly onSlice?: (ms: number) => void } = {},
+): Promise<number> {
   const scanner = new LibraryXmlScanner();
   const stream = createReadStream(file, { encoding: "utf8", highWaterMark: opts.chunkBytes ?? 256 * 1024 });
   let from = 0;
@@ -171,7 +203,14 @@ async function mapLimit<A, B>(items: ReadonlyArray<A>, limit: number, run: (a: A
  */
 export async function musicLibraryStamp(root: string | undefined): Promise<string> {
   if (!root) return "";
-  const parts = await Promise.all(xmlCandidates(root).map((f) => stat(f).then((s) => (s.isFile() ? `${s.size}:${s.mtimeMs}` : "-"), () => "-")));
+  const parts = await Promise.all(
+    xmlCandidates(root).map((f) =>
+      stat(f).then(
+        (s) => (s.isFile() ? `${s.size}:${s.mtimeMs}` : "-"),
+        () => "-",
+      ),
+    ),
+  );
   return parts.every((p) => p === "-") ? "" : parts.join("|");
 }
 
@@ -202,7 +241,12 @@ export interface MusicLibrary {
  * The library's DRM-free songs under the folder id `folderId`: from the XML when there is one, else
  * the media folder walked with `walk` (folders.ts; Apple Music's own folder left out).
  */
-export async function readMusicLibrary(root: string | undefined, folderId: string, walk: (dir: string, id: string) => Promise<{ sounds: Array<FolderSound>; paths: Map<string, string>; truncated: boolean }>, onSlice?: (ms: number) => void): Promise<MusicLibrary> {
+export async function readMusicLibrary(
+  root: string | undefined,
+  folderId: string,
+  walk: (dir: string, id: string) => Promise<{ sounds: Array<FolderSound>; paths: Map<string, string>; truncated: boolean }>,
+  onSlice?: (ms: number) => void,
+): Promise<MusicLibrary> {
   const none: MusicLibrary = { found: false, where: root ?? "", sounds: [], paths: new Map(), skipped: 0, truncated: false };
   if (!root) return none;
   for (const file of xmlCandidates(root)) {
@@ -213,34 +257,43 @@ export async function readMusicLibrary(root: string | undefined, folderId: strin
     let skipped = 0;
     let read: number;
     try {
-      read = await scanLibraryXml(file, (t) => {
-        const why = excluded(t);
-        if (why) {
-          if (why === "protected") skipped++;
-          return true;
-        }
-        let path: string;
-        try {
-          path = locationPath(t["Location"] as string);
-        } catch {
-          skipped++;
-          return true;
-        }
-        const ext = extname(path).slice(1).toLowerCase();
-        if (!EXTENSIONS.has(ext)) {
-          skipped++;
-          return true;
-        }
-        picked.push({ t, path, ext });
-        return picked.length <= MAX_MUSIC_SONGS;
-      }, onSlice ? { onSlice } : {});
+      read = await scanLibraryXml(
+        file,
+        (t) => {
+          const why = excluded(t);
+          if (why) {
+            if (why === "protected") skipped++;
+            return true;
+          }
+          let path: string;
+          try {
+            path = locationPath(t["Location"] as string);
+          } catch {
+            skipped++;
+            return true;
+          }
+          const ext = extname(path).slice(1).toLowerCase();
+          if (!EXTENSIONS.has(ext)) {
+            skipped++;
+            return true;
+          }
+          picked.push({ t, path, ext });
+          return picked.length <= MAX_MUSIC_SONGS;
+        },
+        onSlice ? { onSlice } : {},
+      );
     } catch {
       continue;
     }
     if (!read) continue;
     const truncated = picked.length > MAX_MUSIC_SONGS;
     // Each song checked on disk, a few at a time: one deleted since the XML was written is left out and counted.
-    const sizes = await mapLimit(picked.slice(0, MAX_MUSIC_SONGS), 16, ({ path }) => stat(path).then((s) => (s.isFile() ? s.size : -1), () => -1));
+    const sizes = await mapLimit(picked.slice(0, MAX_MUSIC_SONGS), 16, ({ path }) =>
+      stat(path).then(
+        (s) => (s.isFile() ? s.size : -1),
+        () => -1,
+      ),
+    );
     const sounds: Array<FolderSound> = [];
     const paths = new Map<string, string>();
     picked.slice(0, MAX_MUSIC_SONGS).forEach(({ t, path, ext }, i) => {
@@ -259,12 +312,25 @@ export async function readMusicLibrary(root: string | undefined, folderId: strin
     return { found: true, where: file, sounds, paths, skipped, truncated };
   }
   for (const dir of mediaCandidates(root)) {
-    if (!(await stat(dir).then((s) => s.isDirectory(), () => false))) continue;
+    if (
+      !(await stat(dir).then(
+        (s) => s.isDirectory(),
+        () => false,
+      ))
+    )
+      continue;
     const walked = await walk(dir, folderId);
-    const sounds = walked.sounds.filter((s) => !/^Apple Music\//.test(s.rel) && s.ext !== "m4p");
+    const sounds = walked.sounds.filter((s) => !s.rel.startsWith("Apple Music/") && s.ext !== "m4p");
     const keep = new Set(sounds.map((s) => s.id));
     const paths = new Map([...walked.paths].filter(([id]) => keep.has(id)));
-    return { found: true, where: dir, sounds: sounds.slice(0, MAX_MUSIC_SONGS), paths, skipped: walked.sounds.length - sounds.length, truncated: walked.truncated || sounds.length > MAX_MUSIC_SONGS };
+    return {
+      found: true,
+      where: dir,
+      sounds: sounds.slice(0, MAX_MUSIC_SONGS),
+      paths,
+      skipped: walked.sounds.length - sounds.length,
+      truncated: walked.truncated || sounds.length > MAX_MUSIC_SONGS,
+    };
   }
   return none;
 }

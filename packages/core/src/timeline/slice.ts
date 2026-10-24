@@ -119,7 +119,10 @@ export function sliceProject(project: Project, range: FrameRange): Project | { r
     }
   }
   if (draft.markers) draft.markers = draft.markers.filter((m) => m.frame >= from && m.frame < to).map((m) => ({ ...m, frame: m.frame - from }));
-  if (draft.scenes) draft.scenes = draft.scenes.filter((x) => x.end > from && x.start < to).map((x) => ({ ...x, start: Math.max(0, x.start - from), end: Math.min(to, x.end) - from }));
+  if (draft.scenes)
+    draft.scenes = draft.scenes
+      .filter((x) => x.end > from && x.start < to)
+      .map((x) => ({ ...x, start: Math.max(0, x.start - from), end: Math.min(to, x.end) - from }));
   // Any transition the trims left that no longer fits (too long for a trimmed clip, no handle) goes.
   for (let pass = 0; pass < 4; pass++) {
     const bad = timelineProblems(draft as Project).filter((p) => p.code.startsWith("transition-"));

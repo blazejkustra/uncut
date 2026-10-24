@@ -3,7 +3,21 @@ import * as Rpc from "effect/rpc/Rpc";
 import { RPC_METHODS, ServerHello, MediaCoreError, Canvas, ProjectSnapshot, ProjectError, EditRefused, RecentProject } from "../server.ts";
 import { LibrarySearchResult, LibraryError, LibraryState, SoundFolderSchema } from "../library.ts";
 import { ImportJob, ProxyState, SetupCheck, MediaRecentEntry } from "../media.ts";
-import { AgentState, AgentMention, AgentEffort, AgentProvider, AgentAccess, AgentImage, AgentError, AgentAnswer, StoryboardBeat, Brief, Storyboard, IntendedFinding, AgentPlan } from "../agent.ts";
+import {
+  AgentState,
+  AgentMention,
+  AgentEffort,
+  AgentProvider,
+  AgentAccess,
+  AgentImage,
+  AgentError,
+  AgentAnswer,
+  StoryboardBeat,
+  Brief,
+  Storyboard,
+  IntendedFinding,
+  AgentPlan,
+} from "../agent.ts";
 import { ExportRange } from "../export.ts";
 import { BrandState, BrandError, BrandKit, BrandScope, BrandSkill, BrandActive, BrandImported } from "../brand.ts";
 
@@ -64,7 +78,10 @@ export const RecentsListRpc = Rpc.make(RPC_METHODS.recentsList, { payload: Empty
 // media.jobs. Footage is referenced by its absolute path, never copied (D12); one undoable edit.
 export const MediaImportRpc = Rpc.make(RPC_METHODS.mediaImport, {
   // T9 (D128): files dropped on the timeline also go there (frame, the lane's track), in the same edit.
-  payload: Schema.Struct({ paths: Schema.Array(Schema.String), drop: Schema.optional(Schema.Struct({ frame: Schema.Number, track: Schema.optional(Schema.String) })) }),
+  payload: Schema.Struct({
+    paths: Schema.Array(Schema.String),
+    drop: Schema.optional(Schema.Struct({ frame: Schema.Number, track: Schema.optional(Schema.String) })),
+  }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ProjectError,
 });
@@ -181,7 +198,11 @@ export const MediaRecentImportRpc = Rpc.make(RPC_METHODS.mediaRecentImport, {
 
 // D295: a new chat: the next message starts a fresh Claude conversation; earlier turns stay in the
 // history (undo still works) and the panel folds them away. Refused while a turn runs.
-export const AgentNewThreadRpc = Rpc.make(RPC_METHODS.agentNewThread, { payload: Empty, success: Schema.Struct({ threadStart: Schema.String }), error: AgentError });
+export const AgentNewThreadRpc = Rpc.make(RPC_METHODS.agentNewThread, {
+  payload: Empty,
+  success: Schema.Struct({ threadStart: Schema.String }),
+  error: AgentError,
+});
 
 // D206: puts back the graphics a turn's clean-up moved to the trash (those still there).
 export const AgentRestoreCleanupRpc = Rpc.make(RPC_METHODS.agentRestoreCleanup, {
@@ -194,18 +215,50 @@ export const AgentRestoreCleanupRpc = Rpc.make(RPC_METHODS.agentRestoreCleanup, 
 // accepted: false when the card was no longer open (answered, timed out, the turn stopped or another card replaced it).
 // D187/D188: a question card's answer, a storyboard card's edited beats or change note.
 export const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, {
-  payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String), answer: Schema.optional(AgentAnswer), beats: Schema.optional(Schema.Array(StoryboardBeat)), note: Schema.optional(Schema.String), always: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({
+    id: Schema.String,
+    allow: Schema.Boolean,
+    source: Schema.optional(Schema.String),
+    answer: Schema.optional(AgentAnswer),
+    beats: Schema.optional(Schema.Array(StoryboardBeat)),
+    note: Schema.optional(Schema.String),
+    always: Schema.optional(Schema.Boolean),
+  }),
   success: Schema.Struct({ accepted: Schema.Boolean }),
 });
 // D188: the user edits the brief (or the storyboard) by hand; saved to the project and seen by the agent's next message.
-export const AgentPlanSaveRpc = Rpc.make(RPC_METHODS.agentPlanSave, { payload: Schema.Struct({ brief: Schema.optional(Brief), storyboard: Schema.optional(Storyboard), intended: Schema.optional(Schema.Array(IntendedFinding)) }), success: AgentPlan, error: AgentError });
+export const AgentPlanSaveRpc = Rpc.make(RPC_METHODS.agentPlanSave, {
+  payload: Schema.Struct({ brief: Schema.optional(Brief), storyboard: Schema.optional(Storyboard), intended: Schema.optional(Schema.Array(IntendedFinding)) }),
+  success: AgentPlan,
+  error: AgentError,
+});
 // D186: brand kits and skills (global and the open project's), and the project's choice.
 export const BrandGetRpc = Rpc.make(RPC_METHODS.brandGet, { payload: Empty, success: BrandState, error: BrandError });
 // Saves a kit (new or changed) in its scope; returns the new state.
 export const BrandSaveKitRpc = Rpc.make(RPC_METHODS.brandSaveKit, { payload: Schema.Struct({ kit: BrandKit }), success: BrandState, error: BrandError });
-export const BrandDeleteKitRpc = Rpc.make(RPC_METHODS.brandDeleteKit, { payload: Schema.Struct({ id: Schema.String, scope: BrandScope }), success: BrandState, error: BrandError });
-export const BrandSaveSkillRpc = Rpc.make(RPC_METHODS.brandSaveSkill, { payload: Schema.Struct({ skill: BrandSkill }), success: BrandState, error: BrandError });
-export const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, { payload: Schema.Struct({ id: Schema.String, scope: BrandScope }), success: BrandState, error: BrandError });
+export const BrandDeleteKitRpc = Rpc.make(RPC_METHODS.brandDeleteKit, {
+  payload: Schema.Struct({ id: Schema.String, scope: BrandScope }),
+  success: BrandState,
+  error: BrandError,
+});
+export const BrandSaveSkillRpc = Rpc.make(RPC_METHODS.brandSaveSkill, {
+  payload: Schema.Struct({ skill: BrandSkill }),
+  success: BrandState,
+  error: BrandError,
+});
+export const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, {
+  payload: Schema.Struct({ id: Schema.String, scope: BrandScope }),
+  success: BrandState,
+  error: BrandError,
+});
 export const BrandSetActiveRpc = Rpc.make(RPC_METHODS.brandSetActive, { payload: BrandActive, success: BrandState, error: BrandError });
-export const BrandImportRpc = Rpc.make(RPC_METHODS.brandImport, { payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, source: Schema.String }), success: Schema.Struct({ files: Schema.Array(BrandImported), state: BrandState }), error: BrandError });
-export const BrandAddFileRpc = Rpc.make(RPC_METHODS.brandAddFile, { payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, path: Schema.String }), success: Schema.Struct({ name: Schema.String, state: BrandState }), error: BrandError });
+export const BrandImportRpc = Rpc.make(RPC_METHODS.brandImport, {
+  payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, source: Schema.String }),
+  success: Schema.Struct({ files: Schema.Array(BrandImported), state: BrandState }),
+  error: BrandError,
+});
+export const BrandAddFileRpc = Rpc.make(RPC_METHODS.brandAddFile, {
+  payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, path: Schema.String }),
+  success: Schema.Struct({ name: Schema.String, state: BrandState }),
+  error: BrandError,
+});

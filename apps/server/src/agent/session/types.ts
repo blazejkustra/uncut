@@ -6,7 +6,17 @@ import type { TurnLimits } from "../agentLimits.ts";
 // The agent's in-memory records: stored turns, a project's Loaded agent, a claude session, a running turn.
 
 export type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<AgentTurn, "undo">[K] } & {
-  items: Array<{ kind: "text" | "step" | "thinking" | "card"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string; card?: AgentCard; result?: string }>;
+  items: Array<{
+    kind: "text" | "step" | "thinking" | "card";
+    text: string;
+    tool?: string;
+    status?: "running" | "done" | "error";
+    live?: boolean;
+    error?: string;
+    doing?: string;
+    card?: AgentCard;
+    result?: string;
+  }>;
   edits: Array<AgentEdit>;
 };
 
@@ -150,7 +160,12 @@ export interface Running {
   // The message as claude gets it (prompt, <context>, <editor-context>).
   readonly message: string;
   // export_video's range choices: the In/Out marks and the selected clips' span when the message was sent.
-  readonly ranges?: { readonly marks?: { readonly from: number; readonly to: number } | undefined; readonly selection?: { readonly from: number; readonly to: number } | undefined } | undefined;
+  readonly ranges?:
+    | {
+        readonly marks?: { readonly from: number; readonly to: number } | undefined;
+        readonly selection?: { readonly from: number; readonly to: number } | undefined;
+      }
+    | undefined;
   // Claude answered something for this message: its note was delivered.
   delivered: boolean;
   // Aborted when the turn stops or ends: a plugin call still running is cancelled (D97).

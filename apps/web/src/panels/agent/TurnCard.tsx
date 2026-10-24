@@ -10,20 +10,34 @@ import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./wor
 import { CopyButton } from "./copy.tsx";
 import { ScreenApprovalCard, BootCard, PermissionCard, BrandDiffCard, ApprovalCard, CleanupLine } from "./approvals.tsx";
 
-export function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined; latest: ReadonlySet<string>; live: CardLive | undefined }) {
+export function TurnCard({
+  turn: t,
+  busy,
+  online,
+  approval,
+  latest,
+  live,
+}: {
+  turn: AgentTurn;
+  busy: boolean;
+  online: boolean;
+  approval?: AgentApproval | undefined;
+  latest: ReadonlySet<string>;
+  live: CardLive | undefined;
+}) {
   const friendly = useFriendly();
   const undone = t.undo.state === "undone";
   const status =
     // While it runs, the now line in the card says what it's doing (D139).
-    t.status === "running" ? null : undone ? (
-      "Undone"
-    ) : t.status === "cancelled" ? (
-      "Stopped"
-    ) : t.status === "error" ? (
-      "Didn't finish"
-    ) : (
-      `${AGENT_MODELS.find((m) => m.id === t.model)?.name ?? "Claude Code"}${t.seconds !== undefined ? `, ${Math.max(1, Math.round(t.seconds))} s` : ""}`
-    );
+    t.status === "running"
+      ? null
+      : undone
+        ? "Undone"
+        : t.status === "cancelled"
+          ? "Stopped"
+          : t.status === "error"
+            ? "Didn't finish"
+            : `${AGENT_MODELS.find((m) => m.id === t.model)?.name ?? "Claude Code"}${t.seconds !== undefined ? `, ${Math.max(1, Math.round(t.seconds))} s` : ""}`;
   // D9 / D99: what generators billed to the user's keys cost in this turn (an estimate).
   const spend = t.spend ? (
     <span className="turn-spend" data-testid="agent-turn-spend" title="Estimated cost of generators billed to your API keys in this turn">
@@ -42,14 +56,21 @@ export function TurnCard({ turn: t, busy, online, approval, latest, live }: { tu
         </div>
       )}
       <div className="msg-user" data-testid="agent-prompt">
-        {withChips(t.prompt, (t.mentions ?? []).map((m) => m.label))}
+        {withChips(
+          t.prompt,
+          (t.mentions ?? []).map((m) => m.label),
+        )}
       </div>
       {t.folders && t.folders.length > 0 && (
         <div className="msg-folders small" data-testid="agent-turn-folders">
           {t.folders.map((f) => (
             <div key={f.path} className="msg-folder" data-testid="agent-turn-folder" data-problem={f.problem ? "1" : undefined} title={f.path}>
               <FolderOpen />
-              <span className="msg-folder-text">{f.problem ? `Didn't list ${f.path}: ${f.problem}` : `Found ${f.files === 1 ? "1 file" : `${f.files} files`}${f.folders ? ` and ${f.folders === 1 ? "1 folder" : `${f.folders} folders`}` : ""} in ${f.path}`}</span>
+              <span className="msg-folder-text">
+                {f.problem
+                  ? `Didn't list ${f.path}: ${f.problem}`
+                  : `Found ${f.files === 1 ? "1 file" : `${f.files} files`}${f.folders ? ` and ${f.folders === 1 ? "1 folder" : `${f.folders} folders`}` : ""} in ${f.path}`}
+              </span>
             </div>
           ))}
         </div>
@@ -161,7 +182,13 @@ function EditsFooter({ edits, undone }: { edits: ReadonlyArray<AgentEdit>; undon
   );
   return (
     <div className={`turn-edits ${open ? "open" : ""}`} data-testid="agent-edits" ref={box}>
-      <button className="turn-edits-label" data-testid="agent-edits-toggle" aria-expanded={open} onClick={() => setOpen(!open)} title={open ? "Hide the edits" : "Show every edit"}>
+      <button
+        className="turn-edits-label"
+        data-testid="agent-edits-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        title={open ? "Hide the edits" : "Show every edit"}
+      >
         <PencilLine />
         {edits.length === 1 ? "1 edit" : `${edits.length} edits`}
         {undone ? ", undone" : ""}
@@ -189,7 +216,13 @@ function ManualNote({ note }: { note: string }) {
           </div>
         ) : (
           <div key={i} className="manual-note-imports">
-            <button className="manual-note-line manual-note-toggle" data-testid="agent-note-imports" aria-expanded={open} title={open ? "Hide the files" : "Show the files"} onClick={() => setOpen(!open)}>
+            <button
+              className="manual-note-line manual-note-toggle"
+              data-testid="agent-note-imports"
+              aria-expanded={open}
+              title={open ? "Hide the files" : "Show the files"}
+              onClick={() => setOpen(!open)}
+            >
               {open ? <ChevronDown /> : <ChevronRight />}
               {line.text}
             </button>
@@ -212,15 +245,17 @@ function ManualNote({ note }: { note: string }) {
 /** The little markdown agents write: paragraphs, "- " bullets, **bold**, `code` and ``` code blocks (#49: each with a Copy button, like the reply). */
 function Reply({ text, live = false }: { text: string; live?: boolean }) {
   const inline = (s: string): ReactNode =>
-    s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
-        <b key={i}>{part.slice(2, -2)}</b>
-      ) : part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
-        <code key={i}>{part.slice(1, -1)}</code>
-      ) : (
-        <Fragment key={i}>{part}</Fragment>
-      ),
-    );
+    s
+      .split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+      .map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+          <b key={i}>{part.slice(2, -2)}</b>
+        ) : part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
+          <code key={i}>{part.slice(1, -1)}</code>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        ),
+      );
   const prose = (chunk: string, at: number) =>
     chunk
       .split(/\n{2,}/)

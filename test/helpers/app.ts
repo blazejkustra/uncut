@@ -1,8 +1,21 @@
 // Launches an Uncut desktop build with DevTools exposed and connects puppeteer to its window.
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { TEST_DISPLAY_ARGS } from "../../apps/desktop/src/background.ts";
 
@@ -59,7 +72,10 @@ export interface LockHolder {
   file?: string;
 }
 
-export function inspectLock(path = LOCK, quick = false): { exists: false; holder?: undefined; stale?: undefined } | { exists: true; holder: LockHolder | undefined; stale: boolean } {
+export function inspectLock(
+  path = LOCK,
+  quick = false,
+): { exists: false; holder?: undefined; stale?: undefined } | { exists: true; holder: LockHolder | undefined; stale: boolean } {
   let text: string;
   let mtime: number;
   try {
@@ -123,7 +139,9 @@ const dropTicket = () => {
 function liveTickets(queue: string) {
   let names: Array<string>;
   try {
-    names = readdirSync(queue).filter((n) => n.endsWith(".ticket")).sort();
+    names = readdirSync(queue)
+      .filter((n) => n.endsWith(".ticket"))
+      .sort();
   } catch {
     return [];
   }
@@ -187,7 +205,9 @@ export async function lockApps({ path = LOCK, timeoutMs = DEFAULT_LOCK_WAIT_MS }
             ? `held by pid ${holder.pid} (started ${holder.start ?? "?"}${holder.file ? `, ${holder.file}` : ""})`
             : "held by an unknown process"
           : `free, but the first in its queue (${join(queue, head ?? "?")}) never took it`;
-        throw new Error(`Waited ${Math.round(timeoutMs / 1000)} s for the Electron test lock (${path}), ${who} all that time. Remove the file if that process is not a test run.`);
+        throw new Error(
+          `Waited ${Math.round(timeoutMs / 1000)} s for the Electron test lock (${path}), ${who} all that time. Remove the file if that process is not a test run.`,
+        );
       }
       await sleep(200);
     }
@@ -328,7 +348,14 @@ export async function launchApp(options: LaunchOptions): Promise<LaunchedApp> {
   }
 }
 
-async function launchOnce({ command, args = [], env: extra = {}, port: requested, firstLaunch = false, cleanEnv = false }: LaunchOptions): Promise<LaunchedApp> {
+async function launchOnce({
+  command,
+  args = [],
+  env: extra = {},
+  port: requested,
+  firstLaunch = false,
+  cleanEnv = false,
+}: LaunchOptions): Promise<LaunchedApp> {
   const port = requested ?? (await freePort());
   // Background by default so test runs don't pop windows over the user's work; UNCUT_TEST_VISIBLE=1 to watch.
   const background = process.env.UNCUT_TEST_VISIBLE === "1" ? {} : { UNCUT_TEST_BACKGROUND: "1" };
@@ -336,7 +363,15 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   // screen, permission states from UNCUT_TEST_MEDIA_ACCESS: a test never opens a real device.
   // No preview proxies (D212) unless a test asks (UNCUT_PROXIES: "on"): no extra ffmpeg runs, original pixels.
   // No telemetry (D223) unless a test asks: a build made with the CI token must not report test runs.
-  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, UNCUT_TELEMETRY: "off", UNCUT_PROXIES: "off", UNCUT_TEST_MEDIA: "fake", ...extra, UNCUT_CDP: String(port) };
+  const env: NodeJS.ProcessEnv = {
+    ...(cleanEnv ? {} : process.env),
+    ...background,
+    UNCUT_TELEMETRY: "off",
+    UNCUT_PROXIES: "off",
+    UNCUT_TEST_MEDIA: "fake",
+    ...extra,
+    UNCUT_CDP: String(port),
+  };
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));
@@ -390,7 +425,10 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
         throw new LaunchFailure(`Uncut didn't start: ${how} ${after}.${printed()}`, ended.code === 0 && !ended.signal);
       }
       if (Date.now() - startedAt > CONNECT_TIMEOUT_MS) {
-        throw new LaunchFailure(`Uncut didn't start: no DevTools port ${port} after ${CONNECT_TIMEOUT_MS / 1000} s, and it's still running (pid ${proc.pid}).${printed()}`, true);
+        throw new LaunchFailure(
+          `Uncut didn't start: no DevTools port ${port} after ${CONNECT_TIMEOUT_MS / 1000} s, and it's still running (pid ${proc.pid}).${printed()}`,
+          true,
+        );
       }
       await sleep(200);
       browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}`, defaultViewport: null }).catch(() => null);

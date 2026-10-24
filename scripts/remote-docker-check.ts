@@ -82,7 +82,11 @@ function ensureServerBuilt(log: (l: string) => void) {
 /** The build context: what the image needs, at the repo-relative paths config.ts expects in development. */
 function stageContext(ctx: string) {
   const opt = join(ctx, "opt", "uncut");
-  const copy = (rel: string, to = rel) => cpSync(resolve(rel), join(opt, to), { recursive: true, filter: (src) => !src.includes("node_modules") && !src.endsWith(".map") && !src.endsWith(".DS_Store") });
+  const copy = (rel: string, to = rel) =>
+    cpSync(resolve(rel), join(opt, to), {
+      recursive: true,
+      filter: (src) => !src.includes("node_modules") && !src.endsWith(".map") && !src.endsWith(".DS_Store"),
+    });
   copy("apps/server/dist/server.mjs");
   copy("apps/server/dist/mcp.mjs");
   copy("apps/desktop/dist/main.cjs");
@@ -145,18 +149,57 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     const ctx = join(root, "context");
     stageContext(ctx);
     log(`building ${IMAGE} (cached after the first run) ...`);
-    const build = spawnSync("docker", ["build", "-q", "-t", IMAGE, "--label", `${LABEL}=1`, "-f", join(ctx, "scripts/remote-docker/Dockerfile"), ctx], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const build = spawnSync("docker", ["build", "-q", "-t", IMAGE, "--label", `${LABEL}=1`, "-f", join(ctx, "scripts/remote-docker/Dockerfile"), ctx], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
     if (build.status !== 0) throw new Error(`docker build failed:\n${build.stderr.slice(-4000)}`);
 
-    execFileSync("docker", ["run", "-d", "--name", container, "--label", `${LABEL}=${id}`, "-p", "127.0.0.1::22", "-e", `AUTHORIZED_KEY=${readFileSync(`${key}.pub`, "utf8").trim()}`, IMAGE], { stdio: "ignore" });
+    execFileSync(
+      "docker",
+      [
+        "run",
+        "-d",
+        "--name",
+        container,
+        "--label",
+        `${LABEL}=${id}`,
+        "-p",
+        "127.0.0.1::22",
+        "-e",
+        `AUTHORIZED_KEY=${readFileSync(`${key}.pub`, "utf8").trim()}`,
+        IMAGE,
+      ],
+      { stdio: "ignore" },
+    );
     containerStarted = true;
     const published = execFileSync("docker", ["port", container, "22/tcp"], { encoding: "utf8" }).trim().split("\n")[0]!;
     const sshPort = Number(published.split(":").at(-1));
     check(published.startsWith("127.0.0.1:") && sshPort > 0, `sshd published on ${published} only`);
 
-    const sshArgs = ["-F", "/dev/null", "-i", key, "-o", "IdentitiesOnly=yes", "-o", `UserKnownHostsFile=${knownHosts}`, "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=5", "-p", String(sshPort)];
+    const sshArgs = [
+      "-F",
+      "/dev/null",
+      "-i",
+      key,
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      `UserKnownHostsFile=${knownHosts}`,
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "LogLevel=ERROR",
+      "-o",
+      "ConnectTimeout=5",
+      "-p",
+      String(sshPort),
+    ];
     const target = "uncut@127.0.0.1";
-    const ssh = (command: string, input?: string) => execFileSync("ssh", [...sshArgs, target, command], { encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    const ssh = (command: string, input?: string) =>
+      execFileSync("ssh", [...sshArgs, target, command], { encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     for (let i = 0; ; i++) {
       try {
         ssh("true");
@@ -208,17 +251,24 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     check(mode[0] === "600" && mode[1] === "700", `token file 0600, data dir 0700 (${mode.join(", ")})`);
     if (pairing) {
       const url = new URL(pairing.replace("uncut://", "http://")).searchParams.get("url");
-      gap(`the printed pairing line says ${url}: the remote's own loopback port, which pairs only when the tunnel's local port is the same (here ${REMOTE_PORT} there, a different one here); the Add form needs the tunnel's address`);
+      gap(
+        `the printed pairing line says ${url}: the remote's own loopback port, which pairs only when the tunnel's local port is the same (here ${REMOTE_PORT} there, a different one here); the Add form needs the tunnel's address`,
+      );
     }
 
     // D111's second command: the tunnel, on a free local port different from the remote one.
     const localPort = await freeLocalPort(REMOTE_PORT);
-    const tunnel = spawn("ssh", [...sshArgs, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `${localPort}:127.0.0.1:${REMOTE_PORT}`, target], { stdio: ["ignore", "ignore", "pipe"] });
+    const tunnel = spawn("ssh", [...sshArgs, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `${localPort}:127.0.0.1:${REMOTE_PORT}`, target], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
     spawned.push(tunnel);
     const base = `http://127.0.0.1:${localPort}`;
     // Ready when the remote answers 401 to a request without a token (not counted against this address, D110).
     for (let i = 0; ; i++) {
-      const status = await fetch(`${base}/api/ping`).then((r) => r.status, () => 0);
+      const status = await fetch(`${base}/api/ping`).then(
+        (r) => r.status,
+        () => 0,
+      );
       if (status === 401) break;
       if (i > 100 || tunnel.exitCode !== null) throw new Error(`the tunnel to ${base} never answered (last status ${status})`);
       await sleep(100);
@@ -226,7 +276,10 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     check(true, `tunnel ssh -N -L ${localPort}:127.0.0.1:${REMOTE_PORT} answers at ${base}`);
 
     // Through the tunnel only from here on.
-    check((await fetch(`${base}/api/ping`, { headers: { authorization: "Bearer not-the-right-token-at-all" } })).status === 401, "a wrong token is refused (401)");
+    check(
+      (await fetch(`${base}/api/ping`, { headers: { authorization: "Bearer not-the-right-token-at-all" } })).status === 401,
+      "a wrong token is refused (401)",
+    );
     const wrong = await pingServer(base, "not-the-right-token-either");
     check(!wrong.ok && /refused the token/.test(wrong.message), `Test connection with a wrong token: "${wrong.ok ? "ok" : wrong.message}"`);
     const ping = await pingServer(base, token);
@@ -236,25 +289,61 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     relay = await startRelay({ target: base, token });
     client = await connect(relay.port, relay.token);
     const hello = await client.ok("server.hello", {});
-    check(hello.home === "/home/uncut" && hello.hostname === hostname, `server.hello through the relay: home ${hello.home}, host ${hello.hostname}, node ${hello.node}, media core ${hello.mediaCore?.version}`);
+    check(
+      hello.home === "/home/uncut" && hello.hostname === hostname,
+      `server.hello through the relay: home ${hello.home}, host ${hello.hostname}, node ${hello.node}, media core ${hello.mediaCore?.version}`,
+    );
     check(hello.defaultParentDir === "/home/uncut", `New project's default folder there: ${hello.defaultParentDir}`);
     const listing = await client.ok("files.list", {});
-    check(listing.dir === "/home/uncut" && Array.isArray(listing.entries), `files.list of the remote home: ${listing.entries.map((e: { name: string }) => e.name).join(", ") || "(empty)"}`);
+    check(
+      listing.dir === "/home/uncut" && Array.isArray(listing.entries),
+      `files.list of the remote home: ${listing.entries.map((e: { name: string }) => e.name).join(", ") || "(empty)"}`,
+    );
 
     const jobs = client.subscribe("media.jobs");
     const exports = client.subscribe("export.jobs");
     const agent = client.subscribe("agent.subscribe");
     const snap = await client.ok("project.create", { parentDir: hello.home, name: "Remote cut" });
     const dir = snap.dir as string;
-    check(dir === "/home/uncut/Remote cut.uncut" && ssh(`test -f ${shellQuote(`${dir}/project.json`)} && echo yes`).trim() === "yes", `project created in the remote home: ${dir}`);
+    check(
+      dir === "/home/uncut/Remote cut.uncut" && ssh(`test -f ${shellQuote(`${dir}/project.json`)} && echo yes`).trim() === "yes",
+      `project created in the remote home: ${dir}`,
+    );
     const again = await client.ok("files.list", { dir: hello.home });
-    check(again.entries.some((e: { name: string; project?: boolean }) => e.name === "Remote cut.uncut" && e.project), "files.list marks it as a project");
+    check(
+      again.entries.some((e: { name: string; project?: boolean }) => e.name === "Remote cut.uncut" && e.project),
+      "files.list marks it as a project",
+    );
 
     // A clip made here, uploaded through the relay and the tunnel.
     const clip = join(root, "drone take.mp4");
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:d=2", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc=size=640x360:rate=30:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=330:sample_rate=48000:duration=2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+      clip,
+    ]);
     const bytes = readFileSync(clip);
-    const uploadRes = await fetch(`${relay.httpBase}/api/upload?name=${encodeURIComponent("drone take.mp4")}&token=${relay.token}`, { method: "POST", body: bytes, headers: { "content-type": "application/octet-stream" } });
+    const uploadRes = await fetch(`${relay.httpBase}/api/upload?name=${encodeURIComponent("drone take.mp4")}&token=${relay.token}`, {
+      method: "POST",
+      body: bytes,
+      headers: { "content-type": "application/octet-stream" },
+    });
     const up = (await uploadRes.json()) as { path?: string };
     const uploaded = `${dir}/media/uploads/drone take.mp4`;
     check(uploadRes.status === 200 && up.path === uploaded, `upload: ${uploadRes.status} ${up.path}`);
@@ -263,35 +352,69 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     await jobs.until((list) => list.some((j: { id: string; phase: string }) => j.id === importJob && ["done", "failed"].includes(j.phase)), 60000);
     const importPhase = jobs.values.at(-1)?.find((j: { id: string }) => j.id === importJob);
     const media = (await client.ok("project.get", {})).project.media[0];
-    check(importPhase?.phase === "done" && media?.path === "media/uploads/drone take.mp4" && media?.probe?.frames > 0, `imported on the server (ffprobe there): ${media?.path}, ${media?.probe?.width}x${media?.probe?.height}, ${media?.probe?.frames} frames`);
-    await client.ok("project.edit", { ops: [{ op: "insert_item", track: "main", item: { id: "c1", type: "clip", media: media.id, in: 0, duration: Math.min(60, media.probe.frames) } }], summary: "clip" });
+    check(
+      importPhase?.phase === "done" && media?.path === "media/uploads/drone take.mp4" && media?.probe?.frames > 0,
+      `imported on the server (ffprobe there): ${media?.path}, ${media?.probe?.width}x${media?.probe?.height}, ${media?.probe?.frames} frames`,
+    );
+    await client.ok("project.edit", {
+      ops: [{ op: "insert_item", track: "main", item: { id: "c1", type: "clip", media: media.id, in: 0, duration: Math.min(60, media.probe.frames) } }],
+      summary: "clip",
+    });
     const onTimeline = (await client.ok("project.get", {})).project.tracks.some((t: { items: Array<{ id: string }> }) => t.items.some((i) => i.id === "c1"));
     check(onTimeline, "the clip is on the timeline");
 
     // One scripted agent turn, run by the server there (its claude, its MCP bridge).
-    ssh('cat > "$HOME/plan.json"', JSON.stringify([[
-      { tool: "project_read", args: {} },
-      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A title", ops: [{ op: "insert_text", look: "text.big-title", text: "Made in a container", start: 0, duration: 45, id: "title" }] } },
-      { text: "Added a title over the start." },
-    ]]));
+    ssh(
+      'cat > "$HOME/plan.json"',
+      JSON.stringify([
+        [
+          { tool: "project_read", args: {} },
+          {
+            tool: "timeline_edit",
+            args: {
+              baseRevision: "$rev",
+              summary: "A title",
+              ops: [{ op: "insert_text", look: "text.big-title", text: "Made in a container", start: 0, duration: 45, id: "title" }],
+            },
+          },
+          { text: "Added a title over the start." },
+        ],
+      ]),
+    );
     ssh(': > "$HOME/results.jsonl"; : > "$HOME/prompts.jsonl"');
     await agent.until((s) => s?.dir === dir, 20000);
     const { turnId } = await client.ok("agent.send", { prompt: "Put a title over the start" });
     await agent.until((s) => s?.turns?.some((t: { id: string; status: string }) => t.id === turnId && t.status !== "running"), 120000);
     const turn = agent.values.at(-1).turns.find((t: { id: string }) => t.id === turnId);
-    const results = ssh('cat "$HOME/results.jsonl"').trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { tool: string; result: { isError?: boolean } });
+    const results = ssh('cat "$HOME/results.jsonl"')
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { tool: string; result: { isError?: boolean } });
     const hasTitle = (await client.ok("project.get", {})).project.tracks.some((t: { items: Array<{ id: string }> }) => t.items.some((i) => i.id === "title"));
-    check(turn.status === "done" && results.length >= 2 && results.every((r) => !r.result.isError) && hasTitle, `agent turn ${turn.status}${turn.error ? ` (${turn.error})` : ""}: ${results.map((r) => r.tool).join(", ")}; the title is in the project`);
+    check(
+      turn.status === "done" && results.length >= 2 && results.every((r) => !r.result.isError) && hasTitle,
+      `agent turn ${turn.status}${turn.error ? ` (${turn.error})` : ""}: ${results.map((r) => r.tool).join(", ")}; the title is in the project`,
+    );
 
     // Export without a rasteriser: what a Linux server does out of the box.
     const output = "/home/uncut/Remote cut.mp4";
     const runExport = async () => {
       const started = await client!.ok("export.start", { output, quality: "draft", loudness: "off" });
-      await exports.until((list) => list.some((j: { id: string; phase: string }) => j.id === started.jobId && ["done", "failed", "cancelled"].includes(j.phase)), 300000);
-      return { jobId: started.jobId as string, job: exports.values.at(-1).find((j: { id: string }) => j.id === started.jobId) as { phase: string; error?: string } };
+      await exports.until(
+        (list) => list.some((j: { id: string; phase: string }) => j.id === started.jobId && ["done", "failed", "cancelled"].includes(j.phase)),
+        300000,
+      );
+      return {
+        jobId: started.jobId as string,
+        job: exports.values.at(-1).find((j: { id: string }) => j.id === started.jobId) as { phase: string; error?: string },
+      };
     };
     const first = await runExport();
-    if (first.job.phase === "failed") gap(`export on a Linux server without UNCUT_RENDER_BIN fails before any frame: "${first.job.error}" (every export starts the Electron rasteriser, even with no text, for the background)`);
+    if (first.job.phase === "failed")
+      gap(
+        `export on a Linux server without UNCUT_RENDER_BIN fails before any frame: "${first.job.error}" (every export starts the Electron rasteriser, even with no text, for the background)`,
+      );
     else check(true, "export without a rasteriser configured (unexpected: it worked)");
 
     // Closing the ssh session that started the server: does the server go with it?
@@ -301,7 +424,10 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     await new Promise((r) => (server.proc.exitCode !== null ? r(undefined) : server.proc.once("exit", r)));
     await sleep(1500);
     const survivors = ssh(`pgrep -f ${shellQuote(SERVER_PATTERN)} || true`).trim();
-    if (survivors) gap(`closing the ssh session that started the server leaves it running there (pid ${survivors.replace(/\n/g, ", ")}): no pty, so no SIGHUP; stopped with pkill`);
+    if (survivors)
+      gap(
+        `closing the ssh session that started the server leaves it running there (pid ${survivors.replace(/\n/g, ", ")}): no pty, so no SIGHUP; stopped with pkill`,
+      );
     else check(true, "closing the ssh session stopped the server there");
     ssh(`pkill -f ${shellQuote(SERVER_PATTERN)} || true`);
     for (let i = 0; i < 50 && ssh(`pgrep -f ${shellQuote(SERVER_PATTERN)} || true`).trim(); i++) await sleep(100);
@@ -309,17 +435,32 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
     // Start it again with Electron as the rasteriser (on the container's Xvfb display).
     log("restarting the server over ssh with UNCUT_RENDER_BIN=Electron on Xvfb ...");
     server = await startServer(true);
-    check(ssh('cat "$HOME/.uncut-server/server-token"').trim() === token && server.stderr().includes(token), "after a restart the server keeps its token (same pairing)");
+    check(
+      ssh('cat "$HOME/.uncut-server/server-token"').trim() === token && server.stderr().includes(token),
+      "after a restart the server keeps its token (same pairing)",
+    );
     for (let i = 0; i < 50; i++) {
-      if ((await fetch(`${base}/api/ping`).then((r) => r.status, () => 0)) === 401) break;
+      if (
+        (await fetch(`${base}/api/ping`).then(
+          (r) => r.status,
+          () => 0,
+        )) === 401
+      )
+        break;
       await sleep(100);
     }
     client = await connect(relay.port, relay.token);
     const exports2 = client.subscribe("export.jobs");
     const reopened = await client.ok("project.open", { dir });
-    check(reopened.project.tracks.some((t: { items: Array<{ id: string }> }) => t.items.some((i) => i.id === "title")), "project.open over the same tunnel and relay after the restart");
+    check(
+      reopened.project.tracks.some((t: { items: Array<{ id: string }> }) => t.items.some((i) => i.id === "title")),
+      "project.open over the same tunnel and relay after the restart",
+    );
     const started = await client.ok("export.start", { output, quality: "draft", loudness: "off" });
-    await exports2.until((list) => list.some((j: { id: string; phase: string }) => j.id === started.jobId && ["done", "failed", "cancelled"].includes(j.phase)), 300000);
+    await exports2.until(
+      (list) => list.some((j: { id: string; phase: string }) => j.id === started.jobId && ["done", "failed", "cancelled"].includes(j.phase)),
+      300000,
+    );
     const job = exports2.values.at(-1).find((j: { id: string }) => j.id === started.jobId) as { phase: string; error?: string };
     check(job.phase === "done", `export on the server with Electron as the rasteriser: ${job.phase}${job.error ? ` (${job.error})` : ""}`);
     if (job.phase === "done") {
@@ -328,17 +469,33 @@ export async function remoteDockerCheck(options: CheckOptions = {}): Promise<Che
       const local = join(root, "Remote cut.mp4");
       writeFileSync(local, downloaded);
       const there = remoteSha(output);
-      check(res.status === 200 && sha256(downloaded) === there, `download via /api/export: ${downloaded.length} bytes, sha256 ${sha256(downloaded).slice(0, 16)}… = ssh sha256sum ${there?.slice(0, 16)}…`);
-      const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", local], { encoding: "utf8" }));
+      check(
+        res.status === 200 && sha256(downloaded) === there,
+        `download via /api/export: ${downloaded.length} bytes, sha256 ${sha256(downloaded).slice(0, 16)}… = ssh sha256sum ${there?.slice(0, 16)}…`,
+      );
+      const probe = JSON.parse(
+        execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", local], { encoding: "utf8" }),
+      );
       const video = probe.streams.find((s: { codec_type: string }) => s.codec_type === "video");
-      check(!!video && Number(probe.format.duration) > 1.5, `the download plays: ${video?.width}x${video?.height}, ${Number(probe.format.duration).toFixed(2)} s`);
+      check(
+        !!video && Number(probe.format.duration) > 1.5,
+        `the download plays: ${video?.width}x${video?.height}, ${Number(probe.format.duration).toFixed(2)} s`,
+      );
       // The title was drawn: a frame inside it (0.8 s, after its entrance) differs from the same frame of the clip alone.
-      const frame = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-ss", "0.8", "-i", file, "-vf", `scale=${video.width}:${video.height}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"], { maxBuffer: 64 * 1024 * 1024 });
+      const frame = (file: string) =>
+        execFileSync(
+          "ffmpeg",
+          ["-v", "error", "-ss", "0.8", "-i", file, "-vf", `scale=${video.width}:${video.height}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+          { maxBuffer: 64 * 1024 * 1024 },
+        );
       const a = frame(local);
       const b = frame(clip);
       let diff = 0;
       for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > 40) diff++;
-      check(diff > a.length * 0.005, `the title is in the exported picture (${((diff / a.length) * 100).toFixed(1)}% of the frame at 0.8 s differs from the clip)`);
+      check(
+        diff > a.length * 0.005,
+        `the title is in the exported picture (${((diff / a.length) * 100).toFixed(1)}% of the frame at 0.8 s differs from the clip)`,
+      );
     }
 
     if (options.app) {
@@ -395,7 +552,10 @@ interface AppPage {
   screenshot(options: { path: string }): Promise<unknown>;
 }
 interface AppHelpers {
-  launchApp(options: { command: string; env: Record<string, string> }): Promise<{ page: AppPage; errors: Array<string>; output: () => string; close: () => Promise<void> }>;
+  launchApp(options: {
+    command: string;
+    env: Record<string, string>;
+  }): Promise<{ page: AppPage; errors: Array<string>; output: () => string; close: () => Promise<void> }>;
   lockApps(): Promise<void>;
   unlockApps(): void;
   waitForWelcome(page: AppPage): Promise<unknown>;
@@ -454,12 +614,18 @@ async function appCheck(c: {
     await page.type("[data-testid=env-add-url]", line);
     await page.click("[data-testid=env-add-test]");
     await waitFor("[data-testid=env-add-result]");
-    const tested = await page.$eval("[data-testid=env-add-result]", (el: { dataset: { ok?: string }; textContent: string }) => ({ ok: el.dataset.ok, text: el.textContent.trim() }));
+    const tested = await page.$eval("[data-testid=env-add-result]", (el: { dataset: { ok?: string }; textContent: string }) => ({
+      ok: el.dataset.ok,
+      text: el.textContent.trim(),
+    }));
     c.check(tested.ok === "true", `app: Test connection through the tunnel: ${tested.text}`);
     await page.click("[data-testid=env-add-save]");
     await waitFor("[data-testid=env-row][data-kind=remote]");
     await page.click("[data-testid=env-row][data-kind=remote] [data-testid=env-switch]");
-    await page.waitForFunction('document.querySelector("[data-testid=env-chip]")?.dataset.kind === "remote" && document.querySelector("[data-testid=env-chip]")?.dataset.state === "connected"', { timeout: 30000 });
+    await page.waitForFunction(
+      'document.querySelector("[data-testid=env-chip]")?.dataset.kind === "remote" && document.querySelector("[data-testid=env-chip]")?.dataset.state === "connected"',
+      { timeout: 30000 },
+    );
     await waitFor("[data-testid=welcome]");
     const lead = await page.$eval("[data-testid=welcome-lead]", (el: { textContent: string }) => el.textContent.trim());
     c.check(/Docker/.test(lead), `app: switched to the container ("${lead}")`);
@@ -472,7 +638,9 @@ async function appCheck(c: {
     c.check(/home\/uncut|~/.test(dirShown), `app: the remote browser lists the container's home (${dirShown}): test-output/remote-docker-browser.png`);
     await page.click("[data-testid=remote-browser-choose]");
     await waitFor("[data-testid=editor]");
-    await page.waitForFunction('[...document.querySelectorAll("video")].some((v) => v.src.startsWith("http://127.0.0.1:") && v.readyState >= 2)', { timeout: 30000 }).catch(() => undefined);
+    await page
+      .waitForFunction('[...document.querySelectorAll("video")].some((v) => v.src.startsWith("http://127.0.0.1:") && v.readyState >= 2)', { timeout: 30000 })
+      .catch(() => undefined);
     await sleep(1000);
     await page.screenshot({ path: "test-output/remote-docker-editor.png" });
     const project = await page.$eval("[data-testid=project-dir]", (el: { title: string }) => el.title);
@@ -503,6 +671,8 @@ if (import.meta.main) {
   const started = Date.now();
   const result = await remoteDockerCheck({ app: args.includes("--app"), clean: args.includes("--clean"), keep: args.includes("--keep") });
   const count = (o: Outcome) => result.checks.filter((c) => c.outcome === o).length;
-  console.log(`\n${result.ok ? "PASS" : "FAIL"}: ${count("PASS")} passed, ${count("FAIL")} failed, ${count("GAP")} gaps (${((Date.now() - started) / 1000).toFixed(0)} s)`);
+  console.log(
+    `\n${result.ok ? "PASS" : "FAIL"}: ${count("PASS")} passed, ${count("FAIL")} failed, ${count("GAP")} gaps (${((Date.now() - started) / 1000).toFixed(0)} s)`,
+  );
   process.exit(result.ok ? 0 : 1);
 }

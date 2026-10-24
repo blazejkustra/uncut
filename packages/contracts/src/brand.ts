@@ -10,7 +10,12 @@ export type BrandColor = typeof BrandColor.Type;
  * font file in the kit's folder (.woff2, .woff, .ttf, .otf) that graphics, texts and components
  * load (preview, export, render_frames); without one the family must be bundled or installed.
  */
-export const BrandFont = Schema.Struct({ family: Schema.String, role: Schema.String, weight: Schema.optional(Schema.Number), file: Schema.optional(Schema.String) });
+export const BrandFont = Schema.Struct({
+  family: Schema.String,
+  role: Schema.String,
+  weight: Schema.optional(Schema.Number),
+  file: Schema.optional(Schema.String),
+});
 export type BrandFont = typeof BrandFont.Type;
 /**
  * A style guide (U17): the grammar of a look, not its content. Usually written by the agent from
@@ -91,5 +96,10 @@ export class BrandError extends Schema.TaggedError<BrandError>()("BrandError", {
 }) {}
 // Copies a file (a logo, an example frame) into a kit's folder; returns the state with the file's name in the kit's files.
 /** D198: logos and fonts from a file, a folder or an https address into a kit's folder (kit.json unchanged: the editor's draft takes them). */
-export const BrandImported = Schema.Struct({ name: Schema.String, kind: Schema.Literals(["logo", "font"]), slot: Schema.optional(Schema.Literals(["light", "dark", "mark"])), family: Schema.optional(Schema.String) });
+export const BrandImported = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["logo", "font"]),
+  slot: Schema.optional(Schema.Literals(["light", "dark", "mark"])),
+  family: Schema.optional(Schema.String),
+});
 export type BrandImported = typeof BrandImported.Type;

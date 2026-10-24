@@ -81,9 +81,9 @@ test("Find beats in the inspector, ticks on the audio item, a dragged title and 
 
   // Select the music: the inspector offers Find beats; it runs the job and shows the tempo.
   await page.click('[data-item="song"] .nm');
-  await waitFor('[data-testid=insp-beats][data-state=none]');
+  await waitFor("[data-testid=insp-beats][data-state=none]");
   await page.click("[data-testid=insp-find-beats]");
-  await waitFor('[data-testid=insp-beats][data-state=done]', 30000);
+  await waitFor("[data-testid=insp-beats][data-state=done]", 30000);
   assert.equal(await page.$eval("[data-testid=insp-beats-summary]", (el) => el.textContent), "120 BPM, 20 beats");
   // The cached result the timeline draws.
   const folder = readdirSync(join(dir, ".cache", "analysis"))[0]!;
@@ -93,7 +93,11 @@ test("Find beats in the inspector, ticks on the audio item, a dragged title and 
 
   // Ticks on the audio item, one per beat, the first at frame 6.
   await waitFor('[data-item="song"] [data-testid=beat-ticks]');
-  const ticks = await page.$eval('[data-item="song"] [data-testid=beat-ticks]', (el) => ({ count: Number((el as SVGElement).dataset.count), first: Number((el as SVGElement).dataset.first), path: el.querySelector("path")!.getAttribute("d") }));
+  const ticks = await page.$eval('[data-item="song"] [data-testid=beat-ticks]', (el) => ({
+    count: Number((el as SVGElement).dataset.count),
+    first: Number((el as SVGElement).dataset.first),
+    path: el.querySelector("path")!.getAttribute("d"),
+  }));
   assert.equal(ticks.count, 20);
   assert.equal(ticks.first, 6);
   const scale = await ppf();
@@ -115,13 +119,19 @@ test("Find beats in the inspector, ticks on the audio item, a dragged title and 
   assert.equal(await page.$eval("[data-testid=snap-line]", (el) => Number((el as HTMLElement).dataset.frame)), 111, "the snap line on the beat");
   await page.screenshot({ path: "test-output/beats-snap.png" });
   await page.mouse.up();
-  await page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) > r, { timeout: 10000 }, rev);
+  await page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) > r,
+    { timeout: 10000 },
+    rev,
+  );
   assert.equal(title().start, 111);
 
   // The playhead: a click on the ruler a frame before a beat lands on it; with ⌘ it doesn't.
   const ruler = await box("[data-testid=ruler]");
   await page.mouse.click(ruler.x + 50 * scale + 1, ruler.y + ruler.height / 2);
-  await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) === 51, { timeout: 5000 }).catch(() => {});
+  await page
+    .waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) === 51, { timeout: 5000 })
+    .catch(() => {});
   assert.equal(await playheadFrame(), 51, "snapped to the beat at 51");
   await page.keyboard.down("Meta");
   await page.mouse.click(ruler.x + 50 * scale + 1, ruler.y + ruler.height / 2);

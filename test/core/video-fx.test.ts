@@ -62,7 +62,13 @@ function project(effects?: Item["effects"], extra: Partial<Item> = {}): Project 
       { id: "m-s", kind: "audio", name: "S.m4a", path: "/s.m4a", probe: { frames: 300, fps: 30, hasAudio: true } },
     ],
     tracks: [
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m-a", in: 0, duration: 90, ...(effects ? { effects } : {}), ...extra }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "c1", type: "clip", media: "m-a", in: 0, duration: 90, ...(effects ? { effects } : {}), ...extra }],
+      },
       { id: "a", kind: "audio", name: "Audio", items: [{ id: "s1", type: "audio", media: "m-s", start: 0, duration: 90 }] },
     ],
   };
@@ -75,28 +81,48 @@ test("D136: every effect, the look and Adjust have a manifest whose params are t
     assert.equal(m.name, e.name);
     assert.deepEqual(validateModule(m), [], e.id);
     const props = m.params.properties as Record<string, { minimum: number; maximum: number; default: number }>;
-    assert.deepEqual(Object.keys(props), e.params.map((p) => p.key), e.id);
-    for (const p of e.params) assert.deepEqual([props[p.key]!.minimum, props[p.key]!.maximum, props[p.key]!.default], [p.min, p.max, p.default], `${e.id} ${p.key}`);
+    assert.deepEqual(
+      Object.keys(props),
+      e.params.map((p) => p.key),
+      e.id,
+    );
+    for (const p of e.params)
+      assert.deepEqual([props[p.key]!.minimum, props[p.key]!.maximum, props[p.key]!.default], [p.min, p.max, p.default], `${e.id} ${p.key}`);
   }
   const look = json("spec/modules/builtin/effect.look.json");
   assert.deepEqual(validateModule(look), []);
-  assert.deepEqual(look.params.then.properties.look.enum, LOOKS.map((l) => l.id));
+  assert.deepEqual(
+    look.params.then.properties.look.enum,
+    LOOKS.map((l) => l.id),
+  );
   const color = json("spec/modules/builtin/effect.color.json");
-  assert.deepEqual(Object.keys(color.params.properties), ADJUST_INFO.map((a) => a.key));
+  assert.deepEqual(
+    Object.keys(color.params.properties),
+    ADJUST_INFO.map((a) => a.key),
+  );
   assert.equal(new Set(LOOKS.map((l) => l.id)).size, LOOKS.length);
   assert.ok(LOOKS.length >= 14 && EFFECTS.length >= 13);
 });
 
 test("D136: projects with looks and effects validate; a wrong look or param is refused; old projects are unchanged", async () => {
   const modules = await loadModules("spec/modules/builtin");
-  const all: Item["effects"] = [{ module: "effect.look", params: { look: "teal-orange", intensity: 0.7 } }, { module: "effect.color", params: { exposure: 0.4, vibrance: -0.2 } }, ...EFFECTS.map((e) => ({ module: e.id, ...(e.params.length ? { params: Object.fromEntries(e.params.map((p) => [p.key, p.default])) } : {}) }))];
+  const all: Item["effects"] = [
+    { module: "effect.look", params: { look: "teal-orange", intensity: 0.7 } },
+    { module: "effect.color", params: { exposure: 0.4, vibrance: -0.2 } },
+    ...EFFECTS.map((e) => ({ module: e.id, ...(e.params.length ? { params: Object.fromEntries(e.params.map((p) => [p.key, p.default])) } : {}) })),
+  ];
   assert.deepEqual(validateProject(project(all), modules), []);
   assert.ok(validateProject(project([{ module: "effect.look", params: { look: "sparkly" } }]), modules).length > 0, "unknown look");
-  assert.deepEqual(validateProject(project([{ module: "effect.look", params: { look: "plugin.x.y", custom: { mono: 1 }, label: "Y" } }]), modules), [], "a custom look carries its definition");
+  assert.deepEqual(
+    validateProject(project([{ module: "effect.look", params: { look: "plugin.x.y", custom: { mono: 1 }, label: "Y" } }]), modules),
+    [],
+    "a custom look carries its definition",
+  );
   assert.ok(validateProject(project([{ module: "effect.blur", params: { amount: 500 } }]), modules).length > 0, "out of range");
   assert.ok(validateProject(project([{ module: "effect.color", params: { glow: 1 } }]), modules).length > 0, "unknown Adjust param");
   // The examples (drone-weekend's effect.color temperature and effect.stabilize) still open.
-  for (const name of ["drone-weekend", "drone-montage", "close-the-loop"]) assert.deepEqual(validateProject(json(`spec/examples/${name}.uncut/project.json`), modules), [], name);
+  for (const name of ["drone-weekend", "drone-montage", "close-the-loop"])
+    assert.deepEqual(validateProject(json(`spec/examples/${name}.uncut/project.json`), modules), [], name);
   // A clip without effects compiles to nothing; stabilize alone draws nothing.
   assert.equal(clipFx(project().tracks[0]!.items[0]!), undefined);
   assert.equal(clipFx({ type: "clip", effects: [{ module: "effect.stabilize", params: { smoothness: 0.5 } }] }), undefined);
@@ -104,7 +130,13 @@ test("D136: projects with looks and effects validate; a wrong look or param is r
 
 test("D136: colour maths: neutral is the identity, intensity mixes, B&W is grey, invert flips; the table reads back as trilinear", () => {
   const id = colourFn({});
-  for (const c of [[0, 0, 0], [1, 1, 1], [0.2, 0.5, 0.9], [0.73, 0.11, 0.4]] as const) assert.deepEqual(id(c[0], c[1], c[2]), c);
+  for (const c of [
+    [0, 0, 0],
+    [1, 1, 1],
+    [0.2, 0.5, 0.9],
+    [0.73, 0.11, 0.4],
+  ] as const)
+    assert.deepEqual(id(c[0], c[1], c[2]), c);
   const warm = LOOKS.find((l) => l.id === "warm")!.def;
   assert.deepEqual(colourFn({ look: { def: warm, intensity: 0 } })(0.3, 0.5, 0.7), [0.3, 0.5, 0.7]);
   const full = colourFn({ look: { def: warm, intensity: 1 } })(0.5, 0.5, 0.5);
@@ -115,8 +147,22 @@ test("D136: colour maths: neutral is the identity, intensity mixes, B&W is grey,
   assert.ok(Math.abs(bw[0] - bw[1]) < 1e-9 && Math.abs(bw[1] - bw[2]) < 1e-9);
   assert.deepEqual(colourFn({ invert: true })(0, 0.25, 1), [1, 0.75, 0]);
   // Every look changes a colourful set of pixels, and they differ from each other.
-  const probe = [[0.8, 0.3, 0.2], [0.2, 0.6, 0.9], [0.5, 0.5, 0.5], [0.1, 0.1, 0.15], [0.95, 0.9, 0.8]] as const;
-  const sig = LOOKS.map((l) => probe.map((p) => colourFn({ look: { def: l.def, intensity: 1 } })(p[0], p[1], p[2]).map((v) => v.toFixed(3)).join(",")).join(";"));
+  const probe = [
+    [0.8, 0.3, 0.2],
+    [0.2, 0.6, 0.9],
+    [0.5, 0.5, 0.5],
+    [0.1, 0.1, 0.15],
+    [0.95, 0.9, 0.8],
+  ] as const;
+  const sig = LOOKS.map((l) =>
+    probe
+      .map((p) =>
+        colourFn({ look: { def: l.def, intensity: 1 } })(p[0], p[1], p[2])
+          .map((v) => v.toFixed(3))
+          .join(","),
+      )
+      .join(";"),
+  );
   assert.equal(new Set(sig).size, LOOKS.length, "each look looks different");
   assert.ok(!sig.includes(probe.map((p) => p.map((v) => v.toFixed(3)).join(",")).join(";")), "no look is the identity");
   // Adjust: exposure brightens, saturation −1 is grey, temperature warms.
@@ -129,7 +175,15 @@ test("D136: colour maths: neutral is the identity, intensity mixes, B&W is grey,
   const fn = colourFn(spec);
   assert.equal(lut.data.length, 33 ** 3 * 3);
   assert.equal(colourLut(spec), lut, "cached");
-  for (const [r, g, b] of [[0, 0, 0], [16, 8, 31], [32, 32, 32]]) assert.deepEqual([...lutAt(lut, r! / 32, g! / 32, b! / 32)].map((v) => v.toFixed(5)), [...fn(r! / 32, g! / 32, b! / 32)].map((v) => v.toFixed(5)));
+  for (const [r, g, b] of [
+    [0, 0, 0],
+    [16, 8, 31],
+    [32, 32, 32],
+  ])
+    assert.deepEqual(
+      [...lutAt(lut, r! / 32, g! / 32, b! / 32)].map((v) => v.toFixed(5)),
+      [...fn(r! / 32, g! / 32, b! / 32)].map((v) => v.toFixed(5)),
+    );
   let worst = 0;
   for (let i = 0; i < 500; i++) {
     const c = [Math.random(), Math.random(), Math.random()] as const;
@@ -142,13 +196,25 @@ test("D136: colour maths: neutral is the identity, intensity mixes, B&W is grey,
   assert.equal(cube[1], "LUT_3D_SIZE 33");
   assert.equal(cube.filter((l) => /^[\d.]+ [\d.]+ [\d.]+$/.test(l)).length, 33 ** 3);
   // Posterize: flat bands, the top value in the top band.
-  assert.deepEqual([0, 0.19, 0.2, 0.5, 0.99, 1].map((v) => posterize(v, 5)), [0, 0, 0.25, 0.5, 1, 1]);
+  assert.deepEqual(
+    [0, 0.19, 0.2, 0.5, 0.99, 1].map((v) => posterize(v, 5)),
+    [0, 0, 0.25, 0.5, 1, 1],
+  );
 });
 
 const nil = () => ({ exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, vibrance: 0 });
 
 test("D136: a clip's effects compile in a fixed order; bypassed ones and other items draw nothing", () => {
-  const fx = clipFx({ type: "clip", effects: [{ module: "effect.invert" }, { module: "effect.sharpen", params: { amount: 0.61 } }, { module: "effect.blur", params: { amount: 4 }, bypass: true }, { module: "effect.vignette" }, { module: "effect.zoom-pulse" }] })!;
+  const fx = clipFx({
+    type: "clip",
+    effects: [
+      { module: "effect.invert" },
+      { module: "effect.sharpen", params: { amount: 0.61 } },
+      { module: "effect.blur", params: { amount: 4 }, bypass: true },
+      { module: "effect.vignette" },
+      { module: "effect.zoom-pulse" },
+    ],
+  })!;
   assert.deepEqual(fx.colour, { invert: true });
   assert.equal(fx.sharpen, 10 / 16, "sharpen in 1/16 steps (the export's convolution)");
   assert.equal(fx.blur, undefined, "bypassed");
@@ -172,7 +238,11 @@ test("D136: planners: one look per clip, Adjust patches and resets, effects adde
   assert.equal(apply(planSetLook(p, "c1", "warm")).summary, "Filter Warm on A.mp4");
   assert.equal(apply(planSetLook(p, "c1", "warm", { intensity: 0.8 })).summary, "Set Warm on A.mp4 to 80%");
   apply(planSetLook(p, "c1", "noir"));
-  assert.deepEqual(p.tracks[0]!.items[0]!.effects, [{ module: "effect.look", params: { look: "noir", intensity: 1 } }], "replaced, intensity back to full for another look");
+  assert.deepEqual(
+    p.tracks[0]!.items[0]!.effects,
+    [{ module: "effect.look", params: { look: "noir", intensity: 1 } }],
+    "replaced, intensity back to full for another look",
+  );
   assert.equal(apply(planAdjust(p, "c1", { exposure: 0.35 })).summary, "Set exposure of A.mp4 to +0.35 EV");
   apply(planAdjust(p, "c1", { saturation: -0.2 }));
   assert.deepEqual(p.tracks[0]!.items[0]!.effects![1], { module: "effect.color", params: { exposure: 0.35, saturation: -0.2 } });
@@ -223,11 +293,17 @@ test("D136: zoom pulse is the box's zoom frame by frame (visualsAt), shake stays
 });
 
 test("D136: overlays: vignette, grain (a new pattern every few frames, cycling) and letterbox bars sized to the ratio, in the picture's visible part", () => {
-  const fx = clipFx({ type: "clip", effects: [{ module: "effect.vignette" }, { module: "effect.letterbox", params: { ratio: 2.4 } }, { module: "effect.grain" }] })!;
+  const fx = clipFx({
+    type: "clip",
+    effects: [{ module: "effect.vignette" }, { module: "effect.letterbox", params: { ratio: 2.4 } }, { module: "effect.grain" }],
+  })!;
   const html = fxOverlayInner(fx, { x: 0, y: 0, w: 1280, h: 720 }, 0);
   assert.match(html, /radial-gradient\(ellipse farthest-corner/);
   assert.match(html, /height:93\.333px;background:#000/, "(720 − 1280/2.4) / 2");
-  const phases = Array.from({ length: GRAIN_STATES * GRAIN_HOLD * 2 }, (_, f) => /seed="(\d)"/.exec(fxOverlayInner(fx, { x: 0, y: 0, w: 1280, h: 720 }, f))?.[1]);
+  const phases = Array.from(
+    { length: GRAIN_STATES * GRAIN_HOLD * 2 },
+    (_, f) => /seed="(\d)"/.exec(fxOverlayInner(fx, { x: 0, y: 0, w: 1280, h: 720 }, f))?.[1],
+  );
   assert.equal(new Set(phases).size, GRAIN_STATES);
   assert.equal(phases[0], phases[1]);
   assert.notEqual(phases[0], phases[GRAIN_HOLD]);
@@ -236,7 +312,10 @@ test("D136: overlays: vignette, grain (a new pattern every few frames, cycling) 
   // A contained 4:3 picture in a 16:9 box: the overlay covers the picture, not the bars.
   const box = clipBox({}, { width: 1280, height: 720 }, { width: 640, height: 480 }, 0);
   assert.deepEqual(visibleRect(box), { x: 160, y: 0, w: 960, h: 720 });
-  assert.match(fxOverlayHtml(fx, box, 0), /^<div style="position:absolute;left:0px;top:0px;width:1280px;height:720px;overflow:hidden"><div class="pv-fx" style="position:absolute;left:160px/);
+  assert.match(
+    fxOverlayHtml(fx, box, 0),
+    /^<div style="position:absolute;left:0px;top:0px;width:1280px;height:720px;overflow:hidden"><div class="pv-fx" style="position:absolute;left:160px/,
+  );
 });
 
 test("D136: a plugin's filters (contributes.filters): schema-checked, namespaced, carried as a custom look", () => {
@@ -247,12 +326,23 @@ test("D136: a plugin's filters (contributes.filters): schema-checked, namespaced
     name: "Acme looks",
     version: "1.0.0",
     runtime: { type: "data" },
-    contributes: { filters: [{ id: "acme.looks.dusk", name: "Dusk", look: { adjust: { temperature: 0.4, exposure: -0.2 }, shadowTint: { color: [0.2, 0.1, 0.5], amount: 0.2 } } }, { id: "other.pack.dusk", name: "Stolen", look: { mono: 1 } }] },
+    contributes: {
+      filters: [
+        { id: "acme.looks.dusk", name: "Dusk", look: { adjust: { temperature: 0.4, exposure: -0.2 }, shadowTint: { color: [0.2, 0.1, 0.5], amount: 0.2 } } },
+        { id: "other.pack.dusk", name: "Stolen", look: { mono: 1 } },
+      ],
+    },
   };
   assert.deepEqual(validateModule(manifest), []);
-  assert.ok(validateModule({ ...manifest, contributes: { filters: [{ id: "acme.looks.bad", name: "Bad", look: { glow: 3 } }] } }).length > 0, "unknown look field");
+  assert.ok(
+    validateModule({ ...manifest, contributes: { filters: [{ id: "acme.looks.bad", name: "Bad", look: { glow: 3 } }] } }).length > 0,
+    "unknown look field",
+  );
   const read = readContributions(manifest as unknown as ModuleManifest, { reserved: new Set(), moves: new Set() });
-  assert.deepEqual(read.contributions.filters.map((f) => f.id), ["acme.looks.dusk"]);
+  assert.deepEqual(
+    read.contributions.filters.map((f) => f.id),
+    ["acme.looks.dusk"],
+  );
   assert.equal(read.warnings.length, 1);
   const plan = planSetLook(project(), "c1", "acme.looks.dusk", { custom: read.contributions.filters[0]!.look, label: "Dusk" });
   assert.ok("ops" in plan);
@@ -263,8 +353,18 @@ test("D136: a plugin's filters (contributes.filters): schema-checked, namespaced
 
 test("D138: SVG stills take no looks or effects: the planners refuse them and a pulse doesn't zoom them (the export draws SVGs with Chromium)", () => {
   const p = project();
-  const svg: Project = { ...p, media: [...p.media, { id: "m-svg", kind: "image", name: "Logo.svg", path: "/logo.svg", probe: { width: 1280, height: 720 } }], tracks: [{ ...p.tracks[0]!, items: [{ id: "c1", type: "clip", media: "m-svg", duration: 90, effects: [{ module: "effect.zoom-pulse", params: { amount: 0.1, period: 1 } }] }] }] };
+  const svg: Project = {
+    ...p,
+    media: [...p.media, { id: "m-svg", kind: "image", name: "Logo.svg", path: "/logo.svg", probe: { width: 1280, height: 720 } }],
+    tracks: [
+      {
+        ...p.tracks[0]!,
+        items: [{ id: "c1", type: "clip", media: "m-svg", duration: 90, effects: [{ module: "effect.zoom-pulse", params: { amount: 0.1, period: 1 } }] }],
+      },
+    ],
+  };
   assert.ok(fxSkips(svg.media[2]) && !fxSkips(svg.media[0]));
-  for (const plan of [planSetLook(svg, "c1", "warm"), planEffect(svg, "c1", "effect.blur"), planAdjust(svg, "c1", { exposure: 1 })]) assert.ok("problem" in plan && /SVG/.test(plan.problem));
+  for (const plan of [planSetLook(svg, "c1", "warm"), planEffect(svg, "c1", "effect.blur"), planAdjust(svg, "c1", { exposure: 1 })])
+    assert.ok("problem" in plan && /SVG/.test(plan.problem));
   assert.equal(visualsAt(svg, layout(svg).starts, 15)[0]!.box!.scale, 1);
 });

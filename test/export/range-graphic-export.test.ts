@@ -25,7 +25,15 @@ const project: Project = {
     { id: "m", kind: "video", name: "a.mp4", path: "/a.mp4", probe: { frames: 3000, fps: 50, width: 3840, height: 2160, hasAudio: false } },
   ],
   tracks: [
-    { id: "over", kind: "video", name: "Overlay", items: [{ id: "late", type: "graphic", src: "graphics/late.html", start: 1200, duration: 300 }, { id: "across", type: "graphic", src: "graphics/across.html", start: 900, duration: 300 }] },
+    {
+      id: "over",
+      kind: "video",
+      name: "Overlay",
+      items: [
+        { id: "late", type: "graphic", src: "graphics/late.html", start: 1200, duration: 300 },
+        { id: "across", type: "graphic", src: "graphics/across.html", start: 900, duration: 300 },
+      ],
+    },
     { id: "b", kind: "video", name: "B", items: [{ id: "c", type: "clip", media: "m", in: 50, start: 800, duration: 200 }] },
     { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "film", type: "graphic", src: "graphics/film.html", duration: 1680 }] },
     { id: "audio", kind: "audio", name: "Audio", items: [{ id: "music", type: "audio", media: "song", start: 0, in: 0, duration: 1680 }] },
@@ -41,13 +49,17 @@ test("an 18–28 s slice: the graphic, the music, a clip and an overlay all star
   assert.deepEqual([find(part, "film").in, find(part, "film").duration], [1080, 600]);
   assert.deepEqual([find(part, "music").in, find(part, "music").start, find(part, "music").duration], [1080, 0, 600]);
   // The clip ended before the range; the overlay that straddled it shifts like the main graphic; the late one is whole.
-  assert.equal(part.tracks.flatMap((t) => t.items).some((i) => i.id === "c"), false);
+  assert.equal(
+    part.tracks.flatMap((t) => t.items).some((i) => i.id === "c"),
+    false,
+  );
   assert.deepEqual([find(part, "across").in, find(part, "across").start, find(part, "across").duration], [180, 0, 120]);
   assert.deepEqual([find(part, "late").in, find(part, "late").start], [undefined, 120]);
 
   const plan = planExport(part, { mediaPath: () => "", width: 1080, height: 1350, graphic: () => "<script>function render(){}</script>", motionBlur: true });
   assert.ok(!("problem" in plan), JSON.stringify(plan));
-  const layer = (id: string) => plan.visuals.find((v) => v.item.id === id && v.kind === "graphic") as Extract<(typeof plan.visuals)[number], { kind: "graphic" }>;
+  const layer = (id: string) =>
+    plan.visuals.find((v) => v.item.id === id && v.kind === "graphic") as Extract<(typeof plan.visuals)[number], { kind: "graphic" }>;
   const film = layer("film");
   assert.equal(film.frames[0], 1080, "the graphic's first frame drawn is its 18 s");
   assert.equal(film.frames.at(-1), 1679);
@@ -55,7 +67,10 @@ test("an 18–28 s slice: the graphic, the music, a clip and an overlay all star
   assert.ok(film.motion && Math.abs(film.motion.ts[0]![0]! - 18) < 1 / fps, JSON.stringify(film.motion?.ts[0]));
   assert.equal(graphicInfo(film.item, { ...part.canvas, fps }, film.frames[0]!).duration, 1680, "info.duration counts from the graphic's start");
   assert.equal(layer("across").frames[0], 180);
-  assert.equal(layer("late").frames.find((_, k) => layer("late").f0 + k >= 120), 0);
+  assert.equal(
+    layer("late").frames.find((_, k) => layer("late").f0 + k >= 120),
+    0,
+  );
 });
 
 test("the whole timeline draws as before (no in: frames from 0)", () => {

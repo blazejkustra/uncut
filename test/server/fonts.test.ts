@@ -38,11 +38,30 @@ test("a project's fonts: the bundled faces, the kit's font files as faces and CS
   mkdirSync(projectDir, { recursive: true });
   writeFileSync(join(dataDir, "brand", "kits", "acme", "KitMono.woff2"), readFileSync(resolve("assets/fonts/DMMono-Regular.woff2")));
   writeFileSync(join(dataDir, "brand", "kits", "acme", "logo.svg"), `<svg xmlns="http://www.w3.org/2000/svg"/>`);
-  const kit: BrandKit = { id: "acme", name: "Acme", scope: "global", logos: { light: "logo.svg" }, colors: [], fonts: [{ family: "Uncut Kit Mono", role: "headline", file: "KitMono.woff2" }, { family: "Acme Display", role: "body" }], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
+  const kit: BrandKit = {
+    id: "acme",
+    name: "Acme",
+    scope: "global",
+    logos: { light: "logo.svg" },
+    colors: [],
+    fonts: [
+      { family: "Uncut Kit Mono", role: "headline", file: "KitMono.woff2" },
+      { family: "Acme Display", role: "body" },
+    ],
+    tone: "",
+    taglines: [],
+    urls: [],
+    dos: [],
+    donts: [],
+    examples: [],
+  };
   await saveKit({ dataDir }, kit);
   await writeActive(projectDir, { kit: "acme", skills: [] });
   const fonts = await projectFonts(resolve("assets/fonts"), { dataDir, projectDir }, true);
-  assert.deepEqual(fonts.sources.map((s) => s.family), ["DM Sans", "DM Mono", "DM Mono", "Uncut Kit Mono"]);
+  assert.deepEqual(
+    fonts.sources.map((s) => s.family),
+    ["DM Sans", "DM Mono", "DM Mono", "Uncut Kit Mono"],
+  );
   assert.match(fonts.sources.at(-1)!.url, /^data:font\/woff2;base64,d09GMg/, "the kit's file as a data: URL (wOF2)");
   assert.match(fonts.kitCss, /^@font-face\{font-family:"Uncut Kit Mono";font-style:normal;font-weight:100 1000;src:url\(data:font\/woff2;base64,/);
   assert.ok(!fonts.kitCss.includes('"DM Sans"'), "the rasteriser's page has the bundled faces already");

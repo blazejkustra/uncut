@@ -17,7 +17,15 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { GRAPHIC_CSP, graphicDocument, graphicMediaFrame, graphicMediaSize, graphicMediaUsed, parseGraphicMediaRequest, type Media } from "../../packages/core/src/index.ts";
+import {
+  GRAPHIC_CSP,
+  graphicDocument,
+  graphicMediaFrame,
+  graphicMediaSize,
+  graphicMediaUsed,
+  parseGraphicMediaRequest,
+  type Media,
+} from "../../packages/core/src/index.ts";
 import { bmpOf, graphicMediaSource, type GraphicMediaSource } from "../../apps/server/src/export/graphicMedia.ts";
 import { sourceFramePick, untaggedFilter } from "../../apps/server/src/export/exportPlan.ts";
 
@@ -34,12 +42,32 @@ before(() => {
   dir = mkdtempSync(join(tmpdir(), "uncut-graphic-media-"));
   const clip = join(dir, "clip.mp4");
   // 4 s at 30 fps, 320×180, a keyframe every second (so a seek decodes from one).
-  const r = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "4", "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", clip]);
+  const r = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30",
+    "-t",
+    "4",
+    "-c:v",
+    "libx264",
+    "-g",
+    "30",
+    "-pix_fmt",
+    "yuv420p",
+    clip,
+  ]);
   assert.equal(r.status, 0, String(r.stderr));
   const png = join(dir, "still.png");
   const p = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "color=c=red@0.5:size=200x100,format=rgba", "-frames:v", "1", png]);
   assert.equal(p.status, 0, String(p.stderr));
-  media.push({ id: "clip", kind: "video", name: "clip.mp4", path: clip }, { id: "still", kind: "image", name: "still.png", path: png }, { id: "song", kind: "audio", name: "song.m4a", path: join(dir, "song.m4a") });
+  media.push(
+    { id: "clip", kind: "video", name: "clip.mp4", path: clip },
+    { id: "still", kind: "image", name: "still.png", path: png },
+    { id: "song", kind: "audio", name: "song.m4a", path: join(dir, "song.m4a") },
+  );
   source = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path });
 });
 
@@ -63,7 +91,26 @@ function pixelsOf(bmp: Buffer): { width: number; height: number; raw: Buffer } {
 /** The frame a clip at source time t shows in the export (sourceFramePick; the clip is untagged, 180 lines, as the export reads it), at width × height, bgr24. */
 function exportFrame(t: number, width: number, height: number): Buffer {
   const pick = sourceFramePick(t, 30);
-  const r = spawnSync(bin, ["-v", "error", ...pick.seekArgs, "-i", media[0]!.path, "-vf", `${untaggedFilter(180)}${pick.filter},scale=w=${width}:h=${height}:flags=bicubic,format=bgr24`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"], { maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(
+    bin,
+    [
+      "-v",
+      "error",
+      ...pick.seekArgs,
+      "-i",
+      media[0]!.path,
+      "-vf",
+      `${untaggedFilter(180)}${pick.filter},scale=w=${width}:h=${height}:flags=bicubic,format=bgr24`,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "bgr24",
+      "pipe:1",
+    ],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
   assert.equal(r.status, 0, String(r.stderr));
   return r.stdout;
 }
@@ -92,7 +139,12 @@ test("core: sizes, frame grid, request parsing, markers, CSP", () => {
   assert.ok("problem" in parseGraphicMediaRequest("a", q("t=-1")));
   assert.ok("problem" in parseGraphicMediaRequest("a", q("w=0")));
   assert.ok("problem" in parseGraphicMediaRequest("a", q("h=1.5")));
-  assert.deepEqual(graphicMediaUsed(`<img src="uncut:media/d1#t=2.5"><div style="background:url('uncut:media/p-2')"></div><script>const f = await uncut.frame("d1", t); uncut.image('logo_3'); uncut.frame(id, 1)</script>`), ["d1", "p-2", "logo_3"]);
+  assert.deepEqual(
+    graphicMediaUsed(
+      `<img src="uncut:media/d1#t=2.5"><div style="background:url('uncut:media/p-2')"></div><script>const f = await uncut.frame("d1", t); uncut.image('logo_3'); uncut.frame(id, 1)</script>`,
+    ),
+    ["d1", "p-2", "logo_3"],
+  );
   // The CSP: still nothing from the network; the media scheme for fetches, blob: images.
   assert.match(GRAPHIC_CSP, /default-src 'none'/);
   assert.match(GRAPHIC_CSP, /connect-src uncut-media:(;|$)/);
@@ -154,53 +206,84 @@ test("sizes, past the end, a still, unknown ids and sounds", { skip, timeout: 60
   assert.equal(f.type, "image/bmp");
 });
 
-test("the preview's paced asks at uneven strides read on in one decoder (a read-ahead past the next ask doesn't restart it)", { skip, timeout: 60000 }, async () => {
-  // The preview asks for footage one picture at a time while it plays, the newest when the last
-  // came: strides vary with how long each took. Each ask's read-ahead guesses its stride again; one
-  // overshooting the next ask (15 then 3) used to start a new decoder (a 4K seek: 250-400 ms) for it.
-  const own = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path });
-  try {
-    for (const n of [40, 41, 56, 59, 72, 74, 75, 91, 93, 100, 101, 118]) {
-      const p = await own.picture({ id: "clip", t: n / 30, w: 160 });
-      assert.equal(p.frame, n);
+test(
+  "the preview's paced asks at uneven strides read on in one decoder (a read-ahead past the next ask doesn't restart it)",
+  { skip, timeout: 60000 },
+  async () => {
+    // The preview asks for footage one picture at a time while it plays, the newest when the last
+    // came: strides vary with how long each took. Each ask's read-ahead guesses its stride again; one
+    // overshooting the next ask (15 then 3) used to start a new decoder (a 4K seek: 250-400 ms) for it.
+    const own = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path });
+    try {
+      for (const n of [40, 41, 56, 59, 72, 74, 75, 91, 93, 100, 101, 118]) {
+        const p = await own.picture({ id: "clip", t: n / 30, w: 160 });
+        assert.equal(p.frame, n);
+      }
+      assert.equal(own.starts(), 1, `${own.starts()} decoders started for one forward run`);
+    } finally {
+      own.close();
     }
-    assert.equal(own.starts(), 1, `${own.starts()} decoders started for one forward run`);
-  } finally {
-    own.close();
-  }
-});
+  },
+);
 
-test("while the preview plays, a video's picture comes from its proxy (the same frame, smaller, with the exact size); otherwise the original", { skip, timeout: 60000 }, async () => {
-  // The app's proxy: the same frames at half the size (proxies.ts keeps the timing frame for frame).
-  const proxy = join(dir, "clip-proxy.mp4");
-  const r = spawnSync(bin, ["-v", "error", "-i", media[0]!.path, "-vf", "scale=160:90", "-c:v", "libx264", "-g", "10", "-bf", "0", "-fps_mode", "passthrough", "-pix_fmt", "yuv420p", proxy]);
-  assert.equal(r.status, 0, String(r.stderr));
-  const asked: Array<string> = [];
-  const own = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path, proxyPath: async (m) => (asked.push(m.id), m.id === "clip" ? proxy : undefined) });
-  try {
-    for (const t of [0.5, 0.5 + 1 / 30, 2.2]) {
-      const p = await own.picture({ id: "clip", t, preview: true });
-      const { width, height, raw } = pixelsOf(p.bytes);
-      assert.deepEqual([width, height, p.width, p.height], [160, 90, 160, 90]);
-      assert.deepEqual(p.full, { width: 320, height: 180 }, "the size the graphic is given it at");
-      assert.equal(p.frame, graphicMediaFrame(t, 30));
-      const same = meanDiff(raw, exportFrame(t, 160, 90));
-      const next = meanDiff(raw, exportFrame((graphicMediaFrame(t, 30) + 1) / 30, 160, 90));
-      assert.ok(same < next, `t ${t}: the proxy's frame is the same one (${same.toFixed(2)} vs the next's ${next.toFixed(2)})`);
+test(
+  "while the preview plays, a video's picture comes from its proxy (the same frame, smaller, with the exact size); otherwise the original",
+  { skip, timeout: 60000 },
+  async () => {
+    // The app's proxy: the same frames at half the size (proxies.ts keeps the timing frame for frame).
+    const proxy = join(dir, "clip-proxy.mp4");
+    const r = spawnSync(bin, [
+      "-v",
+      "error",
+      "-i",
+      media[0]!.path,
+      "-vf",
+      "scale=160:90",
+      "-c:v",
+      "libx264",
+      "-g",
+      "10",
+      "-bf",
+      "0",
+      "-fps_mode",
+      "passthrough",
+      "-pix_fmt",
+      "yuv420p",
+      proxy,
+    ]);
+    assert.equal(r.status, 0, String(r.stderr));
+    const asked: Array<string> = [];
+    const own = graphicMediaSource({
+      bin,
+      media: () => media,
+      mediaPath: (m) => m.path,
+      proxyPath: async (m) => (asked.push(m.id), m.id === "clip" ? proxy : undefined),
+    });
+    try {
+      for (const t of [0.5, 0.5 + 1 / 30, 2.2]) {
+        const p = await own.picture({ id: "clip", t, preview: true });
+        const { width, height, raw } = pixelsOf(p.bytes);
+        assert.deepEqual([width, height, p.width, p.height], [160, 90, 160, 90]);
+        assert.deepEqual(p.full, { width: 320, height: 180 }, "the size the graphic is given it at");
+        assert.equal(p.frame, graphicMediaFrame(t, 30));
+        const same = meanDiff(raw, exportFrame(t, 160, 90));
+        const next = meanDiff(raw, exportFrame((graphicMediaFrame(t, 30) + 1) / 30, 160, 90));
+        assert.ok(same < next, `t ${t}: the proxy's frame is the same one (${same.toFixed(2)} vs the next's ${next.toFixed(2)})`);
+      }
+      // Asked smaller than the proxy: that size, still saying the exact one's.
+      const small = await own.picture({ id: "clip", t: 1, w: 100, preview: true });
+      assert.deepEqual([small.width, small.height, small.full], [100, 56, undefined], "no smaller than asked: nothing to scale up");
+      // Stopped (and the export): the original, exact.
+      const n = asked.length;
+      const exact = await own.picture({ id: "clip", t: 0.5 });
+      assert.deepEqual([exact.width, exact.height, exact.full], [320, 180, undefined]);
+      assert.ok(meanDiff(pixelsOf(exact.bytes).raw, exportFrame(0.5, 320, 180)) < 0.5);
+      assert.equal(asked.length, n, "the proxy isn't even looked for");
+    } finally {
+      own.close();
     }
-    // Asked smaller than the proxy: that size, still saying the exact one's.
-    const small = await own.picture({ id: "clip", t: 1, w: 100, preview: true });
-    assert.deepEqual([small.width, small.height, small.full], [100, 56, undefined], "no smaller than asked: nothing to scale up");
-    // Stopped (and the export): the original, exact.
-    const n = asked.length;
-    const exact = await own.picture({ id: "clip", t: 0.5 });
-    assert.deepEqual([exact.width, exact.height, exact.full], [320, 180, undefined]);
-    assert.ok(meanDiff(pixelsOf(exact.bytes).raw, exportFrame(0.5, 320, 180)) < 0.5);
-    assert.equal(asked.length, n, "the proxy isn't even looked for");
-  } finally {
-    own.close();
-  }
-});
+  },
+);
 
 test("a proxy not made yet, gone or unreadable: the playing preview's picture comes from the original", { skip, timeout: 60000 }, async () => {
   const garbage = join(dir, "garbage-proxy.mp4");

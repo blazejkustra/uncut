@@ -47,7 +47,8 @@ function standinAudio(): { stream: MediaStream; stop: () => void } {
 
 /** getDisplayMedia's sound as recorded: what the Mac plays, untouched (no call processing). */
 const DISPLAY_AUDIO: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-export const NO_SYSTEM_SOUND = "macOS gave no sound. Check that Uncut is on in System Settings, Privacy & Security, Screen & System Audio Recording, then try again.";
+export const NO_SYSTEM_SOUND =
+  "macOS gave no sound. Check that Uncut is on in System Settings, Privacy & Security, Screen & System Audio Recording, then try again.";
 
 /**
  * D210: this Mac's sound as a stream: from `display` (a screen take's own getDisplayMedia) or, for
@@ -126,7 +127,14 @@ export async function openStreams(options: TakeOptions, r: Running): Promise<Med
     }
     return new MediaStream(tracks);
   } catch (error) {
-    const what = options.mode === "voiceover" ? "The microphone" : options.mode === "camera" ? "The camera" : options.mode === "system" ? "This Mac's sound" : "The screen";
+    const what =
+      options.mode === "voiceover"
+        ? "The microphone"
+        : options.mode === "camera"
+          ? "The camera"
+          : options.mode === "system"
+            ? "This Mac's sound"
+            : "The screen";
     return `${what} couldn't be opened: ${errorText(error)}`;
   }
 }

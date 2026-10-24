@@ -61,7 +61,15 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
   // Issue #106: Codex is offered when the setup check found it signed in (or couldn't tell); else its row says why.
   const codexCheck = setupChecks?.find((c) => c.id === "codex");
   const codexUsable = codexCheck?.status === "ready" || codexCheck?.status === "warning";
-  const codexWhy = !codexCheck ? (setupChecking ? "Checking…" : "Not checked yet") : codexCheck.status === "missing" ? "Not installed: npm install -g @openai/codex" : codexCheck.status === "needs-login" ? "Not signed in: run codex login" : codexCheck.detail;
+  const codexWhy = !codexCheck
+    ? setupChecking
+      ? "Checking…"
+      : "Not checked yet"
+    : codexCheck.status === "missing"
+      ? "Not installed: npm install -g @openai/codex"
+      : codexCheck.status === "needs-login"
+        ? "Not signed in: run codex login"
+        : codexCheck.detail;
   const cliName = (p: Provider) => (p === "claude" ? claudeCli : PROVIDERS[p].cli);
   const row = useRef<HTMLDivElement>(null);
   // ⌘1–⌘4: a model, while the model menu is open or the composer has the focus.
@@ -115,7 +123,9 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
   const models = useMemo(() => {
     const q = search.trim().toLowerCase();
     const defaults = { claude: "Claude Code's choice", codex: "Codex's choice (its config.toml)" };
-    const all = [{ id: "", name: "Default", detail: defaults[rail], provider: rail, isNew: false }, ...AGENT_MODELS.filter((m) => m.provider === rail)].filter((m) => !q || m.name.toLowerCase().includes(q) || m.detail.toLowerCase().includes(q));
+    const all = [{ id: "", name: "Default", detail: defaults[rail], provider: rail, isNew: false }, ...AGENT_MODELS.filter((m) => m.provider === rail)].filter(
+      (m) => !q || m.name.toLowerCase().includes(q) || m.detail.toLowerCase().includes(q),
+    );
     // Favourites first, in the list's order.
     return [...all.filter((m) => favourites.includes(m.id)), ...all.filter((m) => !favourites.includes(m.id))];
   }, [search, favourites, rail]);
@@ -124,20 +134,43 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
   return (
     <div className="composer-choices" ref={row}>
       <Tooltip label={`${PROVIDERS[chosen].name}, through your ${cliName(chosen)} and its own sign-in`}>
-        <button className={`choice provider ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" data-provider={chosen} onClick={() => toggle("provider")}>
+        <button
+          className={`choice provider ${open === "provider" ? "open" : ""}`}
+          data-testid="agent-provider"
+          data-provider={chosen}
+          onClick={() => toggle("provider")}
+        >
           <ProviderMark provider={chosen} />
         </button>
       </Tooltip>
-      <button className={`choice model ${open === "model" ? "open" : ""}`} data-testid="agent-model" data-model={prefs.model ?? ""} title={`Model: ${model?.name ?? `Default (${chosen === "codex" ? "Codex" : "Claude Code"}'s choice)`}`} onClick={() => toggle("model")}>
+      <button
+        className={`choice model ${open === "model" ? "open" : ""}`}
+        data-testid="agent-model"
+        data-model={prefs.model ?? ""}
+        title={`Model: ${model?.name ?? `Default (${chosen === "codex" ? "Codex" : "Claude Code"}'s choice)`}`}
+        onClick={() => toggle("model")}
+      >
         <ProviderWordmark provider={chosen} />
         <span className="choice-label">{model?.name ?? "Default"}</span>
         <ChevronDown className="choice-caret" />
       </button>
-      <button className={`choice ${open === "effort" ? "open" : ""}`} data-testid="agent-effort" data-effort={prefs.effort ?? ""} title={`Effort: ${prefs.effort ? EFFORT_NAME[prefs.effort] : "Auto"}`} onClick={() => toggle("effort")}>
+      <button
+        className={`choice ${open === "effort" ? "open" : ""}`}
+        data-testid="agent-effort"
+        data-effort={prefs.effort ?? ""}
+        title={`Effort: ${prefs.effort ? EFFORT_NAME[prefs.effort] : "Auto"}`}
+        onClick={() => toggle("effort")}
+      >
         <Gauge />
         <span className="choice-label">{prefs.effort ? EFFORT_NAME[prefs.effort] : "Auto"}</span>
       </button>
-      <button className={`choice ${open === "access" ? "open" : ""}`} data-testid="agent-access" data-access={prefs.access} title={`${access.name}: ${access.detail}`} onClick={() => toggle("access")}>
+      <button
+        className={`choice ${open === "access" ? "open" : ""}`}
+        data-testid="agent-access"
+        data-access={prefs.access}
+        title={`${access.name}: ${access.detail}`}
+        onClick={() => toggle("access")}
+      >
         <AccessIcon />
         <span className="choice-label">{access.short}</span>
       </button>
@@ -148,7 +181,15 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
             const on = chosen === p;
             const usable = p === "claude" || codexUsable;
             return (
-              <button key={p} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} disabled={!usable && !on} data-testid={`agent-provider-${p}`} onClick={() => (on ? setOpen(undefined) : pick({ provider: p, model: undefined }))}>
+              <button
+                key={p}
+                className={`choice-option ${on ? "active" : ""}`}
+                role="option"
+                aria-selected={on}
+                disabled={!usable && !on}
+                data-testid={`agent-provider-${p}`}
+                onClick={() => (on ? setOpen(undefined) : pick({ provider: p, model: undefined }))}
+              >
                 <ProviderMark provider={p} size="md" />
                 <span className="grow">
                   <ProviderWordmark provider={p} />
@@ -168,7 +209,12 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
               const usable = p === "claude" || codexUsable || chosen === p;
               return (
                 <Tooltip key={p} label={usable ? PROVIDERS[p].name : `${PROVIDERS[p].name}: ${codexWhy}`}>
-                  <button className={`model-rail-btn ${rail === p ? "active" : ""}`} disabled={!usable} data-testid={`agent-model-rail-${p}`} onClick={() => setRail(p)}>
+                  <button
+                    className={`model-rail-btn ${rail === p ? "active" : ""}`}
+                    disabled={!usable}
+                    data-testid={`agent-model-rail-${p}`}
+                    onClick={() => setRail(p)}
+                  >
                     <ProviderMark provider={p} size="md" />
                   </button>
                 </Tooltip>
@@ -176,61 +222,69 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
             })}
           </div>
           <div className="model-list">
-          <label className="choice-search">
-            <Search />
-            <input
-              autoFocus
-              value={search}
-              placeholder="Search models"
-              data-testid="agent-model-search"
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && models[0]) pickModel(models[0].id);
-              }}
-            />
-          </label>
-          {models.map((m) => {
-            const on = chosen === rail && (prefs.model ?? "") === m.id;
-            const fav = favourites.includes(m.id);
-            return (
-              <div key={m.id || "default"} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-model-option" data-model={m.id} onClick={() => pickModel(m.id)}>
-                <ProviderMark provider={m.provider} />
-                <span className="grow">
-                  <span className="model-name">
-                    {m.name}
-                    {m.isNew && (
-                      <span className="new-badge" data-testid="agent-model-new">
-                        NEW
-                      </span>
-                    )}
+            <label className="choice-search">
+              <Search />
+              <input
+                autoFocus
+                value={search}
+                placeholder="Search models"
+                data-testid="agent-model-search"
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && models[0]) pickModel(models[0].id);
+                }}
+              />
+            </label>
+            {models.map((m) => {
+              const on = chosen === rail && (prefs.model ?? "") === m.id;
+              const fav = favourites.includes(m.id);
+              return (
+                <div
+                  key={m.id || "default"}
+                  className={`choice-option ${on ? "active" : ""}`}
+                  role="option"
+                  aria-selected={on}
+                  data-testid="agent-model-option"
+                  data-model={m.id}
+                  onClick={() => pickModel(m.id)}
+                >
+                  <ProviderMark provider={m.provider} />
+                  <span className="grow">
+                    <span className="model-name">
+                      {m.name}
+                      {m.isNew && (
+                        <span className="new-badge" data-testid="agent-model-new">
+                          NEW
+                        </span>
+                      )}
+                    </span>
+                    <span className="choice-detail">{m.detail}</span>
                   </span>
-                  <span className="choice-detail">{m.detail}</span>
-                </span>
-                {on && <Check />}
-                {MODEL_KEYS.find((k) => k.id === m.id) && (
-                  <kbd className="model-key" data-testid="agent-model-key">
-                    ⌘{MODEL_KEYS.find((k) => k.id === m.id)!.key}
-                  </kbd>
-                )}
-                {m.id && (
-                  <Tooltip label={fav ? "Remove from favourites" : "Add to favourites"}>
-                    <button
-                      className={`icon-btn choice-star ${fav ? "on" : ""}`}
-                     
-                      data-testid="agent-model-star"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavourite(m.id);
-                      }}
-                    >
-                      <Star />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            );
-          })}
-          {!models.length && <div className="choice-empty">No model matches</div>}
+                  {on && <Check />}
+                  {MODEL_KEYS.find((k) => k.id === m.id) && (
+                    <kbd className="model-key" data-testid="agent-model-key">
+                      ⌘{MODEL_KEYS.find((k) => k.id === m.id)!.key}
+                    </kbd>
+                  )}
+                  {m.id && (
+                    <Tooltip label={fav ? "Remove from favourites" : "Add to favourites"}>
+                      <button
+                        className={`icon-btn choice-star ${fav ? "on" : ""}`}
+
+                        data-testid="agent-model-star"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavourite(m.id);
+                        }}
+                      >
+                        <Star />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              );
+            })}
+            {!models.length && <div className="choice-empty">No model matches</div>}
           </div>
         </div>
       )}
@@ -239,10 +293,28 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
           {([undefined, ...AGENT_EFFORTS] as const).map((e) => {
             const on = prefs.effort === e;
             return (
-              <button key={e ?? "auto"} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-effort-option" data-effort={e ?? ""} onClick={() => pick({ effort: e })}>
+              <button
+                key={e ?? "auto"}
+                className={`choice-option ${on ? "active" : ""}`}
+                role="option"
+                aria-selected={on}
+                data-testid="agent-effort-option"
+                data-effort={e ?? ""}
+                onClick={() => pick({ effort: e })}
+              >
                 <span className="grow">
                   {e ? EFFORT_NAME[e] : "Auto"}
-                  <span className="choice-detail">{e === "low" ? "Quick answers" : e === "medium" ? "Balanced" : e === "high" ? "Thinks longer" : e === "max" ? "Thinks the longest" : `${chosen === "codex" ? "Codex" : "Claude Code"}'s default`}</span>
+                  <span className="choice-detail">
+                    {e === "low"
+                      ? "Quick answers"
+                      : e === "medium"
+                        ? "Balanced"
+                        : e === "high"
+                          ? "Thinks longer"
+                          : e === "max"
+                            ? "Thinks the longest"
+                            : `${chosen === "codex" ? "Codex" : "Claude Code"}'s default`}
+                  </span>
                 </span>
                 {on && <Check />}
               </button>
@@ -257,7 +329,15 @@ export function ComposerChoices({ dir, provider: claudeCli }: { dir: string; pro
             const Icon = info.icon;
             const on = prefs.access === a;
             return (
-              <button key={a} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-access-option" data-access={a} onClick={() => pick({ access: a })}>
+              <button
+                key={a}
+                className={`choice-option ${on ? "active" : ""}`}
+                role="option"
+                aria-selected={on}
+                data-testid="agent-access-option"
+                data-access={a}
+                onClick={() => pick({ access: a })}
+              >
                 <Icon />
                 <span className="grow">
                   {info.name}

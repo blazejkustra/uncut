@@ -56,9 +56,7 @@ export interface ServerConfigShape {
   readonly keysFd?: number | undefined;
 }
 
-export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()(
-  "uncut/ServerConfig",
-) {}
+export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("uncut/ServerConfig") {}
 
 export interface LaunchOptions {
   readonly bootstrapToken: string | undefined;
@@ -101,7 +99,8 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
   const host = flagValue(argv, "--host");
   const portText = flagValue(argv, "--port");
   const port = portText === undefined ? undefined : Number(portText);
-  if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) throw new Error(`--port must be a port number (0 picks a free one), got "${portText}"`);
+  if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535))
+    throw new Error(`--port must be a port number (0 picks a free one), got "${portText}"`);
   const dataDir = flagValue(argv, "--data-dir");
   return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin"), keysFd, host, port, dataDir };
 };
@@ -145,14 +144,15 @@ export const readConfig = (
     version: typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev",
     host: headless?.host || "127.0.0.1",
     ...(headless ? { headless: true, tokenFile: headless.tokenFile } : {}),
-    allowedOrigins: (env.UNCUT_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean),
+    allowedOrigins: (env.UNCUT_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean),
     port: Number(env.UNCUT_PORT ?? 0),
     token: token ?? randomBytes(24).toString("base64url"),
     tokenGenerated: token === undefined,
     // Dev fallback: the bundle lives in apps/server/dist, the helper in native/media/target.
-    mediaBin:
-      env.UNCUT_MEDIA_BIN ||
-      fromResources("bin/uncut-media", "../../../native/media/target/release/uncut-media"),
+    mediaBin: env.UNCUT_MEDIA_BIN || fromResources("bin/uncut-media", "../../../native/media/target/release/uncut-media"),
     modulesDir: env.UNCUT_MODULES_DIR || fromResources("modules/builtin", "../../../spec/modules/builtin"),
     sfxDir: env.UNCUT_SFX_DIR || fromResources("sfx", "../../../assets/sfx"),
     graphicLibsDir: env.UNCUT_GRAPHIC_LIBS_DIR || fromResources("graphic-libs", "../../../assets/graphic-libs"),

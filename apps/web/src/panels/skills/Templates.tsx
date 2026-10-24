@@ -30,13 +30,32 @@ export function TemplateRow({ t, onOpen }: { t: TemplateInfo; onOpen: (t: Templa
 }
 
 /** One of the user's templates, new or existing. */
-export function TemplateEditor({ id, draft, templates, online, onDraft, onClose }: { id: string | undefined; draft: TemplateDraft; templates: ReadonlyArray<TemplateInfo>; online: boolean; onDraft: (d: TemplateDraft) => void; onClose: () => void }) {
+export function TemplateEditor({
+  id,
+  draft,
+  templates,
+  online,
+  onDraft,
+  onClose,
+}: {
+  id: string | undefined;
+  draft: TemplateDraft;
+  templates: ReadonlyArray<TemplateInfo>;
+  online: boolean;
+  onDraft: (d: TemplateDraft) => void;
+  onClose: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<TemplateDraft>) => onDraft({ ...draft, ...patch });
   const save = async () => {
     if (!draft.name.trim()) return;
     setBusy(true);
-    const tid = id ?? templateId(draft.name, templates.map((t) => t.id));
+    const tid =
+      id ??
+      templateId(
+        draft.name,
+        templates.map((t) => t.id),
+      );
     const ok = await actions.templatesSave({ id: tid, name: draft.name.trim(), description: draft.description.trim(), body: draft.body });
     setBusy(false);
     if (ok) onClose();
@@ -49,24 +68,64 @@ export function TemplateEditor({ id, draft, templates, online, onDraft, onClose 
     if (ok) onClose();
   };
   return (
-    <EditorFrame title={draft.name.trim() || "New template"} testId="template-editor" onClose={onClose} onSave={() => void save()} onDelete={id ? () => void remove() : undefined} saveDisabled={!online || busy || !draft.name.trim()}>
+    <EditorFrame
+      title={draft.name.trim() || "New template"}
+      testId="template-editor"
+      onClose={onClose}
+      onSave={() => void save()}
+      onDelete={id ? () => void remove() : undefined}
+      saveDisabled={!online || busy || !draft.name.trim()}
+    >
       <div className="lib-section">
         <span className="lib-label">Name</span>
-        <input className="field input" data-testid="template-name" autoFocus={!id} maxLength={80} value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+        <input
+          className="field input"
+          data-testid="template-name"
+          autoFocus={!id}
+          maxLength={80}
+          value={draft.name}
+          onChange={(e) => set({ name: e.target.value })}
+        />
         <span className="lib-label">Description</span>
-        <input className="field input" data-testid="template-description" maxLength={300} value={draft.description} onChange={(e) => set({ description: e.target.value })} />
+        <input
+          className="field input"
+          data-testid="template-description"
+          maxLength={300}
+          value={draft.description}
+          onChange={(e) => set({ description: e.target.value })}
+        />
         <span className="lib-label">Brief</span>
         <div className="template-syntax" data-testid="template-syntax">
           {TEMPLATE_SYNTAX}
         </div>
-        <textarea className="gen-prompt brand-text brand-mono" data-testid="template-body" spellCheck={false} value={draft.body} onChange={(e) => set({ body: e.target.value })} />
+        <textarea
+          className="gen-prompt brand-text brand-mono"
+          data-testid="template-body"
+          spellCheck={false}
+          value={draft.body}
+          onChange={(e) => set({ body: e.target.value })}
+        />
       </div>
     </EditorFrame>
   );
 }
 
 /** A template to read: Use in chat, Duplicate (a built-in is read-only), Edit for the user's own. */
-export function TemplateView({ t, online, hasProject, onDuplicate, onEdit, onClose }: { t: TemplateInfo | undefined; online: boolean; hasProject: boolean; onDuplicate: (t: TemplateInfo) => void; onEdit: (t: TemplateInfo) => void; onClose: () => void }) {
+export function TemplateView({
+  t,
+  online,
+  hasProject,
+  onDuplicate,
+  onEdit,
+  onClose,
+}: {
+  t: TemplateInfo | undefined;
+  online: boolean;
+  hasProject: boolean;
+  onDuplicate: (t: TemplateInfo) => void;
+  onEdit: (t: TemplateInfo) => void;
+  onClose: () => void;
+}) {
   return (
     <div
       className="brand-editor"
@@ -111,7 +170,13 @@ export function TemplateView({ t, online, hasProject, onDuplicate, onEdit, onClo
         <button className="btn ghost" data-testid="brand-cancel" onClick={onClose}>
           Close
         </button>
-        <button className="btn primary" data-testid="template-use" disabled={!t || !hasProject || !online} title={hasProject ? undefined : "Open a project to use the agent"} onClick={() => t && void actions.useTemplate(t.id)}>
+        <button
+          className="btn primary"
+          data-testid="template-use"
+          disabled={!t || !hasProject || !online}
+          title={hasProject ? undefined : "Open a project to use the agent"}
+          onClick={() => t && void actions.useTemplate(t.id)}
+        >
           Use in chat
         </button>
       </div>

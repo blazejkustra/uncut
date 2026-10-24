@@ -73,7 +73,13 @@ before(async () => {
       format: "uncut/0",
       name: "Tone",
       canvas: { width: 1280, height: 720, fps: FPS, background: "#000000" },
-      media: CLIPS.map((c) => ({ id: `m-${c.id}`, kind: "video", name: `Ramp-${c.id}.mp4`, path: file(c.id), probe: { frames: FPS, fps: FPS, width: c.w, height: c.h, hasAudio: false } })),
+      media: CLIPS.map((c) => ({
+        id: `m-${c.id}`,
+        kind: "video",
+        name: `Ramp-${c.id}.mp4`,
+        path: file(c.id),
+        probe: { frames: FPS, fps: FPS, width: c.w, height: c.h, hasAudio: false },
+      })),
       tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items }],
     }),
   );
@@ -86,8 +92,13 @@ after(async () => {
 
 /** The mean grey of each bar's middle (a patch in its centre) of a picture, 0–255. */
 function barLevels(png: string): Array<number> {
-  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", png], { encoding: "utf8" }).trim().split(",").map(Number) as [number, number];
-  const px = execFileSync("ffmpeg", ["-v", "error", "-i", png, "-frames:v", "1", "-vf", "format=gray", "-f", "rawvideo", "-"], { maxBuffer: 256 * 1024 * 1024 });
+  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", png], { encoding: "utf8" })
+    .trim()
+    .split(",")
+    .map(Number) as [number, number];
+  const px = execFileSync("ffmpeg", ["-v", "error", "-i", png, "-frames:v", "1", "-vf", "format=gray", "-f", "rawvideo", "-"], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
   const levels: Array<number> = [];
   for (let i = 0; i < BARS; i++) {
     const cx = Math.round(((i + 0.5) * w) / BARS);
@@ -131,68 +142,85 @@ const keep = (on: boolean) => page.evaluate((k) => (globalThis as unknown as { _
 const worst = (a: ReadonlyArray<number>, b: ReadonlyArray<number>) => Math.max(...a.map((x, i) => Math.abs(x - b[i]!)));
 const fmt = (l: ReadonlyArray<number>) => l.map((x) => x.toFixed(0)).join(" ");
 
-test("D222: a no-op effect changes nothing visible, and the preview shows the file's levels (untagged SD/HD, tagged, lifted or not)", { skip, timeout: 300000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
-  page = app.page;
-  await waitForWelcome(page);
-  // D273: the GPU compositor is the default; this checks the DOM path's <video>, scrub canvas and
-  // effects canvas (the GPU path's levels are checked against the export by gpu-compositor-app / issue12).
-  await viewerPrefs(page, { gpu: false });
-  await page.click("[data-testid=open-project]");
-  await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
-  await page.click("[data-testid=bottom-timeline]");
-  await page.waitForFunction(() => !!(globalThis as unknown as { __uncutScrub?: unknown }).__uncutScrub, { timeout: 10000 });
-  const problems: Array<string> = [];
-  for (const [k, c] of CLIPS.entries()) {
-    const expected = fileLevels(c.id);
-    const plainId = `${c.id}-plain`;
-    const fxId = `${c.id}-fx`;
+test(
+  "D222: a no-op effect changes nothing visible, and the preview shows the file's levels (untagged SD/HD, tagged, lifted or not)",
+  { skip, timeout: 300000 },
+  async () => {
+    app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
+    page = app.page;
+    await waitForWelcome(page);
+    // D273: the GPU compositor is the default; this checks the DOM path's <video>, scrub canvas and
+    // effects canvas (the GPU path's levels are checked against the export by gpu-compositor-app / issue12).
+    await viewerPrefs(page, { gpu: false });
+    await page.click("[data-testid=open-project]");
+    await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
+    await page.click("[data-testid=bottom-timeline]");
+    await page.waitForFunction(() => !!(globalThis as unknown as { __uncutScrub?: unknown }).__uncutScrub, { timeout: 10000 });
+    const problems: Array<string> = [];
+    for (const [k, c] of CLIPS.entries()) {
+      const expected = fileLevels(c.id);
+      const plainId = `${c.id}-plain`;
+      const fxId = `${c.id}-fx`;
 
-    // The plain clip at rest: its <video> (the scrub canvas hands back once the <video> is at the frame).
-    await keep(false);
-    await goTo(2 * k * CLIP + 15);
-    // Its colours are known from the file (the scrub cache's index read its tags).
-    await page.waitForFunction((id) => (globalThis as unknown as { __uncutScrub: { stats: () => { sources: Array<{ url: string; state: string }> } } }).__uncutScrub.stats().sources.some((s) => s.url.includes(`m-${id}`) && s.state === "ready"), { timeout: 10000 }, c.id);
-    await page.waitForFunction(
-      (id) => {
-        const v = document.querySelector<HTMLVideoElement>(`video[data-item="${id}"]`);
-        const canvas = document.querySelector<HTMLCanvasElement>(`canvas[data-scrub="${id}"]`);
-        return !!v && !v.seeking && v.readyState >= 2 && v.style.visibility !== "hidden" && (!canvas || canvas.style.visibility === "hidden");
-      },
-      { timeout: 10000 },
-      plainId,
-    );
-    await sleep(400);
-    const filter = await page.$eval(`video[data-item="${plainId}"]`, (v) => getComputedStyle(v).filter);
-    const plain = await shot(`${c.id}-video`);
+      // The plain clip at rest: its <video> (the scrub canvas hands back once the <video> is at the frame).
+      await keep(false);
+      await goTo(2 * k * CLIP + 15);
+      // Its colours are known from the file (the scrub cache's index read its tags).
+      await page.waitForFunction(
+        (id) =>
+          (globalThis as unknown as { __uncutScrub: { stats: () => { sources: Array<{ url: string; state: string }> } } }).__uncutScrub
+            .stats()
+            .sources.some((s) => s.url.includes(`m-${id}`) && s.state === "ready"),
+        { timeout: 10000 },
+        c.id,
+      );
+      await page.waitForFunction(
+        (id) => {
+          const v = document.querySelector<HTMLVideoElement>(`video[data-item="${id}"]`);
+          const canvas = document.querySelector<HTMLCanvasElement>(`canvas[data-scrub="${id}"]`);
+          return !!v && !v.seeking && v.readyState >= 2 && v.style.visibility !== "hidden" && (!canvas || canvas.style.visibility === "hidden");
+        },
+        { timeout: 10000 },
+        plainId,
+      );
+      await sleep(400);
+      const filter = await page.$eval(`video[data-item="${plainId}"]`, (v) => getComputedStyle(v).filter);
+      const plain = await shot(`${c.id}-video`);
 
-    // The same clip's scrub canvas, kept up at the same frame.
-    await keep(true);
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowLeft");
-    await page.waitForFunction((id) => document.querySelector<HTMLCanvasElement>(`canvas[data-scrub="${id}"]`)?.style.visibility === "", { timeout: 10000 }, plainId);
-    await sleep(400);
-    const canvas = await shot(`${c.id}-scrub`);
-    await keep(false);
+      // The same clip's scrub canvas, kept up at the same frame.
+      await keep(true);
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowLeft");
+      await page.waitForFunction(
+        (id) => document.querySelector<HTMLCanvasElement>(`canvas[data-scrub="${id}"]`)?.style.visibility === "",
+        { timeout: 10000 },
+        plainId,
+      );
+      await sleep(400);
+      const canvas = await shot(`${c.id}-scrub`);
+      await keep(false);
 
-    // With the no-op effect: its effects canvas.
-    await goTo((2 * k + 1) * CLIP + 15);
-    await page.waitForFunction(
-      (id) => {
-        const v = document.querySelector<HTMLVideoElement>(`video[data-item="${id}"]`);
-        const fx = document.querySelector<HTMLCanvasElement>(`canvas[data-fx="${id}"]`);
-        return !!v && !v.seeking && v.readyState >= 2 && !!fx && fx.style.visibility === "";
-      },
-      { timeout: 10000 },
-      fxId,
-    );
-    await sleep(400);
-    const effect = await shot(`${c.id}-fx`);
+      // With the no-op effect: its effects canvas.
+      await goTo((2 * k + 1) * CLIP + 15);
+      await page.waitForFunction(
+        (id) => {
+          const v = document.querySelector<HTMLVideoElement>(`video[data-item="${id}"]`);
+          const fx = document.querySelector<HTMLCanvasElement>(`canvas[data-fx="${id}"]`);
+          return !!v && !v.seeking && v.readyState >= 2 && !!fx && fx.style.visibility === "";
+        },
+        { timeout: 10000 },
+        fxId,
+      );
+      await sleep(400);
+      const effect = await shot(`${c.id}-fx`);
 
-    console.log(`# D222 ${c.name} (<video> filter ${filter}):\n#   file   ${fmt(expected)}\n#   video  ${fmt(plain)}\n#   scrub  ${fmt(canvas)}\n#   effect ${fmt(effect)}\n#   worst: effect vs video ${worst(effect, plain).toFixed(1)}, video vs file ${worst(plain, expected).toFixed(1)}, scrub vs file ${worst(canvas, expected).toFixed(1)}`);
-    if (worst(effect, plain) > 2) problems.push(`${c.name}: with the no-op effect vs without, ${worst(effect, plain).toFixed(1)} levels apart`);
-    if (worst(plain, expected) > 3) problems.push(`${c.name}: the <video> vs the file's levels, ${worst(plain, expected).toFixed(1)} apart`);
-    if (worst(canvas, expected) > 3) problems.push(`${c.name}: the scrub canvas vs the file's levels, ${worst(canvas, expected).toFixed(1)} apart`);
-  }
-  check(NO_REAL_GPU, problems.length === 0, `levels: ${problems.join("; ")}`);
-});
+      console.log(
+        `# D222 ${c.name} (<video> filter ${filter}):\n#   file   ${fmt(expected)}\n#   video  ${fmt(plain)}\n#   scrub  ${fmt(canvas)}\n#   effect ${fmt(effect)}\n#   worst: effect vs video ${worst(effect, plain).toFixed(1)}, video vs file ${worst(plain, expected).toFixed(1)}, scrub vs file ${worst(canvas, expected).toFixed(1)}`,
+      );
+      if (worst(effect, plain) > 2) problems.push(`${c.name}: with the no-op effect vs without, ${worst(effect, plain).toFixed(1)} levels apart`);
+      if (worst(plain, expected) > 3) problems.push(`${c.name}: the <video> vs the file's levels, ${worst(plain, expected).toFixed(1)} apart`);
+      if (worst(canvas, expected) > 3) problems.push(`${c.name}: the scrub canvas vs the file's levels, ${worst(canvas, expected).toFixed(1)} apart`);
+    }
+    check(NO_REAL_GPU, problems.length === 0, `levels: ${problems.join("; ")}`);
+  },
+);

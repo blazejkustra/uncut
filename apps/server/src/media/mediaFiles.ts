@@ -6,7 +6,16 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, PROXY_PATH, SFX_FILE_PATH } from "@uncut/contracts";
+import {
+  AGENT_IMAGE_NAME,
+  AGENT_IMAGE_PATH,
+  BRAND_FILE_PATH,
+  LIBRARY_FOLDER_PATH,
+  LIBRARY_PREVIEW_PATH,
+  MEDIA_FILE_PATH,
+  PROXY_PATH,
+  SFX_FILE_PATH,
+} from "@uncut/contracts";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -92,56 +101,57 @@ export function parseRange(header: string | undefined, size: number): { start: n
 
 /** A file streamed with Range support (see the header), or 403/404 when it can't be opened. */
 export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: string) =>
-      Effect.gen(function* () {
-        // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
-        // connection reset halfway through a response.
-        const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number; modified: Date } | "forbidden" | undefined> => {
-          let file: FileHandle | undefined;
-          try {
-            file = await openFile(path, "r");
-            const s = await file.stat();
-            if (!s.isFile()) throw new Error("not a regular file");
-            return { file, size: s.size, modified: s.mtime };
-          } catch (error) {
-            await file?.close().catch(() => {});
-            return (error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM" ? "forbidden" : undefined;
-          }
-        });
-        if (opened === "forbidden") return HttpServerResponse.text("Forbidden", { status: 403, headers: CORS });
-        if (!opened) return notFound();
-        const { file, size, modified } = opened;
+  Effect.gen(function* () {
+    // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
+    // connection reset halfway through a response.
+    const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number; modified: Date } | "forbidden" | undefined> => {
+      let file: FileHandle | undefined;
+      try {
+        file = await openFile(path, "r");
+        const s = await file.stat();
+        if (!s.isFile()) throw new Error("not a regular file");
+        return { file, size: s.size, modified: s.mtime };
+      } catch (error) {
+        await file?.close().catch(() => {});
+        return (error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM" ? "forbidden" : undefined;
+      }
+    });
+    if (opened === "forbidden") return HttpServerResponse.text("Forbidden", { status: 403, headers: CORS });
+    if (!opened) return notFound();
+    const { file, size, modified } = opened;
 
-        // CORS (D54): the preview routes the sound through Web Audio, which needs the file fetched
-        // in CORS mode (crossOrigin="anonymous") from the file:// renderer, an opaque origin. The
-        // token in the URL protects the route, so any origin may read it.
-        // An SVG opened as a document (not as the preview's <img>) runs nothing and loads nothing.
-        const sandbox = extname(path).toLowerCase() === ".svg" ? { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox" } : {};
-        // Last-Modified: the scrub cache (D221) tells a file changed in place from the one it indexed.
-        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", "last-modified": modified.toUTCString(), ...CORS, ...sandbox };
-        const range = parseRange(request.headers["range"], size);
-        if (range === "unsatisfiable") {
-          yield* Effect.promise(() => file.close().catch(() => {}));
-          return HttpServerResponse.text("Range not satisfiable", { status: 416, headers: { ...headers, "content-range": `bytes */${size}` } });
-        }
-        const { start, end } = range ?? { start: 0, end: size - 1 };
-        const length = end - start + 1;
-        if (size === 0) {
-          yield* Effect.promise(() => file.close().catch(() => {}));
-          return HttpServerResponse.uint8Array(new Uint8Array(0), { contentType: contentType(path), headers });
-        }
-        // A stream per request (it closes the file when done); the HTTP server destroys it if
-        // the client hangs up, which <video> does on every seek.
-        const body = file.createReadStream({ start, end, autoClose: true });
-        return HttpServerResponse.raw(body, {
-          status: range ? 206 : 200,
-          contentType: contentType(path),
-          headers: {
-            ...headers,
-            "content-length": String(length),
-            ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}),
-          },
-        });
-      });
+    // CORS (D54): the preview routes the sound through Web Audio, which needs the file fetched
+    // in CORS mode (crossOrigin="anonymous") from the file:// renderer, an opaque origin. The
+    // token in the URL protects the route, so any origin may read it.
+    // An SVG opened as a document (not as the preview's <img>) runs nothing and loads nothing.
+    const sandbox =
+      extname(path).toLowerCase() === ".svg" ? { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox" } : {};
+    // Last-Modified: the scrub cache (D221) tells a file changed in place from the one it indexed.
+    const headers = { "accept-ranges": "bytes", "cache-control": "no-store", "last-modified": modified.toUTCString(), ...CORS, ...sandbox };
+    const range = parseRange(request.headers["range"], size);
+    if (range === "unsatisfiable") {
+      yield* Effect.promise(() => file.close().catch(() => {}));
+      return HttpServerResponse.text("Range not satisfiable", { status: 416, headers: { ...headers, "content-range": `bytes */${size}` } });
+    }
+    const { start, end } = range ?? { start: 0, end: size - 1 };
+    const length = end - start + 1;
+    if (size === 0) {
+      yield* Effect.promise(() => file.close().catch(() => {}));
+      return HttpServerResponse.uint8Array(new Uint8Array(0), { contentType: contentType(path), headers });
+    }
+    // A stream per request (it closes the file when done); the HTTP server destroys it if
+    // the client hangs up, which <video> does on every seek.
+    const body = file.createReadStream({ start, end, autoClose: true });
+    return HttpServerResponse.raw(body, {
+      status: range ? 206 : 200,
+      contentType: contentType(path),
+      headers: {
+        ...headers,
+        "content-length": String(length),
+        ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}),
+      },
+    });
+  });
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
@@ -207,7 +217,10 @@ export const layer = Layer.unwrap(
           const request = yield* HttpServerRequest.HttpServerRequest;
           const url = authorised(request);
           if (!url) return unauthorized();
-          const [kit, name, ...rest] = url.pathname.slice(BRAND_FILE_PATH.length + 1).split("/").map((x) => decode(x));
+          const [kit, name, ...rest] = url.pathname
+            .slice(BRAND_FILE_PATH.length + 1)
+            .split("/")
+            .map((x) => decode(x));
           if (!kit || !name || rest.length) return notFound();
           const open = yield* projects.current;
           const files = (yield* Effect.promise(() => readBrand({ dataDir: config.dataDir, projectDir: open?.dir }).catch(() => undefined)))?.files ?? {};
@@ -257,7 +270,9 @@ export const layer = Layer.unwrap(
           const [source, id] = (decode(url.pathname.slice(LIBRARY_PREVIEW_PATH.length + 1)) ?? "").split("/");
           if ((source !== "openverse" && source !== "freesound") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
           const controller = new AbortController();
-          const res = yield* Effect.promise(() => sounds.preview(`${source}:${id}`, request.headers["range"], controller.signal).catch(() => "failed" as const));
+          const res = yield* Effect.promise(() =>
+            sounds.preview(`${source}:${id}`, request.headers["range"], controller.signal).catch(() => "failed" as const),
+          );
           if (res === undefined) return notFound();
           if (res === "failed" || !res.body || (res.status !== 200 && res.status !== 206)) {
             if (res !== "failed") void res.body?.cancel().catch(() => {});

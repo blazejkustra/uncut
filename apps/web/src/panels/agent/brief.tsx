@@ -75,7 +75,11 @@ export interface CardLive {
   readonly waiting: boolean;
 }
 
-const lines = (v: string) => v.split("\n").map((x) => x.trim()).filter(Boolean);
+const lines = (v: string) =>
+  v
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
 
 /** The brief as a form (the user's edit, D188). */
 export function BriefForm({ brief, onDone }: { brief: Brief; onDone: () => void }) {
@@ -84,13 +88,29 @@ export function BriefForm({ brief, onDone }: { brief: Brief; onDone: () => void 
   const field = (key: "film" | "audience" | "duration" | "visual" | "notes", label: string, rows = 1) => (
     <label className="brief-field">
       <span className="brief-key">{label}</span>
-      {rows > 1 ? <textarea className="field input" rows={rows} data-testid={`plan-brief-${key}`} value={b[key] ?? ""} onChange={(e) => setB({ ...b, [key]: e.target.value })} /> : <input className="field input" data-testid={`plan-brief-${key}`} value={b[key] ?? ""} onChange={(e) => setB({ ...b, [key]: e.target.value })} />}
+      {rows > 1 ? (
+        <textarea
+          className="field input"
+          rows={rows}
+          data-testid={`plan-brief-${key}`}
+          value={b[key] ?? ""}
+          onChange={(e) => setB({ ...b, [key]: e.target.value })}
+        />
+      ) : (
+        <input className="field input" data-testid={`plan-brief-${key}`} value={b[key] ?? ""} onChange={(e) => setB({ ...b, [key]: e.target.value })} />
+      )}
     </label>
   );
   const list = (key: "formats" | "assets" | "hardLines" | "deliverables", label: string) => (
     <label className="brief-field">
       <span className="brief-key">{label}</span>
-      <textarea className="field input" rows={2} data-testid={`plan-brief-${key}`} value={b[key].join("\n")} onChange={(e) => setB({ ...b, [key]: lines(e.target.value) })} />
+      <textarea
+        className="field input"
+        rows={2}
+        data-testid={`plan-brief-${key}`}
+        value={b[key].join("\n")}
+        onChange={(e) => setB({ ...b, [key]: lines(e.target.value) })}
+      />
     </label>
   );
   return (
@@ -98,7 +118,12 @@ export function BriefForm({ brief, onDone }: { brief: Brief; onDone: () => void 
       {field("film", "Film", 2)}
       <label className="brief-field">
         <span className="brief-key">Type</span>
-        <select className="field input" data-testid="plan-brief-type" value={b.type ?? ""} onChange={(e) => setB(e.target.value ? { ...b, type: e.target.value } : (({ type: _t, ...rest }) => rest)(b))}>
+        <select
+          className="field input"
+          data-testid="plan-brief-type"
+          value={b.type ?? ""}
+          onChange={(e) => setB(e.target.value ? { ...b, type: e.target.value } : (({ type: _t, ...rest }) => rest)(b))}
+        >
           <option value="">Not set</option>
           {VIDEO_TYPES.map((t) => (
             <option key={t} value={t}>

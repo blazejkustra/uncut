@@ -9,7 +9,24 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { applyEdit, createSession, loadModules, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
-import { attributionLine, creditOf, creditsOf, creditsText, filterSfx, hitKey, lengthLabel, limitSentence, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound, type LibraryHit } from "../../packages/core/src/audio/library.ts";
+import {
+  attributionLine,
+  creditOf,
+  creditsOf,
+  creditsText,
+  filterSfx,
+  hitKey,
+  lengthLabel,
+  limitSentence,
+  MEME_SOUNDS,
+  MUSIC_GENRES,
+  parseHitKey,
+  SFX_CATEGORIES,
+  SFX_SOUNDS,
+  sfxCredit,
+  sfxSound,
+  type LibraryHit,
+} from "../../packages/core/src/audio/library.ts";
 import { planAddLibrarySound } from "../../apps/web/src/state/project.ts";
 
 const modules = await loadModules("spec/modules/builtin");
@@ -30,8 +47,17 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
   }
   assert.equal(new Set(SFX_SOUNDS.map((s) => s.id)).size, SFX_SOUNDS.length);
   for (const id of ["whoosh", "ui", "impact", "riser", "notification", "crowd", "meme"]) assert.ok(filterSfx({ category: id }).length > 0, id);
-  assert.deepEqual(filterSfx({ query: "trombone" }).map((s) => s.id), ["sad-trombone", "womp-womp"]);
-  assert.deepEqual(filterSfx({ query: "laughs" }).map((s) => s.id).sort(), ["applause", "crowd-laugh"], "by the category's name too");
+  assert.deepEqual(
+    filterSfx({ query: "trombone" }).map((s) => s.id),
+    ["sad-trombone", "womp-womp"],
+  );
+  assert.deepEqual(
+    filterSfx({ query: "laughs" })
+      .map((s) => s.id)
+      .sort(),
+    ["applause", "crowd-laugh"],
+    "by the category's name too",
+  );
   // Quick searches that return results on Openverse ("vine boom" and "meme" return none or junk).
   for (const q of [...SFX_CATEGORIES, ...MEME_SOUNDS, ...MUSIC_GENRES]) assert.doesNotMatch(q.query, /vine|meme/, q.id);
   assert.equal(MEME_SOUNDS.find((m) => m.id === "boom")!.query, "bass boom");
@@ -41,12 +67,16 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
 test("hit ids round-trip and junk is refused; lengths and limits in words", () => {
   assert.equal(hitKey({ source: "openverse", id: "eab8a6e2-0ac8" }), "openverse:eab8a6e2-0ac8");
   assert.deepEqual(parseHitKey("freesound:534387"), { source: "freesound", id: "534387" });
-  for (const bad of ["jamendo:1204669", "pixabay:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"]) assert.equal(parseHitKey(bad), undefined, bad);
+  for (const bad of ["jamendo:1204669", "pixabay:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"])
+    assert.equal(parseHitKey(bad), undefined, bad);
   assert.equal(lengthLabel(0.72), "0.7 s");
   assert.equal(lengthLabel(115.8), "1:56");
   const now = Date.parse("2026-10-14T10:00:00Z");
   assert.equal(limitSentence("openverse", { scope: "minute", until: "2026-10-14T10:00:42Z" }, now), "Openverse's search limit is reached. Try again in 42 s.");
-  assert.equal(limitSentence("openverse", { scope: "day", until: "2026-10-15T00:00:00Z" }, now), "Openverse's daily search limit is reached. Try again tomorrow.");
+  assert.equal(
+    limitSentence("openverse", { scope: "day", until: "2026-10-15T00:00:00Z" }, now),
+    "Openverse's daily search limit is reached. Try again tomorrow.",
+  );
   for (const s of [limitSentence("freesound", { scope: "minute", until: "2026-10-14T10:05:00Z" }, now)]) assert.doesNotMatch(s, /[·•*]/);
 });
 
@@ -73,7 +103,13 @@ test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old 
   const project: Project = {
     ...base,
     media: [
-      { id: "m-song", kind: "audio", name: "Ambient Dance", path: "media/ambient-dance.mp3", source: { ...creditOf(BY, { sha256: "ab", downloaded: "2026-10-14T00:00:00Z" }) } },
+      {
+        id: "m-song",
+        kind: "audio",
+        name: "Ambient Dance",
+        path: "media/ambient-dance.mp3",
+        source: { ...creditOf(BY, { sha256: "ab", downloaded: "2026-10-14T00:00:00Z" }) },
+      },
       { id: "m-song-2", kind: "audio", name: "Ambient Dance", path: "media/ambient-dance-2.mp3", source: { ...creditOf(BY) } },
       { id: "m-boom", kind: "audio", name: "Boom impact", path: "media/impact-boom.m4a", source: { ...sfxCredit(bass) } },
       { id: "m-cozy", kind: "audio", name: "Dusty rhodes", path: "media/cozy-2.m4a" },
@@ -81,8 +117,15 @@ test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old 
     ],
   };
   const c = creditsOf(project);
-  assert.deepEqual(c.attribution.map((a) => a.title), ["Ambient Dance"], "one line per sound, even used twice");
-  assert.deepEqual(c.publicDomain.map((a) => a.libraryId), ["sfx:impact-boom"]);
+  assert.deepEqual(
+    c.attribution.map((a) => a.title),
+    ["Ambient Dance"],
+    "one line per sound, even used twice",
+  );
+  assert.deepEqual(
+    c.publicDomain.map((a) => a.libraryId),
+    ["sfx:impact-boom"],
+  );
   assert.equal(c.openverse, true);
   assert.equal(
     creditsText(project),
@@ -98,7 +141,10 @@ test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old 
     ].join("\n"),
   );
   assert.doesNotMatch(creditsText(project), /[·•*]/);
-  assert.equal(attributionLine({ title: "T", creator: "C", license: "cc0", licenseVersion: "1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" }), '"T" by C is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/');
+  assert.equal(
+    attributionLine({ title: "T", creator: "C", license: "cc0", licenseVersion: "1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" }),
+    '"T" by C is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/',
+  );
 });
 
 test("Audio tab plan: library sound with its credits at the playhead on a free audio track, valid", () => {
@@ -119,24 +165,43 @@ test("Audio tab plan: library sound with its credits at the playhead on a free a
     return { next, plan };
   };
   // Music (228 s) at frame 60: cut at the video's end (240 frames), fades, on the free Audio track.
-  const music = apply(project, planAddLibrarySound(project, { libraryId: "openverse:b1", name: BY.title, path: "media/ambient-dance-some-artist.mp3", seconds: 228, source: { ...creditOf(BY) }, music: true }, 60));
+  const music = apply(
+    project,
+    planAddLibrarySound(
+      project,
+      { libraryId: "openverse:b1", name: BY.title, path: "media/ambient-dance-some-artist.mp3", seconds: 228, source: { ...creditOf(BY) }, music: true },
+      60,
+    ),
+  );
   const media = music.next.media.find((m) => m.path === "media/ambient-dance-some-artist.mp3")!;
   assert.equal(media.id, "m-ambient-dance");
   assert.equal(media.source?.module, "library.openverse");
   assert.equal(media.source?.license, "by");
   assert.equal(media.probe?.frames, 228 * 30);
-  assert.deepEqual(music.next.tracks.find((t) => t.id === "audio")!.items, [{ id: "audio-1", type: "audio", media: media.id, in: 0, duration: 240, start: 60, fadeIn: 30, fadeOut: 60 }]);
+  assert.deepEqual(music.next.tracks.find((t) => t.id === "audio")!.items, [
+    { id: "audio-1", type: "audio", media: media.id, in: 0, duration: 240, start: 60, fadeIn: 30, fadeOut: 60 },
+  ]);
   assert.equal(music.plan.summary, "Add Ambient Dance from the music library");
   // A sound effect at the same frame: the Audio track is busy, so a new Sound effects track; whole, no fades.
   const bass = sfxSound("impact-boom")!;
-  const sfx = apply(music.next, planAddLibrarySound(music.next, { libraryId: "sfx:impact-boom", name: bass.title, path: "media/impact-boom.m4a", seconds: bass.seconds, source: { ...sfxCredit(bass) }, music: false }, 60));
+  const sfx = apply(
+    music.next,
+    planAddLibrarySound(
+      music.next,
+      { libraryId: "sfx:impact-boom", name: bass.title, path: "media/impact-boom.m4a", seconds: bass.seconds, source: { ...sfxCredit(bass) }, music: false },
+      60,
+    ),
+  );
   const track = sfx.next.tracks.find((t) => t.name === "Sound effects")!;
   assert.equal(track.id, "sfx-1");
   assert.deepEqual(track.items, [{ id: "sound-1", type: "audio", media: "m-boom-impact", in: 0, duration: 60, start: 60 }]);
   // Added again (the media is there): only the item, on the next free stretch's track.
   const again = planAddLibrarySound(sfx.next, { libraryId: "sfx:impact-boom", name: bass.title, seconds: bass.seconds, music: false }, 200);
   assert.ok("ops" in again);
-  assert.deepEqual((again.ops as Array<{ op: string }>).map((o) => o.op), ["insert_item"]);
+  assert.deepEqual(
+    (again.ops as Array<{ op: string }>).map((o) => o.op),
+    ["insert_item"],
+  );
   // Music with less than 3 s of video left: a problem, not a blip.
   const late = planAddLibrarySound(project, { libraryId: "openverse:b1", name: BY.title, path: "media/x.mp3", seconds: 228, music: true }, 280);
   assert.ok("problem" in late && /Only 0\.7 s/.test(late.problem));

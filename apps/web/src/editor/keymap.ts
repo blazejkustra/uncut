@@ -264,7 +264,11 @@ export function actionFor(bindings: Bindings, key: string): ActionId | undefined
   return ACTION_IDS.find((id) => bindings[id].includes(key));
 }
 
-export type Check = { readonly kind: "ok" } | { readonly kind: "same" } | { readonly kind: "taken"; readonly by: ActionId } | { readonly kind: "reserved"; readonly by: string };
+export type Check =
+  | { readonly kind: "ok" }
+  | { readonly kind: "same" }
+  | { readonly kind: "taken"; readonly by: ActionId }
+  | { readonly kind: "reserved"; readonly by: string };
 
 /** What giving `key` to `action` would run into. */
 export function checkKey(bindings: Bindings, action: ActionId, key: string): Check {
@@ -307,7 +311,12 @@ export function assignKey(state: KeymapState, action: ActionId, key: string, slo
 }
 
 /** Takes one key off an action. */
-export const removeKey = (state: KeymapState, action: ActionId, slot: number): KeymapState => withKeys(state, action, bindingsOf(state)[action].filter((_, i) => i !== slot));
+export const removeKey = (state: KeymapState, action: ActionId, slot: number): KeymapState =>
+  withKeys(
+    state,
+    action,
+    bindingsOf(state)[action].filter((_, i) => i !== slot),
+  );
 /** An action with no keys. */
 export const clearAction = (state: KeymapState, action: ActionId): KeymapState => withKeys(state, action, []);
 /** An action back to the preset's keys. */

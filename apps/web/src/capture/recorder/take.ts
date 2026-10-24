@@ -85,15 +85,35 @@ function endTake(r: Running, patch: Partial<RecorderState>) {
   // An agent's take that didn't make it: the agent hears why.
   if (r.options.agent && !r.answered) {
     r.answered = true;
-    void actions.agentScreenTake(r.options.agent.id, { problem: patch.message?.kind === "discarded" ? (r.cancelled ? "The user cancelled the recording." : "The take was too short.") : patch.message?.text ?? "The recording didn't work." });
+    void actions.agentScreenTake(r.options.agent.id, {
+      problem:
+        patch.message?.kind === "discarded"
+          ? r.cancelled
+            ? "The user cancelled the recording."
+            : "The take was too short."
+          : (patch.message?.text ?? "The recording didn't work."),
+    });
   }
   if (running !== r) return;
   running = undefined;
-  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, paused: false, pausedMs: 0, pausedAt: undefined, parts: undefined, ...patch });
+  set({
+    phase: "idle",
+    mode: undefined,
+    count: undefined,
+    startedAt: undefined,
+    agentId: undefined,
+    paused: false,
+    pausedMs: 0,
+    pausedAt: undefined,
+    parts: undefined,
+    ...patch,
+  });
 }
 
 const pickMime = (video: boolean) =>
-  (video ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"] : ["audio/webm;codecs=opus", "audio/webm"]).find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+  (video ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"] : ["audio/webm;codecs=opus", "audio/webm"]).find((m) =>
+    MediaRecorder.isTypeSupported(m),
+  ) ?? "";
 
 const sleep = (ms: number, r: Running) =>
   new Promise<void>((resolve) => {
@@ -137,7 +157,11 @@ function startParts(r: Running, streams: Map<PartKind, MediaStream>) {
     for (const [kind, stream] of streams) {
       const video = kind === "screen" || kind === "camera";
       const mime = pickMime(video);
-      const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), ...(video ? { videoBitsPerSecond: kind === "camera" && options.resolution === "720p" ? 6_000_000 : 10_000_000 } : {}), audioBitsPerSecond: 192_000 });
+      const recorder = new MediaRecorder(stream, {
+        ...(mime ? { mimeType: mime } : {}),
+        ...(video ? { videoBitsPerSecond: kind === "camera" && options.resolution === "720p" ? 6_000_000 : 10_000_000 } : {}),
+        audioBitsPerSecond: 192_000,
+      });
       recs.push({ kind, recorder, mime, chunks: [], startMs: undefined, stopMs: undefined });
     }
   } catch (error) {
@@ -180,10 +204,42 @@ export async function startTake(options: TakeOptions) {
     refuse("No project is open.");
     return set({ message: { kind: "error", text: "Open a project first: takes go into its media folder." } });
   }
-  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, pauseMs: undefined, pausedTotal: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false, parts: undefined, finished: false };
+  const r: Running = {
+    options,
+    dir: snapshot.dir,
+    frame: Math.round(getPlayback().frame),
+    streams: [],
+    cleanups: [],
+    recorder: undefined,
+    chunks: [],
+    cancelled: false,
+    startMs: 0,
+    pauseMs: undefined,
+    pausedTotal: 0,
+    playing: false,
+    countdown: undefined,
+    wake: undefined,
+    autoStop: undefined,
+    answered: false,
+    awaited: false,
+    parts: undefined,
+    finished: false,
+  };
   running = r;
   const multi = isMulti(options);
-  set({ phase: "countdown", mode: options.mode, count: options.countdown || undefined, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined, parts: multi ? options.parts : undefined });
+  set({
+    phase: "countdown",
+    mode: options.mode,
+    count: options.countdown || undefined,
+    message: undefined,
+    recordedMs: undefined,
+    startedAt: undefined,
+    agentId: options.agent?.id,
+    paused: false,
+    pausedMs: 0,
+    pausedAt: undefined,
+    parts: multi ? options.parts : undefined,
+  });
   const stream = multi ? await openParts(options, r) : await openStreams(options, r);
   if (typeof stream === "string" || r.cancelled) {
     release(r);
@@ -200,7 +256,11 @@ export async function startTake(options: TakeOptions) {
   const mimeType = pickMime(video);
   let recorder: MediaRecorder;
   try {
-    recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), ...(video ? { videoBitsPerSecond: options.resolution === "720p" ? 6_000_000 : 10_000_000 } : {}), audioBitsPerSecond: 192_000 });
+    recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      ...(video ? { videoBitsPerSecond: options.resolution === "720p" ? 6_000_000 : 10_000_000 } : {}),
+      audioBitsPerSecond: 192_000,
+    });
   } catch (error) {
     release(r);
     return endTake(r, { message: { kind: "error", text: `Recording couldn't start: ${errorText(error)}` } });
@@ -212,7 +272,7 @@ export async function startTake(options: TakeOptions) {
   recorder.onstart = () => recordingStarted(r, performance.now());
   recorder.onstop = () => {
     // A take stopped while paused: the pause up to now isn't in the file either.
-    if (r.pauseMs !== undefined) (r.pausedTotal += performance.now() - r.pauseMs, (r.pauseMs = undefined));
+    if (r.pauseMs !== undefined) ((r.pausedTotal += performance.now() - r.pauseMs), (r.pauseMs = undefined));
     void finish(r, performance.now() - r.startMs - r.pausedTotal, recorder.mimeType || mimeType);
   };
   try {
@@ -254,7 +314,8 @@ export function resumeTake() {
   r.pauseMs = undefined;
   for (const x of recs) x.resume();
   if (r.playing) playback.play();
-  if (r.options.seconds && r.options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), Math.max(0, r.options.seconds * 1000 - (performance.now() - r.startMs - r.pausedTotal)));
+  if (r.options.seconds && r.options.seconds > 0)
+    r.autoStop = setTimeout(() => void stopTake(), Math.max(0, r.options.seconds * 1000 - (performance.now() - r.startMs - r.pausedTotal)));
   set({ paused: false, pausedMs: state.pausedMs + (Date.now() - (state.pausedAt ?? Date.now())), pausedAt: undefined });
 }
 
@@ -282,14 +343,16 @@ async function finish(r: Running, ms: number, mimeType: string) {
   release(r);
   const recordedMs = Math.round(ms);
   if (r.cancelled) return endTake(r, { message: { kind: "discarded", text: "Cancelled. Nothing was kept." } });
-  if (recordedMs < MIN_TAKE_MS || !r.chunks.length) return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
+  if (recordedMs < MIN_TAKE_MS || !r.chunks.length)
+    return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
   set({ phase: "saving", startedAt: undefined, recordedMs });
   const { options } = r;
   const audioOnly = options.mode === "voiceover" || options.mode === "system";
   const blob = new Blob(r.chunks, { type: mimeType.split(";")[0] || (audioOnly ? "audio/webm" : "video/webm") });
   if (options.agent) {
     // The agent's take: up to the server, then its turn imports it (Undo turn removes it).
-    if (getState().snapshot?.dir !== r.dir) return endTake(r, { message: { kind: "error", text: "The project changed while recording, so the take wasn't added." } });
+    if (getState().snapshot?.dir !== r.dir)
+      return endTake(r, { message: { kind: "error", text: "The project changed while recording, so the take wasn't added." } });
     const uploaded = await actions.uploadTake(blob, "screen");
     if ("message" in uploaded) return endTake(r, { message: { kind: "error", text: `The take couldn't be sent to the server: ${uploaded.message}` } });
     r.answered = true;
@@ -297,7 +360,14 @@ async function finish(r: Running, ms: number, mimeType: string) {
     return endTake(r, { message: { kind: "saved", text: `Recorded ${options.source?.name ?? "the screen"} for the agent.` } });
   }
   const kind = options.mode === "multi" ? "screen" : options.mode;
-  const device = kind === "screen" ? options.source?.name : kind === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : kind === "system" ? undefined : state.mics.find((m) => m.id === options.mic)?.label;
+  const device =
+    kind === "screen"
+      ? options.source?.name
+      : kind === "camera"
+        ? state.cameras.find((c) => c.id === options.camera)?.label
+        : kind === "system"
+          ? undefined
+          : state.mics.find((m) => m.id === options.mic)?.label;
   const place = audioOnly || options.place === true;
   const result = await actions.saveTake(blob, {
     kind,
@@ -317,22 +387,37 @@ async function finish(r: Running, ms: number, mimeType: string) {
 async function finishParts(r: Running) {
   if (r.finished) return;
   r.finished = true;
-  if (r.pauseMs !== undefined) (r.pausedTotal += performance.now() - r.pauseMs, (r.pauseMs = undefined));
+  if (r.pauseMs !== undefined) ((r.pausedTotal += performance.now() - r.pauseMs), (r.pauseMs = undefined));
   release(r);
   const parts = r.parts ?? [];
   const first = Math.min(...parts.map((p) => p.startMs ?? Infinity));
   const lengthOf = (p: PartRec) => (p.stopMs ?? 0) - (p.startMs ?? p.stopMs ?? 0) - r.pausedTotal;
   const recordedMs = Math.round(Math.min(...parts.map(lengthOf)));
   if (r.cancelled) return endTake(r, { message: { kind: "discarded", text: "Cancelled. Nothing was kept." } });
-  if (!parts.length || recordedMs < MIN_TAKE_MS || parts.some((p) => !p.chunks.length)) return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
+  if (!parts.length || recordedMs < MIN_TAKE_MS || parts.some((p) => !p.chunks.length))
+    return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
   const offsets: Partial<Record<PartKind, number>> = {};
   for (const p of parts) offsets[p.kind] = Math.round(((p.startMs ?? first) - first) * 10) / 10;
   set({ phase: "saving", startedAt: undefined, recordedMs, offsets });
   const { options } = r;
   const deviceOf = (kind: PartKind) =>
-    kind === "screen" ? options.source?.name : kind === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : kind === "voiceover" ? state.mics.find((m) => m.id === options.mic)?.label : undefined;
+    kind === "screen"
+      ? options.source?.name
+      : kind === "camera"
+        ? state.cameras.find((c) => c.id === options.camera)?.label
+        : kind === "voiceover"
+          ? state.mics.find((m) => m.id === options.mic)?.label
+          : undefined;
   const result = await actions.saveMultiTake({
-    parts: parts.map((p) => ({ blob: new Blob(p.chunks, { type: (p.recorder.mimeType || p.mime).split(";")[0] || (p.kind === "screen" || p.kind === "camera" ? "video/webm" : "audio/webm") }), kind: p.kind, device: deviceOf(p.kind), offsetMs: offsets[p.kind] ?? 0, recordedMs: lengthOf(p) })),
+    parts: parts.map((p) => ({
+      blob: new Blob(p.chunks, {
+        type: (p.recorder.mimeType || p.mime).split(";")[0] || (p.kind === "screen" || p.kind === "camera" ? "video/webm" : "audio/webm"),
+      }),
+      kind: p.kind,
+      device: deviceOf(p.kind),
+      offsetMs: offsets[p.kind] ?? 0,
+      recordedMs: lengthOf(p),
+    })),
     name: parts.some((p) => p.kind === "screen") ? options.source?.name : undefined,
     placeAt: r.frame,
     layout: options.layout,
@@ -340,7 +425,12 @@ async function finishParts(r: Running) {
   });
   if ("problem" in result) return endTake(r, { message: { kind: "error", text: result.problem } });
   playback.seek(r.frame);
-  endTake(r, { message: { kind: "saved", text: `${result.saved.name} (${result.saved.seconds.toFixed(1)} s, ${parts.length} files) is in Media and on the timeline at ${clock(r.frame / Math.max(1, getPlayback().fps))}.` } });
+  endTake(r, {
+    message: {
+      kind: "saved",
+      text: `${result.saved.name} (${result.saved.seconds.toFixed(1)} s, ${parts.length} files) is in Media and on the timeline at ${clock(r.frame / Math.max(1, getPlayback().fps))}.`,
+    },
+  });
 }
 
 /**

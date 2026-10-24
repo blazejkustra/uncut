@@ -42,7 +42,8 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
     return !!r && !!body && x >= Math.max(r.left, body.left + HEAD_WIDTH) && x <= Math.min(r.right, body.right) && y >= body.top && y <= body.bottom;
   };
   /** The timeline item under a pointer (an Effects tile dropped there goes on it, D136). */
-  const itemAt = (x: number, y: number) => document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.testid === "timeline-item")?.dataset.item;
+  const itemAt = (x: number, y: number) =>
+    document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.testid === "timeline-item")?.dataset.item;
   const onDragOver = (e: React.DragEvent) => {
     const types = [...e.dataTransfer.types];
     if (online && types.includes(EFFECT_DRAG_TYPE)) {
@@ -60,7 +61,7 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
     }
     // D259, D280: a link dragged from a browser (with the Import from link plugin) is imported and put here.
     const link = linkImportReady(getState().plugins) && dragMayHoldLink(e.dataTransfer);
-    if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => types.includes(t)) && !hasFiles(types) && !link) return;
+    if (!online || (![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => types.includes(t)) && !hasFiles(types) && !link)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropping(true);

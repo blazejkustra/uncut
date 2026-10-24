@@ -57,7 +57,8 @@ export function previewLoudnessGain(): number {
 }
 
 /** What the export's loudness depends on: the master and every track that can sound (text edits don't re-measure). */
-const mixKey = (project: ProjectModel) => JSON.stringify([project.master ?? null, project.tracks.filter((t) => t.kind !== "text").map((t) => [t.id, t.mixer ?? null, t.items])]);
+const mixKey = (project: ProjectModel) =>
+  JSON.stringify([project.master ?? null, project.tracks.filter((t) => t.kind !== "text").map((t) => [t.id, t.mixer ?? null, t.items])]);
 const DEBOUNCE_MS = 1500;
 
 /** Keeps the At target gain measured for the open project (mounted with the ducking loader). */
@@ -77,7 +78,13 @@ export function useLoudnessMeasuring(project: ProjectModel, envelopesKey: string
         if (!r.ok) return emit({ ...state, measuring: false, problem: (r.error as { message?: string }).message ?? "Couldn't measure the loudness" });
         if (r.value.cancelled) return;
         const { gainDb, lufs } = r.value;
-        emit({ atTarget: state.atTarget, measuring: false, targetLufs: target, ...(gainDb !== undefined ? { gainDb } : {}), ...(lufs !== undefined ? { lufs } : {}) });
+        emit({
+          atTarget: state.atTarget,
+          measuring: false,
+          targetLufs: target,
+          ...(gainDb !== undefined ? { gainDb } : {}),
+          ...(lufs !== undefined ? { lufs } : {}),
+        });
       });
     }, DEBOUNCE_MS);
     return () => {

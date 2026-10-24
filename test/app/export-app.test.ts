@@ -45,11 +45,18 @@ async function goTo(page: Page, frame: number) {
   await page.keyboard.up("Shift");
   for (let i = 0; i < frame % FPS; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 10000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 10000 },
+  );
   await sleep(250);
 }
 const ssim = (a: string, b: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 /** The colour space the app's screenshots are in: a pure red square comes back as (255, 0, 0) in sRGB, about (234, 51, 35) in Display P3. */
@@ -73,7 +80,16 @@ async function screenshotSpace(page: Page): Promise<"srgb" | "p3"> {
 /** A Display P3 screenshot as sRGB (what the export is), next to the original. */
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 const logged = async (app: LaunchedApp, line: string) => {
@@ -97,7 +113,10 @@ after(async () => {
 
 test("export dialog: ⌘E, quality, file and folder, progress, shown in Finder; the export matches the preview", { skip, timeout: 240000 }, async () => {
   const saveAs = join(root, "out", "My export.mp4");
-  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  const app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+  });
   apps.add(app);
   const { page } = app;
   await waitForWelcome(page);
@@ -185,7 +204,9 @@ test("export dialog: ⌘E, quality, file and folder, progress, shown in Finder; 
     const [w, h] = [1920, 1080];
     const px = execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", `scale=${w}:${h},format=gray`, "-f", "rawvideo", "-"], { maxBuffer: 16 << 20 });
     const b = { x0: w, x1: -1, y0: h, y1: -1 };
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]! > 200) Object.assign(b, { x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), y0: Math.min(b.y0, y), y1: Math.max(b.y1, y) });
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        if (px[y * w + x]! > 200) Object.assign(b, { x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), y0: Math.min(b.y0, y), y1: Math.max(b.y1, y) });
     return b;
   };
   const [tp, te] = [brightBox(preview.get(30)!), brightBox(out("export-frame-30.png"))];

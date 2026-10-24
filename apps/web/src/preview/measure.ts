@@ -11,7 +11,7 @@ export function measureText(item: Item, project: ProjectModel): { w: number; h: 
   const { width, height } = project.canvas;
   const host = document.createElement("div");
   host.style.cssText = `position:fixed;left:-${width * 2 + 100}px;top:0;width:${width}px;height:${height}px;container-type:size;visibility:hidden;pointer-events:none`;
-  host.innerHTML = `<style>${RENDER_CSS}</style>${textHtml({ ...item, transform: { ...(item.transform ?? {}), rotate: 0 } }, project)}`;
+  host.innerHTML = `<style>${RENDER_CSS}</style>${textHtml({ ...item, transform: { ...item.transform, rotate: 0 } }, project)}`;
   document.body.append(host);
   const el = host.querySelector<HTMLElement>(".pv-text");
   const size = { w: el?.offsetWidth ?? 0, h: el?.offsetHeight ?? 0 };

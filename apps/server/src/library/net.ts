@@ -72,7 +72,8 @@ export const publicLookup: LookupFunction = (hostname, options, callback) => {
   lookup(hostname, { ...options, all: true }, (error, addresses) => {
     if (error) return callback(error, "", 0);
     const list = addresses as unknown as Array<LookupAddress>;
-    if (!list.length || list.some((a) => !isPublicAddress(a.address))) return callback(Object.assign(new Error(`${hostname} points at a private or local address`), { code: "EPRIVATE" }), "", 0);
+    if (!list.length || list.some((a) => !isPublicAddress(a.address)))
+      return callback(Object.assign(new Error(`${hostname} points at a private or local address`), { code: "EPRIVATE" }), "", 0);
     if ((options as { all?: boolean }).all) return (callback as unknown as (e: null, a: Array<LookupAddress>) => void)(null, list);
     callback(null, list[0]!.address, list[0]!.family);
   });
@@ -81,7 +82,10 @@ export const publicLookup: LookupFunction = (hostname, options, callback) => {
 /** Why this URL can't be fetched now, or undefined. */
 export function urlProblem(url: URL, test = inTestContext()): string | undefined {
   const host = url.hostname.replace(/^\[|\]$/g, "");
-  if (test) return LOOPBACK.has(url.hostname) || LOOPBACK.has(host) ? undefined : `Refused in a test run: ${url.host} isn't this machine (tests never call a real provider).`;
+  if (test)
+    return LOOPBACK.has(url.hostname) || LOOPBACK.has(host)
+      ? undefined
+      : `Refused in a test run: ${url.host} isn't this machine (tests never call a real provider).`;
   if (url.protocol !== "https:") return "the file's address isn't https";
   if (isIP(host) && !isPublicAddress(host)) return `${url.host} is a private or local address`;
   return undefined;

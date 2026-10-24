@@ -40,7 +40,8 @@ export interface Bus {
 
 // Where an element was last asked to be; while a seek runs only the newest target is kept.
 export const wanted = new WeakMap<HTMLMediaElement, number>();
-export const reachable = (el: HTMLMediaElement, t: number) => (Number.isFinite(el.duration) && el.duration > 0 ? Math.min(Math.max(0, t), Math.max(0, el.duration - 0.001)) : Math.max(0, t));
+export const reachable = (el: HTMLMediaElement, t: number) =>
+  Number.isFinite(el.duration) && el.duration > 0 ? Math.min(Math.max(0, t), Math.max(0, el.duration - 0.001)) : Math.max(0, t);
 export function seek(el: HTMLMediaElement, t: number) {
   const target = reachable(el, t);
   wanted.set(el, target);

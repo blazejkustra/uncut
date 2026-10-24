@@ -28,7 +28,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shot = (page: Page, name: string) => page.screenshot({ path: `test-output/issue75-76-${name}.png` });
 const waitFor = (page: Page, selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const gone = (page: Page, selector: string, timeout = 15000) => page.waitForSelector(selector, { hidden: true, timeout });
-const rect = (page: Page, selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number });
+const rect = (page: Page, selector: string) =>
+  page.$eval(selector, (el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number });
 const has = async (page: Page, selector: string) => (await page.$(selector)) !== null;
 /** ⇧⌘<key>, as the View menu's shortcuts. */
 const shiftCmd = async (page: Page, code: "KeyL" | "KeyI" | "KeyT" | "KeyF") => {
@@ -43,7 +44,13 @@ const shiftCmd = async (page: Page, code: "KeyL" | "KeyI" | "KeyT" | "KeyF") => 
 const launch = (dialogs: Array<unknown>) =>
   launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify(dialogs), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, "plan.json"), FAKE_PROMPT_LOG: join(root, "prompts.jsonl") },
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify(dialogs),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: join(root, "plan.json"),
+      FAKE_PROMPT_LOG: join(root, "prompts.jsonl"),
+    },
   }).then((app) => (apps.add(app), app));
 
 before(async () => {
@@ -65,7 +72,22 @@ before(async () => {
       textLooks: 1,
       media: [],
       tracks: [
-        { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 0, duration: 90, text: "Launch day", transform: { x: 160, y: 440 }, style: { preset: "text.title", size: 140, weight: 700 } }] },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 90,
+              text: "Launch day",
+              transform: { x: 160, y: 440 },
+              style: { preset: "text.title", size: 140, weight: 700 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [] },
       ],
     }),
@@ -127,11 +149,15 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   const cardBox = await rect(page, "[data-testid=agent-stage-card]");
   const cdp = await page.target().createCDPSession();
   const dropData = { items: [], files: [join(root, "broken.mp4")], dragOperationsMask: 1 };
-  for (const type of ["dragEnter", "dragOver", "drop"] as const) await cdp.send("Input.dispatchDragEvent", { type, x: cardBox.x + cardBox.width / 2, y: cardBox.y + cardBox.height / 2, data: dropData });
+  for (const type of ["dragEnter", "dragOver", "drop"] as const)
+    await cdp.send("Input.dispatchDragEvent", { type, x: cardBox.x + cardBox.width / 2, y: cardBox.y + cardBox.height / 2, data: dropData });
   await waitFor(page, "[data-testid=agent-stage-card] [data-testid=agent-stage-import-report]", 30000);
   assert.match(await page.$eval("[data-testid=agent-stage-import-report]", (el) => el.textContent ?? ""), /broken\.mp4/);
   assert.ok(await has(page, "[data-testid=agent-stage-card]"), "the stage stays: nothing was imported");
-  const z = await page.evaluate(() => ({ banners: Number(getComputedStyle(document.querySelector(".app > .banners")!).zIndex), stage: Number(getComputedStyle(document.querySelector("[data-testid=agent-stage]")!).zIndex) }));
+  const z = await page.evaluate(() => ({
+    banners: Number(getComputedStyle(document.querySelector(".app > .banners")!).zIndex),
+    stage: Number(getComputedStyle(document.querySelector("[data-testid=agent-stage]")!).zIndex),
+  }));
   assert.ok(z.banners > z.stage, `banners and toasts above the stage (${JSON.stringify(z)})`);
   await shot(page, "stage-import-failed");
   await page.click("[data-testid=agent-stage-import-report] .link-btn");
@@ -209,7 +235,10 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
     assert.equal(await page.$eval(sel, (el) => el.getAttribute("title")), null, `${sel}: no native title`);
     await page.hover(sel);
     await waitFor(page, "[data-testid=tooltip]");
-    return page.$eval("[data-testid=tooltip]", (el) => ({ label: el.querySelector(".tooltip-label")?.textContent ?? "", keys: [...el.querySelectorAll("kbd")].map((k) => k.textContent ?? "") }));
+    return page.$eval("[data-testid=tooltip]", (el) => ({
+      label: el.querySelector(".tooltip-label")?.textContent ?? "",
+      keys: [...el.querySelectorAll("kbd")].map((k) => k.textContent ?? ""),
+    }));
   };
   assert.deepEqual(await tipOf("[data-testid=toggle-side]"), { label: "Show the right panel", keys: ["⇧⌘I"] });
   assert.deepEqual(await tipOf("[data-testid=toggle-lib]"), { label: "Show the left panel", keys: ["⇧⌘L"] });
@@ -246,12 +275,17 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   await shot(page, "focus");
   await page.click("[data-testid=focus-exit]");
   await sleep(450);
-  assert.ok(await has(page, "[data-testid=library]") && (await has(page, ".bottom")) && (await has(page, "aside.side")), "focus mode left: everything back");
+  assert.ok((await has(page, "[data-testid=library]")) && (await has(page, ".bottom")) && (await has(page, "aside.side")), "focus mode left: everything back");
 
   // ---- Remembered on this Mac: the timeline hidden, then a relaunch ----
   await shiftCmd(page, "KeyT");
   assert.equal(await has(page, ".bottom"), false);
-  assert.deepEqual(JSON.parse((await page.evaluate(() => localStorage.getItem("uncut.layout.hidden"))) ?? "{}"), { lib: false, side: false, bottom: true, focus: false });
+  assert.deepEqual(JSON.parse((await page.evaluate(() => localStorage.getItem("uncut.layout.hidden"))) ?? "{}"), {
+    lib: false,
+    side: false,
+    bottom: true,
+    focus: false,
+  });
   await app.close();
   apps.delete(app);
 
@@ -263,7 +297,7 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   await waitFor(page, "[data-testid=editor]");
   await sleep(800);
   assert.equal(await has(page, ".bottom"), false, "the timeline stays hidden after a relaunch");
-  assert.ok(await has(page, "[data-testid=library]") && (await has(page, "aside.side")), "the others still show");
+  assert.ok((await has(page, "[data-testid=library]")) && (await has(page, "aside.side")), "the others still show");
   assert.equal(await page.$eval("[data-testid=toggle-bottom]", (el) => el.getAttribute("aria-pressed")), "false");
   await shot(page, "relaunch");
   // Focus mode is remembered too.

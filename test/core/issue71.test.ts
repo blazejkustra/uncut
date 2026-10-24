@@ -10,11 +10,35 @@ import { componentDefaults, componentHtml, componentInfo, COMPONENTS, type Item 
 import { defaultComponentBox, ELEMENT_CATEGORIES, elementCategory, naturalSize } from "../../packages/core/src/visual/components.ts";
 import { checklistAt, inkOn, ratingAt, priceSwing, pinDrop } from "../../packages/core/src/visual/elementsMore.ts";
 import { stickerMotion } from "../../packages/core/src/visual/elements.ts";
-import { artSvg, searchStickers, STICKER_ART, STICKER_ART_IDS, STICKER_GROUPS, STICKERS, stickerArt, stickerProps } from "../../packages/core/src/visual/stickers.ts";
+import {
+  artSvg,
+  searchStickers,
+  STICKER_ART,
+  STICKER_ART_IDS,
+  STICKER_GROUPS,
+  STICKERS,
+  stickerArt,
+  stickerProps,
+} from "../../packages/core/src/visual/stickers.ts";
 
 const target = { canvas: { width: 1920, height: 1080 } };
-const NEW = ["component.follow", "component.social-button", "component.checklist", "component.quote", "component.rating", "component.price-tag", "component.map-pin", "component.before-after"];
-const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 300): Item => ({ id: "e1", type: "component", component, duration, props });
+const NEW = [
+  "component.follow",
+  "component.social-button",
+  "component.checklist",
+  "component.quote",
+  "component.rating",
+  "component.price-tag",
+  "component.map-pin",
+  "component.before-after",
+];
+const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 300): Item => ({
+  id: "e1",
+  type: "component",
+  component,
+  duration,
+  props,
+});
 const html = (i: Item, local: number) => componentHtml(i, target, local, { fps: 30 });
 
 test("every new element draws with its defaults across its length; deterministic; no NaN, scripts or footage", () => {
@@ -30,7 +54,17 @@ test("every new element draws with its defaults across its length; deterministic
 });
 
 test("one-shot motions settle to a still within about two and a half seconds (the export draws one look after)", () => {
-  for (const id of ["component.follow", "component.social-button", "component.quote", "component.rating", "component.price-tag", "component.before-after", "component.checklist", "component.lower-third", "component.callout"]) {
+  for (const id of [
+    "component.follow",
+    "component.social-button",
+    "component.quote",
+    "component.rating",
+    "component.price-tag",
+    "component.before-after",
+    "component.checklist",
+    "component.lower-third",
+    "component.callout",
+  ]) {
     assert.equal(html(item(id), 90), html(item(id), 140), `${id} still at 3 s`);
     assert.notEqual(html(item(id), 0), html(item(id), 140), `${id} moves at first`);
   }
@@ -46,7 +80,10 @@ test("one-shot motions settle to a still within about two and a half seconds (th
   const pin = item("component.map-pin");
   assert.equal(html(pin, 40), html(pin, 88));
   assert.notEqual(html(pin, 40), html(pin, 60));
-  assert.equal(html(item("component.map-pin", { ...componentDefaults("component.map-pin"), pulse: false }), 40), html(item("component.map-pin", { ...componentDefaults("component.map-pin"), pulse: false }), 100));
+  assert.equal(
+    html(item("component.map-pin", { ...componentDefaults("component.map-pin"), pulse: false }), 40),
+    html(item("component.map-pin", { ...componentDefaults("component.map-pin"), pulse: false }), 100),
+  );
   assert.deepEqual(pinDrop(30, 30), { dy: 0, squash: 1 });
   assert.equal(priceSwing(60, 30), 0);
 });
@@ -93,7 +130,11 @@ test("the social button presses: filled, its label changes, a whole-number count
   assert.match(html(b, 20), /data-pointer="true"/);
   assert.doesNotMatch(html(b, 90), /data-pointer/, "gone after the click");
   assert.doesNotMatch(html(item("component.social-button", { kind: "bell", cursor: false }), 20), /data-pointer/);
-  assert.match(html(item("component.subscribe", { ...componentDefaults("component.subscribe") }), 20), /data-pointer="true"/, "new subscribe buttons get the pointer");
+  assert.match(
+    html(item("component.subscribe", { ...componentDefaults("component.subscribe") }), 20),
+    /data-pointer="true"/,
+    "new subscribe buttons get the pointer",
+  );
   assert.doesNotMatch(html(item("component.subscribe", { label: "Subscribe", done: "Subscribed", pressAt: 1 }), 20), /data-pointer/, "older ones don't");
   assert.equal(inkOn("#FFE14D"), "#0A0A0B");
   assert.equal(inkOn("#2F80FF"), "#FFFFFF");
@@ -102,7 +143,11 @@ test("the social button presses: filled, its label changes, a whole-number count
 test("stickers: sections, a large drawn set with their own words and colours, marks that stretch", () => {
   assert.ok(STICKER_ART_IDS.length >= 50, `${STICKER_ART_IDS.length} drawn stickers`);
   assert.ok(STICKERS.length >= 190);
-  for (const g of STICKER_GROUPS) assert.ok(STICKERS.some((s) => s.group === g), `${g} has stickers`);
+  for (const g of STICKER_GROUPS)
+    assert.ok(
+      STICKERS.some((s) => s.group === g),
+      `${g} has stickers`,
+    );
   for (const id of STICKER_ART_IDS) {
     const svg = STICKER_ART[id]!.svg;
     assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 [\d.]+ 200"/, id);
@@ -143,7 +188,12 @@ test("sticker motion: pop, draw-on, slide, fade; loops repeat in whole frames fr
   assert.equal(offset(30), 0);
   assert.equal(html(draw, 30), html(draw, 100), "drawn, then still");
   // Loops: periodic once in.
-  for (const [loop, period] of [["wiggle", 21], ["float", 60], ["pulse", 30], ["spin", 120]] as const) {
+  for (const [loop, period] of [
+    ["wiggle", 21],
+    ["float", 60],
+    ["pulse", 30],
+    ["spin", 120],
+  ] as const) {
     const s = item("component.sticker", { emoji: "🔥", enter: "pop", loop }, 600);
     assert.equal(html(s, 20), html(s, 20 + period), loop);
     assert.notEqual(html(s, 20), html(s, 20 + Math.floor(period / 4)), loop);
@@ -170,7 +220,24 @@ test("D275: the follow handle draws each brand's own mark in its colour (Simple 
   const { FOLLOW_PLATFORM_NAMES } = await import("../../packages/core/src/visual/elementsMore.ts");
   const schema = componentInfo("component.follow")!.manifest.params as { properties: { platform: { enum: Array<string> } } };
   const ids = schema.properties.platform.enum;
-  for (const want of ["youtube", "instagram", "tiktok", "x", "linkedin", "facebook", "twitch", "github", "threads", "bluesky", "discord", "spotify", "web", "mail", "video"]) assert.ok(ids.includes(want), want);
+  for (const want of [
+    "youtube",
+    "instagram",
+    "tiktok",
+    "x",
+    "linkedin",
+    "facebook",
+    "twitch",
+    "github",
+    "threads",
+    "bluesky",
+    "discord",
+    "spotify",
+    "web",
+    "mail",
+    "video",
+  ])
+    assert.ok(ids.includes(want), want);
   for (const id of ids) assert.ok(FOLLOW_PLATFORM_NAMES[id], `${id} has a name in the inspector`);
   assert.equal(componentDefaults("component.follow").platform, "youtube");
   const at = (platform: string, style = "pill") => html(item("component.follow", { handle: "@me", platform, style }), 60);

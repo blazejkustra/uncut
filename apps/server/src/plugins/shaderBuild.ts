@@ -14,12 +14,17 @@ import * as d from "typegpu/data";
 import { MAX_SHADER_WGSL, shaderDefProblems, shaderParamProblems, stripWgslComments, type ShaderParam } from "@uncut/core/shaders";
 
 type Schema = { readonly type?: string; readonly propTypes?: Record<string, { readonly type?: string }>; $name?: (n: string) => unknown };
-type AnyFn = { readonly resourceType?: unknown; readonly shell?: { readonly argTypes?: ReadonlyArray<Schema>; readonly returnType?: Schema }; $name: (n: string) => unknown };
+type AnyFn = {
+  readonly resourceType?: unknown;
+  readonly shell?: { readonly argTypes?: ReadonlyArray<Schema>; readonly returnType?: Schema };
+  $name: (n: string) => unknown;
+};
 
 const typeName = (s: Schema | undefined) => s?.type ?? "?";
 
 /** Whether a value is a TypeGPU function (tgpu.fn(...)…). */
-export const isTgpuFn = (v: unknown): v is AnyFn => !!v && (typeof v === "object" || typeof v === "function") && "shell" in (v as object) && typeof (v as AnyFn).$name === "function";
+export const isTgpuFn = (v: unknown): v is AnyFn =>
+  !!v && (typeof v === "object" || typeof v === "function") && "shell" in (v as object) && typeof (v as AnyFn).$name === "function";
 
 /**
  * A TypeGPU function → the effect's WGSL, or the problems: its signature must be
@@ -32,14 +37,21 @@ export function resolveShaderFn(fn: unknown, params: ReadonlyArray<ShaderParam>)
   const want = params.length ? ["vec2f", "f32", "vec2f", "struct"] : ["vec2f", "f32", "vec2f"];
   const got = args.map(typeName);
   if (got.join(",") !== want.join(",") || typeName(fn.shell?.returnType) !== "vec4f") {
-    return { problems: [`Its signature must be tgpu.fn([d.vec2f, d.f32, d.vec2f${params.length ? ", Params" : ""}], d.vec4f) (uv, t, size${params.length ? ", params" : ""}); it is (${got.join(", ")}) → ${typeName(fn.shell?.returnType)}.`] };
+    return {
+      problems: [
+        `Its signature must be tgpu.fn([d.vec2f, d.f32, d.vec2f${params.length ? ", Params" : ""}], d.vec4f) (uv, t, size${params.length ? ", params" : ""}); it is (${got.join(", ")}) → ${typeName(fn.shell?.returnType)}.`,
+      ],
+    };
   }
   const problems: Array<string> = [...shaderParamProblems(params)];
   if (params.length) {
     const struct = args[3]!;
     const fields = Object.entries(struct.propTypes ?? {}).map(([k, v]) => `${k}: ${typeName(v)}`);
     const expected = params.map((p) => `${p.key}: ${p.type === "color" ? "vec3f" : "f32"}`);
-    if (fields.join(", ") !== expected.join(", ")) problems.push(`Its params struct must be d.struct({ ${expected.map((f) => f.replace(": ", ": d.")).join(", ")} }) (numbers and switches d.f32, colours d.vec3f, in the manifest's order); it is { ${fields.map((f) => f.replace(": ", ": d.")).join(", ")} }.`);
+    if (fields.join(", ") !== expected.join(", "))
+      problems.push(
+        `Its params struct must be d.struct({ ${expected.map((f) => f.replace(": ", ": d.")).join(", ")} }) (numbers and switches d.f32, colours d.vec3f, in the manifest's order); it is { ${fields.map((f) => f.replace(": ", ": d.")).join(", ")} }.`,
+      );
     struct.$name?.("Params");
   }
   if (problems.length) return { problems };
@@ -72,7 +84,8 @@ export function buildShader(params: ReadonlyArray<ShaderParam>, body: string): {
   const paramProblems = shaderParamProblems(params);
   if (paramProblems.length) return { problems: paramProblems };
   const src = stripWgslComments(body).trim();
-  if (!/^\([^)]*\)\s*(->\s*vec4<?f(?:32>)?\s*)?\{[\s\S]*\}$/.test(src)) return { problems: ["The body is the function's arguments and its block: (uv, t, size, p) { ... return vec4f(...); }."] };
+  if (!/^\([^)]*\)\s*(->\s*vec4<?f(?:32>)?\s*)?\{[\s\S]*\}$/.test(src))
+    return { problems: ["The body is the function's arguments and its block: (uv, t, size, p) { ... return vec4f(...); }."] };
   const fields = Object.fromEntries(params.map((p) => [p.key, p.type === "color" ? d.vec3f : d.f32]));
   const args = params.length ? [d.vec2f, d.f32, d.vec2f, d.struct(fields)] : [d.vec2f, d.f32, d.vec2f];
   let fn: unknown;

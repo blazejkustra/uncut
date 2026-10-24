@@ -4,16 +4,41 @@
 // valid edit that clears it; the sound sheet lists music and every effect with what it lands on.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, loadModules, projectChecks, SFX_PER_10S, SOUND_HARD, soundSheet, validateOps, validateProject, type Item, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  loadModules,
+  projectChecks,
+  SFX_PER_10S,
+  SOUND_HARD,
+  soundSheet,
+  validateOps,
+  validateProject,
+  type Item,
+  type Project,
+} from "../../packages/core/src/index.ts";
 
 const modules = await loadModules("spec/modules/builtin", "spec/examples/plugins");
 const FPS = 30;
 
 /** 21.5 s 1080×1350: main cuts every `cut` frames, texts, music (its tempo in the file name) and effects. */
-function make({ cut = 60, music = "lofi-loop-75bpm.m4a", musicGain = 0, sfx = [], texts = [] }: { cut?: number; music?: string; musicGain?: number; sfx?: Array<{ file: string; at: number; gainDb?: number; duration?: number }>; texts?: Array<{ start: number; text: string }> } = {}): Project {
+function make({
+  cut = 60,
+  music = "lofi-loop-75bpm.m4a",
+  musicGain = 0,
+  sfx = [],
+  texts = [],
+}: {
+  cut?: number;
+  music?: string;
+  musicGain?: number;
+  sfx?: Array<{ file: string; at: number; gainDb?: number; duration?: number }>;
+  texts?: Array<{ start: number; text: string }>;
+} = {}): Project {
   const length = 645;
   const clips: Array<Item> = [];
-  for (let f = 0, i = 0; f < length; f += cut, i++) clips.push({ id: `c${i}`, type: "clip", media: "m-clip", in: 0, duration: Math.min(cut, length - f) } as Item);
+  for (let f = 0, i = 0; f < length; f += cut, i++)
+    clips.push({ id: `c${i}`, type: "clip", media: "m-clip", in: 0, duration: Math.min(cut, length - f) } as Item);
   const files = [...new Set(sfx.map((s) => s.file))];
   return {
     format: "uncut/0",
@@ -22,13 +47,47 @@ function make({ cut = 60, music = "lofi-loop-75bpm.m4a", musicGain = 0, sfx = []
     media: [
       { id: "m-clip", kind: "video", name: "clip.mp4", path: "/tmp/clip.mp4", probe: { frames: 3000, fps: 30, width: 1080, height: 1350, hasAudio: false } },
       { id: "m-music", kind: "audio", name: "Music", path: `media/${music}`, probe: { frames: 3600 } },
-      ...files.map((f) => ({ id: `m-${f.replace(".m4a", "")}`, kind: "audio" as const, name: f.replace(/\.m4a$/, ""), path: `media/${f}`, probe: { frames: 120 } })),
+      ...files.map((f) => ({
+        id: `m-${f.replace(".m4a", "")}`,
+        kind: "audio" as const,
+        name: f.replace(/\.m4a$/, ""),
+        path: `media/${f}`,
+        probe: { frames: 120 },
+      })),
     ],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: texts.map((t, i) => ({ id: `t${i}`, type: "text", start: t.start, duration: 90, text: t.text, style: { preset: "text.title", size: 96 } }) as Item) },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: texts.map(
+          (t, i) => ({ id: `t${i}`, type: "text", start: t.start, duration: 90, text: t.text, style: { preset: "text.title", size: 96 } }) as Item,
+        ),
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: clips },
-      { id: "music", kind: "audio", name: "Music", items: [{ id: "music-1", type: "audio", media: "m-music", in: 0, start: 0, duration: length, fadeIn: 30, fadeOut: 60, gainDb: musicGain } as Item] },
-      { id: "sfx", kind: "audio", name: "SFX", items: sfx.map((s, i) => ({ id: `s${i}`, type: "audio", media: `m-${s.file.replace(".m4a", "")}`, in: 0, start: s.at, duration: s.duration ?? 12, ...(s.gainDb !== undefined ? { gainDb: s.gainDb } : {}) }) as Item) },
+      {
+        id: "music",
+        kind: "audio",
+        name: "Music",
+        items: [{ id: "music-1", type: "audio", media: "m-music", in: 0, start: 0, duration: length, fadeIn: 30, fadeOut: 60, gainDb: musicGain } as Item],
+      },
+      {
+        id: "sfx",
+        kind: "audio",
+        name: "SFX",
+        items: sfx.map(
+          (s, i) =>
+            ({
+              id: `s${i}`,
+              type: "audio",
+              media: `m-${s.file.replace(".m4a", "")}`,
+              in: 0,
+              start: s.at,
+              duration: s.duration ?? 12,
+              ...(s.gainDb !== undefined ? { gainDb: s.gainDb } : {}),
+            }) as Item,
+        ),
+      },
     ],
   };
 }
@@ -65,7 +124,15 @@ test("the evidence project (16 effects in 21.5 s) trips density, repeats, hits, 
 });
 
 test("a tasteful mix is clean: 3 effects on real events, 9 dB under a fast track", () => {
-  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ui-click.m4a", at: 300, gainDb: -10 }, { file: "impact-boom.m4a", at: 480, gainDb: -8 }] });
+  const p = make({
+    cut: 60,
+    music: "lofi-loop-95bpm.m4a",
+    sfx: [
+      { file: "whoosh-short.m4a", at: 119, gainDb: -9 },
+      { file: "ui-click.m4a", at: 300, gainDb: -10 },
+      { file: "impact-boom.m4a", at: 480, gainDb: -8 },
+    ],
+  });
   assert.deepEqual(sound(p), [], JSON.stringify(sound(p)));
   assert.ok(SFX_PER_10S >= 3);
 });
@@ -92,14 +159,27 @@ test("a short video gets a pro-rata limit; a riser lands on what it builds to; s
   const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "riser.m4a", at: 60, duration: 60, gainDb: -10 }] });
   assert.deepEqual(sound(p), [], "a riser ending on the cut at 4 s lands");
   const off = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "riser.m4a", at: 85, duration: 60, gainDb: -10 }] });
-  assert.ok(sound(off).some((c) => c.key === "sound:sync:s0"), "a riser ending between cuts lands on nothing");
+  assert.ok(
+    sound(off).some((c) => c.key === "sound:sync:s0"),
+    "a riser ending between cuts lands on nothing",
+  );
 });
 
 test("the sound sheet: music with its tempo and level, each effect with its kind, level against the music and what it lands on", () => {
-  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ding.m4a", at: 455 }] });
+  const p = make({
+    cut: 60,
+    music: "lofi-loop-95bpm.m4a",
+    sfx: [
+      { file: "whoosh-short.m4a", at: 119, gainDb: -9 },
+      { file: "ding.m4a", at: 455 },
+    ],
+  });
   const sheet = soundSheet(p);
   assert.match(sheet[0]!, /^music 0\.0 s to 21\.5 s: Music, 95 BPM, at 0 dB, fades in, fades out$/);
-  assert.match(sheet[1]!, /^sound effect 4\.0 s \(f 119\): whoosh-short \(whoosh\), 0\.4 s, at −9 dB \(−9 dB against the music\); lands on the cut to c2 \(f 120\)/);
+  assert.match(
+    sheet[1]!,
+    /^sound effect 4\.0 s \(f 119\): whoosh-short \(whoosh\), 0\.4 s, at −9 dB \(−9 dB against the music\); lands on the cut to c2 \(f 120\)/,
+  );
   assert.match(sheet[2]!, /ding \(ui\).*lands on nothing that changes on screen/);
   assert.match(sheet.at(-2)!, /^2 sound effects in 21\.5 s \(0\.9 per 10 s; the bar is at most 4\), 2 different$/);
   // D217: the profile last (strict when the video's brief says nothing).
@@ -107,7 +187,7 @@ test("the sound sheet: music with its tempo and level, each effect with its kind
   assert.ok(!/[·•]/.test(sheet.join("\n")));
 });
 
-test("D296: a song on a plain \"Audio\" track, its file named after the song, is music on the sheet (not \"No music\")", () => {
+test('D296: a song on a plain "Audio" track, its file named after the song, is music on the sheet (not "No music")', () => {
   const p = make({ music: "2-electro-dreams_arulo_mixkit-190_cut28.mp3" });
   const music = p.tracks.find((t) => t.id === "music")!;
   const plain = { ...p, tracks: p.tracks.map((t) => (t === music ? { ...t, name: "Audio" } : t)).filter((t) => t.id !== "sfx") };
@@ -124,12 +204,24 @@ test("D296: a song on a plain \"Audio\" track, its file named after the song, is
 test("ui profile: one soft click per press inside a graphic is fine; outside a graphic it still has to land on something", () => {
   const clicks = Array.from({ length: 20 }, (_, i) => ({ file: "click-soft.m4a", at: 15 + i * 15, gainDb: -12 }));
   const base = make({ cut: 645, music: "electro-120bpm.m4a", sfx: [...clicks, { file: "airhorn.m4a", at: 400, gainDb: -12 }] });
-  const withGraphic = { ...base, tracks: [...base.tracks, { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "film", type: "graphic", src: "graphics/film.html", start: 0, duration: 645 } as Item] }] } as Project;
-  const ui = projectChecks(withGraphic, { sound: "ui" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  const withGraphic = {
+    ...base,
+    tracks: [
+      ...base.tracks,
+      { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "film", type: "graphic", src: "graphics/film.html", start: 0, duration: 645 } as Item] },
+    ],
+  } as Project;
+  const ui = projectChecks(withGraphic, { sound: "ui" })
+    .filter((c) => c.id === "sound")
+    .map((c) => c.key.split(":")[1]);
   assert.deepEqual([...new Set(ui)].sort(), ["meme"]);
-  const strict = projectChecks(withGraphic, { sound: "strict" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  const strict = projectChecks(withGraphic, { sound: "strict" })
+    .filter((c) => c.id === "sound")
+    .map((c) => c.key.split(":")[1]);
   assert.ok(strict.includes("density") && strict.includes("repeat"), strict.join(", "));
-  const bare = projectChecks(base as Project, { sound: "ui" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  const bare = projectChecks(base as Project, { sound: "ui" })
+    .filter((c) => c.id === "sound")
+    .map((c) => c.key.split(":")[1]);
   assert.ok(bare.includes("sync"), "no graphic: a click on nothing is still a finding");
 });
 
@@ -138,10 +230,17 @@ test("ui profile: one soft click per press inside a graphic is fine; outside a g
 test("music profile: any sound effect is one music-only finding; none is clean", () => {
   const clicks = Array.from({ length: 6 }, (_, i) => ({ file: "click-soft.m4a", at: 15 + i * 15, gainDb: -12 }));
   const withSfx = make({ cut: 645, music: "electro-120bpm.m4a", sfx: clicks });
-  const keys = projectChecks(withSfx, { sound: "music" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  const keys = projectChecks(withSfx, { sound: "music" })
+    .filter((c) => c.id === "sound")
+    .map((c) => c.key.split(":")[1]);
   assert.deepEqual([...new Set(keys)], ["music-only"]);
   const none = make({ cut: 645, music: "electro-120bpm.m4a", sfx: [] });
-  assert.deepEqual(projectChecks(none, { sound: "music" }).filter((c) => c.id === "sound").map((c) => c.key), []);
+  assert.deepEqual(
+    projectChecks(none, { sound: "music" })
+      .filter((c) => c.id === "sound")
+      .map((c) => c.key),
+    [],
+  );
   assert.match(soundSheet(none, { sound: "music" }).join("\n"), /Sound profile music only/);
 });
 
@@ -149,13 +248,27 @@ test("music profile: any sound effect is one music-only finding; none is clean",
 // typed is the right sound, not "a click on a text". A UI click there still is; music only (the
 // user's request) still rules every effect out.
 test("a keyboard sound on typing isn't a click on text; a UI click on text still is; music only still drops both", () => {
-  const texts = [{ start: 150, text: "Cut my drone clips" }, { start: 330, text: "into a reel" }];
-  const p = make({ cut: 60, music: "lofi-loop-120bpm.m4a", texts, sfx: [{ file: "typing-keyboard.m4a", at: 150, gainDb: -10 }, { file: "ui-click.m4a", at: 330, gainDb: -10 }] });
+  const texts = [
+    { start: 150, text: "Cut my drone clips" },
+    { start: 330, text: "into a reel" },
+  ];
+  const p = make({
+    cut: 60,
+    music: "lofi-loop-120bpm.m4a",
+    texts,
+    sfx: [
+      { file: "typing-keyboard.m4a", at: 150, gainDb: -10 },
+      { file: "ui-click.m4a", at: 330, gainDb: -10 },
+    ],
+  });
   const keys = sound(p).map((c) => c.key);
   assert.ok(!keys.includes("sound:click-text:s0"), `the bundled typing sound on typing: ${keys.join(", ")}`);
   assert.ok(keys.includes("sound:click-text:s1"), "a UI click on a text is still flagged");
   const named = make({ cut: 60, music: "lofi-loop-120bpm.m4a", texts, sfx: [{ file: "my-keyboard-clack.m4a", at: 150, gainDb: -10 }] });
   assert.ok(!sound(named).some((c) => c.key.startsWith("sound:click-text:")), "a keyboard sound by its name");
   const musicOnly = projectChecks(p, { sound: "music" }).filter((c) => c.id === "sound");
-  assert.ok(musicOnly.some((c) => c.key.startsWith("sound:music-only:")), "music only (the user's words) still asks for none");
+  assert.ok(
+    musicOnly.some((c) => c.key.startsWith("sound:music-only:")),
+    "music only (the user's words) still asks for none",
+  );
 });

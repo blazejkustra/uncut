@@ -12,7 +12,27 @@ import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
-import { BUNDLE_ID, bundleVersion, canInstallNow, INSTALL_NOTICE_MS, installingMessage, NO_STAGING_ID, parseSignature, parseStepAsides, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updateBundlePath, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type StepAside, type UpdatePolicy } from "./policy.ts";
+import {
+  BUNDLE_ID,
+  bundleVersion,
+  canInstallNow,
+  INSTALL_NOTICE_MS,
+  installingMessage,
+  NO_STAGING_ID,
+  parseSignature,
+  parseStepAsides,
+  pendingInstall,
+  shipItPid,
+  stepAsideWatcher,
+  UpdateSchedule,
+  updateBundlePath,
+  updaterConfigYaml,
+  updatePolicy,
+  type BundleSignature,
+  type PendingInstall,
+  type StepAside,
+  type UpdatePolicy,
+} from "./policy.ts";
 
 const log = (message: string) => console.log(`[updater] ${message}`);
 
@@ -100,7 +120,10 @@ export async function startUpdater(options: {
   readonly hold?: boolean;
 }): Promise<Updater> {
   const signature = app.isPackaged && process.platform === "darwin" ? await readSignature() : undefined;
-  const policy = process.platform === "darwin" ? updatePolicy(process.env, { packaged: app.isPackaged, signature }) : ({ enabled: false, reason: "dev", detail: "macOS only" } as const);
+  const policy =
+    process.platform === "darwin"
+      ? updatePolicy(process.env, { packaged: app.isPackaged, signature })
+      : ({ enabled: false, reason: "dev", detail: "macOS only" } as const);
   options.onPolicy(policy);
   let status: UpdateStatus = { kind: "idle" };
   const send = (next: UpdateStatus) => {
@@ -113,7 +136,13 @@ export async function startUpdater(options: {
   }
   if (options.hold) {
     log("held: a pending ShipIt install finishes when the app quits");
-    return { policy, checkNow: () => log("held: quit Uncut to finish the pending update"), setBusy: () => {}, install: async () => "not-ready", status: () => status };
+    return {
+      policy,
+      checkNow: () => log("held: quit Uncut to finish the pending update"),
+      setBusy: () => {},
+      install: async () => "not-ready",
+      status: () => status,
+    };
   }
 
   const cacheBase = process.env.UNCUT_DATA_DIR ? path.join(process.env.UNCUT_DATA_DIR, "cache") : path.join(homedir(), "Library", "Caches");
@@ -203,9 +232,15 @@ export async function startUpdater(options: {
     if (staging) return;
     manual = asked;
     // Both the check and its download report failures through "error".
-    updater.checkForUpdates().then((r) => void r?.downloadPromise?.catch(() => {}), () => {});
+    updater.checkForUpdates().then(
+      (r) => void r?.downloadPromise?.catch(() => {}),
+      () => {},
+    );
   };
-  const schedule = new UpdateSchedule(check, policy.test && process.env.UNCUT_UPDATE_FIRST_CHECK_MS ? { firstMs: Number(process.env.UNCUT_UPDATE_FIRST_CHECK_MS) } : {});
+  const schedule = new UpdateSchedule(
+    check,
+    policy.test && process.env.UNCUT_UPDATE_FIRST_CHECK_MS ? { firstMs: Number(process.env.UNCUT_UPDATE_FIRST_CHECK_MS) } : {},
+  );
   schedule.start();
   log(`on: ${policy.feed.provider === "github" ? `github ${policy.feed.owner}/${policy.feed.repo}` : policy.feed.url}`);
 

@@ -45,11 +45,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     </div>
   );
   // A step earns its check mark only when what it needs is ready: an agent, and ffmpeg.
-  const stepDone = [
-    ["claude", "codex"].some((id) => byId[id]?.status === "ready"),
-    byId.ffmpeg?.status === "ready",
-    false,
-  ];
+  const stepDone = [["claude", "codex"].some((id) => byId[id]?.status === "ready"), byId.ffmpeg?.status === "ready", false];
   const [visited, setVisited] = useState<ReadonlySet<number>>(new Set([0]));
   const go = (i: number) => {
     setVisited((v) => new Set([...v, i]));
@@ -92,7 +88,10 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     body = (
       <>
         <h1>Record and export</h1>
-        <p className="wiz-lead">Argent records simulators, emulators, web and desktop apps. ffmpeg makes thumbnails, waveforms and the final video. whisper.cpp transcribes speech on this Mac.</p>
+        <p className="wiz-lead">
+          Argent records simulators, emulators, web and desktop apps. ffmpeg makes thumbnails, waveforms and the final video. whisper.cpp transcribes speech on
+          this Mac.
+        </p>
         <div className="wiz-list">
           {row("argent")}
           {row("ffmpeg")}
@@ -190,18 +189,22 @@ function EnvironmentSettings() {
       <div className="wiz-row">
         <div className="grow">
           <div className="wiz-name">{environment.kind === "remote" ? `Working on ${environment.name}` : "Working on this Mac"}</div>
-          <div className="wiz-sub">{environment.kind === "remote" ? "Agents, ffmpeg, Argent and plugins above are that machine's." : "Add another machine to edit and export there instead."}</div>
+          <div className="wiz-sub">
+            {environment.kind === "remote"
+              ? "Agents, ffmpeg, Argent and plugins above are that machine's."
+              : "Add another machine to edit and export there instead."}
+          </div>
         </div>
         <EnvironmentChip />
         {usable ? (
           <button className="btn" data-testid="settings-environments-manage" disabled={!usable} onClick={() => void actions.openEnvironments()}>
-          Manage…
-        </button>
+            Manage…
+          </button>
         ) : (
           <LabsTip>
             <button className="btn" data-testid="settings-environments-manage" disabled={!usable} onClick={() => void actions.openEnvironments()}>
-          Manage…
-        </button>
+              Manage…
+            </button>
           </LabsTip>
         )}
       </div>

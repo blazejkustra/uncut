@@ -50,7 +50,11 @@ export function GenerateSfx({ project, online, query }: { project: Project; onli
         </Tooltip>
       </div>
       {g && !g.ready ? (
-        <KeyRow provider="elevenlabs" text="Sound effects are made by ElevenLabs with your own key, billed to your ElevenLabs credits." placeholder="ElevenLabs API key" />
+        <KeyRow
+          provider="elevenlabs"
+          text="Sound effects are made by ElevenLabs with your own key, billed to your ElevenLabs credits."
+          placeholder="ElevenLabs API key"
+        />
       ) : (
         <>
           <textarea
@@ -62,18 +66,30 @@ export function GenerateSfx({ project, online, query }: { project: Project; onli
             spellCheck={false}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canRun) void actions.startGenerate({ generator: GENERATOR, prompt: text, kind: "audio", seconds });
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canRun)
+                void actions.startGenerate({ generator: GENERATOR, prompt: text, kind: "audio", seconds });
             }}
           />
           <div className="lib-selects">
-            <select className="field input" data-testid="sfx-generate-seconds" aria-label="Length" value={seconds} onChange={(e) => setSeconds(Number(e.target.value))}>
+            <select
+              className="field input"
+              data-testid="sfx-generate-seconds"
+              aria-label="Length"
+              value={seconds}
+              onChange={(e) => setSeconds(Number(e.target.value))}
+            >
               {LENGTHS.map((s) => (
                 <option key={s} value={s}>
                   {s} s
                 </option>
               ))}
             </select>
-            <button className="btn primary" data-testid="sfx-generate-run" disabled={!canRun} onClick={() => void actions.startGenerate({ generator: GENERATOR, prompt: text, kind: "audio", seconds })}>
+            <button
+              className="btn primary"
+              data-testid="sfx-generate-run"
+              disabled={!canRun}
+              onClick={() => void actions.startGenerate({ generator: GENERATOR, prompt: text, kind: "audio", seconds })}
+            >
               {running.length ? <RefreshCw className="spin" /> : <Sparkles />} Generate
             </button>
           </div>

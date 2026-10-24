@@ -11,7 +11,22 @@ import sfxJson from "../../../../assets/sfx/library.json" with { type: "json" };
 import type { Media, Project } from "../timeline/types.ts";
 import { expandQuery, matchesQuery, scoreSound, SOUND_ALIASES } from "./search.ts";
 
-export { aliasOf, clipNote, expandQuery, matchesQuery, normalizeText, rankSounds, scoreSound, SOUND_ALIASES, squash, synonymsOf, wordsOf, type ExpandedQuery, type Rankable, type SoundAlias } from "./search.ts";
+export {
+  aliasOf,
+  clipNote,
+  expandQuery,
+  matchesQuery,
+  normalizeText,
+  rankSounds,
+  scoreSound,
+  SOUND_ALIASES,
+  squash,
+  synonymsOf,
+  wordsOf,
+  type ExpandedQuery,
+  type Rankable,
+  type SoundAlias,
+} from "./search.ts";
 
 export type LibraryKind = "music" | "sfx";
 /** Online sources (D134). */
@@ -107,7 +122,9 @@ export const SFX_CATEGORIES: ReadonlyArray<{ readonly id: string; readonly name:
 ];
 
 /** Meme sounds by what people call them (SOUND_ALIASES with a chip), mapped to searches that find CC0 / CC BY sound-alikes. */
-export const MEME_SOUNDS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly query: string }> = SOUND_ALIASES.filter((a) => a.chip).map((a) => ({ id: a.id, name: a.name, query: a.online }));
+export const MEME_SOUNDS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly query: string }> = SOUND_ALIASES.filter((a) => a.chip).map(
+  (a) => ({ id: a.id, name: a.name, query: a.online }),
+);
 
 /** A bundled sound effect (assets/sfx/library.json). */
 export interface SfxSound {
@@ -152,12 +169,21 @@ export function filterSfx({ query, category }: { readonly query?: string | undef
     return matchesQuery({ id: s.id, title: s.title, tags: s.tags, category: s.category, extra: `${s.author} ${categoryName}` }, q);
   });
   if (!q.groups.length) return found;
-  const scored = found.map((s, i) => ({ s, i, score: (q.alias?.bundled.includes(s.id) ? 20 - 5 * q.alias.bundled.indexOf(s.id) : 0) + scoreSound({ ...s, license: "cc0" }, q) }));
+  const scored = found.map((s, i) => ({
+    s,
+    i,
+    score: (q.alias?.bundled.includes(s.id) ? 20 - 5 * q.alias.bundled.indexOf(s.id) : 0) + scoreSound({ ...s, license: "cc0" }, q),
+  }));
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).map((e) => e.s);
 }
 
 /** The modules a library media's source carries. */
-export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", bundled: "library.bundled", folder: "library.folder" } as const;
+export const LIBRARY_MODULES = {
+  openverse: "library.openverse",
+  freesound: "library.freesound",
+  bundled: "library.bundled",
+  folder: "library.folder",
+} as const;
 
 /** What a media item added from the library records about itself (its `source`). */
 export interface LibraryCredit {
@@ -223,13 +249,19 @@ export const libraryMediaOf = (project: Pick<Project, "media">, libraryId: strin
 /** A media item's credits: its library source. (A D91 music track copied in before D274 has none: CC0, no credit needed.) */
 export function mediaCredit(media: Pick<Media, "path" | "source">): LibraryCredit | undefined {
   const s = media.source as Partial<LibraryCredit> | undefined;
-  if (s && typeof s.module === "string" && s.module.startsWith("library.") && typeof s.title === "string" && (s.license === "cc0" || s.license === "by")) return s as LibraryCredit;
+  if (s && typeof s.module === "string" && s.module.startsWith("library.") && typeof s.title === "string" && (s.license === "cc0" || s.license === "by"))
+    return s as LibraryCredit;
   return undefined;
 }
 
 /** A media id from a name, like the import's ("m-" + lowercase words), unique against `taken`. */
 export function mediaIdFor(name: string, taken: ReadonlySet<string>) {
-  const stem = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "music";
+  const stem =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "music";
   let id = `m-${stem}`;
   for (let n = 2; taken.has(id); n++) id = `m-${stem}-${n}`;
   return id;
@@ -237,7 +269,11 @@ export function mediaIdFor(name: string, taken: ReadonlySet<string>) {
 
 /** Every id the validator requires to be unique. */
 export const projectIds = (project: Pick<Project, "media" | "tracks" | "scenes">) =>
-  new Set([...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)]);
+  new Set([
+    ...project.media.map((m) => m.id),
+    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+    ...(project.scenes ?? []).map((s) => s.id),
+  ]);
 
 export interface Credits {
   /** CC BY: the credit each one needs, in the order they were added. */
@@ -301,7 +337,8 @@ export function limitSentence(source: LibrarySource, limit: { readonly scope: "m
 }
 
 /** A sound's length for a list: "0.7 s" under 10 s, else "1:56". */
-export const lengthLabel = (seconds: number) => (seconds < 10 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`);
+export const lengthLabel = (seconds: number) =>
+  seconds < 10 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 
 // ---- the user's sound folders (D208) ----
 
@@ -341,7 +378,7 @@ export const MUSIC_LIBRARY_PATH = "@music";
 /** Audio files a folder's index lists. */
 export const FOLDER_AUDIO_EXTENSIONS: ReadonlyArray<string> = ["wav", "mp3", "m4a", "aac", "aif", "aiff", "flac", "ogg", "oga", "opus", "caf"];
 export const FOLDER_ID = /^[a-f0-9]{16}$/;
-export const parseFolderKey = (key: string) => (/^folder:([a-f0-9]{16})$/.exec(key)?.[1]);
+export const parseFolderKey = (key: string) => /^folder:([a-f0-9]{16})$/.exec(key)?.[1];
 
 /** A folder sound's words: its name, the subfolders it sits in, its type. */
 const folderWords = (s: FolderSound) => `${s.rel.split("/").slice(0, -1).join(" ")} ${s.ext}`;
@@ -352,7 +389,12 @@ export function filterFolderSounds(folders: ReadonlyArray<SoundFolder>, query = 
   const all = folders.filter((f) => !folder || f.id === folder).flatMap((f) => f.sounds.map((s) => ({ ...s, folderName: f.name })));
   if (!q.groups.length) return all;
   return all
-    .filter((s) => matchesQuery({ title: s.name, extra: folderWords(s) }, q) || (q.alias && q.alias.variants.concat(q.alias.name).some((v) => normalizeTextRun(v).length > 2 && normalizeTextRun(s.name).includes(normalizeTextRun(v)))))
+    .filter(
+      (s) =>
+        matchesQuery({ title: s.name, extra: folderWords(s) }, q) ||
+        (q.alias &&
+          q.alias.variants.concat(q.alias.name).some((v) => normalizeTextRun(v).length > 2 && normalizeTextRun(s.name).includes(normalizeTextRun(v)))),
+    )
     .map((s, i) => ({ s, i, score: scoreSound({ title: s.name, tags: folderWords(s).split(" ") }, q) }))
     .sort((a, b) => b.score - a.score || a.i - b.i)
     .map((e) => e.s);

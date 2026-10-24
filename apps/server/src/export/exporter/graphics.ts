@@ -1,6 +1,17 @@
 import { realpath, stat, readFile } from "node:fs/promises";
 import { join, resolve, extname } from "node:path";
-import { type Project, type FontSource, GRAPHIC_SRC, MAX_GRAPHIC_BYTES, resolveGraphicLibs, resolveGraphicBrand, MAX_GRAPHIC_FONT_BYTES, MAX_GRAPHIC_DOC_BYTES, resolveGraphicFonts, type Media } from "@uncut/core";
+import {
+  type Project,
+  type FontSource,
+  GRAPHIC_SRC,
+  MAX_GRAPHIC_BYTES,
+  resolveGraphicLibs,
+  resolveGraphicBrand,
+  MAX_GRAPHIC_FONT_BYTES,
+  MAX_GRAPHIC_DOC_BYTES,
+  resolveGraphicFonts,
+  type Media,
+} from "@uncut/core";
 import { loadGraphicLibs } from "../graphicLibs.ts";
 import { type ProjectFonts, projectFonts } from "../fonts.ts";
 import { MEDIA_TOKEN } from "../exportPlan.ts";
@@ -13,9 +24,19 @@ import { MEDIA_TOKEN } from "../exportPlan.ts";
  * libraries inlined; the size cap is the author's file's): the preview route, the export and
  * render_frames all read graphics here, so they all draw the same document.
  */
-export async function readGraphics(dir: string, project: Project, libs: Readonly<Record<string, string>> = {}, extras: { readonly fonts?: ReadonlyArray<FontSource>; readonly logos?: Readonly<Partial<Record<"light" | "dark" | "mark", string>>> } = {}): Promise<Map<string, string>> {
+export async function readGraphics(
+  dir: string,
+  project: Project,
+  libs: Readonly<Record<string, string>> = {},
+  extras: { readonly fonts?: ReadonlyArray<FontSource>; readonly logos?: Readonly<Partial<Record<"light" | "dark" | "mark", string>>> } = {},
+): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const srcs = new Set(project.tracks.flatMap((t) => t.items).filter((i) => i.type === "graphic" && typeof i.src === "string").map((i) => i.src!));
+  const srcs = new Set(
+    project.tracks
+      .flatMap((t) => t.items)
+      .filter((i) => i.type === "graphic" && typeof i.src === "string")
+      .map((i) => i.src!),
+  );
   if (!srcs.size) return out;
   const folder = await realpath(join(dir, "graphics")).catch(() => undefined);
   const home = await realpath(dir).catch(() => undefined);
@@ -46,13 +67,25 @@ export async function readGraphics(dir: string, project: Project, libs: Readonly
  * logos and the fonts they name inlined; with the project's fonts (the kit's faces for the
  * rasteriser's CSS, and which families are there).
  */
-export async function projectGraphics(paths: { readonly graphicLibsDir: string; readonly fontsDir: string; readonly dataDir: string }, dir: string, project: Project): Promise<{ readonly graphics: Map<string, string>; readonly fonts: ProjectFonts }> {
+export async function projectGraphics(
+  paths: { readonly graphicLibsDir: string; readonly fontsDir: string; readonly dataDir: string },
+  dir: string,
+  project: Project,
+): Promise<{ readonly graphics: Map<string, string>; readonly fonts: ProjectFonts }> {
   const [libs, fonts] = await Promise.all([loadGraphicLibs(paths.graphicLibsDir), projectFonts(paths.fontsDir, { dataDir: paths.dataDir, projectDir: dir })]);
   return { graphics: await readGraphics(dir, project, libs, { fonts: fonts.sources, logos: fonts.logos }), fonts };
 }
 
 /** Images a component can show (as data: URLs in the rasteriser): what Chromium decodes. TIFF and HEIC it doesn't, so the Inspector doesn't offer them (core COMPONENT_IMAGE). */
-const IMAGE_MIME: Readonly<Record<string, string>> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp" };
+const IMAGE_MIME: Readonly<Record<string, string>> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+};
 const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const TOKEN = new RegExp(`${MEDIA_TOKEN}([a-z0-9][a-z0-9-]*)`, "g");
 
@@ -68,7 +101,11 @@ export async function withMedia(html: string, project: Project, mediaPath: (m: M
     const media = project.media.find((m) => m.id === id);
     const mime = media ? IMAGE_MIME[extname(media.path).toLowerCase()] : undefined;
     let url = BLANK_PIXEL;
-    if (media && mime) url = await readFile(mediaPath(media)).then((b) => `data:${mime};base64,${b.toString("base64")}`, () => BLANK_PIXEL);
+    if (media && mime)
+      url = await readFile(mediaPath(media)).then(
+        (b) => `data:${mime};base64,${b.toString("base64")}`,
+        () => BLANK_PIXEL,
+      );
     cache.set(id, url);
   }
   return html.replace(TOKEN, (_, id: string) => cache.get(id) ?? BLANK_PIXEL);

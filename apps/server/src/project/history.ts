@@ -21,7 +21,19 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { LogEntry, Op, Project } from "@uncut/core";
 
 import { applyPatch, diff } from "./jsonPatch.ts";
-import { type HistoryOptions, type Row, ROW_COLUMNS, type RawRow, toRow, type Cursor, ALIASES, type ListedKind, type NewRow, type AgentRecord, type TurnRecord } from "./history/rows.ts";
+import {
+  type HistoryOptions,
+  type Row,
+  ROW_COLUMNS,
+  type RawRow,
+  toRow,
+  type Cursor,
+  ALIASES,
+  type ListedKind,
+  type NewRow,
+  type AgentRecord,
+  type TurnRecord,
+} from "./history/rows.ts";
 import { connect, problemFor, Forked, sqliteCode } from "./history/schema.ts";
 export { SCHEMA_VERSION, problemFor } from "./history/schema.ts";
 export type { RowKind, Author, ListedKind, HistoryOptions, Row, NewRow, Cursor, TurnRecord, AgentRecord } from "./history/rows.ts";
@@ -72,7 +84,11 @@ export class HistoryDb {
 
   /** Never throws: a history.db that can't be used becomes an in-memory history with a problem. */
   static open(dir: string, options: HistoryOptions = {}, register = true): HistoryDb {
-    const opts: Required<HistoryOptions> = { maxRows: options.maxRows ?? MAX_ROWS, snapshotEvery: options.snapshotEvery ?? SNAPSHOT_EVERY, busyMs: options.busyMs ?? BUSY_MS };
+    const opts: Required<HistoryOptions> = {
+      maxRows: options.maxRows ?? MAX_ROWS,
+      snapshotEvery: options.snapshotEvery ?? SNAPSHOT_EVERY,
+      busyMs: options.busyMs ?? BUSY_MS,
+    };
     const file = join(dir, HISTORY_FILE);
     if (register) registry.get(dir)?.close();
     let history: HistoryDb;
@@ -85,7 +101,15 @@ export class HistoryDb {
     return history;
   }
 
-  private constructor(dir: string, file: string, db: DatabaseSync, persistent: boolean, problem: string | undefined, options: Required<HistoryOptions>, registered: boolean) {
+  private constructor(
+    dir: string,
+    file: string,
+    db: DatabaseSync,
+    persistent: boolean,
+    problem: string | undefined,
+    options: Required<HistoryOptions>,
+    registered: boolean,
+  ) {
     this.dir = dir;
     this.file = file;
     this.db = db;
@@ -130,7 +154,9 @@ export class HistoryDb {
     if (copy) {
       try {
         this.db.exec(`ATTACH DATABASE '${this.file.replace(/'/g, "''")}' AS old`);
-        this.db.exec("BEGIN; INSERT INTO revisions SELECT * FROM old.revisions; INSERT INTO meta SELECT * FROM old.meta; INSERT INTO turns SELECT * FROM old.turns; COMMIT;");
+        this.db.exec(
+          "BEGIN; INSERT INTO revisions SELECT * FROM old.revisions; INSERT INTO meta SELECT * FROM old.meta; INSERT INTO turns SELECT * FROM old.turns; COMMIT;",
+        );
         this.db.exec("DETACH DATABASE old");
         if (ours) {
           if (ours.head !== undefined) this.db.prepare("DELETE FROM revisions WHERE revision > ?").run(Number(ours.head));
@@ -149,7 +175,12 @@ export class HistoryDb {
         const state = head === undefined ? undefined : this.states.get(head);
         this.db.exec("DELETE FROM revisions; DELETE FROM meta; DELETE FROM turns;");
         if (head !== undefined && state) {
-          this.stmt("INSERT INTO revisions (revision, at, kind, author, label, boundary, snapshot) VALUES (?, ?, 'initial', 'import', ?, 1, ?)").run(head, new Date().toISOString(), "History restarted (history.db stopped saving)", JSON.stringify(state));
+          this.stmt("INSERT INTO revisions (revision, at, kind, author, label, boundary, snapshot) VALUES (?, ?, 'initial', 'import', ?, 1, ?)").run(
+            head,
+            new Date().toISOString(),
+            "History restarted (history.db stopped saving)",
+            JSON.stringify(state),
+          );
           this.stmt("INSERT INTO meta (key, value) VALUES ('head', ?)").run(String(head));
         }
         const keep = state;
@@ -199,7 +230,10 @@ export class HistoryDb {
 
   /** The file's contents can't be used (a broken chain, unreadable rows): continue in memory. */
   abandon(error: unknown) {
-    this.toMemory(Object.assign(new Error(`its contents can't be read: ${(error as Error)?.message ?? error}`), { code: "ERR_SQLITE_ERROR", errcode: 11 }), false);
+    this.toMemory(
+      Object.assign(new Error(`its contents can't be read: ${(error as Error)?.message ?? error}`), { code: "ERR_SQLITE_ERROR", errcode: 11 }),
+      false,
+    );
   }
 
   close() {
@@ -281,7 +315,9 @@ export class HistoryDb {
         doc = structuredClone(hit);
         break;
       }
-      const stored = this.stmt("SELECT patch, snapshot FROM revisions WHERE revision = ?").get(r.revision) as { patch: string | null; snapshot: string | null } | undefined;
+      const stored = this.stmt("SELECT patch, snapshot FROM revisions WHERE revision = ?").get(r.revision) as
+        | { patch: string | null; snapshot: string | null }
+        | undefined;
       if (stored?.snapshot != null) {
         doc = JSON.parse(stored.snapshot);
         break;
@@ -430,7 +466,10 @@ export class HistoryDb {
       const plan = this.planCompaction(rowsAfter, row, state);
       if (plan) {
         for (const [revision, project] of plan.materialise) {
-          this.stmt("UPDATE revisions SET snapshot = ?, patch = NULL, parent = NULL, boundary = 1, depth = 0 WHERE revision = ?").run(JSON.stringify(project), revision);
+          this.stmt("UPDATE revisions SET snapshot = ?, patch = NULL, parent = NULL, boundary = 1, depth = 0 WHERE revision = ?").run(
+            JSON.stringify(project),
+            revision,
+          );
         }
         this.stmt("DELETE FROM revisions WHERE revision < ?").run(plan.cut);
       }
@@ -500,7 +539,13 @@ export class HistoryDb {
         return [];
       }
     });
-    return { sessionId: this.meta.get("agent.sessionId"), pendingNote: this.meta.get("agent.pendingNote"), threadStart: this.meta.get("agent.threadStart"), turns, migratedAt: this.meta.get("agent.turnsJsonMigratedAt") };
+    return {
+      sessionId: this.meta.get("agent.sessionId"),
+      pendingNote: this.meta.get("agent.pendingNote"),
+      threadStart: this.meta.get("agent.threadStart"),
+      turns,
+      migratedAt: this.meta.get("agent.turnsJsonMigratedAt"),
+    };
   }
 
   /**
@@ -524,7 +569,19 @@ export class HistoryDb {
          end_revision = COALESCE(excluded.end_revision, turns.end_revision), data = excluded.data`,
       );
       const order = new Map((input.order ?? input.turns.map((t) => t.id)).map((id, i) => [id, i]));
-      input.turns.forEach((t, i) => upsert.run(t.id, order.get(t.id) ?? i, t.prompt, t.status, t.startedAt, t.finishedAt ?? null, t.startRevision ?? null, t.endRevision ?? null, JSON.stringify(t.data)));
+      input.turns.forEach((t, i) =>
+        upsert.run(
+          t.id,
+          order.get(t.id) ?? i,
+          t.prompt,
+          t.status,
+          t.startedAt,
+          t.finishedAt ?? null,
+          t.startRevision ?? null,
+          t.endRevision ?? null,
+          JSON.stringify(t.data),
+        ),
+      );
       const setMeta = this.stmt("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
       const delMeta = this.stmt("DELETE FROM meta WHERE key = ?");
       const changes: Array<[string, string | undefined]> = [

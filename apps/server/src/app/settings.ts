@@ -42,7 +42,16 @@ export interface PluginInstall {
 
 const isInstall = (x: unknown): x is PluginInstall => {
   const a = x as PluginInstall | null;
-  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.source === "string" && (a.kind === "folder" || a.kind === "git" || a.kind === "catalog") && (a.ref === undefined || typeof a.ref === "string") && (a.commit === undefined || typeof a.commit === "string") && typeof a.installedAt === "string";
+  return (
+    !!a &&
+    typeof a === "object" &&
+    typeof a.dir === "string" &&
+    typeof a.source === "string" &&
+    (a.kind === "folder" || a.kind === "git" || a.kind === "catalog") &&
+    (a.ref === undefined || typeof a.ref === "string") &&
+    (a.commit === undefined || typeof a.commit === "string") &&
+    typeof a.installedAt === "string"
+  );
 };
 
 const installsOf = (settings: Record<string, unknown>): Record<string, PluginInstall> => {
@@ -68,7 +77,19 @@ export interface PluginApproval {
 
 const isApproval = (x: unknown): x is PluginApproval => {
   const a = x as PluginApproval | null;
-  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.version === "string" && typeof a.command === "string" && Array.isArray(a.args) && a.args.every((x) => typeof x === "string") && Array.isArray(a.capabilities) && a.capabilities.every((c) => typeof c === "string") && (a.skills === undefined || typeof a.skills === "string") && typeof a.approvedAt === "string";
+  return (
+    !!a &&
+    typeof a === "object" &&
+    typeof a.dir === "string" &&
+    typeof a.version === "string" &&
+    typeof a.command === "string" &&
+    Array.isArray(a.args) &&
+    a.args.every((x) => typeof x === "string") &&
+    Array.isArray(a.capabilities) &&
+    a.capabilities.every((c) => typeof c === "string") &&
+    (a.skills === undefined || typeof a.skills === "string") &&
+    typeof a.approvedAt === "string"
+  );
 };
 
 const approvalsOf = (settings: Record<string, unknown>): Record<string, PluginApproval> => {
@@ -98,11 +119,15 @@ export const layer = Layer.effect(
     // The patch is worked out from the settings as read under the lock (approvals are one object).
     // A failure is the caller's to handle (an approval must not look saved when it isn't).
     const updateOrFail = (patchOf: (settings: Record<string, unknown>) => Record<string, unknown>) =>
-      writeLock.withPermits(1)(Effect.gen(function* () {
-        const settings = yield* read;
-        yield* fs.makeDirectory(dataDir, { recursive: true });
-        yield* writeFileAtomic(file, `${JSON.stringify({ ...settings, ...patchOf(settings) }, null, 2)}\n`);
-      })).pipe(Effect.mapError((error) => new Error(error.message)));
+      writeLock
+        .withPermits(1)(
+          Effect.gen(function* () {
+            const settings = yield* read;
+            yield* fs.makeDirectory(dataDir, { recursive: true });
+            yield* writeFileAtomic(file, `${JSON.stringify({ ...settings, ...patchOf(settings) }, null, 2)}\n`);
+          }),
+        )
+        .pipe(Effect.mapError((error) => new Error(error.message)));
     const updateWith = (patchOf: (settings: Record<string, unknown>) => Record<string, unknown>) =>
       updateOrFail(patchOf).pipe(Effect.catch((error) => Effect.logWarning(`can't save settings: ${error.message}`)));
     const update = (patch: Record<string, unknown>) => updateWith(() => patch);

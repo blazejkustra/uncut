@@ -1,7 +1,39 @@
 import { DUCK } from "../../audio/effects.ts";
 import { duckEntry } from "../../audio/ducking.ts";
-import { type CheckRule, sounds, audible, isMusicTrack, soundOf, startOf, keyFade, mediaOf, isSpeechTrack, type Check, type CheckSeverity, secs } from "../context.ts";
-import { keyboardSound, SFX_PER_10S, SFX_REPEAT_MAX, SFX_UNDER_MUSIC_DB, SOUND_LIMITS, sfxItems, musicItems, visualEvents, busiest, type PlacedSfx, musicAt, SFX_FIX_UNDER_DB, trackGain, dbText, hitsOf, type VisualEvent, SLOW_BPM, FAST_CUT_S } from "../soundSheet.ts";
+import {
+  type CheckRule,
+  sounds,
+  audible,
+  isMusicTrack,
+  soundOf,
+  startOf,
+  keyFade,
+  mediaOf,
+  isSpeechTrack,
+  type Check,
+  type CheckSeverity,
+  secs,
+} from "../context.ts";
+import {
+  keyboardSound,
+  SFX_PER_10S,
+  SFX_REPEAT_MAX,
+  SFX_UNDER_MUSIC_DB,
+  SOUND_LIMITS,
+  sfxItems,
+  musicItems,
+  visualEvents,
+  busiest,
+  type PlacedSfx,
+  musicAt,
+  SFX_FIX_UNDER_DB,
+  trackGain,
+  dbText,
+  hitsOf,
+  type VisualEvent,
+  SLOW_BPM,
+  FAST_CUT_S,
+} from "../soundSheet.ts";
 
 /** Sound rules: silence, music fades and ducking, sound effects. */
 export const SOUND_RULES: ReadonlyArray<CheckRule> = [
@@ -12,7 +44,13 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
     severity: "info",
     check: (ctx) => {
       if (ctx.end <= 0 || ctx.project.tracks.some((t) => sounds(ctx, t) && audible(ctx, t))) return [];
-      return [{ key: "silent", message: "Nothing makes a sound, so the export carries a silent track.", hint: "Add a track from the Audio tab's library whose tempo fits the cutting, with fades." }];
+      return [
+        {
+          key: "silent",
+          message: "Nothing makes a sound, so the export carries a silent track.",
+          hint: "Add a track from the Audio tab's library whose tempo fits the cutting, with fades.",
+        },
+      ];
     },
   },
   {
@@ -44,7 +82,14 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
               message: `${name} ${what}; a short fade sounds finished.`,
               itemIds: [item.id],
               frame: needIn ? start : start + item.duration - 1,
-              ...(ok ? { fix: { summary: needIn && needOut ? `Fade ${name} in and out` : needIn ? `Fade ${name} in` : `Fade ${name} out`, ops: [{ op: "update_item" as const, item: item.id, set }] } } : { hint: "Add a fade in the Inspector's Fades row." }),
+              ...(ok
+                ? {
+                    fix: {
+                      summary: needIn && needOut ? `Fade ${name} in and out` : needIn ? `Fade ${name} in` : `Fade ${name} out`,
+                      ops: [{ op: "update_item" as const, item: item.id, set }],
+                    },
+                  }
+                : { hint: "Add a fade in the Inspector's Fades row." }),
             },
           ];
         });
@@ -62,10 +107,17 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
         // is known to be speech) overlapping it in time. Effects and ambient sound don't count.
         const spans = track.items.map((i) => [startOf(ctx, i), startOf(ctx, i) + i.duration] as const);
         const keys = ctx.project.tracks.filter(
-          (t) => t.id !== track.id && isSpeechTrack(ctx, t) && audible(ctx, t) && t.items.some((i) => soundOf(ctx, i) && spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s)),
+          (t) =>
+            t.id !== track.id &&
+            isSpeechTrack(ctx, t) &&
+            audible(ctx, t) &&
+            t.items.some((i) => soundOf(ctx, i) && spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s)),
         );
         if (!keys.length) return [];
-        const mixer = { ...(track.mixer ?? {}), effects: [...(track.mixer?.effects ?? []), { module: DUCK, params: { under: keys.map((k) => k.id), amountDb: -12, attackMs: 250, releaseMs: 600 } }] };
+        const mixer = {
+          ...track.mixer,
+          effects: [...(track.mixer?.effects ?? []), { module: DUCK, params: { under: keys.map((k) => k.id), amountDb: -12, attackMs: 250, releaseMs: 600 } }],
+        };
         const names = keys.map((k) => k.name);
         return [
           {
@@ -73,7 +125,11 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
             message: `${track.name} plays under ${names.join(" and ")} at full level; ducking keeps the voice clear.`,
             itemIds: track.items.map((i) => i.id),
             frame: Math.min(...spans.map(([s]) => s)),
-            ...(track.locked ? { hint: "Unlock the track, then add Duck in the Mixer." } : { fix: { summary: `Duck ${track.name} under ${names.join(" and ")}`, ops: [{ op: "update_track" as const, track: track.id, set: { mixer } }] } }),
+            ...(track.locked
+              ? { hint: "Unlock the track, then add Duck in the Mixer." }
+              : {
+                  fix: { summary: `Duck ${track.name} under ${names.join(" and ")}`, ops: [{ op: "update_track" as const, track: track.id, set: { mixer } }] },
+                }),
           },
         ];
       }),
@@ -96,7 +152,10 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
       if (ctx.sound === "music" && placed.length) {
         out.push({
           key: `sound:music-only:${placed[0]!.start}`,
-          message: `The user asked for the music only, but ${placed.length} sound effect${placed.length === 1 ? " is" : "s are"} on the timeline (${placed.slice(0, 4).map((s) => `${s.label} at ${secs(s.start, fps)}`).join(", ")}${placed.length > 4 ? ", …" : ""}).`,
+          message: `The user asked for the music only, but ${placed.length} sound effect${placed.length === 1 ? " is" : "s are"} on the timeline (${placed
+            .slice(0, 4)
+            .map((s) => `${s.label} at ${secs(s.start, fps)}`)
+            .join(", ")}${placed.length > 4 ? ", …" : ""}).`,
           itemIds: placed.map((s) => s.item.id),
           frame: placed[0]!.start,
           hint: "Delete them; let the cuts and moves land on the music's beats instead.",
@@ -108,7 +167,10 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
       // Density: the busiest 10 s (a shorter video pro rata, at least 2).
       const window = Math.min(10 * fps, length);
       const limit = Math.max(2, Math.floor((lim.per10s * window) / (10 * fps)));
-      const dense = busiest(sfx.map((s) => s.start), 10 * fps);
+      const dense = busiest(
+        sfx.map((s) => s.start),
+        10 * fps,
+      );
       if (dense.count > limit) {
         const inWindow = sfx.filter((s) => s.start >= dense.from && s.start <= dense.to);
         out.push({
@@ -135,7 +197,10 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
       }
       // Big hits.
       const hits = sfx.filter((s) => s.kind === "hit");
-      const heavy = busiest(hits.map((s) => s.start), 15 * fps);
+      const heavy = busiest(
+        hits.map((s) => s.start),
+        15 * fps,
+      );
       if (heavy.count > lim.hitsPer15s) {
         const these = hits.filter((s) => s.start >= heavy.from && s.start <= heavy.to);
         out.push({
@@ -164,21 +229,42 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
               : `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; its own loudness is unknown, so check it sits ${lim.underDb > 0 ? `${lim.underDb} to 12 dB under` : `no more than ${-lim.underDb} dB over`} the music (media_analyze loudness, or listen).`,
             itemIds: [s.item.id],
             frame: s.start,
-            ...(ok ? { fix: { summary: lim.underDb > 0 ? `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music` : `Put ${s.label} at the music's level`, ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }] } } : { hint: "Turn it down in the Inspector." }),
+            ...(ok
+              ? {
+                  fix: {
+                    summary: lim.underDb > 0 ? `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music` : `Put ${s.label} at the music's level`,
+                    ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }],
+                  },
+                }
+              : { hint: "Turn it down in the Inspector." }),
           });
         }
         // What it lands on. D297: under the ui profile a press inside a graphic (a motion film's one
         // item) lands on a change the timeline can't see: the critic judges it on the frames.
         const on = hitsOf(ctx, s, events);
-        const inGraphic = ctx.sound === "ui" && ctx.project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && (ctx.starts.get(i.id) ?? 0) <= s.start && s.start < (ctx.starts.get(i.id) ?? 0) + i.duration));
+        const inGraphic =
+          ctx.sound === "ui" &&
+          ctx.project.tracks.some(
+            (t) =>
+              !t.hidden &&
+              t.items.some((i) => i.type === "graphic" && (ctx.starts.get(i.id) ?? 0) <= s.start && s.start < (ctx.starts.get(i.id) ?? 0) + i.duration),
+          );
         if (!on.length && !inGraphic) {
-          const near = events.reduce<VisualEvent | undefined>((best, e) => (!best || Math.abs(e.frame - s.start) < Math.abs(best.frame - s.start) ? e : best), undefined);
+          const near = events.reduce<VisualEvent | undefined>(
+            (best, e) => (!best || Math.abs(e.frame - s.start) < Math.abs(best.frame - s.start) ? e : best),
+            undefined,
+          );
           out.push({
             key: `sound:sync:${s.item.id}`,
             message: `${s.label} at ${secs(s.start, fps)} lands on nothing that changes on screen${near ? ` (the nearest is ${near.what} at ${secs(near.frame, fps)})` : ""}.`,
             itemIds: [s.item.id],
             frame: s.start,
-            hint: s.kind === "whoosh" ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it." : s.kind === "riser" ? "End a riser on the reveal it builds to, or delete it." : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
+            hint:
+              s.kind === "whoosh"
+                ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it."
+                : s.kind === "riser"
+                  ? "End a riser on the reveal it builds to, or delete it."
+                  : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
           });
         } else if (on.length && lim.taste && s.kind === "ui" && !keyboardSound(s) && on.every((e) => e.text)) {
           out.push({
@@ -190,13 +276,27 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
           });
         }
         if (lim.taste && s.kind === "meme") {
-          out.push({ key: `sound:meme:${s.item.id}`, severity: "info", message: `${s.label} at ${secs(s.start, fps)} is a meme sound; use one only when the user asked for that joke.`, itemIds: [s.item.id], frame: s.start, hint: "Delete it unless the brief asks for meme humour." });
+          out.push({
+            key: `sound:meme:${s.item.id}`,
+            severity: "info",
+            message: `${s.label} at ${secs(s.start, fps)} is a meme sound; use one only when the user asked for that joke.`,
+            itemIds: [s.item.id],
+            frame: s.start,
+            hint: "Delete it unless the brief asks for meme humour.",
+          });
         }
       }
       // A slow track under fast cuts.
       const slow = music.find((m) => typeof m.bpm === "number" && m.bpm < SLOW_BPM && m.item.duration >= Math.min(length, 8 * fps));
       if (slow) {
-        const cuts = events.filter((e) => e.frame >= slow.start && e.frame < slow.start + slow.item.duration && !e.what.endsWith("leaving") && !e.what.endsWith("landing") && e.until === undefined);
+        const cuts = events.filter(
+          (e) =>
+            e.frame >= slow.start &&
+            e.frame < slow.start + slow.item.duration &&
+            !e.what.endsWith("leaving") &&
+            !e.what.endsWith("landing") &&
+            e.until === undefined,
+        );
         const avg = slow.item.duration / fps / Math.max(1, cuts.length + 1);
         if (cuts.length >= 4 && avg < FAST_CUT_S) {
           out.push({

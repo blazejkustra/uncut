@@ -193,7 +193,9 @@ const PREVIEW_SENTINEL = `<script>addEventListener("message", (e) => {
   parent.postMessage({ uncut: "sentinel-set", mark: m }, "*");
 });</script>`;
 
-const hostPage = (src: string) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H + 1}px}</style></head><body>
+const hostPage = (
+  src: string,
+) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H + 1}px}</style></head><body>
 <iframe sandbox="allow-scripts" src="${src}"></iframe>
 <script>
 const frame = document.querySelector("iframe");
@@ -221,7 +223,15 @@ let port: number;
 let raster: Rasterizer;
 const project = {
   canvas,
-  tracks: [{ items: [{ type: "graphic", src: "graphics/cube.html", duration: 90 }, { type: "graphic", src: "graphics/confetti.html", duration: 90 }, { type: "graphic", src: "graphics/ui.html", duration: 90 }] }],
+  tracks: [
+    {
+      items: [
+        { type: "graphic", src: "graphics/cube.html", duration: 90 },
+        { type: "graphic", src: "graphics/confetti.html", duration: 90 },
+        { type: "graphic", src: "graphics/ui.html", duration: 90 },
+      ],
+    },
+  ],
 } as unknown as Project;
 
 before(async () => {
@@ -252,7 +262,13 @@ before(async () => {
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "no-store", "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`, "x-content-type-options": "nosniff" });
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+      "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`,
+      "x-content-type-options": "nosniff",
+    });
     res.end(doc);
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -282,7 +298,16 @@ async function previewFrames(src: string, frames: ReadonlyArray<{ local: number;
   const main = join(root, "preview-main.cjs");
   writeFileSync(main, PREVIEW_MAIN);
   const jobs = frames.map((f) => ({ t: f.local / canvas.fps, info: graphicInfo({ duration: 90, props: {} }, canvas, f.local), out: f.out }));
-  const env: NodeJS.ProcessEnv = { ...process.env, UNCUT_PREVIEW_JOBS: JSON.stringify({ url: `http://127.0.0.1:${port}/host.html?src=${encodeURIComponent(`/media/graphic/${src.slice("graphics/".length)}`)}`, width: W, height: H, jobs, profile: join(root, "preview-profile") }) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    UNCUT_PREVIEW_JOBS: JSON.stringify({
+      url: `http://127.0.0.1:${port}/host.html?src=${encodeURIComponent(`/media/graphic/${src.slice("graphics/".length)}`)}`,
+      width: W,
+      height: H,
+      jobs,
+      profile: join(root, "preview-profile"),
+    }),
+  };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electron, [main], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
@@ -294,25 +319,33 @@ async function previewFrames(src: string, frames: ReadonlyArray<{ local: number;
   assert.equal(code, 0, `preview run failed: ${output}`);
 }
 
-test("a three.js cube, a confetti burst and Uncut's UI parts: the export draws the same pixels twice, and what the preview's iframe draws", { skip, timeout: 120000 }, async (t) => {
-  for (const [src, local, minOpaque] of [["graphics/cube.html", 20, 0.08], ["graphics/confetti.html", 24, 0.01], ["graphics/ui.html", 40, 0.99]] as const) {
-    const name = src.slice("graphics/".length, -".html".length);
-    const a = join(root, `${name}-export-a.png`);
-    const b = join(root, `${name}-export-b.png`);
-    await exportFrame(src, local, a);
-    // Another frame in between, then the first again: the same pixels.
-    await exportFrame(src, local + 13, join(root, `${name}-export-other.png`));
-    await exportFrame(src, local, b);
-    assert.equal(pixelHash(a), pixelHash(b), `${name}: deterministic`);
-    assert.notEqual(pixelHash(join(root, `${name}-export-other.png`)), pixelHash(a), `${name}: it moves with t`);
-    const drawn = opaquePixels(a) / (W * H);
-    assert.ok(drawn > minOpaque, `${name}: ${(drawn * 100).toFixed(1)} % of the frame drawn`);
-    // The preview's way, the same frame.
-    const p = join(root, `${name}-preview.png`);
-    await previewFrames(src, [{ local, out: p }]);
-    const score = ssim(p, a, W, H);
-    t.diagnostic(`${name}: ${(drawn * 100).toFixed(1)} % drawn, preview vs export SSIM ${score.toFixed(4)}`);
-    assert.ok(score >= 0.98, `${name}: preview vs export SSIM ${score}`);
-    assert.ok(opaquePixels(p) / (W * H) > minOpaque, `${name}: the preview drew it too`);
-  }
-});
+test(
+  "a three.js cube, a confetti burst and Uncut's UI parts: the export draws the same pixels twice, and what the preview's iframe draws",
+  { skip, timeout: 120000 },
+  async (t) => {
+    for (const [src, local, minOpaque] of [
+      ["graphics/cube.html", 20, 0.08],
+      ["graphics/confetti.html", 24, 0.01],
+      ["graphics/ui.html", 40, 0.99],
+    ] as const) {
+      const name = src.slice("graphics/".length, -".html".length);
+      const a = join(root, `${name}-export-a.png`);
+      const b = join(root, `${name}-export-b.png`);
+      await exportFrame(src, local, a);
+      // Another frame in between, then the first again: the same pixels.
+      await exportFrame(src, local + 13, join(root, `${name}-export-other.png`));
+      await exportFrame(src, local, b);
+      assert.equal(pixelHash(a), pixelHash(b), `${name}: deterministic`);
+      assert.notEqual(pixelHash(join(root, `${name}-export-other.png`)), pixelHash(a), `${name}: it moves with t`);
+      const drawn = opaquePixels(a) / (W * H);
+      assert.ok(drawn > minOpaque, `${name}: ${(drawn * 100).toFixed(1)} % of the frame drawn`);
+      // The preview's way, the same frame.
+      const p = join(root, `${name}-preview.png`);
+      await previewFrames(src, [{ local, out: p }]);
+      const score = ssim(p, a, W, H);
+      t.diagnostic(`${name}: ${(drawn * 100).toFixed(1)} % drawn, preview vs export SSIM ${score.toFixed(4)}`);
+      assert.ok(score >= 0.98, `${name}: preview vs export SSIM ${score}`);
+      assert.ok(opaquePixels(p) / (W * H) > minOpaque, `${name}: the preview drew it too`);
+    }
+  },
+);

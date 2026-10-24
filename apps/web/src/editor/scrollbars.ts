@@ -38,7 +38,11 @@ function scrolls(el: HTMLElement, axis: Axis) {
 
 /** The nearest area from `start` up that scrolls along `axis`. */
 function scroller(start: Element | null, axis: Axis): HTMLElement | undefined {
-  for (let el = start instanceof HTMLElement ? start : start?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+  for (
+    let el = start instanceof HTMLElement ? start : start?.parentElement;
+    el && el !== document.body && el !== document.documentElement;
+    el = el.parentElement
+  ) {
     if (el.closest("[data-scrollbars=off]")) return undefined;
     if (scrolls(el, axis)) return el;
   }
@@ -231,9 +235,10 @@ export function installScrollbars() {
   window.addEventListener("resize", replace);
   // Bars of areas that left the page (the screen changed) go at once.
   setInterval(() => {
-    for (const bar of bars.values()) if (!bar.el.isConnected) {
-      bar.held = bar.hovered = false;
-      hide(bar, true);
-    }
+    for (const bar of bars.values())
+      if (!bar.el.isConnected) {
+        bar.held = bar.hovered = false;
+        hide(bar, true);
+      }
   }, 500);
 }

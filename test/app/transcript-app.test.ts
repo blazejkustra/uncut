@@ -39,7 +39,15 @@ const WORDS = [
   { text: "Second", start: 4.0, end: 4.5, p: 0.9 },
   { text: "part.", start: 4.6, end: 5.0, p: 0.9 },
 ];
-const TRANSCRIPT = { hasAudio: true, seconds: 6, language: "en", requestedLanguage: "auto", model: "base", segments: [{ start: 0.5, end: 5, text: "Hello um this is a test. Second part.", words: [0, 8] }], words: WORDS };
+const TRANSCRIPT = {
+  hasAudio: true,
+  seconds: 6,
+  language: "en",
+  requestedLanguage: "auto",
+  model: "base",
+  segments: [{ start: 0.5, end: 5, text: "Hello um this is a test. Second part.", words: [0, 8] }],
+  words: WORDS,
+};
 
 let root = "";
 let shimDir = "";
@@ -71,7 +79,27 @@ before(async () => {
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-transcript-app-")));
   mkdirSync(join(root, "projects"));
-  for (const name of ["Talk", "Other"]) ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi", "-i", `sine=frequency=${name === "Talk" ? 300 : 520}:sample_rate=48000`, "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, `${name}.mp4`));
+  for (const name of ["Talk", "Other"])
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=30",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=${name === "Talk" ? 300 : 520}:sample_rate=48000`,
+      "-t",
+      "6",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+      join(root, `${name}.mp4`),
+    );
   // PATH: ffmpeg and ffprobe only, so whisper.cpp is missing (the panel's Set up state).
   shimDir = join(root, "bin");
   mkdirSync(shimDir);
@@ -87,7 +115,12 @@ after(async () => {
 test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as one edit, ⌘Z restores, Remove pauses", { skip, timeout: 180000 }, async () => {
   app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_SHELL_ENV: "off", PATH: `${shimDir}:/usr/bin:/bin`, UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects"), [join(root, "Talk.mp4")], [join(root, "Other.mp4")]]) },
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_SHELL_ENV: "off",
+      PATH: `${shimDir}:/usr/bin:/bin`,
+      UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects"), [join(root, "Talk.mp4")], [join(root, "Other.mp4")]]),
+    },
   });
   const { page } = app;
   await waitForWelcome(page);
@@ -110,7 +143,11 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   const texts = await page.$$eval("[data-testid=tx-word]", (els) => els.map((el) => el.textContent));
   assert.deepEqual(texts, ["Hello", "um", "this", "is", "a", "test.", "Second", "part."]);
   assert.equal(await page.$eval("[data-testid=tx-word][data-index='1']", (el) => (el as HTMLElement).dataset.filler), "hesitation");
-  assert.deepEqual(await page.$$eval("[data-testid=tx-pause]", (els) => els.map((el) => (el as HTMLElement).dataset.seconds)), ["1.00"], "only gaps of 0.3 s or more are marked");
+  assert.deepEqual(
+    await page.$$eval("[data-testid=tx-pause]", (els) => els.map((el) => (el as HTMLElement).dataset.seconds)),
+    ["1.00"],
+    "only gaps of 0.3 s or more are marked",
+  );
   assert.equal(await page.$eval("[data-testid=remove-pauses]", (el) => (el as HTMLElement).dataset.count), "3");
   assert.equal(await page.$eval("[data-testid=remove-fillers]", (el) => (el as HTMLElement).dataset.count), "1");
 
@@ -130,7 +167,10 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   await page.screenshot({ path: "test-output/transcript-selected.png" });
   const revision = await page.$eval("[data-testid=saved]", (el) => (el as HTMLElement).title);
   await page.keyboard.press("Backspace");
-  await untilSaved(dir, [["clip-1", 0, 50], ["clip-2", 90, 90]]);
+  await untilSaved(dir, [
+    ["clip-1", 0, 50],
+    ["clip-2", 90, 90],
+  ]);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=tx-word]").length === 4);
   assert.deepEqual(await page.$$eval("[data-testid=tx-word]", (els) => els.map((el) => el.textContent)), ["Hello", "um", "Second", "part."]);
   assert.equal(await page.$$eval("[data-testid=tx-word].sel", (els) => els.length), 0, "the selection goes with the words");
@@ -147,7 +187,10 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   // Remove pauses (≥ 0.5 s): the lead-in, the gap after "test." and the tail (13 + 23 + 25 frames:
   // 5 frames stay after a kept word, 2 before one, D74).
   await page.click("[data-testid=remove-pauses]");
-  await untilSaved(dir, [["clip-1", 13, 82], ["clip-2", 118, 37]]);
+  await untilSaved(dir, [
+    ["clip-1", 13, 82],
+    ["clip-2", 118, 37],
+  ]);
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=remove-pauses]")?.dataset.count === "0");
   assert.equal(await page.$$eval("[data-testid=tx-word]", (els) => els.length), 8, "every word stays");
   assert.equal(await page.$$eval("[data-testid=tx-block]", (els) => els.length), 2, "one block per clip");
@@ -156,7 +199,13 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   // The Timeline tab shows the two pieces, back to back.
   await page.click("[data-testid=bottom-timeline]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 2);
-  assert.deepEqual(await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])), [["0", "82"], ["82", "37"]]);
+  assert.deepEqual(
+    await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])),
+    [
+      ["0", "82"],
+      ["82", "37"],
+    ],
+  );
 
   // A clip whose media has no transcript, with whisper.cpp missing: its block points to Setup.
   await page.click("[data-testid=rail-media]");

@@ -30,11 +30,34 @@ before(async () => {
   for (const name of ["Plain", "Marked"]) {
     const dir = join(root, `${name}.uncut`);
     mkdirSync(dir);
-    writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name, canvas: { width: 1920, height: 1080, fps: 30 }, textLooks: 1, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+    writeFileSync(
+      join(dir, "project.json"),
+      JSON.stringify({
+        format: "uncut/0",
+        name,
+        canvas: { width: 1920, height: 1080, fps: 30 },
+        textLooks: 1,
+        media: [],
+        tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }],
+      }),
+    );
   }
   // The API's message.model never carries "[1m]"; the result's modelUsage reports the 1M window.
   // One plan per run: its .turn counter counts messages.
-  for (const name of ["Plain", "Marked"]) writeFileSync(join(root, `plan-${name}.json`), JSON.stringify([[{ text: "Looked at the project." }, { usage: { input_tokens: 12, cache_read_input_tokens: 88_000, cache_creation_input_tokens: 4_000, output_tokens: 300 }, model: "claude-opus-5-5", contextWindow: 1_000_000 }]]));
+  for (const name of ["Plain", "Marked"])
+    writeFileSync(
+      join(root, `plan-${name}.json`),
+      JSON.stringify([
+        [
+          { text: "Looked at the project." },
+          {
+            usage: { input_tokens: 12, cache_read_input_tokens: 88_000, cache_creation_input_tokens: 4_000, output_tokens: 300 },
+            model: "claude-opus-5-5",
+            contextWindow: 1_000_000,
+          },
+        ],
+      ]),
+    );
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -49,7 +72,14 @@ const turnDone = (page: Page) => page.evaluate(() => !!document.querySelector("[
 async function run(name: string, initModel: string | undefined) {
   const app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, `data-${name}`), UNCUT_TEST_DIALOG: JSON.stringify([join(root, `${name}.uncut`)]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, `plan-${name}.json`), FAKE_RESULT_DELAY: "3000", ...(initModel ? { FAKE_INIT_MODEL: initModel } : {}) },
+    env: {
+      UNCUT_DATA_DIR: join(root, `data-${name}`),
+      UNCUT_TEST_DIALOG: JSON.stringify([join(root, `${name}.uncut`)]),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: join(root, `plan-${name}.json`),
+      FAKE_RESULT_DELAY: "3000",
+      ...(initModel ? { FAKE_INIT_MODEL: initModel } : {}),
+    },
   });
   apps.add(app);
   const { page } = app;
@@ -68,7 +98,9 @@ async function run(name: string, initModel: string | undefined) {
   // The answer's usage arrived; its result (and the turn's end) is 3 s away.
   await page.waitForSelector("[data-testid=agent-token-used]", { timeout: 30000 }).catch(async (error) => {
     await page.screenshot({ path: out(`${name.toLowerCase()}-stuck`) });
-    const turns = await page.$$eval("[data-testid=agent-turn]", (els) => els.map((el) => `${el.getAttribute("data-status")}: ${(el as HTMLElement).innerText.slice(0, 300)}`));
+    const turns = await page.$$eval("[data-testid=agent-turn]", (els) =>
+      els.map((el) => `${el.getAttribute("data-status")}: ${(el as HTMLElement).innerText.slice(0, 300)}`),
+    );
     throw new Error(`${name}: no meter: ${JSON.stringify(turns)} ${app.output().slice(-1500)}`, { cause: error });
   });
   const early = await meterText(page);

@@ -4,19 +4,33 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { lockApps, unlockApps } from "../helpers/app.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skip = !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
 const T = { skip, timeout: 120000 };
 
 let root: string, files: Record<"clip" | "still" | "wav" | "rotated" | "frag" | "broken" | "missing", string>, s: Session;
 const ffmpeg = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
-const color = (name: string | null, c: string, path?: string) => ffmpeg("-f", "lavfi", "-i", `color=c=${c}:size=64x48`, "-frames:v", "1", path ?? join(root, name!));
+const color = (name: string | null, c: string, path?: string) =>
+  ffmpeg("-f", "lavfi", "-i", `color=c=${c}:size=64x48`, "-frames:v", "1", path ?? join(root, name!));
 /** Average colour of an image as [r, g, b]. */
 const rgb = (path: string) => [...execFileSync("ffmpeg", ["-v", "error", "-i", path, "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
 
@@ -29,10 +43,23 @@ async function session(env: NodeJS.ProcessEnv = {}) {
   const importAndWait = async (paths: ReadonlyArray<string>, timeout = 60000) => {
     const { jobId } = await client.ok("media.import", { paths });
     await waitJob(jobId, timeout);
-    return jobs.values.flat().filter((j) => j.id === jobId).at(-1);
+    return jobs.values
+      .flat()
+      .filter((j) => j.id === jobId)
+      .at(-1);
   };
-  const waitJob = (jobId: string, timeout = 60000) => jobs.until((list) => list.some((j: any) => j.id === jobId && (j.phase === "done" || j.phase === "failed")), timeout);
-  return { ...client, server, jobs, importAndWait, waitJob, base: `http://127.0.0.1:${server.ready.port}`, token: server.ready.token, end: async () => (client.close(), await server.stop()) };
+  const waitJob = (jobId: string, timeout = 60000) =>
+    jobs.until((list) => list.some((j: any) => j.id === jobId && (j.phase === "done" || j.phase === "failed")), timeout);
+  return {
+    ...client,
+    server,
+    jobs,
+    importAndWait,
+    waitJob,
+    base: `http://127.0.0.1:${server.ready.port}`,
+    token: server.ready.token,
+    end: async () => (client.close(), await server.stop()),
+  };
 }
 
 before(async () => {
@@ -50,11 +77,44 @@ before(async () => {
     broken: join(root, "broken.mp4"),
     missing: join(root, "missing.mp4"),
   };
-  ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-f", "lavfi", "-i", "sine=duration=2", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", files.clip);
+  ffmpeg(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=2",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    files.clip,
+  );
   ffmpeg("-f", "lavfi", "-i", "testsrc=size=640x360", "-frames:v", "1", files.still);
   ffmpeg("-f", "lavfi", "-i", "sine=duration=1.5", files.wav);
   ffmpeg("-display_rotation", "-90", "-i", files.clip, "-c", "copy", files.rotated);
-  ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov", files.frag);
+  ffmpeg(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "frag_keyframe+empty_moov",
+    files.frag,
+  );
   writeFileSync(files.broken, "this is not a video");
   s = await session();
 });
@@ -70,28 +130,56 @@ test("one job: good files in one edit, bad ones reported in order, nothing copie
   ({ dir } = await s.ok("project.create", { parentDir: root, name: "Imports" }));
   const before = (await s.ok("project.get")).revision;
   mkdirSync(join(root, "a-folder"));
-  const job = await s.importAndWait([files.clip, files.still, files.wav, files.rotated, files.frag, files.broken, files.missing, "relative/clip.mp4", join(root, "a-folder")]);
+  const job = await s.importAndWait([
+    files.clip,
+    files.still,
+    files.wav,
+    files.rotated,
+    files.frag,
+    files.broken,
+    files.missing,
+    "relative/clip.mp4",
+    join(root, "a-folder"),
+  ]);
   assert.equal(job.phase, "done");
-  assert.deepEqual(job.result.imported.map((i: any) => [i.name, i.id, i.via]), [
-    ["Holiday Clip.mp4", "m-holiday-clip", "native"],
-    ["poster.png", "m-poster", "native"],
-    ["voice.wav", "m-voice", "ffprobe"],
-    ["phone.mp4", "m-phone", "native"],
-    ["fragmented.mp4", "m-fragmented", "native"],
-  ]);
-  assert.deepEqual(job.result.failed.map((f: any) => [f.path, f.message]), [
-    [files.broken, "Uncut can't read this kind of file yet."],
-    [files.missing, "The file doesn't exist."],
-    ["relative/clip.mp4", "Not an absolute path."],
-    [join(root, "a-folder"), "Folders can't be imported yet; drop the files inside."],
-  ]);
+  assert.deepEqual(
+    job.result.imported.map((i: any) => [i.name, i.id, i.via]),
+    [
+      ["Holiday Clip.mp4", "m-holiday-clip", "native"],
+      ["poster.png", "m-poster", "native"],
+      ["voice.wav", "m-voice", "ffprobe"],
+      ["phone.mp4", "m-phone", "native"],
+      ["fragmented.mp4", "m-fragmented", "native"],
+    ],
+  );
+  assert.deepEqual(
+    job.result.failed.map((f: any) => [f.path, f.message]),
+    [
+      [files.broken, "Uncut can't read this kind of file yet."],
+      [files.missing, "The file doesn't exist."],
+      ["relative/clip.mp4", "Not an absolute path."],
+      [join(root, "a-folder"), "Folders can't be imported yet; drop the files inside."],
+    ],
+  );
   assert.equal(job.postersTotal, 4);
   assert.equal(job.postersDone, 4);
   const snap = await s.ok("project.get");
   assert.equal(snap.revision, before + 1, "one edit for the whole batch");
   const media = Object.fromEntries(snap.project.media.map((m: any) => [m.id, m]));
-  assert.deepEqual(media["m-holiday-clip"], { id: "m-holiday-clip", kind: "video", name: "Holiday Clip.mp4", path: files.clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: true } });
-  assert.deepEqual(media["m-poster"], { id: "m-poster", kind: "image", name: "poster.png", path: files.still, probe: { width: 640, height: 360, hasAudio: false } });
+  assert.deepEqual(media["m-holiday-clip"], {
+    id: "m-holiday-clip",
+    kind: "video",
+    name: "Holiday Clip.mp4",
+    path: files.clip,
+    probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: true },
+  });
+  assert.deepEqual(media["m-poster"], {
+    id: "m-poster",
+    kind: "image",
+    name: "poster.png",
+    path: files.still,
+    probe: { width: 640, height: 360, hasAudio: false },
+  });
   assert.equal(media["m-voice"].probe.frames, 45);
   assert.deepEqual([media["m-phone"].probe.width, media["m-phone"].probe.height], [240, 320], "stored as shown: portrait");
   assert.equal(media["m-fragmented"].probe.frames, 60, "a fragmented MP4 still gets its length");
@@ -104,7 +192,10 @@ test("importing a path that's already in the project skips it, even from two job
   const revision = (await s.ok("project.get")).revision;
   const again = await s.importAndWait([files.clip, files.clip]);
   assert.deepEqual(again.result.imported, []);
-  assert.deepEqual(again.result.skipped.map((x: any) => x.reason), ["Already in the project.", "Already in the project."]);
+  assert.deepEqual(
+    again.result.skipped.map((x: any) => x.reason),
+    ["Already in the project.", "Already in the project."],
+  );
   assert.equal((await s.ok("project.get")).revision, revision);
 
   // Two jobs started together with the same new file: one imports it, the other skips it.
@@ -114,9 +205,18 @@ test("importing a path that's already in the project skips it, even from two job
   await s.waitJob(a.jobId);
   await s.waitJob(b.jobId);
   const finished = s.jobs.values.at(-1).filter((j: any) => j.id === a.jobId || j.id === b.jobId);
-  assert.deepEqual(finished.map((j: any) => j.phase), ["done", "done"]);
-  assert.equal(finished.reduce((n: any, j: any) => n + j.result.imported.length, 0), 1);
-  assert.deepEqual(finished.flatMap((j: any) => j.result.skipped.map((x: any) => x.reason)), ["Already in the project."]);
+  assert.deepEqual(
+    finished.map((j: any) => j.phase),
+    ["done", "done"],
+  );
+  assert.equal(
+    finished.reduce((n: any, j: any) => n + j.result.imported.length, 0),
+    1,
+  );
+  assert.deepEqual(
+    finished.flatMap((j: any) => j.result.skipped.map((x: any) => x.reason)),
+    ["Already in the project."],
+  );
 });
 
 test("ids never collide with track, item or scene ids", T, async () => {
@@ -124,7 +224,10 @@ test("ids never collide with track, item or scene ids", T, async () => {
   const collide = join(root, "collide.png");
   color("collide.png", "white");
   const job = await s.importAndWait([collide]);
-  assert.deepEqual(job.result.imported.map((i: any) => i.id), ["m-collide-2"]);
+  assert.deepEqual(
+    job.result.imported.map((i: any) => i.id),
+    ["m-collide-2"],
+  );
   await s.ok("project.undo");
   await s.ok("project.undo");
 });
@@ -137,7 +240,16 @@ test("thumbnails: only with the token, only the current file's poster, and no tr
   assert.deepEqual([...new Uint8Array(await ok.arrayBuffer()).slice(0, 3)], [0xff, 0xd8, 0xff]);
   assert.equal((await get("/media/thumb/m-holiday-clip", null)).status, 401);
   assert.equal((await get("/media/thumb/m-holiday-clip", "wrong")).status, 401);
-  for (const path of ["/media/thumb/..%2F..%2Fproject.json", "/media/thumb/../../project.json", "/media/thumb/m-holiday-clip.jpg", "/media/thumb/%2Fetc%2Fpasswd", "/media/thumb/m-nope", "/media/thumb/", "/media/thumb/%E0%A4%A", "/media/thumb/%"]) {
+  for (const path of [
+    "/media/thumb/..%2F..%2Fproject.json",
+    "/media/thumb/../../project.json",
+    "/media/thumb/m-holiday-clip.jpg",
+    "/media/thumb/%2Fetc%2Fpasswd",
+    "/media/thumb/m-nope",
+    "/media/thumb/",
+    "/media/thumb/%E0%A4%A",
+    "/media/thumb/%",
+  ]) {
     assert.equal((await get(path)).status, 404, path);
   }
   // A symlink planted under the expected poster name, pointing outside, isn't followed.
@@ -158,10 +270,16 @@ test("a reused id gets its own poster, not the old file's", T, async () => {
   color(null, "red", first);
   color(null, "blue", second);
   const a = await s.importAndWait([first]);
-  assert.deepEqual(a.result.imported.map((i: any) => i.id), ["m-same"]);
+  assert.deepEqual(
+    a.result.imported.map((i: any) => i.id),
+    ["m-same"],
+  );
   await s.ok("project.undo");
   const b = await s.importAndWait([second]);
-  assert.deepEqual(b.result.imported.map((i: any) => i.id), ["m-same"]);
+  assert.deepEqual(
+    b.result.imported.map((i: any) => i.id),
+    ["m-same"],
+  );
   const bytes = Buffer.from(await (await fetch(`${s.base}/media/thumb/m-same?token=${s.token}`)).arrayBuffer());
   const poster = join(root, "fetched.jpg");
   writeFileSync(poster, bytes);
@@ -177,7 +295,10 @@ test("a file named like an image sequence (shot%d.png) is imported as itself", T
   execFileSync("mv", [join(root, "red-shot.png"), pattern]);
   color("shot1.png", "blue");
   const job = await s.importAndWait([pattern]);
-  assert.deepEqual(job.result.imported.map((i: any) => i.name), ["shot%d.png"]);
+  assert.deepEqual(
+    job.result.imported.map((i: any) => i.name),
+    ["shot%d.png"],
+  );
   const poster = readdirSync(join(dir, ".cache/thumbs")).find((f) => f.startsWith(`${job.result.imported[0].id}--`))!;
   const [r, , bl] = rgb(join(dir, ".cache/thumbs", poster));
   assert.ok(r > 150 && bl < 100, `poster colour ${rgb(join(dir, ".cache/thumbs", poster))} should be red (shot%d.png), not blue (shot1.png)`);
@@ -188,7 +309,10 @@ test("FIFOs aren't opened: the job reports them and finishes", T, async () => {
   execFileSync("mkfifo", [fifo]);
   const started = Date.now();
   const job = await s.importAndWait([fifo], 15000);
-  assert.deepEqual(job.result.failed.map((f: any) => f.message), ["Not a regular file."]);
+  assert.deepEqual(
+    job.result.failed.map((f: any) => f.message),
+    ["Not a regular file."],
+  );
   assert.ok(Date.now() - started < 10000);
 });
 
@@ -217,7 +341,11 @@ test("a big import isn't cut short by any request timeout and reports progress",
   const last = states.at(-1);
   assert.equal(last.phase, "done");
   assert.equal(last.result.imported.length, 200);
-  assert.ok(states.some((j: any) => j.phase === "probing" && j.probed > 0 && j.probed < 200) || states.some((j: any) => j.phase === "posters" && j.postersDone > 0 && j.postersDone < 200), "progress was reported along the way");
+  assert.ok(
+    states.some((j: any) => j.phase === "probing" && j.probed > 0 && j.probed < 200) ||
+      states.some((j: any) => j.phase === "posters" && j.postersDone > 0 && j.postersDone < 200),
+    "progress was reported along the way",
+  );
   await s.ok("project.undo");
 });
 
@@ -228,7 +356,10 @@ test("an import never lands in another project: closing it mid-way refuses the e
   // Switch projects while the job is still probing.
   await s.ok("project.open", { dir });
   await s.waitJob(jobId);
-  const job = s.jobs.values.flat().filter((j: any) => j.id === jobId).at(-1);
+  const job = s.jobs.values
+    .flat()
+    .filter((j: any) => j.id === jobId)
+    .at(-1);
   assert.equal(job.phase, "failed");
   assert.equal(job.error, "The project was closed before this finished.");
   assert.deepEqual(JSON.parse(readFileSync(join(other.dir, "project.json"), "utf8")).media, []);
@@ -247,8 +378,14 @@ test("if the media core dies on a file, it's restarted for the rest of the batch
     color("crash.png", "black");
     color("after.png", "white");
     const job = await t.importAndWait([files.still, crash, join(root, "after.png")]);
-    assert.deepEqual(job.result.imported.map((i: any) => i.name), ["poster.png", "after.png"]);
-    assert.deepEqual(job.result.failed.map((f: any) => [f.path, f.message]), [[crash, "The media core stopped while reading this file."]]);
+    assert.deepEqual(
+      job.result.imported.map((i: any) => i.name),
+      ["poster.png", "after.png"],
+    );
+    assert.deepEqual(
+      job.result.failed.map((f: any) => [f.path, f.message]),
+      [[crash, "The media core stopped while reading this file."]],
+    );
   } finally {
     await t.end();
   }

@@ -81,9 +81,26 @@ after(async () => {
 
 test("uncutUI typing: the typed composer grows smoothly at each wrap, its toolbar inside, pure in t", { skip, timeout: 120000 }, async () => {
   const out = join(root, "f.png");
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: 1, info: graphicInfo({ duration: 240, props: {} }, canvas, 60), out, name: "graphics/typing.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: 1,
+    info: graphicInfo({ duration: 240, props: {} }, canvas, 60),
+    out,
+    name: "graphics/typing.html",
+  });
   const px = rgbaOf(out);
   const [r, g] = [px[0]!, px[1]!];
-  const why = ["", "the shell jumped by over a third of a line in one frame", "Send left the shell", "the typed text is off the schedule", "it never grew by two lines", "shuffled frames differ"][Math.round(r / 40)] ?? `pixel ${r},${g}`;
+  const why =
+    [
+      "",
+      "the shell jumped by over a third of a line in one frame",
+      "Send left the shell",
+      "the typed text is off the schedule",
+      "it never grew by two lines",
+      "shuffled frames differ",
+    ][Math.round(r / 40)] ?? `pixel ${r},${g}`;
   assert.ok(g > 200 && r < 30, why);
 });
