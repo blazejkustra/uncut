@@ -25,7 +25,11 @@ test("bundled.json splits the bundled folder; the catalog's cards; install, allo
   const server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_BUNDLED_PLUGINS_DIR: bundled } });
   const client = await connect(server.ready.port, server.ready.token);
   const list = await client.ok("plugins.list", {});
-  assert.deepEqual(list.map((p: any) => [p.id, p.source, p.status]), [["uncut.skills", "bundled", "ready"]], "only the listed plugin ships; taste.extra sits at the top but isn't listed");
+  assert.deepEqual(
+    list.map((p: any) => [p.id, p.source, p.status]),
+    [["uncut.skills", "bundled", "ready"]],
+    "only the listed plugin ships; taste.extra sits at the top but isn't listed",
+  );
   assert.equal(list[0].author, "Uncut");
   assert.equal(list[0].runs, false);
 
@@ -36,7 +40,13 @@ test("bundled.json splits the bundled folder; the catalog's cards; install, allo
   assert.equal(kit.enabled, false);
   assert.equal(kit.status, undefined);
   assert.match(kit.asks[0], /adds a skill/, "the card says what allowing it means (D248's skills sentence)");
-  assert.deepEqual(kit.contributes, { looks: ["Lower third"], components: ["Callout badge"], rules: [], shaders: ["Spotlight"], skills: ["Lower thirds (/example-kit-lower-thirds)"] });
+  assert.deepEqual(kit.contributes, {
+    looks: ["Lower third"],
+    components: ["Callout badge"],
+    rules: [],
+    shaders: ["Spotlight"],
+    skills: ["Lower thirds (/example-kit-lower-thirds)"],
+  });
 
   // Install: copied in, not allowed yet.
   const installed = await client.ok("plugins.enable", { id: "uncut.example-kit" });

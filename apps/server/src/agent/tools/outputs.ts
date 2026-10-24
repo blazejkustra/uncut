@@ -22,7 +22,14 @@ export function checksOut(
   project: Project,
   revision: number,
   filter: { readonly rules?: ReadonlyArray<string> | undefined; readonly severity?: string | undefined } = {},
-  plugins: { readonly rules?: ReadonlyArray<CheckRule>; readonly found?: ReadonlyArray<Check>; readonly notes?: ReadonlyArray<string>; readonly errors?: ReadonlySet<string>; readonly sound?: SoundProfile; readonly intended?: ReadonlyArray<IntendedRef> } = {},
+  plugins: {
+    readonly rules?: ReadonlyArray<CheckRule>;
+    readonly found?: ReadonlyArray<Check>;
+    readonly notes?: ReadonlyArray<string>;
+    readonly errors?: ReadonlySet<string>;
+    readonly sound?: SoundProfile;
+    readonly intended?: ReadonlyArray<IntendedRef>;
+  } = {},
 ) {
   // Plugin rules (D103): the allowed plugins' data rules run with the built-ins; process plugins' findings are added.
   const off = new Set(disabledChecks(project));
@@ -30,8 +37,21 @@ export function checksOut(
   const rank = (c: Check) => (errorIds.has(c.id) ? -1 : c.severity === "warn" ? 0 : 1);
   const fps = project.canvas.fps;
   // D217: the sound rule at the video's profile; sound findings the user marked Intended left out.
-  const marked = (c: Check) => c.id === "sound" && isIntended({ kind: "sound", rule: c.key.split(":").slice(0, 2).join(":"), ...(c.frame !== undefined ? { at: Math.round((c.frame / fps) * 100) / 100 } : {}), ...(c.range ? { to: Math.round((c.range.end / fps) * 100) / 100 } : {}) }, plugins.intended);
-  const found = [...projectChecks(project, { rules: plugins.rules ?? [], ...(plugins.sound ? { sound: plugins.sound } : {}) }), ...(plugins.found ?? []).filter((c) => !off.has(c.id))];
+  const marked = (c: Check) =>
+    c.id === "sound" &&
+    isIntended(
+      {
+        kind: "sound",
+        rule: c.key.split(":").slice(0, 2).join(":"),
+        ...(c.frame !== undefined ? { at: Math.round((c.frame / fps) * 100) / 100 } : {}),
+        ...(c.range ? { to: Math.round((c.range.end / fps) * 100) / 100 } : {}),
+      },
+      plugins.intended,
+    );
+  const found = [
+    ...projectChecks(project, { rules: plugins.rules ?? [], ...(plugins.sound ? { sound: plugins.sound } : {}) }),
+    ...(plugins.found ?? []).filter((c) => !off.has(c.id)),
+  ];
   const all = found.filter((c) => !marked(c)).sort((a, b) => rank(a) - rank(b) || (a.frame ?? Infinity) - (b.frame ?? Infinity));
   const intended = found.length - all.length;
   const picked = all.filter((c) => (!filter.rules?.length || filter.rules.includes(c.id)) && (!filter.severity || c.severity === filter.severity));
@@ -51,7 +71,7 @@ export function checksOut(
     note: errors
       ? "Fix every error first: it is drawn wrong as it is (a missing font falls back to another one). Then fix each warning (a fix's ops go into timeline_edit as they are, with your baseRevision) or tell the user why it's right as it is. Info notes are suggestions."
       : picked.length
-      ? "Fix each warning (a fix's ops go into timeline_edit as they are, with your baseRevision) or tell the user why it's right as it is. Info notes are suggestions. Checks never block the export."
-      : "Nothing to fix.",
+        ? "Fix each warning (a fix's ops go into timeline_edit as they are, with your baseRevision) or tell the user why it's right as it is. Info notes are suggestions. Checks never block the export."
+        : "Nothing to fix.",
   };
 }

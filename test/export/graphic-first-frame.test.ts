@@ -79,7 +79,16 @@ after(async () => {
 });
 
 const frame = (html: string, t: number, name: string) =>
-  raster.render({ kind: "graphic", width: canvas.width, height: canvas.height, doc: graphicDocument(html, canvas), t, info: graphicInfo({ duration: 60, props: {} }, canvas, Math.round(t * canvas.fps)), out: join(root, `${name}-${t}.png`), name });
+  raster.render({
+    kind: "graphic",
+    width: canvas.width,
+    height: canvas.height,
+    doc: graphicDocument(html, canvas),
+    t,
+    info: graphicInfo({ duration: 60, props: {} }, canvas, Math.round(t * canvas.fps)),
+    out: join(root, `${name}-${t}.png`),
+    name,
+  });
 
 test("a first frame fetching its pictures one after another past 5 s draws; the next frame is fast", { skip, timeout: 60000 }, async () => {
   const t0 = Date.now();
@@ -97,7 +106,10 @@ test("a first frame fetching its pictures one after another past 5 s draws; the 
 test("a script that never yields still fails at the frame deadline, naming it", { skip, timeout: 60000 }, async () => {
   const t0 = Date.now();
   await assert.rejects(frame("<script>while (true) {}</script>", 0, "stuck"), (e: Error) => {
-    assert.match(e.message, /stuck: the graphic took longer than 5 s to load and draw a frame at 0\.00 s \(its first frame, the document just loaded\): its script never yielded/);
+    assert.match(
+      e.message,
+      /stuck: the graphic took longer than 5 s to load and draw a frame at 0\.00 s \(its first frame, the document just loaded\): its script never yielded/,
+    );
     return true;
   });
   assert.ok(Date.now() - t0 < 8000, `failed in ${Date.now() - t0} ms`);
@@ -106,7 +118,10 @@ test("a script that never yields still fails at the frame deadline, naming it", 
 test("a render(t) waiting on a promise that never settles fails at 5 s, not blamed on media", { skip, timeout: 60000 }, async () => {
   const t0 = Date.now();
   await assert.rejects(frame("<script>window.render = () => new Promise(() => {});</script>", 1, "hang"), (e: Error) => {
-    assert.match(e.message, /hang: the graphic took longer than 5 s to load and draw a frame at 1\.00 s \(its first frame, the document just loaded\): render\(t\) was waiting on a promise that never settled, with no project picture pending/);
+    assert.match(
+      e.message,
+      /hang: the graphic took longer than 5 s to load and draw a frame at 1\.00 s \(its first frame, the document just loaded\): render\(t\) was waiting on a promise that never settled, with no project picture pending/,
+    );
     return true;
   });
   assert.ok(Date.now() - t0 < 8000, `failed in ${Date.now() - t0} ms`);

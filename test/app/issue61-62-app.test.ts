@@ -31,9 +31,17 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `issue61-62-${name}.png`);
 
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const item = (id: string): Item => onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === id)!;
+const item = (id: string): Item =>
+  onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.id === id)!;
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const boxOf = async (selector: string) => {
   const b = await (await page.$(selector))?.boundingBox();
   assert.ok(b, `no box for ${selector}`);
@@ -58,7 +66,20 @@ before(async () => {
   const media = join(root, "media");
   mkdirSync(media);
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=320x180", "-frames:v", "1", join(media, "Photo.png")]);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=navy:s=320x180:r=30:d=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(media, "Bg.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=navy:s=320x180:r=30:d=3",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(media, "Bg.mp4"),
+  ]);
   dir = writeProject(root, "Pictures", {
     format: "uncut/0",
     name: "Pictures",
@@ -68,7 +89,12 @@ before(async () => {
       { id: "m-bg", kind: "video", name: "Bg.mp4", path: join(media, "Bg.mp4"), probe: { frames: 90, fps: 30, width: 320, height: 180, hasAudio: false } },
     ],
     tracks: [
-      { id: "top", kind: "video", name: "Top", items: [{ id: "photo", type: "clip", media: "m-photo", start: 0, duration: 90, transform: { x: 100, y: 100, w: 320, h: 180 } }] },
+      {
+        id: "top",
+        kind: "video",
+        name: "Top",
+        items: [{ id: "photo", type: "clip", media: "m-photo", start: 0, duration: 90, transform: { x: 100, y: 100, w: 320, h: 180 } }],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "clip", media: "m-bg", in: 0, duration: 90 }] },
     ],
   } as Project);
@@ -78,10 +104,15 @@ before(async () => {
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
-  await page.waitForFunction(() => {
-    const img = document.querySelector<HTMLImageElement>('[data-testid=preview-media] img[data-item="photo"], [data-testid=preview-media] .pv-box[data-item="photo"] img');
-    return !!img && img.complete && img.naturalWidth > 0;
-  }, { timeout: 15000 });
+  await page.waitForFunction(
+    () => {
+      const img = document.querySelector<HTMLImageElement>(
+        '[data-testid=preview-media] img[data-item="photo"], [data-testid=preview-media] .pv-box[data-item="photo"] img',
+      );
+      return !!img && img.complete && img.naturalWidth > 0;
+    },
+    { timeout: 15000 },
+  );
 });
 after(async () => {
   await app?.close();
@@ -92,8 +123,17 @@ after(async () => {
 test("issue #61: an image layer moves, snaps and resizes on the canvas; no native image drag", { skip, timeout: 120000 }, async () => {
   // A picture layer's <img> is not draggable; every <img> on the stage (an element's logo too, whose
   // draggable we don't set) has -webkit-user-drag: none; native drags on the frame are refused.
-  const imgs = await page.$$eval("[data-testid=preview-frame] img", (els) => els.map((e) => ({ layer: !!e.closest(".pv-box"), draggable: (e as HTMLImageElement).draggable, userDrag: getComputedStyle(e).getPropertyValue("-webkit-user-drag") })));
-  assert.ok(imgs.some((i) => i.layer), "the photo is an <img> on the stage");
+  const imgs = await page.$$eval("[data-testid=preview-frame] img", (els) =>
+    els.map((e) => ({
+      layer: !!e.closest(".pv-box"),
+      draggable: (e as HTMLImageElement).draggable,
+      userDrag: getComputedStyle(e).getPropertyValue("-webkit-user-drag"),
+    })),
+  );
+  assert.ok(
+    imgs.some((i) => i.layer),
+    "the photo is an <img> on the stage",
+  );
   for (const i of imgs) assert.ok((!i.layer || !i.draggable) && i.userDrag === "none", `an <img> on the stage can be dragged natively: ${JSON.stringify(i)}`);
   await page.evaluate(() => {
     const w = window as unknown as { __dragstarts: Array<boolean> };
@@ -116,7 +156,10 @@ test("issue #61: an image layer moves, snaps and resizes on the canvas; no nativ
   let t = item("photo").transform!;
   assert.ok(Math.abs(t.x! - 400) <= 3 && Math.abs(t.y! - 200) <= 3 && t.w === 320 && t.h === 180, `moved to ${JSON.stringify(t)}`);
   const starts = await page.evaluate(() => (window as unknown as { __dragstarts: Array<boolean> }).__dragstarts);
-  assert.ok(starts.every((prevented) => prevented), `a native drag started on the canvas: ${JSON.stringify(starts)}`);
+  assert.ok(
+    starts.every((prevented) => prevented),
+    `a native drag started on the canvas: ${JSON.stringify(starts)}`,
+  );
   await page.screenshot({ path: out("image-moved") });
 
   // A drag that ends a few px off the centre line snaps onto it (x = 640 − 160).
@@ -135,7 +178,10 @@ test("issue #61: an image layer moves, snaps and resizes on the canvas; no nativ
   t = item("photo").transform!;
   assert.ok(Math.abs(t.w! - 384) <= 4 && Math.abs(t.h! - 216) <= 4 && t.x === 480, `resized to ${JSON.stringify(t)}`);
   const starts2 = await page.evaluate(() => (window as unknown as { __dragstarts: Array<boolean> }).__dragstarts);
-  assert.ok(starts2.every((prevented) => prevented), `a native drag started on the canvas: ${JSON.stringify(starts2)}`);
+  assert.ok(
+    starts2.every((prevented) => prevented),
+    `a native drag started on the canvas: ${JSON.stringify(starts2)}`,
+  );
   await page.screenshot({ path: out("image-resized") });
 });
 
@@ -162,7 +208,16 @@ async function checkTransport(label: string) {
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       // Content wider than the box (a clipped label) shows as scrollWidth > clientWidth; the canvas label may end in an ellipsis.
       const clipped = el instanceof HTMLElement && el.tagName !== "SELECT" && id !== "canvas-info" && el.scrollWidth > el.clientWidth + 1;
-      return [{ id, shown: true as const, r, onTop: !!hit && (hit === el || el.contains(hit)), hitWas: hit ? `${hit.tagName}.${(hit as HTMLElement).className}` : "nothing", clipped }];
+      return [
+        {
+          id,
+          shown: true as const,
+          r,
+          onTop: !!hit && (hit === el || el.contains(hit)),
+          hitWas: hit ? `${hit.tagName}.${(hit as HTMLElement).className}` : "nothing",
+          clipped,
+        },
+      ];
     });
     return { win: { width: window.innerWidth, height: window.innerHeight }, bar: rect(bar), stage: rect(stage), controls };
   }, CONTROLS);
@@ -170,7 +225,8 @@ async function checkTransport(label: string) {
   const ids = shown.map((c) => c.id);
   assert.ok(ids.includes("play") && ids.includes("preview-fullscreen"), `${label}: play and full screen are shown (${ids.join(", ")})`);
   assert.ok(Math.abs(report.bar.height - 40) <= 1, `${label}: the bar is 40px tall (${report.bar.height})`);
-  const inside = (r: { left: number; top: number; right: number; bottom: number }, o: { left: number; top: number; right: number; bottom: number }) => r.left >= o.left - 0.5 && r.top >= o.top - 0.5 && r.right <= o.right + 0.5 && r.bottom <= o.bottom + 0.5;
+  const inside = (r: { left: number; top: number; right: number; bottom: number }, o: { left: number; top: number; right: number; bottom: number }) =>
+    r.left >= o.left - 0.5 && r.top >= o.top - 0.5 && r.right <= o.right + 0.5 && r.bottom <= o.bottom + 0.5;
   const winBox = { left: 0, top: 0, right: report.win.width, bottom: report.win.height };
   for (const c of shown) {
     if (!c.shown) continue;
@@ -185,7 +241,8 @@ async function checkTransport(label: string) {
       const a = shown[i]!;
       const b = shown[j]!;
       if (!a.shown || !b.shown) continue;
-      const overlap = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left) > 0.5 && Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top) > 0.5;
+      const overlap =
+        Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left) > 0.5 && Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top) > 0.5;
       assert.ok(!overlap, `${label}: ${a.id} and ${b.id} overlap`);
     }
   return { ids, stage: report.stage };
@@ -202,40 +259,47 @@ async function resize(panel: "lib" | "side" | "bottom", dx: number, dy: number) 
   await sleep(250);
 }
 
-test("issue #62: the transport fits a tiny preview panel: shown controls inside the window, uncovered, not overlapping", { skip, timeout: 120000 }, async () => {
-  const roomy = await checkTransport("1280×800");
-  assert.ok(roomy.ids.length === CONTROLS.length, `all controls shown with room: ${roomy.ids.join(", ")}`);
-  await page.screenshot({ path: out("roomy") });
+test(
+  "issue #62: the transport fits a tiny preview panel: shown controls inside the window, uncovered, not overlapping",
+  { skip, timeout: 120000 },
+  async () => {
+    const roomy = await checkTransport("1280×800");
+    assert.ok(roomy.ids.length === CONTROLS.length, `all controls shown with room: ${roomy.ids.join(", ")}`);
+    await page.screenshot({ path: out("roomy") });
 
-  await page.setViewport({ width: 1024, height: 640 });
-  await sleep(400);
-  await checkTransport("1024×640");
-  await page.screenshot({ path: out("small-window") });
+    await page.setViewport({ width: 1024, height: 640 });
+    await sleep(400);
+    await checkTransport("1024×640");
+    await page.screenshot({ path: out("small-window") });
 
-  // The timeline as tall as it goes, then the side panels as wide as they go: the preview is tiny.
-  await resize("bottom", 0, -600);
-  const short = await checkTransport("1024×640, tall timeline");
-  await page.screenshot({ path: out("short") });
-  await resize("lib", 600, 0);
-  await resize("side", -600, 0);
-  const tiny = await checkTransport("1024×640, tiny preview");
-  await page.screenshot({ path: out("tiny") });
-  assert.ok(tiny.stage.width < 260 && tiny.stage.height < 200, `the preview panel is tiny: ${JSON.stringify(tiny.stage)} (short: ${JSON.stringify(short.stage)})`);
-  // The picture gave way, not the bar: the frame is inside the stage, above the bar.
-  const frame = await boxOf("[data-testid=preview-frame]");
-  const bar = await boxOf(".transport");
-  assert.ok(frame.y + frame.height <= bar.y + 0.5, `the picture ends above the bar (${frame.y + frame.height} vs ${bar.y})`);
+    // The timeline as tall as it goes, then the side panels as wide as they go: the preview is tiny.
+    await resize("bottom", 0, -600);
+    const short = await checkTransport("1024×640, tall timeline");
+    await page.screenshot({ path: out("short") });
+    await resize("lib", 600, 0);
+    await resize("side", -600, 0);
+    const tiny = await checkTransport("1024×640, tiny preview");
+    await page.screenshot({ path: out("tiny") });
+    assert.ok(
+      tiny.stage.width < 260 && tiny.stage.height < 200,
+      `the preview panel is tiny: ${JSON.stringify(tiny.stage)} (short: ${JSON.stringify(short.stage)})`,
+    );
+    // The picture gave way, not the bar: the frame is inside the stage, above the bar.
+    const frame = await boxOf("[data-testid=preview-frame]");
+    const bar = await boxOf(".transport");
+    assert.ok(frame.y + frame.height <= bar.y + 0.5, `the picture ends above the bar (${frame.y + frame.height} vs ${bar.y})`);
 
-  // Wider again: the hidden controls come back. Back to the window's own 1280×800 rather than an
-  // emulated one: Chromium keeps an emulated viewport within the screen (#89: 1024 wide on the runner).
-  await page.setViewport(null);
-  const small = await smallScreen(page, 1280, 800);
-  if (small) return notChecked(small, "the transport's controls all come back at 1280×800");
-  await page.evaluate(() => localStorage.removeItem("uncut.layout"));
-  for (const p of ["lib", "side", "bottom"] as const) await page.click(`[data-testid=resize-${p}]`, { clickCount: 2 });
-  // The panels animate back to their sizes: poll until the bar has room again (#89: 400 ms wasn't
-  // enough on a slow runner), then check it.
-  await eventually(async () => (await checkTransport("1280×800 again")).ids.length === CONTROLS.length);
-  const back = await checkTransport("1280×800 again");
-  assert.equal(back.ids.length, CONTROLS.length, `all controls back: ${back.ids.join(", ")}`);
-});
+    // Wider again: the hidden controls come back. Back to the window's own 1280×800 rather than an
+    // emulated one: Chromium keeps an emulated viewport within the screen (#89: 1024 wide on the runner).
+    await page.setViewport(null);
+    const small = await smallScreen(page, 1280, 800);
+    if (small) return notChecked(small, "the transport's controls all come back at 1280×800");
+    await page.evaluate(() => localStorage.removeItem("uncut.layout"));
+    for (const p of ["lib", "side", "bottom"] as const) await page.click(`[data-testid=resize-${p}]`, { clickCount: 2 });
+    // The panels animate back to their sizes: poll until the bar has room again (#89: 400 ms wasn't
+    // enough on a slow runner), then check it.
+    await eventually(async () => (await checkTransport("1280×800 again")).ids.length === CONTROLS.length);
+    const back = await checkTransport("1280×800 again");
+    assert.equal(back.ids.length, CONTROLS.length, `all controls back: ${back.ids.join(", ")}`);
+  },
+);

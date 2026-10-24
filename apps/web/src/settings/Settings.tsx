@@ -60,7 +60,13 @@ export function Settings() {
           {SECTIONS.map((s) => {
             const Icon = s.icon;
             return (
-              <button key={s.id} className={section === s.id ? "active" : ""} data-testid={`settings-nav-${s.id}`} disabled={s.id === "project" && !snapshot} onClick={() => actions.openSettings(s.id)}>
+              <button
+                key={s.id}
+                className={section === s.id ? "active" : ""}
+                data-testid={`settings-nav-${s.id}`}
+                disabled={s.id === "project" && !snapshot}
+                onClick={() => actions.openSettings(s.id)}
+              >
                 <Icon />
                 {s.label}
               </button>
@@ -156,14 +162,24 @@ function AppSettings() {
             Agents and setup…
           </button>
           {environments ? (
-            <button className="btn" data-testid="settings-open-environments" disabled={!environments} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
-            Environments…
-          </button>
+            <button
+              className="btn"
+              data-testid="settings-open-environments"
+              disabled={!environments}
+              onClick={() => (actions.closeSettings(), void actions.openEnvironments())}
+            >
+              Environments…
+            </button>
           ) : (
             <LabsTip>
-              <button className="btn" data-testid="settings-open-environments" disabled={!environments} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
-            Environments…
-          </button>
+              <button
+                className="btn"
+                data-testid="settings-open-environments"
+                disabled={!environments}
+                onClick={() => (actions.closeSettings(), void actions.openEnvironments())}
+              >
+                Environments…
+              </button>
             </LabsTip>
           )}
         </div>

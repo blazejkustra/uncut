@@ -5,7 +5,7 @@
 // gate's skill names, and the guide covering every kind.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -21,7 +21,17 @@ import { EXAMPLE, PLUGIN_GUIDE, guideMarkdown } from "../../apps/web/src/setting
 const REPO_PLUGINS = resolve("plugins");
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `uncut-${name}-`)));
 const manifest = (id: string, extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ manifest: "uncut.module/0", apiVersion: "uncut.module/1", id, kind: "pack", name: id, version: "1.0.0", runtime: { type: "data" }, contributes: { rules: [{ id: `${id}.r`, title: "R", rule: { type: "max-words", max: 9 } }] }, ...extra });
+  JSON.stringify({
+    manifest: "uncut.module/0",
+    apiVersion: "uncut.module/1",
+    id,
+    kind: "pack",
+    name: id,
+    version: "1.0.0",
+    runtime: { type: "data" },
+    contributes: { rules: [{ id: `${id}.r`, title: "R", rule: { type: "max-words", max: 9 } }] },
+    ...extra,
+  });
 const plugin = (dir: string, id: string, files: Record<string, string> = {}) => {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "uncut.module.json"), manifest(id));
@@ -50,8 +60,14 @@ test("pluginLayout: the list picks bundled ones anywhere; the rest, top-level or
     assert.equal(pluginLayout(root), undefined, "no bundled.json: the old layout (every top-level folder ships)");
     writeFileSync(join(root, "bundled.json"), JSON.stringify({ bundled: ["acme.kept", "acme.promoted", "acme.gone"] }));
     const layout = pluginLayout(root)!;
-    assert.deepEqual(layout.bundled.map((d) => basename(d)), ["kept", "promoted"]);
-    assert.deepEqual(layout.catalog.map((d) => basename(d)), ["demoted", "plain"]);
+    assert.deepEqual(
+      layout.bundled.map((d) => basename(d)),
+      ["kept", "promoted"],
+    );
+    assert.deepEqual(
+      layout.catalog.map((d) => basename(d)),
+      ["demoted", "plain"],
+    );
     assert.deepEqual(layout.problems, ["bundled.json lists acme.gone, but no plugin folder has that id."]);
     writeFileSync(join(root, "bundled.json"), JSON.stringify({ bundled: ["Not An Id"] }));
     assert.throws(() => readBundledList(root), /a list of plugin ids/);
@@ -93,7 +109,12 @@ test("the repo staged as the app ships it: the list's plugins in plugins/, every
   try {
     const staged = stagePlugins(REPO_PLUGINS, out);
     const layout = pluginLayout(REPO_PLUGINS)!;
-    assert.deepEqual(readdirSync(out).filter((n) => n !== "catalog").sort(), layout.bundled.map((d) => basename(d)).sort());
+    assert.deepEqual(
+      readdirSync(out)
+        .filter((n) => n !== "catalog")
+        .sort(),
+      layout.bundled.map((d) => basename(d)).sort(),
+    );
     assert.deepEqual(readdirSync(join(out, "catalog")).sort(), [...staged.catalog].sort());
     for (const dir of [...layout.bundled.map((d) => [d, join(out, basename(d))]), ...layout.catalog.map((d) => [d, join(out, "catalog", basename(d))])]) {
       const [from, to] = dir as [string, string];
@@ -128,11 +149,20 @@ test("the server honours the list: config gives the bundled root its folders and
     assert.deepEqual(bundledRoot.folders, [join(root, "kept")]);
     assert.deepEqual(config.pluginCatalogFolders, [join(root, "demoted"), join(root, "catalog", "plain")]);
     const reserved = { moduleIds: new Set<string>(), toolNames: new Set<string>() };
-    assert.deepEqual((await discoverPlugins([bundledRoot], reserved)).plugins.map((p) => p.id), ["acme.kept"]);
+    assert.deepEqual(
+      (await discoverPlugins([bundledRoot], reserved)).plugins.map((p) => p.id),
+      ["acme.kept"],
+    );
     const catalog = await discoverPlugins([{ source: "user", dir: config.pluginCatalogDir, folders: config.pluginCatalogFolders }], reserved);
-    assert.deepEqual(catalog.plugins.map((p) => p.id), ["acme.demoted", "acme.plain"]);
+    assert.deepEqual(
+      catalog.plugins.map((p) => p.id),
+      ["acme.demoted", "acme.plain"],
+    );
     // UNCUT_PLUGIN_CATALOG_DIR (tests) still means that folder alone.
-    assert.equal(readConfig({ UNCUT_BUNDLED_PLUGINS_DIR: root, UNCUT_PLUGIN_CATALOG_DIR: join(root, "catalog"), UNCUT_DATA_DIR: join(root, "data") }).pluginCatalogFolders, undefined);
+    assert.equal(
+      readConfig({ UNCUT_BUNDLED_PLUGINS_DIR: root, UNCUT_PLUGIN_CATALOG_DIR: join(root, "catalog"), UNCUT_DATA_DIR: join(root, "data") }).pluginCatalogFolders,
+      undefined,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -159,7 +189,10 @@ test("pnpm plugin:new --from uncut.example-kit: a copy with your id everywhere a
     const m = JSON.parse(readFileSync(join(made.dir, "uncut.module.json"), "utf8"));
     assert.equal(m.id, "acme.promo-kit");
     assert.equal(m.name, "Acme kit");
-    assert.deepEqual([m.contributes.looks[0].id, m.contributes.components[0].id, m.contributes.shaders[0].id], ["acme.promo-kit.lower-third", "acme.promo-kit.badge", "acme.promo-kit.spotlight"]);
+    assert.deepEqual(
+      [m.contributes.looks[0].id, m.contributes.components[0].id, m.contributes.shaders[0].id],
+      ["acme.promo-kit.lower-third", "acme.promo-kit.badge", "acme.promo-kit.spotlight"],
+    );
     assert.equal(m.contributes.skills[0].name, "promo-kit-lower-thirds");
     assert.match(m.contributes.skills[0].instructions, /acme\.promo-kit\.lower-third/);
     assert.ok(!readFileSync(join(made.dir, "uncut.module.json"), "utf8").includes(EXAMPLE.id), "no trace of the example's id");
@@ -174,14 +207,25 @@ test("pnpm plugin:new --from uncut.example-kit: a copy with your id everywhere a
   } finally {
     rmSync(plugins, { recursive: true, force: true });
   }
-  assert.deepEqual((renameSkills({ contributes: { skills: [{ name: "kit" }, { name: "other" }] } }, "uncut.kit", "acme.box").contributes as { skills: Array<{ name: string }> }).skills.map((s) => s.name), ["box", "box-other"]);
+  assert.deepEqual(
+    (
+      renameSkills({ contributes: { skills: [{ name: "kit" }, { name: "other" }] } }, "uncut.kit", "acme.box").contributes as {
+        skills: Array<{ name: string }>;
+      }
+    ).skills.map((s) => s.name),
+    ["box", "box-other"],
+  );
 });
 
 test("the gate: a skill name another plugin has, or one of Uncut's own, is refused", async () => {
   const root = tmp("gate-skills");
   try {
     const skill = (name: string) => ({ contributes: { skills: [{ name, description: "D", instructions: "I" }] } });
-    for (const [folder, id, name] of [["acme-one", "acme.one", "shared-name"], ["acme-two", "acme.two", "shared-name"], ["acme-three", "acme.three", "launch-promo"]] as const) {
+    for (const [folder, id, name] of [
+      ["acme-one", "acme.one", "shared-name"],
+      ["acme-two", "acme.two", "shared-name"],
+      ["acme-three", "acme.three", "launch-promo"],
+    ] as const) {
       mkdirSync(join(root, folder));
       writeFileSync(join(root, folder, "uncut.module.json"), manifest(id, skill(name)));
     }
@@ -196,7 +240,32 @@ test("the gate: a skill name another plugin has, or one of Uncut's own, is refus
 
 test("the guide covers the manifest, every kind, the SDK, testing and publishing, and names the example", () => {
   const md = guideMarkdown();
-  for (const word of ["looks", "components", "rules", "filters", "shaders", "skills", "agent tools", "process plugins", "argent-capture", "whisper-transcribe", "serve", "ToolContext", "ToolError", "UncutDeclaration", "plugin:check --write", "bundled.json", "capabilities", "apiVersion", EXAMPLE.id, EXAMPLE.folder]) assert.ok(md.includes(word), word);
-  assert.deepEqual(PLUGIN_GUIDE.map((s) => s.id), ["what", "start", "manifest", "kinds", "sdk", "approval", "test", "publish"]);
+  for (const word of [
+    "looks",
+    "components",
+    "rules",
+    "filters",
+    "shaders",
+    "skills",
+    "agent tools",
+    "process plugins",
+    "argent-capture",
+    "whisper-transcribe",
+    "serve",
+    "ToolContext",
+    "ToolError",
+    "UncutDeclaration",
+    "plugin:check --write",
+    "bundled.json",
+    "capabilities",
+    "apiVersion",
+    EXAMPLE.id,
+    EXAMPLE.folder,
+  ])
+    assert.ok(md.includes(word), word);
+  assert.deepEqual(
+    PLUGIN_GUIDE.map((s) => s.id),
+    ["what", "start", "manifest", "kinds", "sdk", "approval", "test", "publish"],
+  );
   assert.ok(existsSync(join(REPO_PLUGINS, "catalog", basename(EXAMPLE.folder))), "the example the guide links to exists");
 });

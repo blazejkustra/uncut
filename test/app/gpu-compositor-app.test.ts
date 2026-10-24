@@ -51,16 +51,57 @@ before(async () => {
   mkdirSync(join(dir, "media"), { recursive: true });
   const clip = join(root, "Layer.mp4");
   const still = join(root, "Still.mp4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=1280x720:rate=${FPS}`, "-t", String((3 * HALF) / FPS + 2), "-c:v", "libx264", "-preset", "veryfast", "-g", "30", "-bf", "0", "-pix_fmt", "yuv420p", clip]);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=1280x720:rate=${FPS}`, "-vf", "trim=end_frame=1,loop=2000:1:0,setpts=N/30/TB", "-t", String(HALF / FPS + 1), "-c:v", "libx264", "-preset", "veryfast", "-g", "30", "-bf", "0", "-pix_fmt", "yuv420p", still]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=1280x720:rate=${FPS}`,
+    "-t",
+    String((3 * HALF) / FPS + 2),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-g",
+    "30",
+    "-bf",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    clip,
+  ]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=1280x720:rate=${FPS}`,
+    "-vf",
+    "trim=end_frame=1,loop=2000:1:0,setpts=N/30/TB",
+    "-t",
+    String(HALF / FPS + 1),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-g",
+    "30",
+    "-bf",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    still,
+  ]);
   const media = [
     { id: "m-layer", kind: "video", name: "Layer.mp4", path: clip, probe: { frames: 3 * HALF + 2 * FPS, fps: FPS, width: 1280, height: 720, hasAudio: false } },
     { id: "m-still", kind: "video", name: "Still.mp4", path: still, probe: { frames: HALF + FPS, fps: FPS, width: 1280, height: 720, hasAudio: false } },
   ];
-  const fx = [
-    { module: "effect.look", params: { look: "warm", intensity: 1 } },
-    { module: "effect.sharpen" },
-  ];
+  const fx = [{ module: "effect.look", params: { look: "warm", intensity: 1 } }, { module: "effect.sharpen" }];
   const overlays = Array.from({ length: MANY }, (_, i) => {
     const transform = { x: 16 + (i % 4) * 476, y: 16 + Math.floor(i / 4) * 356, w: 460, h: 340, fit: "cover", radius: 18, opacity: 0.92 };
     const small = { x: 12 + (i % 5) * 380, y: 12 + Math.floor(i / 5) * 268, w: 370, h: 258, fit: "cover", radius: 14, opacity: 0.92 };
@@ -76,7 +117,9 @@ before(async () => {
             ]
           : []),
         { id: `m${i}`, type: "clip", media: "m-layer", start: 2 * HALF, in: ((i * 11) % 60) + HALF - FPS, duration: HALF, transform: small, effects: fx },
-        ...(i < OVERLAYS ? [{ id: `s${i}`, type: "clip", media: "m-still", start: 3 * HALF, in: 0, duration: HALF, transform, ...(i % 2 ? { effects: fx } : {}) }] : []),
+        ...(i < OVERLAYS
+          ? [{ id: `s${i}`, type: "clip", media: "m-still", start: 3 * HALF, in: 0, duration: HALF, transform, ...(i % 2 ? { effects: fx } : {}) }]
+          : []),
       ],
     };
   });
@@ -89,7 +132,19 @@ before(async () => {
       textLooks: 1,
       media,
       // Tracks above Main come first.
-      tracks: [...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c0", type: "clip", media: "m-layer", in: 0, duration: 3 * HALF }, { id: "c01", type: "clip", media: "m-still", in: 0, duration: HALF }] }],
+      tracks: [
+        ...overlays.reverse(),
+        {
+          id: "main",
+          kind: "video",
+          role: "main",
+          name: "Main",
+          items: [
+            { id: "c0", type: "clip", media: "m-layer", in: 0, duration: 3 * HALF },
+            { id: "c01", type: "clip", media: "m-still", in: 0, duration: HALF },
+          ],
+        },
+      ],
     }),
   );
 });
@@ -114,12 +169,24 @@ async function clickAt(f: number) {
  */
 async function playFrom(label: string, from: number) {
   await clickAt(from);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), {
+    timeout: 15000,
+  });
   await sleep(500);
   await page.keyboard.press("Space");
   const r = await page.evaluate(
     () =>
-      new Promise<{ seconds: number; raf: Array<number>; presented: Array<number>; dropped: number; total: number; drawnFx: number; fxCanvases: number; gpu: number; renders: Array<number> }>((done) => {
+      new Promise<{
+        seconds: number;
+        raf: Array<number>;
+        presented: Array<number>;
+        dropped: number;
+        total: number;
+        drawnFx: number;
+        fxCanvases: number;
+        gpu: number;
+        renders: Array<number>;
+      }>((done) => {
         (globalThis as unknown as { __uncutPreview: { renderMs: () => Array<number> } }).__uncutPreview.renderMs();
         const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")];
         const q0 = videos.map((v) => v.getVideoPlaybackQuality());
@@ -183,7 +250,9 @@ async function playFrom(label: string, from: number) {
     renderMedian: renders[Math.floor(renders.length / 2)] ?? NaN,
     renderP90: renders[Math.floor(renders.length * 0.9)] ?? NaN,
   };
-  console.log(`# D221 ${label} (${r.seconds.toFixed(1)} s): rAF median ${result.rafMedian.toFixed(1)} ms, p90 ${result.rafP90.toFixed(1)} ms, ${result.long} frames > 25 ms, ${result.fps.toFixed(1)} fps; videos presented ${result.videoFpsMin.toFixed(1)}–${result.videoFpsMedian.toFixed(1)} fps (min–median of ${r.presented.length}), dropped ${r.dropped} of ${r.total}; effects canvases drawn ${r.drawnFx} of ${r.fxCanvases}; layers on the GPU ${r.gpu}; preview render ${result.renderMedian.toFixed(2)} ms median, ${result.renderP90.toFixed(2)} ms p90`);
+  console.log(
+    `# D221 ${label} (${r.seconds.toFixed(1)} s): rAF median ${result.rafMedian.toFixed(1)} ms, p90 ${result.rafP90.toFixed(1)} ms, ${result.long} frames > 25 ms, ${result.fps.toFixed(1)} fps; videos presented ${result.videoFpsMin.toFixed(1)}–${result.videoFpsMedian.toFixed(1)} fps (min–median of ${r.presented.length}), dropped ${r.dropped} of ${r.total}; effects canvases drawn ${r.drawnFx} of ${r.fxCanvases}; layers on the GPU ${r.gpu}; preview render ${result.renderMedian.toFixed(2)} ms median, ${result.renderP90.toFixed(2)} ms p90`,
+  );
   return result;
 }
 
@@ -206,51 +275,71 @@ async function setGpu(on: boolean) {
 async function frameShot(name: string) {
   const el = (await page.$("[data-testid=preview-frame]"))!;
   await el.screenshot({ path: out(name) });
-  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", out(name)], { encoding: "utf8" }).trim().split(",").map(Number);
+  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", out(name)], { encoding: "utf8" })
+    .trim()
+    .split(",")
+    .map(Number);
   return { file: out(name), w: w!, h: h! };
 }
 
-test("D221: 12 video overlays (plain, then with effects) play on the DOM path and the GPU compositor; paused frames match", { skip, timeout: 600000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
-  page = app.page;
-  await waitForWelcome(page);
-  await page.click("[data-testid=open-project]");
-  await waitFor("[data-testid=editor]");
-  await page.click("[data-testid=bottom-timeline]");
-  const results: Record<string, unknown> = {};
-  const hasGpu = await setGpu(false);
-  for (const mode of hasGpu ? ["dom", "gpu"] : ["dom"]) {
-    await setGpu(mode === "gpu");
-    results[`${mode} plain`] = await playFrom(`${mode} 12 overlays`, 30);
-    results[`${mode} fx`] = await playFrom(`${mode} 12 overlays with a look and sharpen`, HALF + 30);
-    results[`${mode} many`] = await playFrom(`${mode} ${MANY} overlays with a look and sharpen`, 2 * HALF + 30);
-  }
-  console.log(`# D221 compositor results ${JSON.stringify(results)}`);
-  if (!hasGpu) return;
-  type Run = { rafMedian: number; dropped: number; gpuLayers: number; drawnFx: number };
-  const r = results as Record<string, Run>;
-  assert.equal(r["gpu many"]!.gpuLayers, MANY + 1, "the GPU compositor draws the main clip and every overlay with its effects");
-  check(NO_REAL_GPU, r["gpu many"]!.dropped <= 10, `GPU: ${r["gpu many"]!.dropped} frames dropped`);
-  check(NO_REAL_GPU, r["gpu many"]!.rafMedian < 12, `GPU: animation frames every ${r["gpu many"]!.rafMedian} ms`);
-  check(NO_REAL_GPU, r["gpu plain"]!.rafMedian < 12 && r["gpu fx"]!.rafMedian < 12, `GPU: 12 overlays keep the animation frame rate (${r["gpu plain"]!.rafMedian}, ${r["gpu fx"]!.rafMedian} ms)`);
-  for (const f of [90, HALF + 90, 2 * HALF + 90, 3 * HALF + 90]) {
-    await setGpu(false);
-    await clickAt(f);
-    await sleep(1500);
-    const a = await frameShot(`parity-${f}-dom`);
-    const domDrawn = await page.evaluate(() => [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-fx]")].filter((c) => c.style.visibility !== "hidden").length);
-    await setGpu(true);
-    await sleep(1500);
-    const b = await frameShot(`parity-${f}-gpu`);
-    const gpuLayers = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuLayers ?? 0));
-    const v = ssim(a.file, b.file, a.w, a.h);
-    const domFx = f > 2 * HALF ? domDrawn : undefined;
-    const label = f > 3 * HALF ? "still pictures, 6 with effects" : f > 2 * HALF ? `moving, ${MANY} with effects (the DOM path drew them on ${domFx})` : f > HALF ? "moving, 12 with effects" : "moving, 12 plain";
-    console.log(`# D221 compositor parity frame ${f} (${label}): SSIM ${v.toFixed(4)}, ${gpuLayers} layers on the GPU`);
-    assert.ok(gpuLayers > 0, `frame ${f}: the GPU compositor drew it`);
-    // Effects layers match; plain <video> layers get a floor (see the header); past the WebGL context
-    // limit the DOM path itself loses effects, so there's nothing to match.
-    if (f > HALF && f < 2 * HALF) check(NO_REAL_GPU, v >= 0.99, `DOM vs GPU compositor frame ${f}: SSIM ${v}`);
-    else if (f < 2 * HALF || f > 3 * HALF) check(NO_REAL_GPU, v >= 0.95, `DOM vs GPU compositor frame ${f}: SSIM ${v}`);
-  }
-});
+test(
+  "D221: 12 video overlays (plain, then with effects) play on the DOM path and the GPU compositor; paused frames match",
+  { skip, timeout: 600000 },
+  async () => {
+    app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
+    page = app.page;
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await waitFor("[data-testid=editor]");
+    await page.click("[data-testid=bottom-timeline]");
+    const results: Record<string, unknown> = {};
+    const hasGpu = await setGpu(false);
+    for (const mode of hasGpu ? ["dom", "gpu"] : ["dom"]) {
+      await setGpu(mode === "gpu");
+      results[`${mode} plain`] = await playFrom(`${mode} 12 overlays`, 30);
+      results[`${mode} fx`] = await playFrom(`${mode} 12 overlays with a look and sharpen`, HALF + 30);
+      results[`${mode} many`] = await playFrom(`${mode} ${MANY} overlays with a look and sharpen`, 2 * HALF + 30);
+    }
+    console.log(`# D221 compositor results ${JSON.stringify(results)}`);
+    if (!hasGpu) return;
+    type Run = { rafMedian: number; dropped: number; gpuLayers: number; drawnFx: number };
+    const r = results as Record<string, Run>;
+    assert.equal(r["gpu many"]!.gpuLayers, MANY + 1, "the GPU compositor draws the main clip and every overlay with its effects");
+    check(NO_REAL_GPU, r["gpu many"]!.dropped <= 10, `GPU: ${r["gpu many"]!.dropped} frames dropped`);
+    check(NO_REAL_GPU, r["gpu many"]!.rafMedian < 12, `GPU: animation frames every ${r["gpu many"]!.rafMedian} ms`);
+    check(
+      NO_REAL_GPU,
+      r["gpu plain"]!.rafMedian < 12 && r["gpu fx"]!.rafMedian < 12,
+      `GPU: 12 overlays keep the animation frame rate (${r["gpu plain"]!.rafMedian}, ${r["gpu fx"]!.rafMedian} ms)`,
+    );
+    for (const f of [90, HALF + 90, 2 * HALF + 90, 3 * HALF + 90]) {
+      await setGpu(false);
+      await clickAt(f);
+      await sleep(1500);
+      const a = await frameShot(`parity-${f}-dom`);
+      const domDrawn = await page.evaluate(
+        () => [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-fx]")].filter((c) => c.style.visibility !== "hidden").length,
+      );
+      await setGpu(true);
+      await sleep(1500);
+      const b = await frameShot(`parity-${f}-gpu`);
+      const gpuLayers = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuLayers ?? 0));
+      const v = ssim(a.file, b.file, a.w, a.h);
+      const domFx = f > 2 * HALF ? domDrawn : undefined;
+      const label =
+        f > 3 * HALF
+          ? "still pictures, 6 with effects"
+          : f > 2 * HALF
+            ? `moving, ${MANY} with effects (the DOM path drew them on ${domFx})`
+            : f > HALF
+              ? "moving, 12 with effects"
+              : "moving, 12 plain";
+      console.log(`# D221 compositor parity frame ${f} (${label}): SSIM ${v.toFixed(4)}, ${gpuLayers} layers on the GPU`);
+      assert.ok(gpuLayers > 0, `frame ${f}: the GPU compositor drew it`);
+      // Effects layers match; plain <video> layers get a floor (see the header); past the WebGL context
+      // limit the DOM path itself loses effects, so there's nothing to match.
+      if (f > HALF && f < 2 * HALF) check(NO_REAL_GPU, v >= 0.99, `DOM vs GPU compositor frame ${f}: SSIM ${v}`);
+      else if (f < 2 * HALF || f > 3 * HALF) check(NO_REAL_GPU, v >= 0.95, `DOM vs GPU compositor frame ${f}: SSIM ${v}`);
+    }
+  },
+);

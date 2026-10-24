@@ -52,5 +52,7 @@ export function linkFromDrag(data: DataTransfer): string | undefined {
 export const dragMayHoldLink = (data: DataTransfer) => {
   const types = [...data.types];
   // Not files, and not one of Uncut's own drags (tiles, effects, transitions).
-  return !types.includes("Files") && !types.some((t) => t.startsWith("application/x-uncut-")) && (types.includes("text/uri-list") || types.includes("text/plain"));
+  return (
+    !types.includes("Files") && !types.some((t) => t.startsWith("application/x-uncut-")) && (types.includes("text/uri-list") || types.includes("text/plain"))
+  );
 };

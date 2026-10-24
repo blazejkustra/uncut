@@ -57,7 +57,11 @@ after(async () => {
 });
 
 test("the first-launch wizard fills the window; over the editor it stays a modal", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, firstLaunch: true, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) } });
+  app = await launchApp({
+    command: APP,
+    firstLaunch: true,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) },
+  });
   const { page } = app;
   try {
     await waitFor(page, "[data-testid=onboarding]");

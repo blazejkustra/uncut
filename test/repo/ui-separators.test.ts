@@ -13,15 +13,63 @@ import { withoutComments } from "../helpers/withoutComments.ts";
 
 const WEB = "apps/web/src";
 const SERVER = "apps/server/src";
-const SERVER_UI = ["app/setup.ts", "plugins/plugins.ts", "plugins/discovery/discover.ts", "plugins/discovery/infos.ts", "plugins/discovery/manifest.ts", "plugins/runtime/host.ts", "plugins/runtime/process.ts", "plugins/runtime/result.ts", "analysis/whisper.ts", "analysis/whisperModels.ts", "analysis/transcription.ts", "media/media.ts", "export/exporter.ts", "export/exporter/duckEnvelopes.ts", "export/exporter/ffmpeg.ts", "export/exporter/files.ts", "export/exporter/frames.ts", "export/exporter/graphics.ts", "export/exporter/rasterise.ts", "export/exporter/runJob.ts", "export/exporter/sheets.ts", "export/exporter/subtitles.ts", "analysis/analysis.ts", "analysis/loudness/loudness.ts", "analysis/queue/cache.ts", "analysis/queue/queue.ts", "agent/agent.ts", "agent/session/config.ts", "agent/session/core.ts", "agent/session/send.ts", "agent/session/spawn.ts", "agent/session/stale.ts", "agent/session/stream.ts", "agent/tools/ask.ts", "agent/tools/brand.ts", "agent/tools/cards.ts", "agent/tools/common.ts", "agent/tools/generate.ts", "agent/tools/library.ts", "agent/tools/media.ts", "agent/tools/run.ts", "agent/tools/transcript.ts", "agent/turns/history.ts", "agent/turns/notes.ts", "media/mediaLibrary/helpers.ts", "media/mediaLibrary/service.ts"];
+const SERVER_UI = [
+  "app/setup.ts",
+  "plugins/plugins.ts",
+  "plugins/discovery/discover.ts",
+  "plugins/discovery/infos.ts",
+  "plugins/discovery/manifest.ts",
+  "plugins/runtime/host.ts",
+  "plugins/runtime/process.ts",
+  "plugins/runtime/result.ts",
+  "analysis/whisper.ts",
+  "analysis/whisperModels.ts",
+  "analysis/transcription.ts",
+  "media/media.ts",
+  "export/exporter.ts",
+  "export/exporter/duckEnvelopes.ts",
+  "export/exporter/ffmpeg.ts",
+  "export/exporter/files.ts",
+  "export/exporter/frames.ts",
+  "export/exporter/graphics.ts",
+  "export/exporter/rasterise.ts",
+  "export/exporter/runJob.ts",
+  "export/exporter/sheets.ts",
+  "export/exporter/subtitles.ts",
+  "analysis/analysis.ts",
+  "analysis/loudness/loudness.ts",
+  "analysis/queue/cache.ts",
+  "analysis/queue/queue.ts",
+  "agent/agent.ts",
+  "agent/session/config.ts",
+  "agent/session/core.ts",
+  "agent/session/send.ts",
+  "agent/session/spawn.ts",
+  "agent/session/stale.ts",
+  "agent/session/stream.ts",
+  "agent/tools/ask.ts",
+  "agent/tools/brand.ts",
+  "agent/tools/cards.ts",
+  "agent/tools/common.ts",
+  "agent/tools/generate.ts",
+  "agent/tools/library.ts",
+  "agent/tools/media.ts",
+  "agent/tools/run.ts",
+  "agent/tools/transcript.ts",
+  "agent/turns/history.ts",
+  "agent/turns/notes.ts",
+  "media/mediaLibrary/helpers.ts",
+  "media/mediaLibrary/service.ts",
+];
 
 /** Text in string literals and template literals (without their ${} parts). */
-const literals = (code: string) => [...code.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g)].map((m) => m[0].replace(/\$\{[^}]*\}/g, " "));
+const literals = (code: string) =>
+  [...code.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g)].map((m) => m[0].replace(/\$\{[^}]*\}/g, " "));
 
 const files = [
   ...(readdirSync(WEB, { recursive: true }) as Array<string>).filter((f) => /\.tsx?$/.test(f)).map((f) => join(WEB, f)),
   // The website's pages and components (its .ts files are browser logic and shaders, not copy).
-  ...(readdirSync("site/src", { recursive: true }) as Array<string>).filter((f) => /\.tsx$/.test(f)).map((f) => join("site/src", f)),
+  ...(readdirSync("site/src", { recursive: true }) as Array<string>).filter((f) => f.endsWith(".tsx")).map((f) => join("site/src", f)),
   ...SERVER_UI.map((f) => join(SERVER, f)),
 ];
 
@@ -57,11 +105,13 @@ test("no ·, •, ∙ or ⋅ and no lone * between words in the blog's posts", (
   for (const file of posts) {
     // Prose only: fenced code blocks quote real code, where "a * b" is multiplication.
     let fenced = false;
-    readFileSync(file, "utf8").split("\n").forEach((line, n) => {
-      if (/^\s*```/.test(line)) fenced = !fenced;
-      if (fenced) return;
-      if (/[·•∙⋅]/.test(line) || /[A-Za-z0-9)] \* [A-Za-z(]/.test(line)) found.push(`${file}:${n + 1}: ${line.trim().slice(0, 140)}`);
-    });
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((line, n) => {
+        if (/^\s*```/.test(line)) fenced = !fenced;
+        if (fenced) return;
+        if (/[·•∙⋅]/.test(line) || /[A-Za-z0-9)] \* [A-Za-z(]/.test(line)) found.push(`${file}:${n + 1}: ${line.trim().slice(0, 140)}`);
+      });
   }
   assert.deepEqual(found, []);
 });

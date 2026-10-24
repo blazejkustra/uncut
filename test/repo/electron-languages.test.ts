@@ -30,7 +30,10 @@ test("electronLanguages keeps exactly Electron's English localisations", () => {
     const folders = readdirSync(dir).filter((f) => f.endsWith(".lproj"));
     assert.ok(folders.length > 50, `${dir} still ships every language before packing`);
     const left = folders.filter((f) => kept(f, ENGLISH)).sort();
-    assert.ok(left.every((f) => /^en(_GB)?(_(FEMININE|MASCULINE|NEUTER))?\.lproj$/.test(f)), `only English kept in ${dir}: ${left.join(", ")}`);
+    assert.ok(
+      left.every((f) => /^en(_GB)?(_(FEMININE|MASCULINE|NEUTER))?\.lproj$/.test(f)),
+      `only English kept in ${dir}: ${left.join(", ")}`,
+    );
     assert.ok(left.includes("en.lproj") && left.includes("en_GB.lproj"), `en (Chromium's en-US) and en_GB kept in ${dir}`);
   }
   // Chromium's en-US strings are en.lproj/locale.pak in the framework.

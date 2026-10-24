@@ -7,7 +7,15 @@ import { applyEdit, createSession, loadModules, validateProject, type Item, type
 import { planTextScale } from "../../apps/web/src/preview/text.ts";
 
 const modules = await loadModules("spec/modules/builtin");
-const title: Item = { id: "t", type: "text", start: 0, duration: 90, text: "Title", transform: { x: 200, y: 400 }, style: { preset: "text.title", size: 100, weight: 700 } };
+const title: Item = {
+  id: "t",
+  type: "text",
+  start: 0,
+  duration: 90,
+  text: "Title",
+  transform: { x: 200, y: 400 },
+  style: { preset: "text.title", size: 100, weight: 700 },
+};
 const project = (item: Item): Project => ({
   format: "uncut/0",
   name: "P",

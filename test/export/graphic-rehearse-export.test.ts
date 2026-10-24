@@ -55,7 +55,13 @@ const projectOf = (src: string): Project =>
     canvas: { width: W, height: H, fps: FPS },
     media: [],
     tracks: [
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: FRAMES + 20, props: { color: "#000000" } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "bg", type: "component", component: "component.solid", duration: FRAMES + 20, props: { color: "#000000" } }],
+      },
       { id: "g", kind: "video", name: "Graphics", items: [{ id: "film", type: "graphic", src, start: 20, duration: FRAMES }] },
     ],
   }) as unknown as Project;
@@ -95,21 +101,25 @@ const exportFailure = async (p: ExportPlan, name: string) => {
 };
 
 for (const blur of [false, true]) {
-  test(`a graphic that breaks on a long run fails the rehearsal where the export fails${blur ? " (motion blur)" : ""}`, { skip, timeout: 120_000 }, async () => {
-    const p = plan(BREAKS, blur);
-    const exported = await exportFailure(p, blur ? "blur" : "sharp");
-    const rehearsed = await rehearseGraphics(raster, p, { budgetMs: 60_000 });
-    assert.ok(rehearsed.failure, "the rehearsal fails");
-    // Blur: the frame's second sub-frame draws the closed picture, so the same frame breaks.
-    const frame = blur ? BREAK_AT : BREAK_AT + 1;
-    assert.match(exported, new RegExp(`\\(its frame ${frame}\\)`));
-    assert.match(rehearsed.failure!, new RegExp(`\\(its frame ${frame}\\)`));
-    assert.match(exported, /detached/);
-    assert.match(rehearsed.failure!, /detached/);
-    assert.match(rehearsed.failure!, new RegExp(`at ${((20 + frame) / FPS).toFixed(2)} s`));
-    assert.equal(rehearsed.frame, 20 + frame);
-    assert.match(rehearsalLine(rehearsed), /every frame in order/);
-  });
+  test(
+    `a graphic that breaks on a long run fails the rehearsal where the export fails${blur ? " (motion blur)" : ""}`,
+    { skip, timeout: 120_000 },
+    async () => {
+      const p = plan(BREAKS, blur);
+      const exported = await exportFailure(p, blur ? "blur" : "sharp");
+      const rehearsed = await rehearseGraphics(raster, p, { budgetMs: 60_000 });
+      assert.ok(rehearsed.failure, "the rehearsal fails");
+      // Blur: the frame's second sub-frame draws the closed picture, so the same frame breaks.
+      const frame = blur ? BREAK_AT : BREAK_AT + 1;
+      assert.match(exported, new RegExp(`\\(its frame ${frame}\\)`));
+      assert.match(rehearsed.failure!, new RegExp(`\\(its frame ${frame}\\)`));
+      assert.match(exported, /detached/);
+      assert.match(rehearsed.failure!, /detached/);
+      assert.match(rehearsed.failure!, new RegExp(`at ${((20 + frame) / FPS).toFixed(2)} s`));
+      assert.equal(rehearsed.frame, 20 + frame);
+      assert.match(rehearsalLine(rehearsed), /every frame in order/);
+    },
+  );
 }
 
 test("a graphic that doesn't break is covered whole, then not run again; the budget cuts it short and says so", { skip, timeout: 120_000 }, async () => {
@@ -143,23 +153,31 @@ window.render = (t, info) => {
 };
 </script>`;
 
-test("D309: every 30th blurred frame is rehearsed with motion blur's finer grids, each in time order, so a graphic that throws between sub-frames fails it", { skip, timeout: 120_000 }, async () => {
-  const p = plan(FINE, true, "graphics/fine.html");
-  const layer = p.visuals.find((l) => l.kind === "graphic");
-  assert.ok(layer && layer.kind === "graphic");
-  const calls = rehearsalCalls(layer, FPS);
-  assert.equal(calls[0]!.ts.length, 4 + 16 + 32, "the first: its 4, then 16, then 32");
-  assert.equal(calls[30]!.ts.length, 52);
-  assert.equal(calls[1]!.ts.length, 4);
-  const grids = [calls[0]!.ts.slice(0, 4), calls[0]!.ts.slice(4, 20), calls[0]!.ts.slice(20)];
-  for (const g of grids) assert.ok(g.every((t, j) => j === 0 || t > g[j - 1]!), "each grid in time order");
-  const off = await rehearseGraphics(raster, plan(OFFGRID, true, "graphics/offgrid.html"), { budgetMs: 60_000 });
-  assert.match(off.failure ?? "", /between sub-frames/);
-  assert.equal(off.frame, 20);
-  // Without blur nothing is drawn between frames: it passes.
-  const sharp = await rehearseGraphics(raster, plan(OFFGRID.replace("#fff", "#eee"), false, "graphics/offgrid.html"), { budgetMs: 60_000 });
-  assert.equal(sharp.failure, undefined);
-});
+test(
+  "D309: every 30th blurred frame is rehearsed with motion blur's finer grids, each in time order, so a graphic that throws between sub-frames fails it",
+  { skip, timeout: 120_000 },
+  async () => {
+    const p = plan(FINE, true, "graphics/fine.html");
+    const layer = p.visuals.find((l) => l.kind === "graphic");
+    assert.ok(layer && layer.kind === "graphic");
+    const calls = rehearsalCalls(layer, FPS);
+    assert.equal(calls[0]!.ts.length, 4 + 16 + 32, "the first: its 4, then 16, then 32");
+    assert.equal(calls[30]!.ts.length, 52);
+    assert.equal(calls[1]!.ts.length, 4);
+    const grids = [calls[0]!.ts.slice(0, 4), calls[0]!.ts.slice(4, 20), calls[0]!.ts.slice(20)];
+    for (const g of grids)
+      assert.ok(
+        g.every((t, j) => j === 0 || t > g[j - 1]!),
+        "each grid in time order",
+      );
+    const off = await rehearseGraphics(raster, plan(OFFGRID, true, "graphics/offgrid.html"), { budgetMs: 60_000 });
+    assert.match(off.failure ?? "", /between sub-frames/);
+    assert.equal(off.frame, 20);
+    // Without blur nothing is drawn between frames: it passes.
+    const sharp = await rehearseGraphics(raster, plan(OFFGRID.replace("#fff", "#eee"), false, "graphics/offgrid.html"), { budgetMs: 60_000 });
+    assert.equal(sharp.failure, undefined);
+  },
+);
 
 test("a frame session (render_frames, review_submit) rehearses with the export's blur and finds it too", { skip, timeout: 120_000 }, async () => {
   process.env.UNCUT_RENDER_ENTRY ??= DESKTOP;

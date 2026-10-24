@@ -18,6 +18,18 @@ test("#49: selected text in a message offers Copy", () => {
 });
 
 test("#49: a text field offers Cut, Copy, Paste and Select All, as the page allows", () => {
-  assert.deepEqual(roles(textMenu({ isEditable: true, selectionText: "", editFlags: { ...flags, canCopy: false } })), ["cut:off", "copy:off", "paste", "-", "selectAll"]);
-  assert.deepEqual(roles(textMenu({ isEditable: true, selectionText: "x", editFlags: { ...flags, canCut: true } })), ["cut", "copy", "paste", "-", "selectAll"]);
+  assert.deepEqual(roles(textMenu({ isEditable: true, selectionText: "", editFlags: { ...flags, canCopy: false } })), [
+    "cut:off",
+    "copy:off",
+    "paste",
+    "-",
+    "selectAll",
+  ]);
+  assert.deepEqual(roles(textMenu({ isEditable: true, selectionText: "x", editFlags: { ...flags, canCut: true } })), [
+    "cut",
+    "copy",
+    "paste",
+    "-",
+    "selectAll",
+  ]);
 });

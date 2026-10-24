@@ -18,7 +18,11 @@ import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } fro
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const hasHevc = hasFfmpeg && /\bhevc_videotoolbox\b/.test(execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }));
-const skip = existsSync(APP) ? (hasHevc ? false : "needs ffmpeg with hevc_videotoolbox to make 4K test footage") : `packaged app not built: run pnpm dist to create ${APP}`;
+const skip = existsSync(APP)
+  ? hasHevc
+    ? false
+    : "needs ffmpeg with hevc_videotoolbox to make 4K test footage"
+  : `packaged app not built: run pnpm dist to create ${APP}`;
 
 const FPS = 30;
 const SECONDS = 20;
@@ -43,7 +47,35 @@ before(async () => {
   dir = join(root, "Proxies.uncut");
   mkdirSync(join(dir, "media"), { recursive: true });
   // 4K HEVC, 30 fps, a keyframe every 60 frames, like phone and drone footage (heavier GOP than the DJI's 0.5 s).
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=3840x2160:rate=${FPS}`, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", String(SECONDS), "-c:v", "hevc_videotoolbox", "-b:v", "40M", "-g", "60", "-tag:v", "hvc1", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "Drone4K.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=3840x2160:rate=${FPS}`,
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000",
+    "-t",
+    String(SECONDS),
+    "-c:v",
+    "hevc_videotoolbox",
+    "-b:v",
+    "40M",
+    "-g",
+    "60",
+    "-tag:v",
+    "hvc1",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "Drone4K.mp4"),
+  ]);
   writeFileSync(
     join(dir, "project.json"),
     JSON.stringify({
@@ -51,8 +83,18 @@ before(async () => {
       name: "Proxies",
       canvas: { width: 1920, height: 1080, fps: FPS },
       textLooks: 1,
-      media: [{ id: "m-drone", kind: "video", name: "Drone4K.mp4", path: join(root, "Drone4K.mp4"), probe: { frames: SECONDS * FPS, fps: FPS, width: 3840, height: 2160, hasAudio: true } }],
-      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m-drone", in: 0, duration: SECONDS * FPS }] }],
+      media: [
+        {
+          id: "m-drone",
+          kind: "video",
+          name: "Drone4K.mp4",
+          path: join(root, "Drone4K.mp4"),
+          probe: { frames: SECONDS * FPS, fps: FPS, width: 3840, height: 2160, hasAudio: true },
+        },
+      ],
+      tracks: [
+        { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m-drone", in: 0, duration: SECONDS * FPS }] },
+      ],
     }),
   );
 });
@@ -63,7 +105,7 @@ after(async () => {
 });
 
 /** A seeded random number generator (the same 20 frames every run). */
-const rng = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 
 /**
  * Clicks the ruler at `frame` and times it: from the pointer to the first frame the clip's
@@ -88,10 +130,13 @@ async function timedSeek(frame: number) {
     );
   });
   await page.mouse.click(ruler.x + 0.5 + frame * ppf - scroll, ruler.y + ruler.height / 2);
-  await page.waitForFunction(() => {
-    const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]");
-    return !!v && !v.seeking && v.readyState >= 2;
-  }, { timeout: 15000 });
+  await page.waitForFunction(
+    () => {
+      const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]");
+      return !!v && !v.seeking && v.readyState >= 2;
+    },
+    { timeout: 15000 },
+  );
   await new Promise((r) => setTimeout(r, 250));
   return page.evaluate((fps) => {
     const w = window as unknown as { seekLog: { t0: number; frames: Array<{ at: number; time: number }> } };
@@ -119,7 +164,9 @@ async function scrubMedian(label: string) {
   }
   const sorted = [...times].sort((a, b) => a - b);
   const median = (sorted[9]! + sorted[10]!) / 2;
-  console.log(`# D212 scrub ${label}: median ${median.toFixed(1)} ms, p90 ${sorted[17]!.toFixed(1)} ms, max ${sorted[19]!.toFixed(1)} ms (${times.map((t) => t.toFixed(0)).join(" ")})`);
+  console.log(
+    `# D212 scrub ${label}: median ${median.toFixed(1)} ms, p90 ${sorted[17]!.toFixed(1)} ms, max ${sorted[19]!.toFixed(1)} ms (${times.map((t) => t.toFixed(0)).join(" ")})`,
+  );
   return median;
 }
 
@@ -135,7 +182,11 @@ async function setProxies(on: boolean) {
   await page.waitForFunction((want) => (localStorage.getItem("uncut.preview.proxies") !== "off") === want, {}, on);
   if (on) await page.screenshot({ path: out("settings") });
   await page.click("[data-testid=settings-close]");
-  await page.waitForFunction((want) => document.querySelector<HTMLVideoElement>("video[data-item=c1]")?.src.includes(want ? "/media/proxy/" : "/media/file/"), { timeout: 10000 }, on);
+  await page.waitForFunction(
+    (want) => document.querySelector<HTMLVideoElement>("video[data-item=c1]")?.src.includes(want ? "/media/proxy/" : "/media/file/"),
+    { timeout: 10000 },
+    on,
+  );
   await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("video[data-item=c1]")?.readyState ?? 0) >= 2, { timeout: 15000 });
 }
 

@@ -82,7 +82,12 @@ type Cloud = "aws" | "gcp" | "azure";
 export const cloudOf = (k: string): Cloud | undefined =>
   k.startsWith("AWS_")
     ? "aws"
-    : k === "CLOUD_ML_REGION" || k.startsWith("VERTEX_REGION_") || k === "GOOGLE_APPLICATION_CREDENTIALS" || k === "GOOGLE_CLOUD_PROJECT" || k === "GCLOUD_PROJECT" || k.startsWith("CLOUDSDK_")
+    : k === "CLOUD_ML_REGION" ||
+        k.startsWith("VERTEX_REGION_") ||
+        k === "GOOGLE_APPLICATION_CREDENTIALS" ||
+        k === "GOOGLE_CLOUD_PROJECT" ||
+        k === "GCLOUD_PROJECT" ||
+        k.startsWith("CLOUDSDK_")
       ? "gcp"
       : k.startsWith("AZURE_")
         ? "azure"
@@ -194,7 +199,11 @@ export const shellAuthReady = (timeoutMs = SHELL_WAIT_MS): Promise<void> =>
  * Presence only; never the value.
  */
 export const apiKeySource = (env: NodeJS.ProcessEnv = process.env): "environment" | "settings" | undefined =>
-  userAuthSettings(env).env.ANTHROPIC_API_KEY ? "settings" : env.ANTHROPIC_API_KEY || heldAuth.launch.ANTHROPIC_API_KEY || heldAuth.shell.ANTHROPIC_API_KEY ? "environment" : undefined;
+  userAuthSettings(env).env.ANTHROPIC_API_KEY
+    ? "settings"
+    : env.ANTHROPIC_API_KEY || heldAuth.launch.ANTHROPIC_API_KEY || heldAuth.shell.ANTHROPIC_API_KEY
+      ? "environment"
+      : undefined;
 
 /**
  * Runs `$SHELL -ilc` once and returns the PATH to use. Never fails: a shell that can't start,
@@ -236,7 +245,8 @@ const isKeyName = (k: string) =>
   k === "HF_TOKEN";
 
 /** Names that look like secrets: *_KEY, *_TOKEN, *_SECRET, *_PASSWORD, cloud credentials. */
-const looksSecret = (k: string) => /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i.test(k) || /^(AWS|AZURE|GOOGLE_APPLICATION)_/i.test(k) || /^(GH|GITHUB|HF|NPM)_TOKEN$/i.test(k);
+const looksSecret = (k: string) =>
+  /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i.test(k) || /^(AWS|AZURE|GOOGLE_APPLICATION)_/i.test(k) || /^(GH|GITHUB|HF|NPM)_TOKEN$/i.test(k);
 
 /**
  * The environment for the processes around the agent (no claude): the server's, minus API keys
@@ -281,7 +291,10 @@ declare const __UNCUT_SERVER_VERSION__: string | undefined;
  * to identify itself. The generators' keys and other secrets stay out. Every other process
  * (plugins, ffmpeg, the rasteriser) gets no sign-in variable at all.
  */
-export const claudeEnv = (env: NodeJS.ProcessEnv, version: string = typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev"): Record<string, string> => {
+export const claudeEnv = (
+  env: NodeJS.ProcessEnv,
+  version: string = typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev",
+): Record<string, string> => {
   const auth = gateClaudeAuth({ ...heldAuth.shell, ...heldAuth.launch, ...pickClaudeAuth(env), ...userAuthSettings(env).env });
   const out: Record<string, string> = agentEnv(env);
   // A cloud's leftover non-secret variables (CLOUD_ML_REGION, GCLOUD_PROJECT…) only with its switch on, too.
@@ -326,7 +339,8 @@ export const userAuthSettings = (env: NodeJS.ProcessEnv): { env: Record<string, 
   if (!parsed || typeof parsed !== "object") return none;
   const file = parsed as Record<string, unknown>;
   const vars: Record<string, string> = {};
-  if (file.env && typeof file.env === "object") for (const [k, v] of Object.entries(file.env as Record<string, unknown>)) if (typeof v === "string") vars[k] = v;
+  if (file.env && typeof file.env === "object")
+    for (const [k, v] of Object.entries(file.env as Record<string, unknown>)) if (typeof v === "string") vars[k] = v;
   const settings: Record<string, string> = {};
   for (const k of AUTH_SETTINGS) if (typeof file[k] === "string" && file[k]) settings[k] = file[k] as string;
   const value = { env: pickClaudeAuth(vars), settings };

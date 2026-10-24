@@ -40,7 +40,8 @@ export const entryId = (path: string) => createHash("sha1").update(path).digest(
 
 /** Where a media entry came from, by its source module (D205); undefined: not worth indexing (a bundled library track). */
 export function originOf(source: unknown): Origin | undefined {
-  const module = source && typeof source === "object" && typeof (source as { module?: unknown }).module === "string" ? (source as { module: string }).module : "";
+  const module =
+    source && typeof source === "object" && typeof (source as { module?: unknown }).module === "string" ? (source as { module: string }).module : "";
   if (/^(library|music|sfx)\b/.test(module)) return undefined;
   // A file brought in from the index keeps where it first came from.
   const origin = (source as { origin?: unknown } | undefined)?.origin;
@@ -186,11 +187,34 @@ export async function entriesOf(project: { dir: string; name: string }, dataDir:
 
 const isEntry = (x: unknown): x is IndexEntry => {
   const e = x as IndexEntry;
-  return !!e && typeof e === "object" && typeof e.id === "string" && typeof e.path === "string" && typeof e.name === "string" && KINDS.has(e.kind) && ORIGINS.has(e.origin) && !!e.project && typeof e.project.dir === "string" && typeof e.created === "string";
+  return (
+    !!e &&
+    typeof e === "object" &&
+    typeof e.id === "string" &&
+    typeof e.path === "string" &&
+    typeof e.name === "string" &&
+    KINDS.has(e.kind) &&
+    ORIGINS.has(e.origin) &&
+    !!e.project &&
+    typeof e.project.dir === "string" &&
+    typeof e.created === "string"
+  );
 };
 
 /** The words a search matches against. */
-const haystack = (e: IndexEntry) => [e.name, basename(e.path), e.project.name, e.device ?? "", e.app ?? "", e.origin, e.kind, e.origin === "capture" ? "recording take screen simulator emulator" : e.origin === "generated" ? "generation" : ""].join(" ").toLowerCase();
+const haystack = (e: IndexEntry) =>
+  [
+    e.name,
+    basename(e.path),
+    e.project.name,
+    e.device ?? "",
+    e.app ?? "",
+    e.origin,
+    e.kind,
+    e.origin === "capture" ? "recording take screen simulator emulator" : e.origin === "generated" ? "generation" : "",
+  ]
+    .join(" ")
+    .toLowerCase();
 
 /**
  * Entries matching `query` (every word somewhere in the name, file, project, device, app or
@@ -198,8 +222,20 @@ const haystack = (e: IndexEntry) => [e.name, basename(e.path), e.project.name, e
  * another project's copy of the same file (same name and size) shown once. `exclude`: the open
  * project's folder and its media's paths (it has them already).
  */
-export function searchEntries(entries: ReadonlyArray<IndexEntry>, opts: { readonly query?: string | undefined; readonly kind?: string | undefined; readonly limit?: number | undefined; readonly excludeDir?: string | undefined; readonly excludePaths?: ReadonlySet<string> | undefined }) {
-  const words = (opts.query ?? "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
+export function searchEntries(
+  entries: ReadonlyArray<IndexEntry>,
+  opts: {
+    readonly query?: string | undefined;
+    readonly kind?: string | undefined;
+    readonly limit?: number | undefined;
+    readonly excludeDir?: string | undefined;
+    readonly excludePaths?: ReadonlySet<string> | undefined;
+  },
+) {
+  const words = (opts.query ?? "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 0);
   const kind = opts.kind?.toLowerCase();
   const seen = new Set<string>();
   const out: Array<IndexEntry> = [];
@@ -226,7 +262,11 @@ export interface MediaIndexShape {
   /** The index refreshed from the recent projects (and the open one), newest first. */
   readonly entries: Effect.Effect<ReadonlyArray<IndexEntry>>;
   /** Matches from other projects than the open one (see searchEntries). */
-  readonly search: (opts: { readonly query?: string | undefined; readonly kind?: string | undefined; readonly limit?: number | undefined }) => Effect.Effect<ReadonlyArray<IndexEntry>>;
+  readonly search: (opts: {
+    readonly query?: string | undefined;
+    readonly kind?: string | undefined;
+    readonly limit?: number | undefined;
+  }) => Effect.Effect<ReadonlyArray<IndexEntry>>;
   readonly get: (id: string) => Effect.Effect<IndexEntry | undefined>;
 }
 
@@ -294,7 +334,8 @@ export const layer = Layer.effect(
           const open = yield* projects.current;
           const dir = open?.dir ? yield* Effect.promise(() => real(open.dir)) : undefined;
           const paths = new Set<string>();
-          for (const m of ((open?.project as { media?: ReadonlyArray<{ path?: unknown }> } | undefined)?.media ?? [])) if (typeof m.path === "string" && dir) paths.add(isAbsolute(m.path) ? m.path : resolve(dir, m.path));
+          for (const m of (open?.project as { media?: ReadonlyArray<{ path?: unknown }> } | undefined)?.media ?? [])
+            if (typeof m.path === "string" && dir) paths.add(isAbsolute(m.path) ? m.path : resolve(dir, m.path));
           return searchEntries(all, { ...opts, ...(dir ? { excludeDir: dir } : {}), excludePaths: paths });
         }),
       get: (id) => Effect.map(entries, (all) => all.find((e) => e.id === id)),

@@ -52,7 +52,8 @@ export class Forked extends Error {
   }
 }
 
-export const sqliteCode = (error: unknown) => ((error as { code?: unknown }).code === "ERR_SQLITE_ERROR" ? Number((error as { errcode?: unknown }).errcode ?? 0) & 0xff : undefined);
+export const sqliteCode = (error: unknown) =>
+  (error as { code?: unknown }).code === "ERR_SQLITE_ERROR" ? Number((error as { errcode?: unknown }).errcode ?? 0) & 0xff : undefined;
 
 /** Why history.db can't be used, in words, with what to do about it. */
 export function problemFor(error: unknown, when: "open" | "write" = "open"): string {
@@ -73,7 +74,12 @@ export function problemFor(error: unknown, when: "open" | "write" = "open"): str
             : code === 13
               ? "The disk is full, so history.db can't grow."
               : `history.db can't be ${when === "open" ? "opened" : "written"} (${message}).`;
-  const hint = code === 11 || code === 26 ? " Move history.db out of the project folder to start a new one." : code === 5 || code === 6 ? " Close the other program, then open the project again." : "";
+  const hint =
+    code === 11 || code === 26
+      ? " Move history.db out of the project folder to start a new one."
+      : code === 5 || code === 6
+        ? " Close the other program, then open the project again."
+        : "";
   return `${reason} Undo and History work until the project is closed, but aren't saved.${hint}`;
 }
 

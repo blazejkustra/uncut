@@ -29,21 +29,86 @@ type Root = HTMLElement & { __uiKey?: string; __uiName?: string };
 
 /** Named slots per part: a name for the selectors a film reaches for most (find takes any selector too). */
 const SLOTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  composer: { box: ".composer-box", input: ".composer-box > textarea", text: ".composer-hl", context: ".composer-ctx", send: ".send", attach: ".composer-at", model: ".choice.model" },
+  composer: {
+    box: ".composer-box",
+    input: ".composer-box > textarea",
+    text: ".composer-hl",
+    context: ".composer-ctx",
+    send: ".send",
+    attach: ".composer-at",
+    model: ".choice.model",
+  },
   message: { text: ".msg-user" },
   turn: { reply: ".reply", steps: ".worklog", step: ".worklog .step", edit: ".edit-row", review: ".card-item" },
   storyboard: { summary: ".approval-text", beats: ".beats", beat: ".beat", approve: ".btn.primary", edit: ".approval-btns .btn.ghost" },
   review: { head: ".card-head", status: ".card-outcome", scores: ".scores", score: ".score", bar: ".score-bar > span" },
-  timeline: { toolbar: ".bottom-toolbar", ruler: ".tl-ruler", lanes: ".tl-lanes", heads: ".tl-heads", playhead: ".playhead", clip: ".clip", lane: ".tl-lane", main: ".tl-lane.main" },
+  timeline: {
+    toolbar: ".bottom-toolbar",
+    ruler: ".tl-ruler",
+    lanes: ".tl-lanes",
+    heads: ".tl-heads",
+    playhead: ".playhead",
+    clip: ".clip",
+    lane: ".tl-lane",
+    main: ".tl-lane.main",
+  },
   preview: { frame: ".frame", transport: ".transport", timecode: ".timecode", play: ".icon-btn.play" },
-  inspector: { title: ".insp-title", filter: '[data-testid="insp-filter"]', amount: '[data-testid="insp-filter-intensity"]', effects: '[data-testid="insp-effects"]', effect: '[data-testid="insp-effect"]', transform: '[data-testid="insp-sec-transform"]' },
-  effects: { search: ".tr-search", target: '[data-testid="effects-target"]', filters: '[data-testid="filters-grid"]', tile: '[data-testid="filter-tile"]', none: '[data-look="none"]', natural: '[data-look="natural"]', warm: '[data-look="warm"]', cool: '[data-look="cool"]', vintage: '[data-look="vintage"]', film: '[data-look="film"]', bw: '[data-look="bw"]', vivid: '[data-look="vivid"]' },
-  export: { close: ".export-head .icon-btn", draft: '[data-testid="quality-draft"]', standard: '[data-testid="quality-standard"]', high: '[data-testid="quality-high"]', file: '[data-testid="export-name"]', motionBlur: 'input[type="checkbox"]', cancel: ".wiz-foot .btn.ghost", export: ".wiz-foot .btn.primary" },
-  exportProgress: { job: '[data-testid="export-job"]', progress: ".export-status", bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
+  inspector: {
+    title: ".insp-title",
+    filter: '[data-testid="insp-filter"]',
+    amount: '[data-testid="insp-filter-intensity"]',
+    effects: '[data-testid="insp-effects"]',
+    effect: '[data-testid="insp-effect"]',
+    transform: '[data-testid="insp-sec-transform"]',
+  },
+  effects: {
+    search: ".tr-search",
+    target: '[data-testid="effects-target"]',
+    filters: '[data-testid="filters-grid"]',
+    tile: '[data-testid="filter-tile"]',
+    none: '[data-look="none"]',
+    natural: '[data-look="natural"]',
+    warm: '[data-look="warm"]',
+    cool: '[data-look="cool"]',
+    vintage: '[data-look="vintage"]',
+    film: '[data-look="film"]',
+    bw: '[data-look="bw"]',
+    vivid: '[data-look="vivid"]',
+  },
+  export: {
+    close: ".export-head .icon-btn",
+    draft: '[data-testid="quality-draft"]',
+    standard: '[data-testid="quality-standard"]',
+    high: '[data-testid="quality-high"]',
+    file: '[data-testid="export-name"]',
+    motionBlur: 'input[type="checkbox"]',
+    cancel: ".wiz-foot .btn.ghost",
+    export: ".wiz-foot .btn.primary",
+  },
+  exportProgress: {
+    job: '[data-testid="export-job"]',
+    progress: ".export-status",
+    bar: ".export-bar",
+    fill: ".export-bar > div",
+    cancel: '[data-testid="export-cancel"]',
+  },
   topbar: { export: ".export-btn", saved: ".saved", title: ".project-title" },
   agent: { tabs: ".tabs", thread: ".agent-thread", composer: ".composer", send: ".send", plan: ".plan-chip-btn" },
   menu: { item: ".ctx-item", addToChat: '[data-testid="menu-add-to-chat"]', label: ".ctx-label", key: ".ctx-key", sep: ".ctx-sep" },
-  editor: { topbar: ".topbar", export: ".export-btn", rail: ".rail", library: ".library", preview: ".stage", frame: ".frame", side: ".side", composer: ".composer", send: ".send", thread: ".agent-thread", timeline: ".bottom", playhead: ".playhead" },
+  editor: {
+    topbar: ".topbar",
+    export: ".export-btn",
+    rail: ".rail",
+    library: ".library",
+    preview: ".stage",
+    frame: ".frame",
+    side: ".side",
+    composer: ".composer",
+    send: ".send",
+    thread: ".agent-thread",
+    timeline: ".bottom",
+    playhead: ".playhead",
+  },
 };
 
 /** The part names there are. */
@@ -83,7 +148,8 @@ function ensureCss(doc: Document) {
   (doc.head || doc.documentElement).appendChild(style);
 }
 
-const SHELL = "display:block;position:relative;width:100%;height:100%;margin:0;padding:0;border:0;background:none;box-shadow:none;outline:0;overflow:visible;transform:none;opacity:1;filter:none;backdrop-filter:none;inset:auto;min-width:0;min-height:0;max-width:none;max-height:none;";
+const SHELL =
+  "display:block;position:relative;width:100%;height:100%;margin:0;padding:0;border:0;background:none;box-shadow:none;outline:0;overflow:visible;transform:none;opacity:1;filter:none;backdrop-filter:none;inset:auto;min-width:0;min-height:0;max-width:none;max-height:none;";
 
 /**
  * Puts part `name` into `host` (an element of the graphic) and applies `props`; returns the part's
@@ -142,7 +208,8 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
   // blur: screen px (the part's own px times its scale); dim 0..1 darkens it: the program behind a hero.
   const blur = Math.max(0, num(o.blur, 0));
   const dim = Math.max(0, Math.min(1, num(o.dim, 0)));
-  wrap.style.filter = `${blur > 0.05 ? `blur(${(blur / Math.max(scale, 0.01)).toFixed(2)}px) ` : ""}${dim > 0.001 ? `brightness(${(1 - dim).toFixed(3)})` : ""}`.trim() || "none";
+  wrap.style.filter =
+    `${blur > 0.05 ? `blur(${(blur / Math.max(scale, 0.01)).toFixed(2)}px) ` : ""}${dim > 0.001 ? `brightness(${(1 - dim).toFixed(3)})` : ""}`.trim() || "none";
   const root = rootOf(wrap);
   if (name === "editor") liveEditor(root, o);
   placeElements(name, root, o);
@@ -162,7 +229,26 @@ function spin(root: HTMLElement, time: unknown): void {
 }
 
 /** The editor's props that update its panels in place on every call (each panel rebuilt only when its own props change). */
-const EDITOR_LIVE_PROPS = ["side", "library", "composer", "turn", "message", "review", "inspector", "effects", "timeline", "preview", "topbar", "export", "exportProgress", "text", "press", "highlight", "hide", "remove"];
+const EDITOR_LIVE_PROPS = [
+  "side",
+  "library",
+  "composer",
+  "turn",
+  "message",
+  "review",
+  "inspector",
+  "effects",
+  "timeline",
+  "preview",
+  "topbar",
+  "export",
+  "exportProgress",
+  "text",
+  "press",
+  "highlight",
+  "hide",
+  "remove",
+];
 
 type LiveRoot = HTMLElement & { __pristine?: Map<string, HTMLElement>; __liveKeys?: Map<string, string> };
 
@@ -211,11 +297,17 @@ function liveEditor(root: LiveRoot, o: Props) {
       base: () => (o.library === "effects" ? fresh("effects") : pristine(".library")),
       apply: (el) => {
         if (o.library === "effects") applyProps("effects", el, sub("effects") || {});
-        for (const b of root.querySelectorAll(".rail [data-rail]")) b.classList.toggle("active", b.getAttribute("data-rail") === (o.library === "effects" ? "effects" : "media"));
+        for (const b of root.querySelectorAll(".rail [data-rail]"))
+          b.classList.toggle("active", b.getAttribute("data-rail") === (o.library === "effects" ? "effects" : "media"));
       },
     },
     { sel: ".bottom", spec: [o.timeline], base: () => pristine(".bottom"), apply: (el) => applyProps("timeline", el, sub("timeline") || {}) },
-    { sel: ".stage", spec: [o.preview, length], base: () => pristine(".stage"), apply: (el) => applyProps("preview", el, { duration: length, ...(sub("preview") || {}) }) },
+    {
+      sel: ".stage",
+      spec: [o.preview, length],
+      base: () => pristine(".stage"),
+      apply: (el) => applyProps("preview", el, { duration: length, ...sub("preview") }),
+    },
     { sel: ".topbar", spec: [o.topbar], base: () => pristine(".topbar"), apply: (el) => applyProps("topbar", el, sub("topbar") || {}) },
   ];
   let changed = false;
@@ -245,7 +337,7 @@ function liveEditor(root: LiveRoot, o: Props) {
       const el = fresh(dialog);
       layer.appendChild(el);
       root.appendChild(layer);
-      applyProps(dialog, el, { duration: length, ...(sub(dialog) || {}) });
+      applyProps(dialog, el, { duration: length, ...sub(dialog) });
     }
     root.__liveKeys!.set("modal", dkey);
     changed = true;
@@ -347,7 +439,10 @@ function neutral(root: HTMLElement) {
   for (const el of findAll(root, '[data-testid="export-job-where"]')) el.remove();
   // The fixture's prose and counts: the turn's steps, reply, edit count, the critic's card inside a
   // turn (props bring them back), the media library's sample files (editor: media).
-  for (const el of root.querySelectorAll('.turn .worklog .step, .turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip')) el.remove();
+  for (const el of root.querySelectorAll(
+    '.turn .worklog .step, .turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip',
+  ))
+    el.remove();
   // The user's words (a message's text, the composer's typed text): the graphic's, else none.
   for (const el of findAll(root, ".msg-user")) el.textContent = "";
   for (const el of findAll(root, ".composer-hl")) el.textContent = "\u200b";
@@ -437,7 +532,8 @@ function footageAt(o: Props): Footage | undefined {
   const pv = o.preview as Props | undefined;
   const clips = (tl && Array.isArray(tl.clips) ? tl.clips : []) as ReadonlyArray<Clip>;
   const ph = num(tl?.playhead, num(pv?.time, 0));
-  const picture = (tr: Clip["track"]) => (typeof tr === "number" ? tr === 1 || tr === 2 : !(typeof tr === "string" && /audio|sound|music|sfx|text|caption|subtitle/i.test(tr)));
+  const picture = (tr: Clip["track"]) =>
+    typeof tr === "number" ? tr === 1 || tr === 2 : !(typeof tr === "string" && /audio|sound|music|sfx|text|caption|subtitle/i.test(tr));
   const shots = clips.filter((c) => c && (typeof c.media === "string" || typeof c.image === "string") && picture(c.track));
   const end = (c: Clip) => num(c.start, 0) + Math.max(0.05, num(c.duration, 1));
   // The last clip passed that holds the playhead; at the very end of the cut, its last frame.
@@ -519,7 +615,10 @@ function stageFootage(frame: HTMLElement, o: Props) {
   } else {
     const img = doc.createElement("img");
     img.src = picture(f.image!);
-    job = img.decode().then(() => draw(img), () => clear());
+    job = img.decode().then(
+      () => draw(img),
+      () => clear(),
+    );
   }
   hold(doc, job);
 }
@@ -580,10 +679,16 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
     if (typeof o.edit === "string") addCaptured(root, "turn", ".edit-row", (el) => setText(el.querySelector(".grow"), o.edit), ".worklog");
     // The card as captured is the fixture's review (Passed, round 2, its scores): blank, then the graphic's props.
     if (o.review)
-      addCaptured(root, "turn", ".card-item", (el) => {
-        blankReview(el);
-        if (typeof o.review === "object") applyProps("review", el, o.review as Props);
-      }, ".edit-row, .worklog");
+      addCaptured(
+        root,
+        "turn",
+        ".card-item",
+        (el) => {
+          blankReview(el);
+          if (typeof o.review === "object") applyProps("review", el, o.review as Props);
+        },
+        ".edit-row, .worklog",
+      );
     if (Array.isArray(o.steps)) fillList(root.querySelector(".worklog"), ".step", o.steps.map(String), (el, s) => setText(el.querySelector(".grow"), s));
     // A running step shows the app's spinner (lucide LoaderCircle) where a done one has its tick.
     if (typeof o.done === "number")
@@ -601,16 +706,18 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
       setText(root.querySelector('[data-testid="insp-media"]'), o.title);
     }
     if (typeof o.filter === "string") setText(find(root, "amount", "inspector")?.querySelector(".prop-k") ?? null, o.filter);
-    if (typeof o.amount === "number") for (const el of find(root, "amount", "inspector")?.querySelectorAll("input") ?? []) el.setAttribute("value", String(Math.round(o.amount)));
+    if (typeof o.amount === "number")
+      for (const el of find(root, "amount", "inspector")?.querySelectorAll("input") ?? []) el.setAttribute("value", String(Math.round(o.amount)));
     if (o.filter === false) find(root, "filter", "inspector")?.remove();
     if (o.effects === false) find(root, "effects", "inspector")?.remove();
   },
   effects(root, o) {
-    if (o.active !== undefined) for (const tile of findAll(root, '[data-testid="filter-tile"]')) {
-      const on = tile.getAttribute("data-look") === o.active;
-      tile.classList.toggle("active", on);
-      on ? tile.setAttribute("data-active", "true") : tile.removeAttribute("data-active");
-    }
+    if (o.active !== undefined)
+      for (const tile of findAll(root, '[data-testid="filter-tile"]')) {
+        const on = tile.getAttribute("data-look") === o.active;
+        tile.classList.toggle("active", on);
+        on ? tile.setAttribute("data-active", "true") : tile.removeAttribute("data-active");
+      }
     if (typeof o.target === "string") setText(find(root, "target", "effects"), o.target);
   },
   storyboard(root, o) {
@@ -663,7 +770,8 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
       }
     }
     if (typeof o.file === "string") find(root, "file", "export")?.setAttribute("value", o.file);
-    if (typeof o.duration === "number") setText(root.querySelector('[data-testid="export-range-text"]'), `${timecode(0)} to ${timecode(o.duration)}, ${o.duration.toFixed(1)} s`);
+    if (typeof o.duration === "number")
+      setText(root.querySelector('[data-testid="export-range-text"]'), `${timecode(0)} to ${timecode(o.duration)}, ${o.duration.toFixed(1)} s`);
     if (typeof o.motionBlur === "boolean") {
       const box = find(root, "motionBlur", "export");
       if (box) o.motionBlur ? box.setAttribute("checked", "") : box.removeAttribute("checked");
@@ -700,7 +808,8 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
           setText(el.querySelector(".tile-sub"), m.meta ?? "");
           // The tile's length badge (mm:ss) is the file's: shown only when passed.
           const badge = el.querySelector(".dur");
-          if (typeof m.duration === "number") setText(badge, `${String(Math.floor(m.duration / 60)).padStart(2, "0")}:${String(Math.floor(m.duration % 60)).padStart(2, "0")}`);
+          if (typeof m.duration === "number")
+            setText(badge, `${String(Math.floor(m.duration / 60)).padStart(2, "0")}:${String(Math.floor(m.duration % 60)).padStart(2, "0")}`);
           else badge?.remove();
           const thumb = el.querySelector(".thumb") as HTMLElement | null;
           if (thumb && m.image) thumb.style.cssText += `;background:url("${picture(m.image)}") center/cover`;
@@ -745,7 +854,15 @@ function chipify(el: HTMLElement, chips: unknown) {
 
 /** Sub-props of a part that contains others: { composer: {...}, timeline: {...} } applied inside it. */
 function nested(root: HTMLElement, o: Props, names: ReadonlyArray<string>) {
-  const sel: Readonly<Record<string, string>> = { composer: ".composer", turn: ".turn", message: ".msg-user", review: '.card-item[data-type="review"]', timeline: ".bottom", preview: ".stage", topbar: ".topbar" };
+  const sel: Readonly<Record<string, string>> = {
+    composer: ".composer",
+    turn: ".turn",
+    message: ".msg-user",
+    review: '.card-item[data-type="review"]',
+    timeline: ".bottom",
+    preview: ".stage",
+    topbar: ".topbar",
+  };
   for (const n of names) {
     const sub = o[n] as Props | undefined;
     const el = root.querySelector(sel[n]!) as HTMLElement | null;
@@ -755,7 +872,8 @@ function nested(root: HTMLElement, o: Props, names: ReadonlyArray<string>) {
 
 /** A picture URL a part can show: data: or blob: (uncut:media markers resolve only in the graphic's own HTML). */
 function picture(src: string): string {
-  if (/^uncut:media\//.test(src)) throw new Error(`uncutUI: "${src}" can't load from a prop; pass await uncut.url(id, seconds) (a blob: URL, asked once before the first frame) instead`);
+  if (src.startsWith("uncut:media/"))
+    throw new Error(`uncutUI: "${src}" can't load from a prop; pass await uncut.url(id, seconds) (a blob: URL, asked once before the first frame) instead`);
   return src;
 }
 
@@ -977,7 +1095,7 @@ function typedHeight(host: HTMLElement, k: PieceKey, n: number): number {
     m.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;visibility:hidden;pointer-events:none";
     host.appendChild(m);
   }
-  const key: PieceKey = { ...k, at: 0, typing: undefined, props: { ...(k.props || {}), text: String(k.props?.text ?? "").slice(0, n) } };
+  const key: PieceKey = { ...k, at: 0, typing: undefined, props: { ...k.props, text: String(k.props?.text ?? "").slice(0, n) } };
   const id = keyOf(key as unknown as Props);
   m.__heights ??= new Map();
   const known = m.__heights.get(id);
@@ -1012,9 +1130,8 @@ function typedKey(k: PieceKey, t: number, host: HTMLElement): PieceKey {
   };
   if (n > n0) split(n0, n, height, h(n));
   for (const c of wraps) height += (h(c) - h(c - 1)) * settle((t - typedTime(k, c)) / LINE_GROW);
-  return { ...k, props: { ...k.props, text: k.props.text.slice(0, n) }, size: { ...(k.size || {}), height } };
+  return { ...k, props: { ...k.props, text: k.props.text.slice(0, n) }, size: { ...k.size, height } };
 }
-
 
 const PIECE_SHELL = "display:contents;";
 
@@ -1026,7 +1143,7 @@ function rgba(c: string): [number, number, number, number] | undefined {
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
   }
   const m = c.match(/[\d.]+/g);
-  if (!m || m.length < 3 || !/^rgb/.test(c.trim())) return undefined;
+  if (!m || m.length < 3 || !c.trim().startsWith("rgb")) return undefined;
   return [Number(m[0]), Number(m[1]), Number(m[2]), m.length >= 4 ? Number(m[3]) : 1];
 }
 
@@ -1119,7 +1236,7 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
   const w = typed ? Math.max(48, Math.round((k.width! * font) / k.type! - pad * 2)) : num(k.size?.width, el.offsetWidth);
   let h = num(k.size?.height, el.offsetHeight);
   // Unbox the path from the part's wrapper to the slot; drop everything beside it.
-  for (let at: HTMLElement = el; at !== wrap; ) {
+  for (let at: HTMLElement = el; at !== wrap;) {
     const parent = at.parentElement as HTMLElement;
     for (const sib of [...parent.children]) if (sib !== at) sib.remove();
     if (parent.getAttribute("style")?.startsWith(SHELL)) parent.setAttribute("style", PIECE_SHELL + (parent.getAttribute("style") || "").slice(SHELL.length));
@@ -1211,7 +1328,7 @@ function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dx
   st.maskImage = "";
 }
 
-const covers = (k: PieceKey) => (k.fit ? k.fit === "cover" : /\.frame$/.test(k.piece));
+const covers = (k: PieceKey) => (k.fit ? k.fit === "cover" : k.piece.endsWith(".frame"));
 
 const DIRS: Readonly<Record<string, readonly [number, number]>> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], none: [0, 0] };
 
@@ -1246,7 +1363,9 @@ function carry(host: HTMLElement, kf: PieceKey, kj: PieceKey, bf: Built, bj: Bui
     host.appendChild(layer);
   }
   const pairs = (kj.carry || []).map((c) => (typeof c === "string" ? [c, c] : c) as readonly [string, string]);
-  const found = pairs.map(([a, b]) => [find(bf.el, a, bf.name), find(bj.el, b, bj.name)] as const).filter((x): x is readonly [HTMLElement, HTMLElement] => !!x[0] && !!x[1]);
+  const found = pairs
+    .map(([a, b]) => [find(bf.el, a, bf.name), find(bj.el, b, bj.name)] as const)
+    .filter((x): x is readonly [HTMLElement, HTMLElement] => !!x[0] && !!x[1]);
   if (!found.length || raw >= 1) {
     layer.style.display = "none";
     return;
@@ -1256,11 +1375,17 @@ function carry(host: HTMLElement, kf: PieceKey, kj: PieceKey, bf: Built, bj: Bui
   if (layer.__from !== bf || layer.__to !== bj || layer.__spec !== spec) {
     layer.replaceChildren();
     found.forEach(([fe, te], i) => {
-      for (const [b, e] of [[bf, fe], [bj, te]] as const) {
+      for (const [b, e] of [
+        [bf, fe],
+        [bj, te],
+      ] as const) {
         e.setAttribute("data-uncut-carry", String(i));
         const c = b.node.cloneNode(true) as HTMLElement;
         e.removeAttribute("data-uncut-carry");
-        c.querySelector(`[data-uncut-carry="${i}"]`)?.setAttribute("style", `${c.querySelector(`[data-uncut-carry="${i}"]`)?.getAttribute("style") || ""};visibility:visible`);
+        c.querySelector(`[data-uncut-carry="${i}"]`)?.setAttribute(
+          "style",
+          `${c.querySelector(`[data-uncut-carry="${i}"]`)?.getAttribute("style") || ""};visibility:visible`,
+        );
         layer!.appendChild(c);
       }
     });
@@ -1277,7 +1402,10 @@ function carry(host: HTMLElement, kf: PieceKey, kj: PieceKey, bf: Built, bj: Bui
     const A = { x: rf.x + lf.x * rf.s, y: rf.y + lf.y * rf.s, w: lf.w * rf.s };
     const B = { x: rj.x + lj.x * rj.s, y: rj.y + lj.y * rj.s, w: lj.w * rj.s };
     const cur = { x: A.x + (B.x - A.x) * p, y: A.y + (B.y - A.y) * p, w: A.w + (B.w - A.w) * p };
-    const sides: ReadonlyArray<readonly [Box, number, number]> = [[lf, (rf.s * cur.w) / Math.max(A.w, 0.01), 1 - hand], [lj, (rj.s * cur.w) / Math.max(B.w, 0.01), hand]];
+    const sides: ReadonlyArray<readonly [Box, number, number]> = [
+      [lf, (rf.s * cur.w) / Math.max(A.w, 0.01), 1 - hand],
+      [lj, (rj.s * cur.w) / Math.max(B.w, 0.01), hand],
+    ];
     sides.forEach(([l, s, alpha], side) => {
       const c = layer!.children[i * 2 + side] as HTMLElement;
       c.style.transform = `translate(${cur.x - l.x * s}px, ${cur.y - l.y * s}px) scale(${s})`;
@@ -1297,7 +1425,13 @@ type Hiding = HTMLElement & { __hidden?: Array<HTMLElement> };
 
 /** Where the shell is when key i + 1 starts, if key i's own morph (from i - 1) is still running then:
  *  that morph's box and colour at that moment, chained back through earlier unsettled morphs; else null (key i at rest). */
-function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArray<Holder>, dur: (k: PieceKey) => number, depth = 0): { box: Box; bg: string; at: Place } | null {
+function startOf(
+  i: number,
+  keys: ReadonlyArray<PieceKey>,
+  holders: ReadonlyArray<Holder>,
+  dur: (k: PieceKey) => number,
+  depth = 0,
+): { box: Box; bg: string; at: Place } | null {
   if (i < 1 || depth > 8) return null;
   const at = num(keys[i]!.at, 0);
   const raw = (num(keys[i + 1]!.at, 0) - at) / dur(keys[i]!);
@@ -1319,7 +1453,11 @@ function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArra
   const abg = prev ? prev.bg : bp.bg;
   const pa = prev ? prev.at : placeOf(bp, a, covers(keys[i - 1]!));
   const pr = placeOf(bi, rest, covers(keys[i]!));
-  return { box: { x: a.x + (rest.x - a.x) * q, y: a.y + (rest.y - a.y) * q, w: a.w + (rest.w - a.w) * q, h: a.h + (rest.h - a.h) * q, r: a.r + (rest.r - a.r) * q }, bg: mixRgba(abg, bi.bg, q), at: { s: pa.s + (pr.s - pa.s) * q, y: pa.y + (pr.y - pa.y) * q } };
+  return {
+    box: { x: a.x + (rest.x - a.x) * q, y: a.y + (rest.y - a.y) * q, w: a.w + (rest.w - a.w) * q, h: a.h + (rest.h - a.h) * q, r: a.r + (rest.r - a.r) * q },
+    bg: mixRgba(abg, bi.bg, q),
+    at: { s: pa.s + (pr.s - pa.s) * q, y: pa.y + (pr.y - pa.y) * q },
+  };
 }
 
 /** Where a piece's content sits at rest in its shell: its scale and its top below the shell's top (fitInto, centred). */
@@ -1339,7 +1477,12 @@ function placeOf(b: Built, box: Box, cover: boolean): Place {
  * steps) resizes without a swap. Pure in t. Returns the shell's box { x, y, w, h, r }, p (0..1 in a
  * morph, 1 at rest), the key index shown, its element and the text's height on the canvas (type).
  */
-function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>, o?: { readonly dur?: number }): { x: number; y: number; w: number; h: number; r: number; p: number; key: number; el: HTMLElement; type: number } {
+function sequence(
+  host: HTMLElement,
+  t: number,
+  keyList: ReadonlyArray<PieceKey>,
+  o?: { readonly dur?: number },
+): { x: number; y: number; w: number; h: number; r: number; p: number; key: number; el: HTMLElement; type: number } {
   if (!keyList.length) throw new Error("uncutUI.sequence: no keys");
   const doc = host.ownerDocument;
   ensureCss(doc);
@@ -1397,7 +1540,13 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
     // where the shell is, not from the last key's rest: no one-frame jump (round 7's steps card).
     const start = startOf(from, keys, holders, dur);
     const b0 = start ? start.box : boxF;
-    box = { x: b0.x + (boxJ.x - b0.x) * p, y: b0.y + (boxJ.y - b0.y) * p, w: b0.w + (boxJ.w - b0.w) * p, h: b0.h + (boxJ.h - b0.h) * p, r: b0.r + (boxJ.r - b0.r) * p };
+    box = {
+      x: b0.x + (boxJ.x - b0.x) * p,
+      y: b0.y + (boxJ.y - b0.y) * p,
+      w: b0.w + (boxJ.w - b0.w) * p,
+      h: b0.h + (boxJ.h - b0.h) * p,
+      r: b0.r + (boxJ.r - b0.r) * p,
+    };
     bg = mixRgba(start ? start.bg : bf.bg, bj.bg, p);
     press = num(kf.press, 1) + (press - num(kf.press, 1)) * p;
     const same = kf.piece === kj.piece && (kf.index ?? 0) === (kj.index ?? 0) && kf.theme === kj.theme;
@@ -1425,7 +1574,17 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
       const pic = covers(kj);
       const inn = pic ? smooth((raw - 0.08) / 0.27) : smooth((raw - 0.18) / 0.3);
       const arrive = 1 - settle(Math.max(0, (raw - 0.08) / 0.92));
-      fitInto(bj, box.w, box.h, inn, (pic ? 8 : 14) * (1 - smooth((raw - (pic ? 0.1 : 0.16)) / 0.45)), dx * 0.35 * box.w * arrive, dy * 0.35 * box.h * arrive, covers(kj), 1 + 0.05 * arrive);
+      fitInto(
+        bj,
+        box.w,
+        box.h,
+        inn,
+        (pic ? 8 : 14) * (1 - smooth((raw - (pic ? 0.1 : 0.16)) / 0.45)),
+        dx * 0.35 * box.w * arrive,
+        dy * 0.35 * box.h * arrive,
+        covers(kj),
+        1 + 0.05 * arrive,
+      );
       if (kj.carry?.length) {
         carry(host, kf, kj, bf, bj, boxF, boxJ, p, raw, hidden);
         carried = true;
@@ -1458,7 +1617,8 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
       const cut = bj.pad > 0 && end < bj.h - bj.pad - 0.5;
       const stops: Array<string> = [];
       if (a < 0.999) stops.push(`#000 ${old.toFixed(2)}px`, `rgb(0 0 0 / ${a.toFixed(3)}) ${(old + 1).toFixed(2)}px`);
-      if (cut) stops.push(`rgb(0 0 0 / ${a.toFixed(3)}) ${Math.max(end, old + 1).toFixed(2)}px`, `transparent ${(Math.max(end, old + 1) + bj.pad / 2).toFixed(2)}px`);
+      if (cut)
+        stops.push(`rgb(0 0 0 / ${a.toFixed(3)}) ${Math.max(end, old + 1).toFixed(2)}px`, `transparent ${(Math.max(end, old + 1) + bj.pad / 2).toFixed(2)}px`);
       st.maskImage = stops.length ? `linear-gradient(to bottom, ${a < 0.999 ? "" : "#000 0px, "}${stops.join(", ")})` : "";
       // The last key's rows over this one's, fading: the same words on the same pixels, only what changed crossfades.
       const fade = Math.abs(bj.w - bf.w) < 0.5 ? smooth(raw / 0.45) : 1;
@@ -1670,8 +1830,12 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   if (sb) place(sb.node, sb.w, sb.h, raw < 0 ? 0 : inB, f.fit !== "contain");
   const bg = mixRgba(bgA, bgB, raw < 0 ? 0 : inB);
   const r = rA + (rB - rA) * p;
-  const lift = raw < 0 ? (built && f.from && (f.from as PieceKey).shadow !== false ? 1 : 0) : Math.sin(Math.PI * Math.min(1, q * 1.4)) * (1 - p) + (built ? 1 - p : 0);
-  const shadow = lift > 0.01 ? `;box-shadow:0 ${(2 + 22 * lift).toFixed(1)}px ${(6 + 50 * lift).toFixed(1)}px rgb(0 0 0 / ${(0.1 + 0.22 * Math.min(1, lift)).toFixed(3)})` : "";
+  const lift =
+    raw < 0 ? (built && f.from && (f.from as PieceKey).shadow !== false ? 1 : 0) : Math.sin(Math.PI * Math.min(1, q * 1.4)) * (1 - p) + (built ? 1 - p : 0);
+  const shadow =
+    lift > 0.01
+      ? `;box-shadow:0 ${(2 + 22 * lift).toFixed(1)}px ${(6 + 50 * lift).toFixed(1)}px rgb(0 0 0 / ${(0.1 + 0.22 * Math.min(1, lift)).toFixed(3)})`
+      : "";
   const pz = raw < 0 ? press : 1;
   box.style.cssText = `position:absolute;left:${cur.x}px;top:${cur.y}px;width:${cur.w}px;height:${cur.h}px;border-radius:${Math.min(r, cur.w / 2, cur.h / 2)}px;background:${bg};overflow:hidden;transform:scale(${pz});transform-origin:50% 50%${shadow}`;
   return { x: cur.x + cur.w / 2, y: cur.y + cur.h / 2, w: cur.w, h: cur.h, p: raw < 0 ? 0 : p, el: built?.el ?? null };
@@ -1679,7 +1843,7 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
 
 /** One piece on its own: sequence with one key (the same pixels as that key at rest). Returns the slot's element. */
 function piece(host: HTMLElement, id: string, props?: Omit<PieceKey, "piece" | "at">): HTMLElement {
-  return sequence(host, 0, [{ ...(props || {}), piece: id, at: 0 }]).el;
+  return sequence(host, 0, [{ ...props, piece: id, at: 0 }]).el;
 }
 
 /**
@@ -1695,7 +1859,11 @@ function piece(host: HTMLElement, id: string, props?: Omit<PieceKey, "piece" | "
  * the height and the near-empty dark column filling the frame. o: { width: 1080, height: 1350, text,
  * safe: 72, pad: 8 } (frame px; pad: host px around the words).
  */
-function frameText(target: Element | ReadonlyArray<Element>, host: HTMLElement, o?: { readonly width?: number; readonly height?: number; readonly text?: number; readonly safe?: number; readonly pad?: number }): { x: number; y: number; zoom: number; text: number; fits: boolean } {
+function frameText(
+  target: Element | ReadonlyArray<Element>,
+  host: HTMLElement,
+  o?: { readonly width?: number; readonly height?: number; readonly text?: number; readonly safe?: number; readonly pad?: number },
+): { x: number; y: number; zoom: number; text: number; fits: boolean } {
   const W = num(o?.width, 1080);
   const H = num(o?.height, 1350);
   const want = num(o?.text, 0.048);
@@ -1707,7 +1875,10 @@ function frameText(target: Element | ReadonlyArray<Element>, host: HTMLElement, 
   const view = doc.defaultView;
   const hb = host.getBoundingClientRect();
   const hs = host.offsetWidth ? hb.width / host.offsetWidth : 1;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
   const grow = (r: DOMRect) => {
     if (!r.width || !r.height) return;
     x0 = Math.min(x0, (r.left - hb.left) / hs);
@@ -1745,11 +1916,13 @@ function frameText(target: Element | ReadonlyArray<Element>, host: HTMLElement, 
   const total = sizes.reduce((s, x) => s + x[1], 0);
   let acc = 0;
   let font = sizes[sizes.length - 1]![0];
-  for (const [px, n] of sizes) if ((acc += n) >= total / 2) {
-    font = px;
-    break;
-  }
-  const bw = x1 - x0 + 2 * pad, bh = y1 - y0 + 2 * pad;
+  for (const [px, n] of sizes)
+    if ((acc += n) >= total / 2) {
+      font = px;
+      break;
+    }
+  const bw = x1 - x0 + 2 * pad,
+    bh = y1 - y0 + 2 * pad;
   const zText = (want * H) / Math.max(1, font);
   const zFit = Math.min((W - 2 * safe) / Math.max(1, bw), (H - 2 * safe) / Math.max(1, bh));
   const zoom = Math.min(zText, zFit);
@@ -1782,7 +1955,9 @@ function cursor(host: HTMLElement, o: { readonly x: number; readonly y: number; 
   return el;
 }
 
-const SPINNER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-circle spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>';
-const CURSOR_SVG = '<svg viewBox="0 0 20 30" width="100%" height="100%" style="display:block;overflow:visible;filter:drop-shadow(0 1px 1.5px rgb(0 0 0 / 35%))"><path d="M3.6 3 L3.6 24.2 L8.6 19.4 L11.9 27 L15.1 25.6 L11.9 18.2 L18.6 18.2 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+const SPINNER_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-circle spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>';
+const CURSOR_SVG =
+  '<svg viewBox="0 0 20 30" width="100%" height="100%" style="display:block;overflow:visible;filter:drop-shadow(0 1px 1.5px rgb(0 0 0 / 35%))"><path d="M3.6 3 L3.6 24.2 L8.6 19.4 L11.9 27 L15.1 25.6 L11.9 18.2 L18.6 18.2 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 
 export {};

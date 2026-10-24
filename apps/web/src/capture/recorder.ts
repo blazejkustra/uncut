@@ -18,7 +18,18 @@ import type { MultiLayout } from "@uncut/contracts";
 
 export { PEAK_HOLD_MS, levelDb, MIN_TAKE_MS, useRecorder, getRecorder } from "./recorder/state.ts";
 export type { TakeMode, PartKind, Resolution, Input, RecorderState } from "./recorder/state.ts";
-export { refreshAccess, askAccess, openPrivacySettings, refreshSystemAudio, loadInputs, openMonitor, closeMonitor, openPreview, closePreview, loadSources } from "./recorder/devices.ts";
+export {
+  refreshAccess,
+  askAccess,
+  openPrivacySettings,
+  refreshSystemAudio,
+  loadInputs,
+  openMonitor,
+  closeMonitor,
+  openPreview,
+  closePreview,
+  loadSources,
+} from "./recorder/devices.ts";
 export { NO_SYSTEM_SOUND } from "./recorder/streams.ts";
 export { isMulti, startTake, stopTake, pauseTake, resumeTake, takeSeconds, cancelTake, clock, closeAll } from "./recorder/take.ts";
 export type { TakeOptions } from "./recorder/take.ts";

@@ -1,8 +1,7 @@
 import type { Canvas as CoreCanvas } from "@uncut/core/types";
 
 /** /Users/me/Movies/A.uncut → ~/Movies/A.uncut */
-export const shortPath = (path: string, home: string) =>
-  home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
+export const shortPath = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
 
 /** Frames → HH:MM:SS, whole seconds (media durations). */
 export const timecode = (frames: number, fps: number) => {
@@ -21,8 +20,7 @@ export const frameTimecode = (frames: number, fps: number) => {
 };
 
 /** Seconds → the ruler's label: "0s", "15s", "1:30". */
-export const rulerLabel = (seconds: number) =>
-  seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+export const rulerLabel = (seconds: number) => (seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
 
 export type Canvas = CoreCanvas;
 

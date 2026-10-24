@@ -58,7 +58,13 @@ async function createThroughForm(page: Page, name: string) {
   // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
   await waitFor(page, "[data-testid=tab-inspector]").catch(async (error) => {
     // #89: seen missing once on a CI runner; say what the editor showed instead.
-    const state = await page.evaluate(() => ({ size: [innerWidth, innerHeight], side: !!document.querySelector(".side"), stage: !!document.querySelector("[data-testid=agent-stage]"), storage: { ...localStorage }, testids: [...document.querySelectorAll("[data-testid]")].slice(0, 60).map((el) => el.getAttribute("data-testid")) }));
+    const state = await page.evaluate(() => ({
+      size: [innerWidth, innerHeight],
+      side: !!document.querySelector(".side"),
+      stage: !!document.querySelector("[data-testid=agent-stage]"),
+      storage: { ...localStorage },
+      testids: [...document.querySelectorAll("[data-testid]")].slice(0, 60).map((el) => el.getAttribute("data-testid")),
+    }));
     await page.screenshot({ path: `test-output/shell-no-inspector-${name}.png` }).catch(() => {});
     throw new Error(`no Inspector tab after creating ${name}: ${JSON.stringify(state)}`, { cause: error });
   });
@@ -243,7 +249,9 @@ test("a rename sent while the server is frozen ends up exactly as the server has
       await page.keyboard.press("Enter"); // sent to a server that can't answer
       await waitFor(page, "[data-testid=connection-banner][data-state=reconnecting]", 15000);
       // Offline: every control that needs the server is disabled.
-      const disabled = await page.$$eval("[data-testid=close-project],[data-testid=undo],[data-testid=redo],[data-testid=inspector-name]", (els) => (els as Array<HTMLButtonElement>).map((e) => e.disabled));
+      const disabled = await page.$$eval("[data-testid=close-project],[data-testid=undo],[data-testid=redo],[data-testid=inspector-name]", (els) =>
+        (els as Array<HTMLButtonElement>).map((e) => e.disabled),
+      );
       assert.deepEqual(disabled, [true, true, true, true]);
       await shot(app, "frozen");
       // Hold past the 15 s call timeout, so the rename's outcome is unknown to the window.

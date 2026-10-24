@@ -23,7 +23,43 @@ import { CONVENIENCE_LINES, opsSchema } from "./tools/opShapes.ts";
 // chunk 2 (D78); captions_make with chunk 5 (D82); project_check with chunk 8
 // (D90; music_list and music_add went with the bundled music, D274); generate_media with phase 7 chunk B (D99); subtitles_export with D105.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "export_video", "project_check", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read", "plan_read"] as const;
+export const TOOL_NAMES = [
+  "project_read",
+  "timeline_edit",
+  "modules_list",
+  "render_frames",
+  "media_analyze",
+  "media_rank",
+  "transcript_read",
+  "transcript_edit",
+  "captions_make",
+  "subtitles_export",
+  "export_video",
+  "project_check",
+  "library_search",
+  "library_add",
+  "media_import",
+  "contact_sheet",
+  "ui_show",
+  "graphic_write",
+  "generate_media",
+  "screen_record",
+  "argent_boot",
+  "media_search",
+  "ask_user",
+  "brief_write",
+  "storyboard_propose",
+  "review_submit",
+  "brand_read",
+  "brand_write",
+  "reference_frames",
+  "beat_grid",
+  "shader_write",
+  "skill_read",
+  "media_download",
+  "docs_read",
+  "plan_read",
+] as const;
 
 /**
  * render_frames: at most this many frames per call, and the default longest side of each (D285:
@@ -65,7 +101,7 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
       }
       // D236 (issue #81): only the defs this tool reaches through its $refs (transitively), not
       // the whole shared block in every tool (that was ~250k tokens per call).
-      const defs = { ...defsFor(schema), ...((schema.$defs as Record<string, unknown> | undefined) ?? {}) };
+      const defs = { ...defsFor(schema), ...(schema.$defs as Record<string, unknown> | undefined) };
       if (Object.keys(defs).length) schema.$defs = defs;
       return { name: t.name, description: withoutDecisionIds(description), inputSchema: scrubDescriptions(schema) as Record<string, unknown> };
     });
@@ -105,7 +141,9 @@ export function defsFor(schema: unknown): Record<string, unknown> {
  * (progressive disclosure: skill_read gives its instructions when it fits).
  */
 export const skillsPrompt = (skills: ReadonlyArray<{ readonly name: string; readonly description: string }>) =>
-  skills.length ? `\n\nSkills (installed in Uncut; skill_read {"name": …} gives one's instructions; the user calls one with /name):\n${skills.map((x) => `- ${x.name}: ${x.description}`).join("\n")}` : "";
+  skills.length
+    ? `\n\nSkills (installed in Uncut; skill_read {"name": …} gives one's instructions; the user calls one with /name):\n${skills.map((x) => `- ${x.name}: ${x.description}`).join("\n")}`
+    : "";
 
 /**
  * D260 (issue #81): the system prompt is a tight core: the role, the edit model, the hard rules
@@ -153,12 +191,11 @@ Conversation:
  */
 export const CODEX_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
   /^- Uncut's tools are mcp__uncut__<name>:[^\n]*$/m,
-  "- Uncut's tools come from its MCP server \"uncut\" (project_read, timeline_edit, ...). All are available directly. Descriptions carry the details; modules_list lists the installed modules, and with a kind gives their params.",
+  '- Uncut\'s tools come from its MCP server "uncut" (project_read, timeline_edit, ...). All are available directly. Descriptions carry the details; modules_list lists the installed modules, and with a kind gives their params.',
 ).replace(
   /^- You also have Claude Code's own tools: [^.]*\. /m,
   "- You also have Codex's own tools: the shell (files on this Mac, scripts) and apply_patch (file edits). ",
 );
-
 
 /**
  * The editor-context line for the playhead. At the project's end (after its last frame, where

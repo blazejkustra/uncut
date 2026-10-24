@@ -9,7 +9,19 @@
 import type { SoundProfile } from "../checks/checks.ts";
 
 /** The kinds of video a brief can record, in the order the Brief card offers them. */
-export const VIDEO_TYPES = ["launch-promo", "product-demo", "tutorial", "talk", "vlog", "social", "explainer", "music-video", "meme", "gaming", "other"] as const;
+export const VIDEO_TYPES = [
+  "launch-promo",
+  "product-demo",
+  "tutorial",
+  "talk",
+  "vlog",
+  "social",
+  "explainer",
+  "music-video",
+  "meme",
+  "gaming",
+  "other",
+] as const;
 export type VideoType = (typeof VIDEO_TYPES)[number];
 export const VIDEO_TYPE_NAMES: Readonly<Record<VideoType, string>> = {
   "launch-promo": "Launch promo",
@@ -78,7 +90,8 @@ export interface RubricBrief {
   readonly type?: string;
 }
 
-const words = (b: RubricBrief | undefined) => (b ? [b.film, b.visual, b.notes, ...(b.hardLines ?? [])].filter((x): x is string => typeof x === "string").join("\n") : "");
+const words = (b: RubricBrief | undefined) =>
+  b ? [b.film, b.visual, b.notes, ...(b.hardLines ?? [])].filter((x): x is string => typeof x === "string").join("\n") : "";
 
 const TYPE_WORDS: ReadonlyArray<readonly [VideoType, RegExp]> = [
   ["meme", /\bmemes?\b|shitpost|funny edit|brainrot/i],
@@ -115,7 +128,8 @@ export const skillIdsOf = (ids: ReadonlyArray<string>) => [...new Set(ids.map(sk
  * sound effects", "no sfx" (T2's "The song only, no sound effects unless asked", A2r8's "Music only,
  * no added sound effects").
  */
-const MUSIC_ONLY = /\b(music|song|track|soundtrack) only\b|\bonly (the |a |one )?(music|song|track|soundtrack)\b|\bno (added |extra |other )?(sound ?effects?|sfx|sound fx|foley|ui sounds?|click sounds?|clicks)\b|\bwithout (any )?(sound ?effects?|sfx)\b/i;
+const MUSIC_ONLY =
+  /\b(music|song|track|soundtrack) only\b|\bonly (the |a |one )?(music|song|track|soundtrack)\b|\bno (added |extra |other )?(sound ?effects?|sfx|sound fx|foley|ui sounds?|click sounds?|clicks)\b|\bwithout (any )?(sound ?effects?|sfx)\b/i;
 
 /**
  * The sound profile for a brief and the project's skills: the user's own words first (the request,
@@ -155,7 +169,10 @@ export interface Rubric {
  * sound when the sound profile is strict. Motion film (D292) makes the motion required too.
  * Without a type: everything required and every kind a blocker, as before.
  */
-export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean; readonly request?: string } = {}): Rubric {
+export function reviewRubric(
+  brief: RubricBrief | undefined,
+  o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean; readonly request?: string } = {},
+): Rubric {
   const skills = skillIdsOf(o.skills ?? []);
   const sound = soundProfileFor(brief, skills, o.request);
   const type = isVideoType(brief?.type) ? brief.type : undefined;
@@ -202,7 +219,10 @@ export const INTENDED_SLACK_S = 1;
 /** What an Intended mark matches on: a check's rule family, else the finding's kind. */
 export const findingKind = (f: FindingRef) => f.rule || f.kind || "defect";
 /** The Intended entry for a finding (kind and time range; `what` and the time it was marked are the caller's). */
-export const intendedOf = (f: FindingRef): IntendedRef => ({ kind: findingKind(f), ...(f.at !== undefined ? { from: f.at, to: Math.max(f.at, f.to ?? f.at) } : {}) });
+export const intendedOf = (f: FindingRef): IntendedRef => ({
+  kind: findingKind(f),
+  ...(f.at !== undefined ? { from: f.at, to: Math.max(f.at, f.to ?? f.at) } : {}),
+});
 /** Whether the user marked this finding Intended: the same kind, and its time within the marked range (give or take a second). */
 export function isIntended(f: FindingRef, list: ReadonlyArray<IntendedRef> | undefined): boolean {
   if (!list?.length) return false;

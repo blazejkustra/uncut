@@ -118,4 +118,5 @@ const parseLines = (text: string): ReadonlyArray<string> => {
   }
 };
 
-export const ROW_COLUMNS = "revision, at, kind, author, turn_id, summary, label, lines, parent, boundary, undo_turn, depth, (patch IS NOT NULL OR snapshot IS NOT NULL) AS stored";
+export const ROW_COLUMNS =
+  "revision, at, kind, author, turn_id, summary, label, lines, parent, boundary, undo_turn, depth, (patch IS NOT NULL OR snapshot IS NOT NULL) AS stored";

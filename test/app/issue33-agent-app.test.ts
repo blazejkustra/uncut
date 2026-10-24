@@ -40,100 +40,158 @@ after(async () => {
 
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => (el as HTMLElement).innerText.trim());
 
-test("issue 33: built-in tools in the work log with their results, permission cards in Ask first; Auto is the default access", { skip, timeout: 300000 }, async () => {
-  writeFileSync(
-    plan(),
-    JSON.stringify([
-      [
-        { builtin: "WebSearch", args: { query: "Argent Software Mansion" }, prompt: false, result: "1. Argent: let your coding agent drive the iOS simulator (argent.example.dev)\n2. software-mansion/argent on GitHub" },
-        { builtin: "WebFetch", args: { url: "https://argent.example.dev/", prompt: "What does it do?" }, prompt: false, result: "Argent gives coding agents eyes and hands on iOS simulators and Android emulators." },
-        { builtin: "Task", args: { description: "Find Argent's logo and screenshots", prompt: "…" }, prompt: false, result: "Logo: https://argent.example.dev/logo.svg" },
-        { builtin: "Bash", args: { command: "ls -la media", description: "List the media folder" }, result: "total 0" },
-        { builtin: "Bash", args: { command: "ls -la media" }, result: "total 0" },
-        { builtin: "Bash", args: { command: "rm -rf ~/Desktop/old-renders" } },
-      ],
-    ]),
-  );
-  const app = await launchApp({
-    command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: join(root, "results.jsonl"), UNCUT_APPROVAL_MS: "60000" },
-  });
-  apps.add(app);
-  const { page } = app;
-  const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
-  try {
-    await waitForWelcome(page);
-    await page.click("[data-testid=new-project]");
-    await waitFor("[data-testid=new-project-form]");
-    await page.click("[data-testid=choose-folder]");
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
-    await page.click("[data-testid=create]");
-    await waitFor("[data-testid=agent-panel]");
-    // D214: Auto by default; the menu's three modes, Auto still offering Ask first.
-    assert.equal(await page.$eval("[data-testid=agent-access]", (el) => (el as HTMLElement).dataset.access), "auto");
-    assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Auto");
-    await page.screenshot({ path: resolve("test-output", "auto-mode-composer.png") });
-    await page.click("[data-testid=agent-access]");
-    await waitFor("[data-testid=agent-access-menu]");
-    const options = await page.$$eval("[data-testid=agent-access-option]", (els) => els.map((el) => [(el as HTMLElement).dataset.access, (el as HTMLElement).innerText.trim().split("\n")[0], (el as HTMLElement).getAttribute("aria-selected")]));
-    assert.deepEqual(options, [["look", "Look only", "false"], ["ask", "Ask first", "false"], ["auto", "Auto", "true"]]);
-    const menu = await text(page, "[data-testid=agent-access-menu]");
-    assert.match(menu, /The agent approves routine work itself/);
-    assert.doesNotMatch(menu, /[·*•]|Edit freely/);
-    await page.screenshot({ path: resolve("test-output", "auto-mode-menu.png") });
-    await page.click("[data-testid=agent-access-option][data-access=ask]");
-    assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Ask first");
+test(
+  "issue 33: built-in tools in the work log with their results, permission cards in Ask first; Auto is the default access",
+  { skip, timeout: 300000 },
+  async () => {
+    writeFileSync(
+      plan(),
+      JSON.stringify([
+        [
+          {
+            builtin: "WebSearch",
+            args: { query: "Argent Software Mansion" },
+            prompt: false,
+            result: "1. Argent: let your coding agent drive the iOS simulator (argent.example.dev)\n2. software-mansion/argent on GitHub",
+          },
+          {
+            builtin: "WebFetch",
+            args: { url: "https://argent.example.dev/", prompt: "What does it do?" },
+            prompt: false,
+            result: "Argent gives coding agents eyes and hands on iOS simulators and Android emulators.",
+          },
+          {
+            builtin: "Task",
+            args: { description: "Find Argent's logo and screenshots", prompt: "…" },
+            prompt: false,
+            result: "Logo: https://argent.example.dev/logo.svg",
+          },
+          { builtin: "Bash", args: { command: "ls -la media", description: "List the media folder" }, result: "total 0" },
+          { builtin: "Bash", args: { command: "ls -la media" }, result: "total 0" },
+          { builtin: "Bash", args: { command: "rm -rf ~/Desktop/old-renders" } },
+        ],
+      ]),
+    );
+    const app = await launchApp({
+      command: APP,
+      env: {
+        UNCUT_DATA_DIR: join(root, "data"),
+        UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]),
+        UNCUT_CLAUDE: FAKE,
+        FAKE_PLAN: plan(),
+        FAKE_PROMPT_LOG: join(root, "prompts.jsonl"),
+        FAKE_RESULT_LOG: join(root, "results.jsonl"),
+        UNCUT_APPROVAL_MS: "60000",
+      },
+    });
+    apps.add(app);
+    const { page } = app;
+    const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
+    try {
+      await waitForWelcome(page);
+      await page.click("[data-testid=new-project]");
+      await waitFor("[data-testid=new-project-form]");
+      await page.click("[data-testid=choose-folder]");
+      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
+      await page.click("[data-testid=create]");
+      await waitFor("[data-testid=agent-panel]");
+      // D214: Auto by default; the menu's three modes, Auto still offering Ask first.
+      assert.equal(await page.$eval("[data-testid=agent-access]", (el) => (el as HTMLElement).dataset.access), "auto");
+      assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Auto");
+      await page.screenshot({ path: resolve("test-output", "auto-mode-composer.png") });
+      await page.click("[data-testid=agent-access]");
+      await waitFor("[data-testid=agent-access-menu]");
+      const options = await page.$$eval("[data-testid=agent-access-option]", (els) =>
+        els.map((el) => [
+          (el as HTMLElement).dataset.access,
+          (el as HTMLElement).innerText.trim().split("\n")[0],
+          (el as HTMLElement).getAttribute("aria-selected"),
+        ]),
+      );
+      assert.deepEqual(options, [
+        ["look", "Look only", "false"],
+        ["ask", "Ask first", "false"],
+        ["auto", "Auto", "true"],
+      ]);
+      const menu = await text(page, "[data-testid=agent-access-menu]");
+      assert.match(menu, /The agent approves routine work itself/);
+      assert.doesNotMatch(menu, /[·*•]|Edit freely/);
+      await page.screenshot({ path: resolve("test-output", "auto-mode-menu.png") });
+      await page.click("[data-testid=agent-access-option][data-access=ask]");
+      assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Ask first");
 
-    await page.click("[data-testid=agent-input]");
-    await page.keyboard.type("Make a 20 s promo for Argent");
-    await page.keyboard.press("Enter");
+      await page.click("[data-testid=agent-input]");
+      await page.keyboard.type("Make a 20 s promo for Argent");
+      await page.keyboard.press("Enter");
 
-    // A plain command: a card with Always for this session.
-    await waitFor("[data-testid=agent-approval][data-kind=permission]");
-    assert.equal(await text(page, "[data-testid=agent-approval] .approval-text"), "Run a command?");
-    assert.equal(await text(page, "[data-testid=agent-permission-target]"), "ls -la media");
-    assert.ok(await page.$("[data-testid=agent-allow-always]"), "Always for this session is offered");
-    await page.screenshot({ path: out("permission-card") });
-    const firstId = await page.$eval("[data-testid=agent-approval]", (el) => (el as HTMLElement).dataset.id);
-    await page.click("[data-testid=agent-allow-always]");
+      // A plain command: a card with Always for this session.
+      await waitFor("[data-testid=agent-approval][data-kind=permission]");
+      assert.equal(await text(page, "[data-testid=agent-approval] .approval-text"), "Run a command?");
+      assert.equal(await text(page, "[data-testid=agent-permission-target]"), "ls -la media");
+      assert.ok(await page.$("[data-testid=agent-allow-always]"), "Always for this session is offered");
+      await page.screenshot({ path: out("permission-card") });
+      const firstId = await page.$eval("[data-testid=agent-approval]", (el) => (el as HTMLElement).dataset.id);
+      await page.click("[data-testid=agent-allow-always]");
 
-    // The same command runs again without a card; the destructive one asks, says why, and can't be remembered.
-    await page.waitForFunction((id) => {
-      const card = document.querySelector<HTMLElement>("[data-testid=agent-approval][data-kind=permission]");
-      return card && card.dataset.id !== id;
-    }, { timeout: 15000 }, firstId);
-    assert.equal(await text(page, "[data-testid=agent-permission-target]"), "rm -rf ~/Desktop/old-renders");
-    assert.match(await text(page, "[data-testid=agent-permission-why]"), /^It deletes .* outside the project\.$/);
-    assert.equal(await page.$("[data-testid=agent-allow-always]"), null, "a destructive command is never remembered");
-    await page.screenshot({ path: out("destructive") });
-    await page.click("[data-testid=agent-decline]");
-    await page.waitForFunction(() => document.querySelector("[data-testid=agent-turn]")?.getAttribute("data-status") === "done", { timeout: 20000 });
+      // The same command runs again without a card; the destructive one asks, says why, and can't be remembered.
+      await page.waitForFunction(
+        (id) => {
+          const card = document.querySelector<HTMLElement>("[data-testid=agent-approval][data-kind=permission]");
+          return card && card.dataset.id !== id;
+        },
+        { timeout: 15000 },
+        firstId,
+      );
+      assert.equal(await text(page, "[data-testid=agent-permission-target]"), "rm -rf ~/Desktop/old-renders");
+      assert.match(await text(page, "[data-testid=agent-permission-why]"), /^It deletes .* outside the project\.$/);
+      assert.equal(await page.$("[data-testid=agent-allow-always]"), null, "a destructive command is never remembered");
+      await page.screenshot({ path: out("destructive") });
+      await page.click("[data-testid=agent-decline]");
+      await page.waitForFunction(() => document.querySelector("[data-testid=agent-turn]")?.getAttribute("data-status") === "done", { timeout: 20000 });
 
-    // The work log: each call with its target; the denied one opened with why; a result opens from its row.
-    await waitFor("[data-testid=agent-worklog-toggle][aria-expanded=true]");
-    // The folded head leads with the denied command, so it shows ✕.
-    assert.ok(await page.$("[data-testid=agent-worklog-toggle] svg.bad"), "the head's icon is ✕ when its last step failed");
-    const steps = await page.$$eval("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step]", (els) => els.map((el) => (el as HTMLElement).innerText.trim()));
-    assert.deepEqual(steps, [
-      'Searched the web for "Argent Software Mansion"',
-      "Read argent.example.dev",
-      `Started a subagent "Find Argent's logo and screenshots"`,
-      "Ran `ls -la media`",
-      "Ran `ls -la media`",
-      "Ran `rm -rf ~/Desktop/old-renders`",
-    ]);
-    assert.match(await text(page, "[data-testid=agent-step-error]"), /said no to "Run a command: rm -rf ~\/Desktop\/old-renders"/);
-    await page.click("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step][data-tool=WebSearch]");
-    await waitFor("[data-testid=agent-step-result]");
-    assert.match(await text(page, "[data-testid=agent-step-result]"), /argent\.example\.dev/);
-    await page.click("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step][data-tool=WebFetch]");
-    await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-step-result]").length === 2);
-    await page.screenshot({ path: out("worklog") });
+      // The work log: each call with its target; the denied one opened with why; a result opens from its row.
+      await waitFor("[data-testid=agent-worklog-toggle][aria-expanded=true]");
+      // The folded head leads with the denied command, so it shows ✕.
+      assert.ok(await page.$("[data-testid=agent-worklog-toggle] svg.bad"), "the head's icon is ✕ when its last step failed");
+      const steps = await page.$$eval("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step]", (els) =>
+        els.map((el) => (el as HTMLElement).innerText.trim()),
+      );
+      assert.deepEqual(steps, [
+        'Searched the web for "Argent Software Mansion"',
+        "Read argent.example.dev",
+        `Started a subagent "Find Argent's logo and screenshots"`,
+        "Ran `ls -la media`",
+        "Ran `ls -la media`",
+        "Ran `rm -rf ~/Desktop/old-renders`",
+      ]);
+      assert.match(await text(page, "[data-testid=agent-step-error]"), /said no to "Run a command: rm -rf ~\/Desktop\/old-renders"/);
+      await page.click("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step][data-tool=WebSearch]");
+      await waitFor("[data-testid=agent-step-result]");
+      assert.match(await text(page, "[data-testid=agent-step-result]"), /argent\.example\.dev/);
+      await page.click("[data-testid=agent-worklog] .worklog-steps [data-testid=agent-step][data-tool=WebFetch]");
+      await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-step-result]").length === 2);
+      await page.screenshot({ path: out("worklog") });
 
-    const decisions = readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((x) => x.builtin);
-    assert.deepEqual(decisions.map((d: any) => [d.builtin, d.decision.behavior]), [["WebSearch", "allow"], ["WebFetch", "allow"], ["Task", "allow"], ["Bash", "allow"], ["Bash", "allow"], ["Bash", "deny"]]);
-  } catch (error) {
-    await page.screenshot({ path: out("failure") }).catch(() => {});
-    throw error;
-  }
-});
+      const decisions = readFileSync(join(root, "results.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+        .filter((x) => x.builtin);
+      assert.deepEqual(
+        decisions.map((d: any) => [d.builtin, d.decision.behavior]),
+        [
+          ["WebSearch", "allow"],
+          ["WebFetch", "allow"],
+          ["Task", "allow"],
+          ["Bash", "allow"],
+          ["Bash", "allow"],
+          ["Bash", "deny"],
+        ],
+      );
+    } catch (error) {
+      await page.screenshot({ path: out("failure") }).catch(() => {});
+      throw error;
+    }
+  },
+);

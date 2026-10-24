@@ -6,7 +6,11 @@ import remarkGfm from "remark-gfm";
 const components: Components = {
   a: ({ href, children }) => {
     const external = typeof href === "string" && /^https?:/.test(href);
-    return <a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}</a>;
+    return (
+      <a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>
+        {children}
+      </a>
+    );
   },
   // The alt text doubles as the caption: one description, written once.
   img: ({ src, alt }) => (
@@ -16,13 +20,16 @@ const components: Components = {
     </figure>
   ),
   // A lone image in a paragraph would put a <figure> inside a <p>; unwrap it.
-  p: ({ node, children }) => (node?.children.length === 1 && node.children[0]?.type === "element" && node.children[0].tagName === "img" ? <>{children}</> : <p>{children}</p>),
+  p: ({ node, children }) =>
+    node?.children.length === 1 && node.children[0]?.type === "element" && node.children[0].tagName === "img" ? <>{children}</> : <p>{children}</p>,
 };
 
 export default function Markdown({ content }: { content: string }) {
   return (
     <div className="prose">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }

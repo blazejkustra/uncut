@@ -50,7 +50,14 @@ const WORDS = [
 ];
 const T: CutTranscript = { words: WORDS, language: "en", seconds: 6 };
 
-const clip = (id: string, inF: number, duration: number, extra: Partial<Item> = {}): Item => ({ id, type: "clip", media: "m-talk", in: inF, duration, ...extra });
+const clip = (id: string, inF: number, duration: number, extra: Partial<Item> = {}): Item => ({
+  id,
+  type: "clip",
+  media: "m-talk",
+  in: inF,
+  duration,
+  ...extra,
+});
 function projectWith(main: ReadonlyArray<Item>, captions?: Partial<Item>): Project {
   const p: Project = {
     format: "uncut/0",
@@ -95,7 +102,10 @@ test("Make captions: a captions item on its own track over the main track, valid
   assert.deepEqual(item.transform, { x: 72, y: 864, w: 1776 }, "lower safe area, spanning the safe width");
   // Refusals.
   assert.match((planMakeCaptions(p, { media: "m-b", transcript: T }) as { problem: string }).problem, /no sound/);
-  assert.match((planMakeCaptions(projectWith([clip("b", 0, 90, { media: "m-b" })]), { media: "m-talk", transcript: T }) as { problem: string }).problem, /isn't on the timeline/);
+  assert.match(
+    (planMakeCaptions(projectWith([clip("b", 0, 90, { media: "m-b" })]), { media: "m-talk", transcript: T }) as { problem: string }).problem,
+    /isn't on the timeline/,
+  );
   assert.match((planMakeCaptions(p, { media: "m-talk", transcript: T, look: "text.nope" }) as { problem: string }).problem, /no text look/);
 });
 
@@ -125,13 +135,29 @@ test("grouping: pauses, sentence ends, characters per line, 1 and 2 lines, max d
 test("card timing: first word's start to last word's end + 0.3 s hold, close cards bridged (no flicker)", () => {
   const main = [clip("clip-1", 0, 180)];
   // Card 1 ends at 90 + 9 = 99; card 2 starts at 120 (1 s later: not bridged).
-  assert.deepEqual(spans(projectWith(main, {})), [[15, 99], [120, 159]]);
+  assert.deepEqual(spans(projectWith(main, {})), [
+    [15, 99],
+    [120, 159],
+  ]);
   // 1-line cards of 10: "Hello um" (15–45) holds until "this is a" (48): bridged.
-  assert.deepEqual(spans(projectWith(main, { lines: { maxChars: 10, maxLines: 1 } })), [[15, 48], [48, 78], [78, 99], [120, 138], [138, 159]], "\"Second part\" is 11 characters");
+  assert.deepEqual(
+    spans(projectWith(main, { lines: { maxChars: 10, maxLines: 1 } })),
+    [
+      [15, 48],
+      [48, 78],
+      [78, 99],
+      [120, 138],
+      [138, 159],
+    ],
+    '"Second part" is 11 characters',
+  );
   // Captions never make the video longer, and the window clips the cards.
   const p = projectWith(main, { duration: 130, coversMain: false });
   assert.equal(layout(p).duration, 180);
-  assert.deepEqual(spans(p), [[15, 99], [120, 130]]);
+  assert.deepEqual(spans(p), [
+    [15, 99],
+    [120, 130],
+  ]);
   assert.equal(projectDuration(projectWith(main, { duration: 9000, coversMain: false })), 180);
   assert.deepEqual(captionExtent(p, capOf(p)), { from: 15, to: 130 });
 });
@@ -141,11 +167,18 @@ test("mapping through cuts: a split, a trim, a transcript_edit removal", () => {
   // A split between "is" and "a" (frame 70): cards are per clip, the timing doesn't move.
   const split = cut(p, [{ op: "split_item", item: "clip-1", at: 70, newId: "clip-2" }]);
   assert.deepEqual(texts(split), ["Hello um this is", "a test.", "Second part"]);
-  assert.deepEqual(spans(split), [[15, 72], [72, 99], [120, 159]]);
+  assert.deepEqual(spans(split), [
+    [15, 72],
+    [72, 99],
+    [120, 159],
+  ]);
   // A trim of the first second: "Hello" goes, the rest moves 30 frames earlier.
   const trimmed = cut(p, [{ op: "trim_item", item: "clip-1", edge: "start", frames: 30 }]);
   assert.deepEqual(texts(trimmed), ["um this is a test.", "Second part"]);
-  assert.deepEqual(spans(trimmed), [[6, 69], [90, 129]]);
+  assert.deepEqual(spans(trimmed), [
+    [6, 69],
+    [90, 129],
+  ]);
   // transcript_edit removes "this is a" (w2–w4): the words vanish, the rest follows the cut.
   const plan = planTextCut(p, "m-talk", T, { remove: [{ from: 2, to: 4 }] });
   assert.ok(!("problem" in plan));
@@ -164,16 +197,25 @@ test("mapping: two clips of the same media, a clip used twice, a clip with a tra
   // Two clips: "Second part" first (in 110), then "Hello um this" (in 0, 62 frames).
   const two = projectWith([clip("a", 110, 70), clip("b", 0, 62)], {});
   assert.deepEqual(texts(two), ["Second part", "Hello um this"]);
-  assert.deepEqual(spans(two), [[10, 49], [85, 132]]);
+  assert.deepEqual(spans(two), [
+    [10, 49],
+    [85, 132],
+  ]);
   // The same stretch twice: the words show twice, each where it plays.
   const twice = projectWith([clip("a", 0, 100), clip("b", 0, 100)], {});
   assert.deepEqual(texts(twice), ["Hello um this is a test.", "Hello um this is a test."]);
-  assert.deepEqual(spans(twice), [[15, 99], [115, 199]]);
+  assert.deepEqual(spans(twice), [
+    [15, 99],
+    [115, 199],
+  ]);
   // A crossfade into the second clip: cards stay on the clips' own frames (no doubles in the
   // overlap); the 11-frame gap between them is bridged.
   const faded = projectWith([clip("a", 0, 100), clip("b", 110, 70, { transitionIn: { module: "transition.crossfade", duration: 10 } })], {});
   assert.deepEqual(texts(faded), ["Hello um this is a test.", "Second part"]);
-  assert.deepEqual(spans(faded), [[15, 110], [110, 149]]);
+  assert.deepEqual(spans(faded), [
+    [15, 110],
+    [110, 149],
+  ]);
   for (let f = 90; f < 110; f++) assert.ok(visualsAt(faded, layout(faded).starts, f).filter((v) => v.item.id === capOf(faded).id).length <= 1);
 });
 
@@ -201,7 +243,10 @@ test("word mode: the speaking word is accented on each frame; single mode shows 
   assert.equal(at(99), undefined);
   assert.equal(at(140.6), "Second [[part]]");
   const card = captionCards(p, item)[0]!;
-  assert.deepEqual([15, 47, 48, 63, 72, 78].map((f) => activeWord(card, f)), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(
+    [15, 47, 48, 63, 72, 78].map((f) => activeWord(card, f)),
+    [0, 1, 2, 3, 4, 5],
+  );
   const single = projectWith([clip("clip-1", 0, 180)], { mode: "single" });
   assert.equal(captionAt(single, capOf(single), 64)!.text, "is");
   // A two-line card in word mode keeps its lines.
@@ -231,11 +276,19 @@ test("bottom-anchored: every card is drawn from the bottom edge of a full card, 
 
 test("corrections, hidden words and breaks: edited in one update, kept through a re-cut and a remake", () => {
   const p = projectWith([clip("clip-1", 0, 180)], {});
-  const edit = planCaptionEdit(p, capOf(p).id, { words: [{ index: 6, text: "Argent" }, { index: 1, text: "" }] });
+  const edit = planCaptionEdit(p, capOf(p).id, {
+    words: [
+      { index: 6, text: "Argent" },
+      { index: 1, text: "" },
+    ],
+  });
   assert.ok(!("problem" in edit));
   assert.equal(edit.summary, "Fix 2 caption words");
   const fixed = cut(p, edit.ops);
-  assert.deepEqual(capOf(fixed).edits, [{ word: 1, text: "" }, { word: 6, text: "Argent" }]);
+  assert.deepEqual(capOf(fixed).edits, [
+    { word: 1, text: "" },
+    { word: 6, text: "Argent" },
+  ]);
   assert.deepEqual(texts(fixed), ["Hello this is a test.", "Argent part"]);
   const brk = planCaptionEdit(fixed, capOf(fixed).id, { breaks: [{ index: 3, on: true }] });
   assert.ok(!("problem" in brk));
@@ -248,7 +301,12 @@ test("corrections, hidden words and breaks: edited in one update, kept through a
   const recut = cut(split, plan.ops);
   assert.deepEqual(texts(recut), ["Hello this", "is a", "Argent part"]);
   // Back to the transcript's word: the correction goes; the same text as the transcript is no edit.
-  const restore = planCaptionEdit(recut, capOf(recut).id, { words: [{ index: 6, text: null }, { index: 2, text: "this" }] });
+  const restore = planCaptionEdit(recut, capOf(recut).id, {
+    words: [
+      { index: 6, text: null },
+      { index: 2, text: "this" },
+    ],
+  });
   assert.ok(!("problem" in restore));
   assert.deepEqual(capOf(cut(recut, restore.ops)).edits, [{ word: 1, text: "" }]);
   // Remaking from the same transcript keeps them and refits the window; a different one drops them.
@@ -309,10 +367,14 @@ test("old projects are unaffected: a captions item without words is valid and dr
   assert.ok(!visualsAt(longform, layout(longform).starts, 100).some((v) => v.item.id === cap.id));
   // A project without captions draws exactly what it drew (no captions code path is taken).
   const plain = projectWith([clip("clip-1", 0, 180)]);
-  assert.deepEqual(visualsAt(plain, layout(plain).starts, 50).map((v) => v.item.id), ["clip-1"]);
+  assert.deepEqual(
+    visualsAt(plain, layout(plain).starts, 50).map((v) => v.item.id),
+    ["clip-1"],
+  );
   // Schema: bad words and settings are refused.
   const p = projectWith([clip("clip-1", 0, 180)], {});
-  const bad = (patch: Partial<Item>) => validateProject({ ...p, tracks: p.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.type === "captions" ? { ...i, ...patch } : i)) })) }, modules);
+  const bad = (patch: Partial<Item>) =>
+    validateProject({ ...p, tracks: p.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.type === "captions" ? { ...i, ...patch } : i)) })) }, modules);
   assert.ok(bad({ lines: { maxLines: 3 } }).length > 0);
   assert.ok(bad({ mode: "karaoke" as never }).length > 0);
   assert.ok(bad({ words: [{ text: "x", start: -1, end: 0 }] }).length > 0);
@@ -333,13 +395,24 @@ test("characters per line follow the canvas: 32 at 16:9, fewer at 4:5 and 9:16 (
   const nineSixteen = autoMaxChars({ style: { preset: "text.caption", size: 86, weight: 600 } }, { canvas: { width: 1080, height: 1920 } });
   assert.ok(fourFive >= 20 && fourFive <= 26, `4:5: ${fourFive}`);
   assert.ok(nineSixteen >= 12 && nineSixteen < fourFive, `9:16: ${nineSixteen}`);
-  assert.ok(autoMaxChars({ style: { preset: "text.caption", size: 61, weight: 600, uppercase: true } }, { canvas: { width: 1080, height: 1350 } }) < fourFive, "capitals are wider");
-  const long: CutTranscript = { words: "Every caption line should fit inside the safe area of a tall canvas without wrapping".split(" ").map((text, i) => ({ text, start: 0.2 + i * 0.25, end: 0.4 + i * 0.25 })), seconds: 6 };
+  assert.ok(
+    autoMaxChars({ style: { preset: "text.caption", size: 61, weight: 600, uppercase: true } }, { canvas: { width: 1080, height: 1350 } }) < fourFive,
+    "capitals are wider",
+  );
+  const long: CutTranscript = {
+    words: "Every caption line should fit inside the safe area of a tall canvas without wrapping"
+      .split(" ")
+      .map((text, i) => ({ text, start: 0.2 + i * 0.25, end: 0.4 + i * 0.25 })),
+    seconds: 6,
+  };
   const p = portrait(1080, 1350, [clip("clip-1", 0, 180)], long);
   const max = autoMaxChars(capOf(p), p);
   for (const c of captionCardList(p, capOf(p))) for (const line of c.text.split(" / ")) assert.ok(line.length <= max, `"${line}" > ${max}`);
   const set = portrait(1080, 1350, [clip("clip-1", 0, 180)], long);
-  const explicit = { ...set, tracks: set.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.type === "captions" ? { ...i, lines: { maxChars: 40 } } : i)) })) };
+  const explicit = {
+    ...set,
+    tracks: set.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.type === "captions" ? { ...i, lines: { maxChars: 40 } } : i)) })),
+  };
   assert.ok(captionCardList(explicit, capOf(explicit)).some((c) => c.text.split(" / ").some((l) => l.length > max)));
 });
 
@@ -349,14 +422,20 @@ test("the hold stays inside the clip when the next clip is other footage; a card
   assert.deepEqual(spans(cutAway), [[15, 92]]);
   // The same media next: the hold may run on past the cut (bridged up to its next card at 102).
   const same = projectWith([clip("clip-1", 0, 92), clip("clip-2", 110, 70)], {});
-  assert.deepEqual(spans(same), [[15, 102], [102, 141]]);
+  assert.deepEqual(spans(same), [
+    [15, 102],
+    [102, 141],
+  ]);
   // One short word alone (pause 0.1 s: every word its own card) still shows 0.7 s when there's room.
   const short = projectWith([clip("clip-1", 0, 180)], { lines: { pause: 0.1 } });
   const cards = captionCards(short, capOf(short));
   assert.deepEqual([cards.at(-1)!.from, cards.at(-1)!.to], [138, 159]);
   const one = captionCards(short, capOf(short)).find((c) => c.words[0]!.index === 4)!;
-  assert.deepEqual([one.from, one.to], [72, 78], "\"a\" (72–75) holds to the next card");
-  const abbrev: CutTranscript = { words: ["I", "met", "Dr.", "Smith", "today.", "Then", "home."].map((text, i) => ({ text, start: 0.5 + i * 0.3, end: 0.7 + i * 0.3 })), seconds: 6 };
+  assert.deepEqual([one.from, one.to], [72, 78], '"a" (72–75) holds to the next card');
+  const abbrev: CutTranscript = {
+    words: ["I", "met", "Dr.", "Smith", "today.", "Then", "home."].map((text, i) => ({ text, start: 0.5 + i * 0.3, end: 0.7 + i * 0.3 })),
+    seconds: 6,
+  };
   const p = portrait(1920, 1080, [clip("clip-1", 0, 180)], abbrev);
   assert.deepEqual(texts(p), ["I met Dr. Smith today.", "Then home."]);
 });
@@ -377,14 +456,26 @@ test("segments: one look per card (line) or speaking word, equal to captionAt on
     for (const s of segs) for (let f = s.from; f < s.to; f++) assert.deepEqual(captionAt(p, item, f), s.text, `${mode} ${f}`);
     let covered = 0;
     for (let f = 0; f < 180; f++) if (captionAt(p, item, f)) covered++;
-    assert.equal(segs.reduce((n, s) => n + s.to - s.from, 0), covered);
+    assert.equal(
+      segs.reduce((n, s) => n + s.to - s.from, 0),
+      covered,
+    );
   }
 });
 
 test("planners keep to the schema's bounds; restore labels; an empty Captions track is reused; a remake says how many fixes it dropped", () => {
   const p = projectWith([clip("clip-1", 0, 180)], {});
   const id = capOf(p).id;
-  for (const lines of [{ maxChars: 3 }, { maxChars: 10.5 }, { maxLines: 3 }, { maxSeconds: 0 }, { maxSeconds: 31 }, { pause: 11 }, { maxWords: 0 }, { colour: 1 }]) {
+  for (const lines of [
+    { maxChars: 3 },
+    { maxChars: 10.5 },
+    { maxLines: 3 },
+    { maxSeconds: 0 },
+    { maxSeconds: 31 },
+    { pause: 11 },
+    { maxWords: 0 },
+    { colour: 1 },
+  ]) {
     assert.ok("problem" in planCaptionEdit(p, id, { lines: lines as never }), JSON.stringify(lines));
     assert.ok("problem" in planMakeCaptions(p, { media: "m-talk", transcript: T, lines: lines as never }), JSON.stringify(lines));
   }
@@ -399,7 +490,10 @@ test("planners keep to the schema's bounds; restore labels; an empty Captions tr
   const gone = cut(fixed, [{ op: "delete_item", item: id }]);
   const again = planMakeCaptions(gone, { media: "m-talk", transcript: T });
   assert.ok(!("problem" in again));
-  assert.deepEqual(again.ops.map((o) => o.op), ["insert_item"]);
+  assert.deepEqual(
+    again.ops.map((o) => o.op),
+    ["insert_item"],
+  );
   assert.deepEqual(validateProject(cut(gone, again.ops), modules), []);
 });
 
@@ -407,7 +501,11 @@ test("editWords: 9000 words under 3000 clips in well under a pointer move's budg
   const sized = (n: number) => {
     const words = Array.from({ length: 3 * n }, (_, i) => ({ text: `w${i}`, start: i * 0.4, end: i * 0.4 + 0.3 }));
     const main = Array.from({ length: n }, (_, k) => clip(`c${k}`, k * 36, 30));
-    const project: Project = { ...projectWith([]), media: [{ id: "m-talk", kind: "video", name: "T", path: "/tmp/T.mp4", probe: { frames: 200000, fps: 30, hasAudio: true } }], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: main }] };
+    const project: Project = {
+      ...projectWith([]),
+      media: [{ id: "m-talk", kind: "video", name: "T", path: "/tmp/T.mp4", probe: { frames: 200000, fps: 30, hasAudio: true } }],
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: main }],
+    };
     return { project, transcripts: new Map([["m-talk", words]]) };
   };
   // #89: the fastest of several runs (a busy machine only ever adds time), and the cost of 10× the
@@ -433,7 +531,7 @@ test("editWords: 9000 words under 3000 clips in well under a pointer move's budg
   // Linear is ~10×, quadratic ~100×; below a millisecond the small run is mostly timer noise.
   assert.ok(ms < 30 * Math.max(small, 0.5), `10× the words and clips cost ${(ms / small).toFixed(0)}× (${small.toFixed(2)} → ${ms.toFixed(1)} ms)`);
   // Same answer as the plain scan for words out of order (the fallback).
-  const shuffled = [...words.slice(0, 50)].reverse();
+  const shuffled = words.slice(0, 50).reverse();
   const q: Project = { ...p, tracks: [{ ...p.tracks[0]!, items: [clip("c0", 0, 300)] }] };
   assert.equal(editWords(q, new Map([["m-talk", shuffled]])).length, 25);
 });

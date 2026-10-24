@@ -28,7 +28,9 @@ export class PhaseCorrelator {
     this.w = w;
     this.h = h;
     this.window = new Float64Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) this.window[y * w + x] = (0.5 - 0.5 * Math.cos((2 * Math.PI * (x + 0.5)) / w)) * (0.5 - 0.5 * Math.cos((2 * Math.PI * (y + 0.5)) / h));
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        this.window[y * w + x] = (0.5 - 0.5 * Math.cos((2 * Math.PI * (x + 0.5)) / w)) * (0.5 - 0.5 * Math.cos((2 * Math.PI * (y + 0.5)) / h));
     [this.cosW, this.sinW] = fftTables(w);
     [this.cosH, this.sinH] = fftTables(h);
     this.re = new Float64Array(w * h);

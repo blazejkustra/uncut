@@ -14,7 +14,13 @@ import { ALL_DOCS } from "../../apps/server/src/agent/agentDocs.ts";
 
 const target = { canvas: { width: 1920, height: 1080 }, mediaUrl: (id: string) => (id === "m-logo" ? "data:image/svg+xml;base64,PHN2Zy8+" : undefined) };
 const IDS = ["component.follow-card", "component.steps"];
-const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 300): Item => ({ id: "e1", type: "component", component, duration, props });
+const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 300): Item => ({
+  id: "e1",
+  type: "component",
+  component,
+  duration,
+  props,
+});
 const html = (i: Item, local: number) => componentHtml(i, target, local, { fps: 30 });
 
 test("both are drawn, no longer listed as not drawn, in the Elements sections, in the agent's docs", () => {
@@ -84,8 +90,15 @@ test("steps: one after another, earlier ones dim, the line grows; plain strings 
   assert.deepEqual(shown(30), [1, 0, 0]);
   assert.deepEqual(shown(60), [1, 1, 0]);
   assert.deepEqual(shown(200), [1, 1, 1]);
-  assert.deepEqual(stepsAt(props, 200, 30).rows.map((r) => r.dimmed), [1, 1, 0], "the last one stands out");
-  assert.deepEqual(stepsAt({ ...props, focus: false }, 200, 30).rows.map((r) => r.dimmed), [0, 0, 0]);
+  assert.deepEqual(
+    stepsAt(props, 200, 30).rows.map((r) => r.dimmed),
+    [1, 1, 0],
+    "the last one stands out",
+  );
+  assert.deepEqual(
+    stepsAt({ ...props, focus: false }, 200, 30).rows.map((r) => r.dimmed),
+    [0, 0, 0],
+  );
   assert.equal(stepsAt(props, 30, 30).line, 0);
   assert.equal(stepsAt(props, 200, 30).line, 2);
   const out = html(item("component.steps", { ...componentDefaults("component.steps"), ...props }), 50);

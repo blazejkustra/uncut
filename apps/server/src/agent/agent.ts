@@ -15,7 +15,24 @@
 // left alone and turns are refused until it can be.
 import { rm } from "node:fs/promises";
 
-import { AgentError, type AgentAccess, type AgentEffort, type AgentProvider, type AgentImage, type AgentMention, type AgentState, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type IntendedFinding, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import {
+  AgentError,
+  type AgentAccess,
+  type AgentEffort,
+  type AgentProvider,
+  type AgentImage,
+  type AgentMention,
+  type AgentState,
+  type AgentPlan,
+  type AgentAnswer,
+  type StoryboardBeat,
+  type Storyboard,
+  type Brief,
+  type IntendedFinding,
+  type EditRefused,
+  type ProjectError,
+  type ProjectSnapshot,
+} from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -84,7 +101,9 @@ export function withBareNote<T extends McpResult>(r: { bareCalls?: Array<string>
 }
 
 export interface McpResult {
-  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "image"; readonly data: string; readonly mimeType: string }>;
+  readonly content: ReadonlyArray<
+    { readonly type: "text"; readonly text: string } | { readonly type: "image"; readonly data: string; readonly mimeType: string }
+  >;
   readonly isError?: boolean;
 }
 
@@ -108,9 +127,18 @@ export interface AgentShape {
   /** The user's answer to the running turn's approval card (D99). */
   readonly approve: (id: string, allow: boolean, source?: string, extra?: CardAnswer) => Effect.Effect<{ readonly accepted: boolean }>;
   /** D188: the user's own edit of the brief or the storyboard. */
-  readonly planSave: (input: { readonly brief?: Brief | undefined; readonly storyboard?: Storyboard | undefined; readonly intended?: ReadonlyArray<IntendedFinding> | undefined }) => Effect.Effect<AgentPlan, AgentError>;
+  readonly planSave: (input: {
+    readonly brief?: Brief | undefined;
+    readonly storyboard?: Storyboard | undefined;
+    readonly intended?: ReadonlyArray<IntendedFinding> | undefined;
+  }) => Effect.Effect<AgentPlan, AgentError>;
   /** D144: the renderer's answer to an allowed screen_record (the uploaded take, or what went wrong). */
-  readonly screenTake: (answer: { readonly id: string; readonly path?: string | undefined; readonly source?: string | undefined; readonly problem?: string | undefined }) => Effect.Effect<void>;
+  readonly screenTake: (answer: {
+    readonly id: string;
+    readonly path?: string | undefined;
+    readonly source?: string | undefined;
+    readonly problem?: string | undefined;
+  }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */
   readonly restoreCleanup: (turnId: string) => Effect.Effect<{ readonly restored: ReadonlyArray<string> }, AgentError>;
@@ -173,11 +201,37 @@ export const layer = Layer.effect(
     const testRun = isTestRun(process.env, config.keysFd);
     const approvalMs = () => (testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? Number(process.env.UNCUT_APPROVAL_MS) : APPROVAL_MS);
     // D144: allowed screen_record calls waiting for the renderer's take, by card id.
-    const screenWaits = new Map<string, { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }>();
+    const screenWaits = new Map<
+      string,
+      { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }
+    >();
 
     const view = () => Effect.runSync(projects.view);
 
-    const services: AgentServices = { projects, format, exporter, media, mediaCore, analysis, config, plugins, generator, keys, capture, sounds, mediaIndex, bridgeUrl, stateRef, loadLock, st, sessions, testRun, approvalMs, screenWaits, view };
+    const services: AgentServices = {
+      projects,
+      format,
+      exporter,
+      media,
+      mediaCore,
+      analysis,
+      config,
+      plugins,
+      generator,
+      keys,
+      capture,
+      sounds,
+      mediaIndex,
+      bridgeUrl,
+      stateRef,
+      loadLock,
+      st,
+      sessions,
+      testRun,
+      approvalMs,
+      screenWaits,
+      view,
+    };
     const core = { ...services, ...makeCore(services) };
     const { ensureLoaded, trackPending, publish, killRunning, persist, stop, sessionTokenOk, tokenOk, closeSession } = core;
 
@@ -260,7 +314,9 @@ export const layer = Layer.effect(
           const v = view();
           if (path && v) {
             const mediaPaths = v.session.project.media.map((m) => m.path);
-            void uploadedTake(path, v.dir, mediaPaths).then((found) => ("file" in found ? rm(found.file, { force: true }) : undefined)).catch(() => {});
+            void uploadedTake(path, v.dir, mediaPaths)
+              .then((found) => ("file" in found ? rm(found.file, { force: true }) : undefined))
+              .catch(() => {});
           }
         }),
       undoTurn: (turnId) =>

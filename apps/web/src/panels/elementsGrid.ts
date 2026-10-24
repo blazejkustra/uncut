@@ -6,7 +6,13 @@
 import { useSyncExternalStore } from "react";
 
 const KEY = "uncut.elements.hidden";
-export const HIDDEN_BY_DEFAULT: ReadonlyArray<string> = ["component.agent-log", "component.compare-table", "component.device-frame", "component.terminal", "component.code-block"];
+export const HIDDEN_BY_DEFAULT: ReadonlyArray<string> = [
+  "component.agent-log",
+  "component.compare-table",
+  "component.device-frame",
+  "component.terminal",
+  "component.code-block",
+];
 
 const read = (): ReadonlyArray<string> => {
   try {
@@ -29,6 +35,10 @@ const save = (next: ReadonlyArray<string>) => {
   for (const l of listeners) l();
 };
 
-export const useHiddenElements = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => hidden);
+export const useHiddenElements = () =>
+  useSyncExternalStore(
+    (l) => (listeners.add(l), () => void listeners.delete(l)),
+    () => hidden,
+  );
 export const hideElement = (id: string) => !hidden.includes(id) && save([...hidden, id]);
 export const showElement = (id: string) => hidden.includes(id) && save(hidden.filter((h) => h !== id));

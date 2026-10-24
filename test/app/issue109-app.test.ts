@@ -38,8 +38,29 @@ const project = (media: string): Project => ({
   canvas: { width: 1280, height: 720, fps: 30 },
   media: [{ id: "m-logo", kind: "image", name: "Logo.svg", path: join(media, "Logo.svg"), probe: { width: 100, height: 100 } }],
   tracks: [
-    { id: "cards", kind: "video", name: "Cards", items: [{ id: "card", type: "component", component: "component.follow-card", start: 0, duration: 120, props: { handle: "@blazejkustra", title: "Follow for more", button: "Follow", platform: "youtube", logo: { media: "m-logo" } }, transform: { x: 40, y: 440, w: 640, h: 185 } } as Item] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 120, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }] },
+    {
+      id: "cards",
+      kind: "video",
+      name: "Cards",
+      items: [
+        {
+          id: "card",
+          type: "component",
+          component: "component.follow-card",
+          start: 0,
+          duration: 120,
+          props: { handle: "@blazejkustra", title: "Follow for more", button: "Follow", platform: "youtube", logo: { media: "m-logo" } },
+          transform: { x: 40, y: 440, w: 640, h: 185 },
+        } as Item,
+      ],
+    },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "bg", type: "component", component: "component.solid", duration: 120, props: { color: "#1F3A5F", to: "#5F2F4A", angle: 135 } }],
+    },
   ],
 });
 
@@ -47,7 +68,12 @@ const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"),
 const items = () => onDisk().tracks.flatMap((t) => t.items);
 const item = (id: string): Item | undefined => items().find((i) => i.id === id);
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0]) => {
   await page.keyboard.down("Meta");
   await page.keyboard.press(key);
@@ -74,7 +100,11 @@ async function goTo(frame: number) {
   await sleep(300);
 }
 const ssim = (a: string, b: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 async function screenshotSpace(): Promise<"srgb" | "p3"> {
@@ -94,7 +124,16 @@ async function screenshotSpace(): Promise<"srgb" | "p3"> {
 }
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 
@@ -117,7 +156,10 @@ after(async () => {
 
 test("issue 109: Follow card and Steps in Elements, drawn, edited in the Inspector; preview = export", { skip, timeout: 300000 }, async () => {
   const saveAs = join(root, "out", "Cards.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -126,10 +168,14 @@ test("issue 109: Follow card and Steps in Elements, drawn, edited in the Inspect
   // The Elements tab: the follow card under Social, the steps under Info, both drawn as their tiles.
   await page.click("[data-testid=rail-elements]");
   await page.waitForSelector("[data-testid=elements-category]");
-  const inSection = (cat: string) => page.$$eval(`[data-testid=elements-category][data-category="${cat}"] [data-testid=component-tile]`, (els) => els.map((e) => (e as HTMLElement).dataset.component));
+  const inSection = (cat: string) =>
+    page.$$eval(`[data-testid=elements-category][data-category="${cat}"] [data-testid=component-tile]`, (els) =>
+      els.map((e) => (e as HTMLElement).dataset.component),
+    );
   assert.ok((await inSection("Social")).includes("component.follow-card"));
   assert.ok((await inSection("Info")).includes("component.steps"));
-  for (const id of ["component.follow-card", "component.steps"]) assert.ok(await page.$(`[data-testid=component-tile][data-component="${id}"] [data-testid=component-thumb] .pv-comp`), `${id}: its real drawing`);
+  for (const id of ["component.follow-card", "component.steps"])
+    assert.ok(await page.$(`[data-testid=component-tile][data-component="${id}"] [data-testid=component-thumb] .pv-comp`), `${id}: its real drawing`);
   await page.select("[data-testid=elements-section]", "Social");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=elements-category]").length === 1);
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue109-social.png") });

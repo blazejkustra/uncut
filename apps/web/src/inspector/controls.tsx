@@ -20,7 +20,21 @@ import { Tooltip } from "../ui/Tooltip.tsx";
  * `remember` (a section name, F17) its open state is this Mac's (inspector/sections.ts) and a closed
  * one keeps its controls mounted, hidden (their values stay readable).
  */
-export function Section({ title, testId, action, children, open: initial = true, remember }: { title: string; testId?: string; action?: ReactNode; children?: ReactNode; open?: boolean; remember?: string }) {
+export function Section({
+  title,
+  testId,
+  action,
+  children,
+  open: initial = true,
+  remember,
+}: {
+  title: string;
+  testId?: string;
+  action?: ReactNode;
+  children?: ReactNode;
+  open?: boolean;
+  remember?: string;
+}) {
   const [local, setLocal] = useState(initial);
   const saved = useSectionOpen(remember ?? "");
   const open = remember ? saved : local;
@@ -34,7 +48,13 @@ export function Section({ title, testId, action, children, open: initial = true,
         </button>
         {action && <div className="psec-actions">{action}</div>}
       </div>
-      {remember ? children && <div className="psec-body" hidden={!open}>{children}</div> : open && children && <div className="psec-body">{children}</div>}
+      {remember
+        ? children && (
+            <div className="psec-body" hidden={!open}>
+              {children}
+            </div>
+          )
+        : open && children && <div className="psec-body">{children}</div>}
     </section>
   );
 }
@@ -69,7 +89,35 @@ const roundTo = (v: number, step: number) => {
  * dragging its label left and right (previewed while dragging, one commit on release). `unit`
  * shows after the value. An empty field commits undefined (the default) when `clearable`.
  */
-export function NumInput({ value, onCommit, onPreview, testId, label, unit, step = 1, min, max, placeholder, disabled, clearable, title }: { value: number | undefined; onCommit: (v: number | undefined) => void; onPreview?: (v: number) => void; testId: string; label?: ReactNode; unit?: string; step?: number; min?: number; max?: number; placeholder?: string; disabled?: boolean; clearable?: boolean; title?: string }) {
+export function NumInput({
+  value,
+  onCommit,
+  onPreview,
+  testId,
+  label,
+  unit,
+  step = 1,
+  min,
+  max,
+  placeholder,
+  disabled,
+  clearable,
+  title,
+}: {
+  value: number | undefined;
+  onCommit: (v: number | undefined) => void;
+  onPreview?: (v: number) => void;
+  testId: string;
+  label?: ReactNode;
+  unit?: string;
+  step?: number;
+  min?: number;
+  max?: number;
+  placeholder?: string;
+  disabled?: boolean;
+  clearable?: boolean;
+  title?: string;
+}) {
   const shown = value === undefined ? "" : String(Math.round(value * 1000) / 1000);
   const [text, setText] = useState(shown);
   const editing = useRef(false);
@@ -155,7 +203,29 @@ export function NumInput({ value, onCommit, onPreview, testId, label, unit, step
 }
 
 /** A slider with its number: the slider previews while it moves and commits once on release. */
-export function SliderNum({ value, min, max, step = 1, unit, testId, disabled, onPreview, onCommit, sliderMax }: { value: number; min: number; max: number; step?: number; unit?: string; testId: string; disabled?: boolean; onPreview: (v: number) => void; onCommit: (v: number) => void; sliderMax?: number }) {
+export function SliderNum({
+  value,
+  min,
+  max,
+  step = 1,
+  unit,
+  testId,
+  disabled,
+  onPreview,
+  onCommit,
+  sliderMax,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  testId: string;
+  disabled?: boolean;
+  onPreview: (v: number) => void;
+  onCommit: (v: number) => void;
+  sliderMax?: number;
+}) {
   const [local, setLocal] = useState<number | undefined>(undefined);
   const top = sliderMax ?? max;
   const finish = (el: HTMLInputElement) => {
@@ -184,18 +254,51 @@ export function SliderNum({ value, min, max, step = 1, unit, testId, disabled, o
         onKeyUp={(e) => finish(e.currentTarget)}
         onBlur={(e) => finish(e.currentTarget)}
       />
-      <NumInput testId={testId} value={local ?? value} unit={unit} step={step} min={min} max={max} disabled={disabled} onPreview={onPreview} onCommit={(v) => v !== undefined && onCommit(v)} />
+      <NumInput
+        testId={testId}
+        value={local ?? value}
+        unit={unit}
+        step={step}
+        min={min}
+        max={max}
+        disabled={disabled}
+        onPreview={onPreview}
+        onCommit={(v) => v !== undefined && onCommit(v)}
+      />
     </div>
   );
 }
 
 /** A segmented choice: icons or short words, one active. */
-export function Segmented<T extends string>({ options, value, onChange, testId, disabled, attr = "value" }: { options: ReadonlyArray<readonly [T, ReactNode, string?]>; value: T | undefined; onChange: (v: T) => void; testId: string; disabled?: boolean; attr?: string }) {
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  testId,
+  disabled,
+  attr = "value",
+}: {
+  options: ReadonlyArray<readonly [T, ReactNode, string?]>;
+  value: T | undefined;
+  onChange: (v: T) => void;
+  testId: string;
+  disabled?: boolean;
+  attr?: string;
+}) {
   return (
     <div className="pseg" role="group">
       {options.map(([v, content, title]) => {
         const button = (
-          <button key={v} className={value === v ? "active" : ""} data-testid={testId} {...{ [`data-${attr}`]: v }} aria-label={title} aria-pressed={value === v} disabled={disabled} onClick={() => value !== v && onChange(v)}>
+          <button
+            key={v}
+            className={value === v ? "active" : ""}
+            data-testid={testId}
+            {...{ [`data-${attr}`]: v }}
+            aria-label={title}
+            aria-pressed={value === v}
+            disabled={disabled}
+            onClick={() => value !== v && onChange(v)}
+          >
             {content}
           </button>
         );
@@ -216,7 +319,21 @@ export function Segmented<T extends string>({ options, value, onChange, testId, 
  * `align` "end" (the default) lines its right edge up with the anchor's; "start" its left edge, for an anchor near the window's left
  * (the left panel: growing leftwards would cover the rail, D263). Either way it stays inside the window.
  */
-export function Popover({ anchor, onClose, children, testId, width = 240, align = "end" }: { anchor: HTMLElement | null; onClose: () => void; children: ReactNode; testId?: string; width?: number; align?: "start" | "end" }) {
+export function Popover({
+  anchor,
+  onClose,
+  children,
+  testId,
+  width = 240,
+  align = "end",
+}: {
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  children: ReactNode;
+  testId?: string;
+  width?: number;
+  align?: "start" | "end";
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ left: number; top: number } | undefined>(undefined);
   useLayoutEffect(() => {
@@ -264,7 +381,9 @@ export function joinColor(project: ProjectModel, base: string, alpha: number): s
   if (alpha >= 1) return base;
   const hex = resolveColor(project, base, "#FFFFFF");
   const six = HEX6.test(hex) ? hex : "#FFFFFF";
-  return `${six}${Math.round(Math.max(0, alpha) * 255).toString(16).padStart(2, "0")}`.toUpperCase();
+  return `${six}${Math.round(Math.max(0, alpha) * 255)
+    .toString(16)
+    .padStart(2, "0")}`.toUpperCase();
 }
 
 /**
@@ -274,7 +393,25 @@ export function joinColor(project: ProjectModel, base: string, alpha: number): s
  * onPick(color, final): final false while the system picker streams (the caller drafts it and
  * commits once it settles); a swatch, the hex and the opacity commit at once.
  */
-export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testId, disabled, alpha, noAlpha }: { project: ProjectModel; value: string | undefined; fallback?: string; onPick: (color: string, final: boolean) => void; testId: string; disabled?: boolean; alpha?: { value: number; onCommit: (v: number) => void }; noAlpha?: boolean }) {
+export function ColorField({
+  project,
+  value,
+  fallback = "#FFFFFF",
+  onPick,
+  testId,
+  disabled,
+  alpha,
+  noAlpha,
+}: {
+  project: ProjectModel;
+  value: string | undefined;
+  fallback?: string;
+  onPick: (color: string, final: boolean) => void;
+  testId: string;
+  disabled?: boolean;
+  alpha?: { value: number; onCommit: (v: number) => void };
+  noAlpha?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const own = splitColor(value);
@@ -288,14 +425,30 @@ export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testI
   const commitText = () => {
     const t = text.trim();
     const token = Object.prototype.hasOwnProperty.call(project.theme?.colors ?? {}, t) || ["fg", "bg", "mute", "accent"].includes(t);
-    const norm = /^#?[0-9a-f]{6}$/i.test(t) ? `#${t.replace("#", "").toUpperCase()}` : /^#?[0-9a-f]{3}$/i.test(t) ? `#${[...t.replace("#", "")].map((c) => c + c).join("").toUpperCase()}` : token ? t : undefined;
+    const norm = /^#?[0-9a-f]{6}$/i.test(t)
+      ? `#${t.replace("#", "").toUpperCase()}`
+      : /^#?[0-9a-f]{3}$/i.test(t)
+        ? `#${[...t.replace("#", "")]
+            .map((c) => c + c)
+            .join("")
+            .toUpperCase()}`
+        : token
+          ? t
+          : undefined;
     if (!norm) return setText(base);
     if (norm !== base) pickBase(norm, true);
   };
   return (
     <div className="cfield">
       <Tooltip label={base}>
-        <button ref={anchor} className="cfield-swatch" data-testid={`${testId}-swatch`} disabled={disabled} style={{ ["--c" as string]: css, ["--a" as string]: String(a) }} onClick={() => setOpen(!open)} />
+        <button
+          ref={anchor}
+          className="cfield-swatch"
+          data-testid={`${testId}-swatch`}
+          disabled={disabled}
+          style={{ ["--c" as string]: css, ["--a" as string]: String(a) }}
+          onClick={() => setOpen(!open)}
+        />
       </Tooltip>
       <input
         className="cfield-hex"
@@ -335,12 +488,25 @@ export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testI
           <div className="ppop-swatches">
             {swatches(project).map((s) => (
               <Tooltip key={s.value} label={s.label}>
-                <button className={`swatch ${base === s.value ? "active" : ""}`} data-testid={testId} data-color={s.value} disabled={disabled} style={{ background: s.css }} onClick={() => pickBase(s.value, true)} />
+                <button
+                  className={`swatch ${base === s.value ? "active" : ""}`}
+                  data-testid={testId}
+                  data-color={s.value}
+                  disabled={disabled}
+                  style={{ background: s.css }}
+                  onClick={() => pickBase(s.value, true)}
+                />
               </Tooltip>
             ))}
             <Tooltip label="Custom colour">
               <label className="swatch custom">
-                <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => pickBase(e.target.value.toUpperCase(), false)} />
+                <input
+                  type="color"
+                  data-testid={`${testId}-custom`}
+                  value={hex}
+                  disabled={disabled}
+                  onChange={(e) => pickBase(e.target.value.toUpperCase(), false)}
+                />
               </label>
             </Tooltip>
           </div>
@@ -351,7 +517,9 @@ export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testI
 }
 
 /** A ColorField that commits a streaming system-picker colour once it settles (the caller just commits). */
-export function SettledColorField(props: Omit<Parameters<typeof ColorField>[0], "onPick"> & { onPreview?: (color: string) => void; onCommit: (color: string) => void }) {
+export function SettledColorField(
+  props: Omit<Parameters<typeof ColorField>[0], "onPick"> & { onPreview?: (color: string) => void; onCommit: (color: string) => void },
+) {
   const settle = useSettle(400);
   const { onPreview, onCommit, ...rest } = props;
   return (
@@ -367,9 +535,29 @@ export function SettledColorField(props: Omit<Parameters<typeof ColorField>[0], 
 }
 
 /** An on/off switch. */
-export function Toggle({ value, onChange, testId, disabled, label }: { value: boolean; onChange: (v: boolean) => void; testId: string; disabled?: boolean; label?: string }) {
+export function Toggle({
+  value,
+  onChange,
+  testId,
+  disabled,
+  label,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  testId: string;
+  disabled?: boolean;
+  label?: string;
+}) {
   return (
-    <button className={`ptoggle ${value ? "on" : ""}`} role="switch" aria-checked={value} aria-label={label} data-testid={testId} disabled={disabled} onClick={() => onChange(!value)}>
+    <button
+      className={`ptoggle ${value ? "on" : ""}`}
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
+      data-testid={testId}
+      disabled={disabled}
+      onClick={() => onChange(!value)}
+    >
       <span />
     </button>
   );

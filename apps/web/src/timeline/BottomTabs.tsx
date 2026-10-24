@@ -9,7 +9,12 @@ export function BottomTabs() {
       <button className={bottom === "timeline" ? "active" : ""} data-testid="bottom-timeline" onClick={() => playback.setBottom("timeline")}>
         Timeline
       </button>
-      <button className={bottom === "mixer" ? "active" : ""} data-testid="bottom-mixer" title="Volume, pan, effects, ducking, mute and solo per track; the master volume, limiter and loudness target; live meters" onClick={() => playback.setBottom("mixer")}>
+      <button
+        className={bottom === "mixer" ? "active" : ""}
+        data-testid="bottom-mixer"
+        title="Volume, pan, effects, ducking, mute and solo per track; the master volume, limiter and loudness target; live meters"
+        onClick={() => playback.setBottom("mixer")}
+      >
         Mixer
       </button>
     </div>

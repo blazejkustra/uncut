@@ -40,14 +40,26 @@ export function CutMarkers({
         const isSel = selectedCut === cut.item.id;
         // What a drop here would do: the planner's checks (locks on either clip, the cut's limits).
         const seconds = transitionSeconds();
-        const fit = transitionDragged ? planSetTransition(view, cut.item.id, { module: transitionDragged, ...(seconds ? { duration: Math.round(seconds * fps) } : {}) }) : undefined;
+        const fit = transitionDragged
+          ? planSetTransition(view, cut.item.id, { module: transitionDragged, ...(seconds ? { duration: Math.round(seconds * fps) } : {}) })
+          : undefined;
         const dropState = fit ? ("problem" in fit ? "invalid" : "valid") : undefined;
         const target = transitionDragged && dropCut === cut.item.id;
         // F16 (D154): the transition as it would land, straddling the cut, at the length it would get.
-        const landing = target && fit && !("problem" in fit) ? (fit.ops[0] as { transition?: { duration: number } } | undefined)?.transition?.duration ?? cut.item.transitionIn?.duration : undefined;
+        const landing =
+          target && fit && !("problem" in fit)
+            ? ((fit.ops[0] as { transition?: { duration: number } } | undefined)?.transition?.duration ?? cut.item.transitionIn?.duration)
+            : undefined;
         const ghost =
           landing !== undefined ? (
-            <div key={`ghost-${cut.item.id}`} className="tr-ghost" data-testid="transition-drop-ghost" data-item={cut.item.id} data-duration={landing} style={{ left: cut.frame * ppf - Math.max(landing * ppf, 14) / 2, width: Math.max(landing * ppf, 14) }} />
+            <div
+              key={`ghost-${cut.item.id}`}
+              className="tr-ghost"
+              data-testid="transition-drop-ghost"
+              data-item={cut.item.id}
+              data-duration={landing}
+              style={{ left: cut.frame * ppf - Math.max(landing * ppf, 14) / 2, width: Math.max(landing * ppf, 14) }}
+            />
           ) : null;
         if (!tr) {
           return [

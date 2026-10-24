@@ -27,10 +27,22 @@ let page: Page;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `fable2-${name}.png`);
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
-type Saved = { id: string; type: string; component?: string; mode?: string; name?: string; props?: Record<string, unknown>; style?: Record<string, unknown>; animation?: Record<string, { module: string; duration: number; params?: Record<string, unknown> }> };
+type Saved = {
+  id: string;
+  type: string;
+  component?: string;
+  mode?: string;
+  name?: string;
+  props?: Record<string, unknown>;
+  style?: Record<string, unknown>;
+  animation?: Record<string, { module: string; duration: number; params?: Record<string, unknown> }>;
+};
 type SavedProject = { tracks: Array<{ id: string; items: Array<Saved> }> };
 const onDisk = (): SavedProject => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const itemOnDisk = (id: string) => onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === id);
+const itemOnDisk = (id: string) =>
+  onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.id === id);
 const items = () => onDisk().tracks.flatMap((t) => t.items);
 const until = async (check: () => boolean, what: string, timeout = 10000) => {
   const t0 = Date.now();
@@ -46,7 +58,11 @@ const item = (id: string) => `[data-testid=timeline-item][data-item="${id}"]`;
 const seek = async (frame: number) => {
   const ruler = await rect("[data-testid=ruler]");
   await page.mouse.click(await xOf(frame), ruler.top + ruler.height - 6);
-  await page.waitForFunction((f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1, { timeout: 5000 }, frame);
+  await page.waitForFunction(
+    (f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1,
+    { timeout: 5000 },
+    frame,
+  );
 };
 const rail = (id: string) => page.$eval(`[data-testid=rail-${id}]`, (el) => (el as HTMLElement).click());
 const select = async (selector: string, value: string) => {
@@ -70,7 +86,28 @@ before(async () => {
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-fable2-text-")));
   const lavfi = (args: Array<string>, file: string) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args, join(root, file)]);
-  lavfi(["-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"], "Talk.mp4");
+  lavfi(
+    [
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc=size=640x360:rate=30",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000",
+      "-t",
+      "6",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+    ],
+    "Talk.mp4",
+  );
   lavfi(["-f", "lavfi", "-i", "testsrc2=size=600x400", "-frames:v", "1"], "Photo.png");
   dir = join(root, "Text.uncut");
   mkdirSync(dir);
@@ -82,13 +119,67 @@ before(async () => {
       canvas: { width: 1920, height: 1080, fps: 30 },
       textLooks: 1,
       media: [
-        { id: "m-talk", kind: "video", name: "Talk.mp4", path: join(root, "Talk.mp4"), probe: { frames: 180, fps: 30, width: 640, height: 360, hasAudio: true } },
+        {
+          id: "m-talk",
+          kind: "video",
+          name: "Talk.mp4",
+          path: join(root, "Talk.mp4"),
+          probe: { frames: 180, fps: 30, width: 640, height: 360, hasAudio: true },
+        },
         { id: "m-photo", kind: "image", name: "Photo.png", path: join(root, "Photo.png"), probe: { width: 600, height: 400 } },
       ],
       tracks: [
-        { id: "captions-track", kind: "text", name: "Captions", items: [{ id: "captions-1", type: "captions", source: "m-talk", start: 0, duration: 180, coversMain: true, mode: "line", words: WORDS, style: { preset: "text.caption", size: 49, weight: 600 }, transform: { x: 72, y: 864, w: 1776 } }] },
-        { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 0, duration: 90, text: "Typewriter title", transform: { x: 160, y: 160 }, style: { preset: "text.title", size: 110, weight: 700 } }] },
-        { id: "overlay", kind: "video", name: "Overlay", items: [{ id: "frame-1", type: "component", component: "component.image-frame", start: 90, duration: 60, props: { image: { media: "m-photo" }, fit: "cover", radius: 24, border: "#FFFFFF", borderWidth: 0, shadow: true }, transform: { x: 1000, y: 300, w: 800, h: 300 } }] },
+        {
+          id: "captions-track",
+          kind: "text",
+          name: "Captions",
+          items: [
+            {
+              id: "captions-1",
+              type: "captions",
+              source: "m-talk",
+              start: 0,
+              duration: 180,
+              coversMain: true,
+              mode: "line",
+              words: WORDS,
+              style: { preset: "text.caption", size: 49, weight: 600 },
+              transform: { x: 72, y: 864, w: 1776 },
+            },
+          ],
+        },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 90,
+              text: "Typewriter title",
+              transform: { x: 160, y: 160 },
+              style: { preset: "text.title", size: 110, weight: 700 },
+            },
+          ],
+        },
+        {
+          id: "overlay",
+          kind: "video",
+          name: "Overlay",
+          items: [
+            {
+              id: "frame-1",
+              type: "component",
+              component: "component.image-frame",
+              start: 90,
+              duration: 60,
+              props: { image: { media: "m-photo" }, fit: "cover", radius: 24, border: "#FFFFFF", borderWidth: 0, shadow: true },
+              transform: { x: 1000, y: 300, w: 800, h: 300 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "a", type: "clip", media: "m-talk", in: 0, duration: 180 }] },
       ],
     }),
@@ -134,7 +225,12 @@ test("Fable QA round 2, text: new animations, stickers, image frame fit, caption
   const typeFrames = itemOnDisk("t1")!.animation!.in!.duration;
   await seek(Math.round(typeFrames / 2));
   await sleep(300);
-  const shown = await page.$eval('.pv-text[data-item="t1"]', (el) => [...el.querySelectorAll("span")].filter((s) => s.style.opacity === "0").map((s) => s.textContent).join(""));
+  const shown = await page.$eval('.pv-text[data-item="t1"]', (el) =>
+    [...el.querySelectorAll("span")]
+      .filter((s) => s.style.opacity === "0")
+      .map((s) => s.textContent)
+      .join(""),
+  );
   assert.ok(shown.length > 0 && shown.length < "Typewriter title".length, `the rest of the title is hidden mid-move: "${shown}"`);
   await shot("[data-testid=preview-frame]", "text-typewriter");
 
@@ -165,7 +261,9 @@ test("Fable QA round 2, text: new animations, stickers, image frame fit, caption
   await page.click('[data-testid=param-fit][data-value="contain"]');
   await until(() => itemOnDisk("frame-1")?.props?.fit === "contain", "fit contain saved");
   await seek(100);
-  await page.waitForFunction(() => /contain/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.objectFit ?? ""), { timeout: 10000 }).catch(() => {});
+  await page
+    .waitForFunction(() => /contain/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.objectFit ?? ""), { timeout: 10000 })
+    .catch(() => {});
   assert.match(await page.$eval('[data-item="frame-1"] img', (el) => (el as HTMLElement).style.objectFit), /contain/);
   await shot("[data-testid=preview-frame]", "stickers-frame-contain");
   await page.click('[data-testid=param-fit][data-value="cover"]');
@@ -175,7 +273,9 @@ test("Fable QA round 2, text: new animations, stickers, image frame fit, caption
   await page.keyboard.type("2");
   await page.keyboard.press("Enter");
   await until(() => itemOnDisk("frame-1")?.props?.zoom === 2, "crop zoom saved");
-  await page.waitForFunction(() => /scale\(2\)/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.transform ?? ""), { timeout: 10000 }).catch(() => {});
+  await page
+    .waitForFunction(() => /scale\(2\)/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.transform ?? ""), { timeout: 10000 })
+    .catch(() => {});
   assert.match(await page.$eval('[data-item="frame-1"] img', (el) => (el as HTMLElement).style.transform), /scale\(2\)/);
   await shot("[data-testid=inspector-item]", "stickers-frame-inspector");
 

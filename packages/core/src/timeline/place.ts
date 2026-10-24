@@ -39,7 +39,11 @@ const unique = (base: string, taken: Set<string>) => {
  * comes first in the same edit) on the timeline at `frame`. `taken` holds every id in use (media,
  * tracks, items, scenes) and gets the new ones.
  */
-export function planPlaceTake(project: Pick<Project, "tracks">, input: { readonly mediaId: Id; readonly frames: number; readonly frame: Frame; readonly placement: TakePlacement }, taken: Set<string>): PlacedTake {
+export function planPlaceTake(
+  project: Pick<Project, "tracks">,
+  input: { readonly mediaId: Id; readonly frames: number; readonly frame: Frame; readonly placement: TakePlacement },
+  taken: Set<string>,
+): PlacedTake {
   const { starts } = layout(project);
   const start = Math.max(0, Math.floor(input.frame));
   const duration = Math.max(1, Math.floor(input.frames));
@@ -142,7 +146,10 @@ export function multiLayoutBoxes(layout: MultiLayoutName, width: number, height:
 }
 
 /** Frames each part is trimmed at its head so all start together (`fps` frames a second). */
-export function alignParts(parts: ReadonlyArray<Pick<MultiPartIn, "offsetMs" | "frames">>, fps: number): { readonly ins: ReadonlyArray<number>; readonly duration: number } {
+export function alignParts(
+  parts: ReadonlyArray<Pick<MultiPartIn, "offsetMs" | "frames">>,
+  fps: number,
+): { readonly ins: ReadonlyArray<number>; readonly duration: number } {
   const offsets = parts.map((p) => (Number.isFinite(p.offsetMs) ? Math.max(0, p.offsetMs) : 0));
   const last = Math.max(0, ...offsets);
   const ins = offsets.map((o) => Math.max(0, Math.round(((last - o) * fps) / 1000)));
@@ -156,7 +163,13 @@ export function alignParts(parts: ReadonlyArray<Pick<MultiPartIn, "offsetMs" | "
  */
 export function planPlaceMulti(
   project: Pick<Project, "tracks">,
-  input: { readonly parts: ReadonlyArray<MultiPartIn>; readonly frame: Frame; readonly fps: number; readonly canvas: { readonly width: number; readonly height: number }; readonly layout?: MultiLayoutName | undefined },
+  input: {
+    readonly parts: ReadonlyArray<MultiPartIn>;
+    readonly frame: Frame;
+    readonly fps: number;
+    readonly canvas: { readonly width: number; readonly height: number };
+    readonly layout?: MultiLayoutName | undefined;
+  },
   taken: Set<string>,
 ): PlacedMulti {
   const parts = input.parts.filter((p) => p.frames > 0);
@@ -203,10 +216,27 @@ export function planPlaceMulti(
     used.add(trackId);
     const audio = part.kind === "voiceover" || part.kind === "system";
     const itemId = unique(audio ? "audio" : "clip", taken);
-    ops.push({ op: "insert_item", track: trackId, item: { id: itemId, type: audio ? "audio" : "clip", media: part.mediaId, in: ins[index]!, start, duration, ...(group ? { group } : {}), ...extra } as never });
+    ops.push({
+      op: "insert_item",
+      track: trackId,
+      item: {
+        id: itemId,
+        type: audio ? "audio" : "clip",
+        media: part.mediaId,
+        in: ins[index]!,
+        start,
+        duration,
+        ...(group ? { group } : {}),
+        ...extra,
+      } as never,
+    });
     items.push({ index, itemId, trackId, kind: part.kind, start, in: ins[index]!, duration });
   };
-  const mainIndex = () => Math.max(0, order.findIndex((o) => o.track?.role === "main"));
+  const mainIndex = () =>
+    Math.max(
+      0,
+      order.findIndex((o) => o.track?.role === "main"),
+    );
   const box = (b: LayoutBox) => ({ transform: { x: b.x, y: b.y, w: b.w, h: b.h, fit: b.fit, ...(b.radius ? { radius: b.radius } : {}) } });
   let screenTrack: Id | undefined;
   // The screen first (its track decides where the camera goes), then the camera, then the sound.

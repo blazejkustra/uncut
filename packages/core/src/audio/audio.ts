@@ -84,7 +84,11 @@ export function soundMedia(project: Pick<Project, "media">, item: Item) {
  * main-track cut (the outgoing clip plays on into the incoming one, which starts early). `dipIn` /
  * `dipOut` are the fade lengths of a dip to black at its start / end (half the dip; no overlap).
  */
-export function audioSpan(track: Track, index: number, start: number): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
+export function audioSpan(
+  track: Track,
+  index: number,
+  start: number,
+): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
   const item = track.items[index]!;
   const main = track.role === "main";
   const into = main ? item.transitionIn : undefined;
@@ -158,7 +162,8 @@ export const masterGain = (project: Pick<Project, "master">) => dbToGain(project
 export const anySolo = (project: Pick<Project, "tracks" | "media">) => project.tracks.some((t) => t.mixer?.solo === true && trackHasSound(project, t));
 
 /** The tracks that are heard: they can make sound and trackAudible says so (mute, solo). */
-export const audibleTracks = (project: Pick<Project, "tracks" | "media">) => project.tracks.filter((t) => trackHasSound(project, t) && trackAudible(project, t));
+export const audibleTracks = (project: Pick<Project, "tracks" | "media">) =>
+  project.tracks.filter((t) => trackHasSound(project, t) && trackAudible(project, t));
 
 const names = (tracks: ReadonlyArray<Track>) => {
   const list = tracks.map((t) => t.name);
@@ -176,7 +181,9 @@ export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): 
   const audible = audibleTracks(project);
   if (!audible.length) {
     const soloed = sounding.filter((t) => t.mixer?.solo === true);
-    return soloed.length ? `Nothing will be heard: ${names(soloed)} ${soloed.length === 1 ? "is" : "are"} soloed but muted.` : "Nothing will be heard: every track with sound is muted.";
+    return soloed.length
+      ? `Nothing will be heard: ${names(soloed)} ${soloed.length === 1 ? "is" : "are"} soloed but muted.`
+      : "Nothing will be heard: every track with sound is muted.";
   }
   if (anySolo(project)) return `Solo is on: only ${names(audible)} will be heard, in the preview and the export.`;
   return undefined;
@@ -203,7 +210,12 @@ export function itemGain(track: Track, index: number, local: number, duckDb = 0)
 export type DuckAt = (trackId: string, frame: number) => number;
 
 /** Everything that sounds at frame f, with its gain and source time, in track order. `duck`: the ducking (D85). */
-export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">, starts: ReadonlyMap<string, number>, f: number, duck?: DuckAt): Array<Audible> {
+export function audibleAt(
+  project: Pick<Project, "tracks" | "media" | "canvas">,
+  starts: ReadonlyMap<string, number>,
+  f: number,
+  duck?: DuckAt,
+): Array<Audible> {
   const out: Array<Audible> = [];
   for (const track of project.tracks) {
     const on = trackAudible(project, track);
@@ -227,7 +239,13 @@ export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">,
  * 0 when the track is muted or another is soloed. What reaches the speakers (and the export's mix)
  * for each channel of the item's sound, made stereo.
  */
-export function outputGains(project: Pick<Project, "tracks" | "media" | "master">, track: Track, index: number, local: number, duckDb = 0): { readonly left: number; readonly right: number } {
+export function outputGains(
+  project: Pick<Project, "tracks" | "media" | "master">,
+  track: Track,
+  index: number,
+  local: number,
+  duckDb = 0,
+): { readonly left: number; readonly right: number } {
   if (!trackAudible(project, track)) return { left: 0, right: 0 };
   const g = itemGain(track, index, local, duckDb) * masterGain(project);
   const pan = panGains(trackPan(track));

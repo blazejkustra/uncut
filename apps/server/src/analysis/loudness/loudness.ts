@@ -99,7 +99,6 @@ export class RmsEnvelope {
   }
 }
 
-
 const num = (s: string | undefined) => {
   const n = Number(s);
   return s === undefined || !Number.isFinite(n) ? null : n;
@@ -165,7 +164,6 @@ export class LoudnessLog {
   }
 }
 
-
 /** Loudness and silences of the first audio stream of `path`. */
 export async function analyzeLoudness(
   ffmpeg: string,
@@ -204,7 +202,16 @@ export function isResult(value: unknown): value is LoudnessResult {
   if (!r.hasAudio) return true;
   if (!numOrNull(r.seconds) || !numOrNull(r.integratedLufs) || !numOrNull(r.loudnessRangeLu) || !numOrNull(r.truePeakDbtp)) return false;
   const silence = r.silence as { thresholdDb?: unknown; minSeconds?: unknown; ranges?: unknown } | undefined;
-  if (!silence || typeof silence !== "object" || typeof silence.thresholdDb !== "number" || typeof silence.minSeconds !== "number" || !Array.isArray(silence.ranges)) return false;
+  if (
+    !silence ||
+    typeof silence !== "object" ||
+    typeof silence.thresholdDb !== "number" ||
+    typeof silence.minSeconds !== "number" ||
+    !Array.isArray(silence.ranges)
+  )
+    return false;
   if (r.envelope !== undefined && !decodeEnvelope(r.envelope)) return false;
-  return silence.ranges.every((x) => x && typeof x === "object" && typeof (x as SilenceRange).start === "number" && typeof (x as SilenceRange).end === "number");
+  return silence.ranges.every(
+    (x) => x && typeof x === "object" && typeof (x as SilenceRange).start === "number" && typeof (x as SilenceRange).end === "number",
+  );
 }

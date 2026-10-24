@@ -26,5 +26,18 @@ export function MediaSkim() {
   }, [seconds, media?.id]);
   if (!hover || !media || media.kind !== "video") return null;
   const src = proxiesOn && proxy?.phase === "done" && proxy.key ? proxyUrl(media.id, proxy.key) : mediaUrl(media.id, media.path);
-  return <video ref={ref} key={media.id} className="pv-skim" data-testid="media-skim" data-media={media.id} data-seconds={seconds} src={src} muted playsInline preload="auto" />;
+  return (
+    <video
+      ref={ref}
+      key={media.id}
+      className="pv-skim"
+      data-testid="media-skim"
+      data-media={media.id}
+      data-seconds={seconds}
+      src={src}
+      muted
+      playsInline
+      preload="auto"
+    />
+  );
 }

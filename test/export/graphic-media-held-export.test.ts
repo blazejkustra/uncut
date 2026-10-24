@@ -98,7 +98,23 @@ before(async () => {
   if (skip) return;
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-graphic-held-")));
   const clip = join(root, "clip.mp4");
-  const c = spawnSync(bin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30", "-t", "3", "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", clip]);
+  const c = spawnSync(bin, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x240:rate=30",
+    "-t",
+    "3",
+    "-c:v",
+    "libx264",
+    "-g",
+    "30",
+    "-pix_fmt",
+    "yuv420p",
+    clip,
+  ]);
   assert.equal(c.status, 0, String(c.stderr));
   media.push({ id: "clip", kind: "video", name: "clip.mp4", path: clip });
   source = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path });
@@ -116,7 +132,16 @@ after(async () => {
 
 const draw = (html: string, local: number) => drawIn(html, local, "held");
 const drawIn = (html: string, local: number, name: string) =>
-  raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, canvas), t: local / canvas.fps, info: graphicInfo({ duration: FRAMES, props: {} }, canvas, local), out: join(root, `${name}-${local}.png`), name: `"${name}" (graphics/${name}.html)` });
+  raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc: graphicDocument(html, canvas),
+    t: local / canvas.fps,
+    info: graphicInfo({ duration: FRAMES, props: {} }, canvas, local),
+    out: join(root, `${name}-${local}.png`),
+    name: `"${name}" (graphics/${name}.html)`,
+  });
 
 test("a picture fetched once and drawn every frame survives more frames than the media cache keeps", { skip }, async () => {
   for (let f = 0; f < FRAMES; f++) await assert.doesNotReject(draw(HELD, f), `frame ${f}`);
@@ -131,7 +156,16 @@ test("a page that keeps every picture it got and draws them all later exports pa
   const doc = graphicDocument(CACHED, c);
   for (let f = 0; f < CACHE_FRAMES; f++) {
     await assert.doesNotReject(
-      raster.render({ kind: "graphic", width: W, height: H, doc, t: f / CACHE_FPS, info: graphicInfo({ duration: CACHE_FRAMES, props: {} }, c, f), out: join(root, "cached.png"), name: `"cached" (graphics/cached.html)` }),
+      raster.render({
+        kind: "graphic",
+        width: W,
+        height: H,
+        doc,
+        t: f / CACHE_FPS,
+        info: graphicInfo({ duration: CACHE_FRAMES, props: {} }, c, f),
+        out: join(root, "cached.png"),
+        name: `"cached" (graphics/cached.html)`,
+      }),
       `frame ${f}`,
     );
   }

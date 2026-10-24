@@ -83,7 +83,8 @@ export function validateOps(ops: unknown): Array<Problem> {
     const check = opSchemas.get(op?.op);
     if (!check) return errors.push(err("unknown-op", `${path}/op`, `unknown op ${JSON.stringify(op?.op)}`));
     if (!(check(op) as boolean)) {
-      for (const e of check.errors!) errors.push(err("schema", path + (e.instancePath || ""), `${op!.op}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
+      for (const e of check.errors!)
+        errors.push(err("schema", path + (e.instancePath || ""), `${op!.op}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
     }
     if (op!.op === "update_item" && op!.set && typeof op!.set === "object" && "id" in op!.set) {
       errors.push(err("rename", `${path}/set/id`, "an item's id can't be changed"));
@@ -98,7 +99,9 @@ function err(code: string, path: string, message: string): Problem {
 
 export function validateProject(input: unknown, modules: Modules): Array<Problem> {
   if (!projectSchema(input)) {
-    return projectSchema.errors!.map((e) => err("schema", e.instancePath || "/", `${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`));
+    return projectSchema.errors!.map((e) =>
+      err("schema", e.instancePath || "/", `${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`),
+    );
   }
   const project = input as unknown as Project;
   const errors: Array<Problem> = [];
@@ -133,7 +136,8 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     if (!paramsCache.has(manifest.id)) paramsCache.set(manifest.id, ajv.compile(manifest.params));
     const check = paramsCache.get(manifest.id)!;
     if (!check(value ?? {})) {
-      for (const e of check.errors!) errors.push(err("params", path + e.instancePath, `${manifest.id}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
+      for (const e of check.errors!)
+        errors.push(err("params", path + e.instancePath, `${manifest.id}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
     }
   };
   const checkMediaRefs = (value: unknown, path: string) => {
@@ -162,7 +166,14 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
       checkParams(m, fx.params, `${tpath}/mixer/${fx.module}`);
       for (const under of (fx.params?.under as ReadonlyArray<string> | undefined) ?? []) {
         // D85: a deleted key track would leave the duck pointing at nothing; say which track ducks under it.
-        if (!trackIds.has(under)) errors.push(err("unknown-track", `${tpath}/mixer`, `track "${track.name}" (${track.id}) ducks under track "${under}", which doesn't exist: remove or retarget its audio.duck entry (in the same edit, to delete "${under}")`));
+        if (!trackIds.has(under))
+          errors.push(
+            err(
+              "unknown-track",
+              `${tpath}/mixer`,
+              `track "${track.name}" (${track.id}) ducks under track "${under}", which doesn't exist: remove or retarget its audio.duck entry (in the same edit, to delete "${under}")`,
+            ),
+          );
       }
     }
 
@@ -189,7 +200,11 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
           const p = (fx.params ?? {}) as { fields?: unknown; wgsl?: unknown; values?: unknown };
           if (Array.isArray(p.fields) && typeof p.wgsl === "string") {
             const fields = p.fields as ReadonlyArray<ShaderParam>;
-            for (const problem of [...shaderDefProblems({ params: fields, wgsl: p.wgsl }), ...shaderValueProblems(fields, (p.values && typeof p.values === "object" ? p.values : {}) as Record<string, unknown>)]) errors.push(err("params", `${ipath}/effects/${fx.module}`, `${SHADER}: ${problem}`));
+            for (const problem of [
+              ...shaderDefProblems({ params: fields, wgsl: p.wgsl }),
+              ...shaderValueProblems(fields, (p.values && typeof p.values === "object" ? p.values : {}) as Record<string, unknown>),
+            ])
+              errors.push(err("params", `${ipath}/effects/${fx.module}`, `${SHADER}: ${problem}`));
           }
         }
       }

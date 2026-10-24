@@ -25,7 +25,19 @@ import { sameJson } from "./jsonPatch.ts";
 import { Recents } from "./recents.ts";
 import { Projects, type MediaRecord, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
 import { makeEditUnlocked } from "./projects/edit.ts";
-import { EXTERNAL_STOP, COMPACTED_STOP, HISTORY_LISTED, projectError, serialize, ioError, externalLines, EXTERNAL_LABEL, refused, validName, GITIGNORE } from "./projects/helpers.ts";
+import {
+  EXTERNAL_STOP,
+  COMPACTED_STOP,
+  HISTORY_LISTED,
+  projectError,
+  serialize,
+  ioError,
+  externalLines,
+  EXTERNAL_LABEL,
+  refused,
+  validName,
+  GITIGNORE,
+} from "./projects/helpers.ts";
 export { MATCH_FIRST_CLIP, Projects, DEFAULT_CANVAS, emptyProject } from "./projects/service.ts";
 export type { MediaRecord, UnloggedChange, ProjectView, AgentEditInput, Canvas, ProjectsShape } from "./projects/service.ts";
 export { HISTORY_LISTED, externalLines, MAX_NAME_LENGTH, GITIGNORE } from "./projects/helpers.ts";
@@ -53,11 +65,15 @@ export const layer = Layer.effect(
     const noteMedia = () => {
       if (!current) return;
       if (seenMedia.openId !== current.openId) seenMedia = { openId: current.openId, byId: new Map() };
-      for (const m of (current.session.project as unknown as { media?: ReadonlyArray<MediaRecord> }).media ?? []) if (typeof m?.id === "string" && typeof m.path === "string") seenMedia.byId.set(m.id, m);
+      for (const m of (current.session.project as unknown as { media?: ReadonlyArray<MediaRecord> }).media ?? [])
+        if (typeof m?.id === "string" && typeof m.path === "string") seenMedia.byId.set(m.id, m);
     };
     const publish = Effect.suspend(() => {
       noteMedia();
-      return Effect.andThen(SubscriptionRef.set(updates, current ? snapshot(current) : null), SubscriptionRef.set(historyUpdates, current ? historyOf(current) : null));
+      return Effect.andThen(
+        SubscriptionRef.set(updates, current ? snapshot(current) : null),
+        SubscriptionRef.set(historyUpdates, current ? historyOf(current) : null),
+      );
     });
 
     // Why ⌘Z can't go further, when the reason is worth saying (not just "nothing done yet").
@@ -136,21 +152,22 @@ export const layer = Layer.effect(
         },
         catch: (error) => projectError("io", `The history can't bring back revision ${revision}: ${(error as Error).message}`, p.dir),
       });
-    const requireOpen = Effect.suspend(() =>
-      current ? Effect.succeed(current) : Effect.fail(projectError("no-project", "No project is open")),
-    );
+    const requireOpen = Effect.suspend(() => (current ? Effect.succeed(current) : Effect.fail(projectError("no-project", "No project is open"))));
     const readProjectFile = (dir: string) =>
-      fs.readFileString(join(dir, "project.json")).pipe(
-        Effect.mapError((error: PlatformError) =>
-          error.reason._tag === "NotFound" ? projectError("missing", `No project.json in ${dir}`, dir) : projectError("io", error.message, dir),
-        ),
-      );
+      fs
+        .readFileString(join(dir, "project.json"))
+        .pipe(
+          Effect.mapError((error: PlatformError) =>
+            error.reason._tag === "NotFound" ? projectError("missing", `No project.json in ${dir}`, dir) : projectError("io", error.message, dir),
+          ),
+        );
     /** Parse and validate project.json text; the problems become a typed "invalid" error. */
     const parseProject = (dir: string, text: string) =>
       Effect.gen(function* () {
         const project = yield* Effect.try({
           try: () => JSON.parse(text) as unknown,
-          catch: (error) => projectError("invalid", "project.json is not valid JSON", dir, [{ code: "json", path: "/", message: String((error as Error).message) }]),
+          catch: (error) =>
+            projectError("invalid", "project.json is not valid JSON", dir, [{ code: "json", path: "/", message: String((error as Error).message) }]),
         });
         const problems = format.validate(project);
         if (problems.length) {
@@ -251,11 +268,13 @@ export const layer = Layer.effect(
     const realDir = (raw: string, label: string) =>
       Effect.gen(function* () {
         if (!isAbsolute(raw)) return yield* projectError("invalid-path", `${label} must be an absolute path, got "${raw}"`);
-        return yield* fs.realPath(raw).pipe(
-          Effect.mapError((error) =>
-            error.reason._tag === "NotFound" ? projectError("missing", `${raw} does not exist`, raw) : projectError("io", error.message, raw),
-          ),
-        );
+        return yield* fs
+          .realPath(raw)
+          .pipe(
+            Effect.mapError((error) =>
+              error.reason._tag === "NotFound" ? projectError("missing", `${raw} does not exist`, raw) : projectError("io", error.message, raw),
+            ),
+          );
       });
 
     const step = (from: "past" | "future") =>
@@ -287,7 +306,9 @@ export const layer = Layer.effect(
 
     const openingIs = (openId: number) =>
       Effect.suspend(() =>
-        current && current.openId === openId ? Effect.succeed(current) : Effect.fail(projectError("no-project", "The project was closed before this finished.")),
+        current && current.openId === openId
+          ? Effect.succeed(current)
+          : Effect.fail(projectError("no-project", "The project was closed before this finished.")),
       );
 
     return Projects.of({
@@ -304,11 +325,13 @@ export const layer = Layer.effect(
             yield* Effect.uninterruptible(
               Effect.gen(function* () {
                 // Not recursive: if the folder appeared in the meantime this fails instead of reusing it.
-                yield* fs.makeDirectory(dir).pipe(
-                  Effect.mapError((error) =>
-                    error.reason._tag === "AlreadyExists" ? projectError("exists", `${dir} already exists`, dir) : ioError(dir)(error),
-                  ),
-                );
+                yield* fs
+                  .makeDirectory(dir)
+                  .pipe(
+                    Effect.mapError((error) =>
+                      error.reason._tag === "AlreadyExists" ? projectError("exists", `${dir} already exists`, dir) : ioError(dir)(error),
+                    ),
+                  );
                 // From here on the folder is ours, so a failure removes it again.
                 yield* Effect.gen(function* () {
                   if (config.testFault === "create-after-mkdir") yield* Effect.fail(new Error("injected fault"));
@@ -411,7 +434,14 @@ export const layer = Layer.effect(
 
       view: Effect.sync(() =>
         current
-          ? { dir: current.dir, openId: current.openId, openRevision: current.openRevision, session: current.session, initial: current.initial, unlogged: [...current.unlogged] }
+          ? {
+              dir: current.dir,
+              openId: current.openId,
+              openRevision: current.openRevision,
+              session: current.session,
+              initial: current.initial,
+              unlogged: [...current.unlogged],
+            }
           : undefined,
       ),
 
@@ -481,7 +511,15 @@ export const layer = Layer.effect(
                 p.pushedForTurn = undefined;
                 p.unlogged.push({ revision: next, what: `Went back to an earlier version from History (revision ${revision}: ${row.label})` });
               },
-              { kind: "jump", author: "user", revision: next, label, lines: [`Restored the project as it was at revision ${revision} (${when.toISOString()})`], target, project: written },
+              {
+                kind: "jump",
+                author: "user",
+                revision: next,
+                label,
+                lines: [`Restored the project as it was at revision ${revision} (${when.toISOString()})`],
+                target,
+                project: written,
+              },
             );
           }),
         ),

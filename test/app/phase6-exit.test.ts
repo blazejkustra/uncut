@@ -59,7 +59,11 @@ const which = (name: string) => {
 };
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
-const skip = !existsSync(APP) ? `packaged app not built: run pnpm dist to create ${APP}` : !FFMPEG || !FFPROBE ? "needs ffmpeg and ffprobe" : referenceMissing();
+const skip = !existsSync(APP)
+  ? `packaged app not built: run pnpm dist to create ${APP}`
+  : !FFMPEG || !FFPROBE
+    ? "needs ffmpeg and ffprobe"
+    : referenceMissing();
 
 type Content = Array<{ type: string; text?: string }>;
 type Result = { tool: string; result: { isError?: boolean; content: Content } };
@@ -79,7 +83,14 @@ const nextTurn = (steps: Array<unknown>) => {
   turns.push(steps);
   writeFileSync(plan(), JSON.stringify(turns));
 };
-const results = (): Array<Result> => (existsSync(resultLog()) ? readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+const results = (): Array<Result> =>
+  existsSync(resultLog())
+    ? readFileSync(resultLog(), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 const textOf = (r: Result["result"]) => r.content.find((c) => c.type === "text")!.text!;
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const itemOf = (p: Project, id: string) => p.tracks.flatMap((t) => t.items).find((i) => i.id === id);
@@ -115,7 +126,13 @@ const turnCard = async (n: number) => (await page.$$("[data-testid=agent-turn]")
 async function turnDone(n: number, timeout: number) {
   const end = Date.now() + timeout;
   for (;;) {
-    const status = await page.evaluate((k) => (document.querySelector("[data-testid=agent-panel]") ? (document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? "") : "hidden"), n);
+    const status = await page.evaluate(
+      (k) =>
+        document.querySelector("[data-testid=agent-panel]")
+          ? (document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? "")
+          : "hidden",
+      n,
+    );
     if (["done", "failed", "cancelled"].includes(status)) return;
     if (status === "hidden") await page.click("[data-testid=tab-agent]");
     if (Date.now() > end) throw new Error(`turn ${n} didn't end within ${timeout / 1000} s (status ${status})`);
@@ -160,18 +177,26 @@ const env = (dialogs: Array<string> = []) => ({
   UNCUT_TEST_DIALOG: JSON.stringify(dialogs),
 });
 
-test("phase 6 exit: the Argent promo made in Uncut by the agent and by hand, exported and compared with the reference; undo, reopen", { skip, timeout: 900000 }, async () => {
-  const started = Date.now();
-  try {
-    await exitCheck();
-  } catch (error) {
-    const panel = await page?.$eval("[data-testid=agent-panel]", (e) => (e as HTMLElement).innerText).catch(() => "(no agent panel)");
-    await page?.screenshot({ path: out("phase6-exit-failure.png") }).catch(() => {});
-    const log = results().map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`).join("\n");
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}` });
-  }
-  console.log(`phase 6 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
-});
+test(
+  "phase 6 exit: the Argent promo made in Uncut by the agent and by hand, exported and compared with the reference; undo, reopen",
+  { skip, timeout: 900000 },
+  async () => {
+    const started = Date.now();
+    try {
+      await exitCheck();
+    } catch (error) {
+      const panel = await page?.$eval("[data-testid=agent-panel]", (e) => (e as HTMLElement).innerText).catch(() => "(no agent panel)");
+      await page?.screenshot({ path: out("phase6-exit-failure.png") }).catch(() => {});
+      const log = results()
+        .map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`)
+        .join("\n");
+      throw Object.assign(error as Error, {
+        message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}`,
+      });
+    }
+    console.log(`phase 6 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  },
+);
 
 let t0 = Date.now();
 /** Where the run is (printed, with the time since the start), so a failure says what it was waiting for. */
@@ -204,15 +229,31 @@ async function exitCheck() {
   const r1 = results();
   for (const r of r1) assert.ok(!r.result.isError, `${r.tool}: ${textOf(r.result)}`);
   const imported = JSON.parse(textOf(r1.find((r) => r.tool === "media_import")!.result));
-  assert.deepEqual(imported.imported.map((m: { id: string }) => m.id), [IDS.sky, IDS.h45, IDS.h55, IDS.logo, IDS.music]);
-  assert.deepEqual(imported.imported.slice(0, 3).map((m: { path: string }) => m.path), [REF.sky, REF.h45, REF.h55], "the recordings are referenced in place");
+  assert.deepEqual(
+    imported.imported.map((m: { id: string }) => m.id),
+    [IDS.sky, IDS.h45, IDS.h55, IDS.logo, IDS.music],
+  );
+  assert.deepEqual(
+    imported.imported.slice(0, 3).map((m: { path: string }) => m.path),
+    [REF.sky, REF.h45, REF.h55],
+    "the recordings are referenced in place",
+  );
   const check1 = JSON.parse(textOf(r1.filter((r) => r.tool === "project_check").at(-1)!.result));
   console.log(`turn 1 project_check: ${check1.checks.map((c: { rule: string; items?: Array<string> }) => `${c.rule}(${c.items?.join(",") ?? ""})`).join(" ")}`);
-  assert.deepEqual(check1.checks.filter((c: { severity: string }) => c.severity === "warn").map((c: { rule: string; items: Array<string> }) => `${c.rule}:${c.items.join()}`).sort(), ["small-text:footnote", "small-text:sum-note", "small-text:task"]);
+  assert.deepEqual(
+    check1.checks
+      .filter((c: { severity: string }) => c.severity === "warn")
+      .map((c: { rule: string; items: Array<string> }) => `${c.rule}:${c.items.join()}`)
+      .sort(),
+    ["small-text:footnote", "small-text:sum-note", "small-text:task"],
+  );
   const p1 = onDisk();
   // What the agent built: the footage held (not looped), the logs and table from the reference's data, the domain swapped.
   const ref = referenceElements();
-  for (const [clip, inS] of [["screen-45", ref.get("phone-opus")!.props!.in], ["screen-55", ref.get("phone-haiku")!.props!.in]] as const) {
+  for (const [clip, inS] of [
+    ["screen-45", ref.get("phone-opus")!.props!.in],
+    ["screen-55", ref.get("phone-haiku")!.props!.in],
+  ] as const) {
     const c = itemOf(p1, clip)!;
     assert.equal(c.hold, true, `${clip} holds its last frame`);
     assert.equal(c.loop, undefined, `${clip} doesn't loop`);
@@ -293,7 +334,12 @@ async function exitCheck() {
   await page.keyboard.up("Shift");
   await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === 720, { timeout: 10000 });
   await sleep(1000);
-  const held = await page.$$eval("video[data-item^=screen-]", (els) => els.map((e) => { const v = e as HTMLVideoElement; return { id: v.dataset.item, t: v.currentTime, d: v.duration, paused: v.paused, opacity: Number(v.style.opacity), ready: v.readyState }; }));
+  const held = await page.$$eval("video[data-item^=screen-]", (els) =>
+    els.map((e) => {
+      const v = e as HTMLVideoElement;
+      return { id: v.dataset.item, t: v.currentTime, d: v.duration, paused: v.paused, opacity: Number(v.style.opacity), ready: v.readyState };
+    }),
+  );
   console.log(`  preview at frame 720: ${JSON.stringify(held)}`);
   for (const id of ["screen-45", "screen-55"]) {
     const v = held.find((h) => h.id === id)!;
@@ -308,11 +354,22 @@ async function exitCheck() {
   const seen: Array<string> = [];
   for (let i = 0; i < 12; i++) {
     await sleep(250);
-    seen.push(JSON.stringify(await page.$$eval("video[data-item^=screen-]", (els) => els.map((e) => [(e as HTMLVideoElement).dataset.item, Math.round((e as HTMLVideoElement).currentTime * 30)]))));
+    seen.push(
+      JSON.stringify(
+        await page.$$eval("video[data-item^=screen-]", (els) =>
+          els.map((e) => [(e as HTMLVideoElement).dataset.item, Math.round((e as HTMLVideoElement).currentTime * 30)]),
+        ),
+      ),
+    );
   }
   await page.keyboard.press("Space");
   const playedTo = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
-  const after = await page.$$eval("video[data-item^=screen-]", (els) => els.map((e) => { const v = e as HTMLVideoElement; return { id: v.dataset.item, t: v.currentTime, d: v.duration, paused: v.paused }; }));
+  const after = await page.$$eval("video[data-item^=screen-]", (els) =>
+    els.map((e) => {
+      const v = e as HTMLVideoElement;
+      return { id: v.dataset.item, t: v.currentTime, d: v.duration, paused: v.paused };
+    }),
+  );
   console.log(`  played 600 → ${playedTo}: source frames ${seen.join(" ")}; then ${JSON.stringify(after)}`);
   assert.ok(playedTo >= 680, `the preview played past both recordings' ends (to ${playedTo})`);
   for (const v of after) assert.ok(v.paused && v.d - v.t < 0.1, `${v.id} sits on its last frame after playing into the held stretch: ${JSON.stringify(v)}`);
@@ -329,7 +386,9 @@ async function exitCheck() {
   await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "Argent promo.mp4");
   const e0 = Date.now();
   await page.click("[data-testid=export-start]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), { timeout: 400000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), {
+    timeout: 400000,
+  });
   assert.match(await page.$eval("[data-testid=export-status]", (el) => el.textContent ?? ""), /Saved/);
   console.log(`export (Standard, ${TOTAL} frames): ${((Date.now() - e0) / 1000).toFixed(1)} s`);
   await page.keyboard.press("Escape");
@@ -366,13 +425,26 @@ async function exitCheck() {
 function compare(file: string, project: Project) {
   const p = probe(file);
   const r = probe(REF.out);
-  console.log(`export: ${p.width}×${p.height} ${p.codec} ${p.fps}, ${p.frames} frames, ${p.duration.toFixed(3)} s (reference ${r.duration.toFixed(3)} s), audio ${p.audio}`);
+  console.log(
+    `export: ${p.width}×${p.height} ${p.codec} ${p.fps}, ${p.frames} frames, ${p.duration.toFixed(3)} s (reference ${r.duration.toFixed(3)} s), audio ${p.audio}`,
+  );
   assert.deepEqual([p.width, p.height, p.fps, p.codec, p.audio], [1920, 1080, "30/1", "h264", "aac"]);
   assert.equal(p.frames, TOTAL);
   assert.ok(Math.abs(p.duration - r.duration) <= 0.2, `duration ${p.duration} vs the reference's ${r.duration}`);
 
   // The scene at each time, in the reference and the export: same structure.
-  const times: Array<[number, string]> = [[1.5, "title"], [5, "race"], [12, "race"], [20, "race"], [24, "race"], [27.5, "table"], [30, "table"], [33, "table"], [37, "end"], [38.5, "end"]];
+  const times: Array<[number, string]> = [
+    [1.5, "title"],
+    [5, "race"],
+    [12, "race"],
+    [20, "race"],
+    [24, "race"],
+    [27.5, "table"],
+    [30, "table"],
+    [33, "table"],
+    [37, "end"],
+    [38.5, "end"],
+  ];
   for (const [t, want] of times) {
     const [a, b] = [sceneOf(signature(REF.out, t)), sceneOf(signature(file, t))];
     const s480 = ssimAt(file, t, REF.out, t);
@@ -389,7 +461,12 @@ function compare(file: string, project: Project) {
   const inset = (x: number, y: number, w: number, h: number): [number, number, number, number] => [x + 10, y + 40, w - 20, h - 80];
   const sources = [REF.h45, REF.h55];
   const lengths = [project.media.find((m) => m.id === IDS.h45)!.probe!.frames!, project.media.find((m) => m.id === IDS.h55)!.probe!.frames!];
-  const srcCrop = (s: { w: number; h: number }): [number, number, number, number] => [Math.round((10 * 510) / s.w), Math.round((40 * 1108) / s.h), 510 - Math.round((20 * 510) / s.w), 1108 - Math.round((80 * 1108) / s.h)];
+  const srcCrop = (s: { w: number; h: number }): [number, number, number, number] => [
+    Math.round((10 * 510) / s.w),
+    Math.round((40 * 1108) / s.h),
+    510 - Math.round((20 * 510) / s.w),
+    1108 - Math.round((80 * 1108) / s.h),
+  ];
   for (const t of [5, 12, 18, 23.5]) {
     screens.forEach((s, i) => {
       const tr = s.transform as { x: number; y: number; w: number; h: number };

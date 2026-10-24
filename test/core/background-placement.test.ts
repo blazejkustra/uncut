@@ -19,7 +19,16 @@ const project: Project = {
   ],
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [title] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m", in: 0, duration: 150 }, { id: "clip-2", type: "clip", media: "m", in: 150, duration: 150 }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [
+        { id: "clip-1", type: "clip", media: "m", in: 0, duration: 150 },
+        { id: "clip-2", type: "clip", media: "m", in: 150, duration: 150 },
+      ],
+    },
     { id: "audio", kind: "audio", name: "Audio", items: [{ id: "song-1", type: "audio", media: "song", in: 0, start: 0, duration: 300 }] },
   ],
 };
@@ -39,7 +48,15 @@ const order = (p: Project, frame: number) => visualsAt(p, layout(p).starts, fram
 
 test("nothing selected (or Whole edit): the whole edit on a track under Main, as before", () => {
   const p = apply(project, planAddBackground(project, { color: "#000000" }, 60, undefined));
-  assert.deepEqual(p.tracks.map((t) => [t.id, t.name]), [["text", "Text"], ["main", "Main"], ["background-track-1", "Background"], ["audio", "Audio"]]);
+  assert.deepEqual(
+    p.tracks.map((t) => [t.id, t.name]),
+    [
+      ["text", "Text"],
+      ["main", "Main"],
+      ["background-track-1", "Background"],
+      ["audio", "Audio"],
+    ],
+  );
   assert.deepEqual(placed(p, "background-1"), { track: "background-track-1", start: 0, duration: 300 });
   assert.deepEqual(order(p, 60), ["background-1", "clip-1", "title-1"]);
 });
@@ -50,7 +67,10 @@ test("behind a selected title over footage: its time, on a new track right under
   assert.ok("ops" in plan);
   assert.equal(plan.summary, "Add a background behind title-1");
   const p = apply(project, plan);
-  assert.deepEqual(p.tracks.map((t) => t.id), ["text", "background-track-1", "main", "audio"]);
+  assert.deepEqual(
+    p.tracks.map((t) => t.id),
+    ["text", "background-track-1", "main", "audio"],
+  );
   assert.deepEqual(placed(p, "background-1"), { track: "background-track-1", start: 30, duration: 60 });
   assert.deepEqual(order(p, 60), ["clip-1", "background-1", "title-1"], "over the footage, under the title");
   assert.deepEqual(order(p, 120), ["clip-1"], "only for the title's time");
@@ -60,13 +80,26 @@ test("behind a selected title over footage: its time, on a new track right under
   assert.deepEqual(placed(q, "background-2"), { track: "background-track-1", start: 200, duration: 60 });
   // Behind the same title again: that time is taken there, so another new track right under the text track.
   const r = apply(p, planAddBackground(p, { color: "bg" }, 0, "title-1"));
-  assert.deepEqual(r.tracks.map((t) => [t.id, t.name]), [["text", "Text"], ["background-track-2", "Background 2"], ["background-track-1", "Background"], ["main", "Main"], ["audio", "Audio"]]);
+  assert.deepEqual(
+    r.tracks.map((t) => [t.id, t.name]),
+    [
+      ["text", "Text"],
+      ["background-track-2", "Background 2"],
+      ["background-track-1", "Background"],
+      ["main", "Main"],
+      ["audio", "Audio"],
+    ],
+  );
 });
 
 test("behind a selected main clip: that clip's time, under Main; a sound or captions can't be gone behind", () => {
   const p = apply(project, planAddBackground(project, { color: "#000000" }, 0, "clip-2"));
   assert.deepEqual(placed(p, "background-1"), { track: "background-track-1", start: 150, duration: 150 });
-  assert.equal(p.tracks.findIndex((t) => t.id === "background-track-1"), 2, "right under Main");
+  assert.equal(
+    p.tracks.findIndex((t) => t.id === "background-track-1"),
+    2,
+    "right under Main",
+  );
   assert.deepEqual(order(p, 160), ["background-1", "clip-2"]);
   // A sound selected: the whole-edit default.
   assert.equal(canGoBehind(project, "song-1"), false);
@@ -92,11 +125,27 @@ test("a placed background drags to any track, trims and changes layer like any i
   assert.deepEqual(order(p, 80), ["clip-1", "background-1", "title-1"]);
   // Back onto Main: a card in the sequence.
   p = apply(p, planMove(p, "background-1", "main", 300));
-  assert.deepEqual(p.tracks.find((t) => t.id === "main")!.items.map((i) => i.id), ["clip-1", "clip-2", "background-1"]);
+  assert.deepEqual(
+    p.tracks.find((t) => t.id === "main")!.items.map((i) => i.id),
+    ["clip-1", "clip-2", "background-1"],
+  );
 });
 
 test("old projects are unchanged: a saved background under Main stays where it is", () => {
-  const old: Project = { ...project, tracks: [project.tracks[0]!, project.tracks[1]!, { id: "bgt", kind: "video", name: "Background", items: [{ id: "background-1", type: "component", component: "component.solid", start: 0, duration: 300, props: { color: "bg" } }] }, project.tracks[2]!] };
+  const old: Project = {
+    ...project,
+    tracks: [
+      project.tracks[0]!,
+      project.tracks[1]!,
+      {
+        id: "bgt",
+        kind: "video",
+        name: "Background",
+        items: [{ id: "background-1", type: "component", component: "component.solid", start: 0, duration: 300, props: { color: "bg" } }],
+      },
+      project.tracks[2]!,
+    ],
+  };
   assert.deepEqual(validateProject(old, modules), []);
   assert.deepEqual(order(old, 10), ["background-1", "clip-1"]);
 });

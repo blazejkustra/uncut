@@ -3,7 +3,27 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { applyEdit, createSession, describeOp, itemMotionBlur, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurLevels, blurRefinable, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  describeOp,
+  itemMotionBlur,
+  BLUR_REFINE,
+  blurSignature,
+  blurStep,
+  blurFarPairs,
+  blurMoving,
+  blurLevels,
+  blurRefinable,
+  loadModules,
+  validateOps,
+  MOTION_BLUR_DEFAULTS,
+  motionBlurDefault,
+  projectMotionBlur,
+  subFrameTimes,
+  validateProject,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { streamsLayer } from "../../apps/server/src/export/exporter/rasterise.ts";
 
@@ -49,7 +69,13 @@ const project = (extra: Partial<Project> = {}, item: Record<string, unknown> = {
     canvas: { width: 320, height: 400, fps: 60 },
     media: [],
     tracks: [
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 500, props: { color: "#000000" } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "bg", type: "component", component: "component.solid", duration: 500, props: { color: "#000000" } }],
+      },
       { id: "g", kind: "video", name: "Graphics", items: [{ id: "film", type: "graphic", src: "graphics/film.html", start: 10, duration: 420, ...item }] },
     ],
     ...extra,
@@ -61,7 +87,10 @@ test("the plan: a graphic past 360 frames is drawn on every frame; with blur, ea
   const g = sharp.visuals.find((l) => l.item.id === "film")!;
   assert.ok(g.kind === "graphic");
   assert.equal(g.frames.length, 420);
-  assert.ok(g.frames.every((f, i) => f === i), "every frame its own");
+  assert.ok(
+    g.frames.every((f, i) => f === i),
+    "every frame its own",
+  );
   assert.equal(g.motion, undefined, "blur is off unless the export turns it on");
   assert.deepEqual(sharp.warnings, []);
   assert.ok(streamsLayer(g), "a changing graphic is streamed");
@@ -75,7 +104,21 @@ test("the plan: a graphic past 360 frames is drawn on every frame; with blur, ea
   assert.ok(close(b.motion.ts[100]!, subFrameTimes(100, 60, MOTION_BLUR_DEFAULTS)));
 
   // A crossfade into it from before its start: the frames before it hold frame 0, sharp.
-  const faded = { ...project(), tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 500, props: { color: "#000000" } }, { id: "film2", type: "graphic", src: "graphics/film.html", duration: 100, transitionIn: { module: "transition.crossfade", duration: 20 } }] }] } as Project;
+  const faded = {
+    ...project(),
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "bg", type: "component", component: "component.solid", duration: 500, props: { color: "#000000" } },
+          { id: "film2", type: "graphic", src: "graphics/film.html", duration: 100, transitionIn: { module: "transition.crossfade", duration: 20 } },
+        ],
+      },
+    ],
+  } as Project;
   const fp = planExport(faded, { mediaPath: () => "", width: 320, height: 400, graphic: () => GRAPHIC, motionBlur: true });
   assert.ok(!("problem" in fp));
   const parts = fp.visuals.filter((l) => l.item.id === "film2");
@@ -91,7 +134,13 @@ test("the plan: a graphic past 360 frames is drawn on every frame; with blur, ea
   assert.ok(close(ts[startAt + 1]!, subFrameTimes(1, 60, MOTION_BLUR_DEFAULTS)));
 
   // The project's samples and shutter; an item opting out.
-  const eight = planExport(project({ motionBlur: { samples: 8, shutter: 360 } }), { mediaPath: () => "", width: 320, height: 400, graphic: () => GRAPHIC, motionBlur: true });
+  const eight = planExport(project({ motionBlur: { samples: 8, shutter: 360 } }), {
+    mediaPath: () => "",
+    width: 320,
+    height: 400,
+    graphic: () => GRAPHIC,
+    motionBlur: true,
+  });
   assert.ok(!("problem" in eight));
   const e = eight.visuals.find((l) => l.item.id === "film")!;
   assert.ok(e.kind === "graphic" && e.motion?.samples === 8 && e.motion.shutter === 360);
@@ -103,9 +152,15 @@ test("the plan: a graphic past 360 frames is drawn on every frame; with blur, ea
 
 test("the project schema takes motionBlur on the project and on an item", () => {
   const ok = project({ motionBlur: { on: true, samples: 6, shutter: 270 } }, { motionBlur: false });
-  assert.deepEqual(validateProject(ok, modules).filter((p) => /motionBlur/.test(JSON.stringify(p))), []);
+  assert.deepEqual(
+    validateProject(ok, modules).filter((p) => /motionBlur/.test(JSON.stringify(p))),
+    [],
+  );
   const bad = project({ motionBlur: { samples: 1 } as Project["motionBlur"] });
-  assert.ok(validateProject(bad, modules).some((p) => /motionBlur/.test(JSON.stringify(p))), "samples below 2 is refused");
+  assert.ok(
+    validateProject(bad, modules).some((p) => /motionBlur/.test(JSON.stringify(p))),
+    "samples below 2 is refused",
+  );
 });
 
 // A2: the motion-film skill says update_project {"motionBlur":{"samples":12}}; the edit schema refused it.
@@ -129,10 +184,11 @@ test("update_project takes motionBlur, merges it field by field and keeps the pr
 // D309: adaptive sub-frames. Pictures are BGRA (premultiplied), opaque black with white shapes.
 const picture = (w: number, h: number, draw: (x: number, y: number) => boolean) => {
   const px = new Uint8Array(w * h * 4);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const v = draw(x, y) ? 255 : 0;
-    px.set([v, v, v, 255], (y * w + x) * 4);
-  }
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const v = draw(x, y) ? 255 : 0;
+      px.set([v, v, v, 255], (y * w + x) * 4);
+    }
   return px;
 };
 const sigOf = (draw: (x: number, y: number) => boolean) => blurSignature(picture(320, 160, draw), 320, 160);
@@ -164,16 +220,31 @@ test("D309 refinement: a move over every gap refines on, one jump (a pop) doesn'
   // Every grid is the middles of the same slots split finer: the same span and centre (the smear
   // doesn't grow or shift where refining starts), each in time order.
   const levels = blurLevels(ts);
-  assert.deepEqual(levels.map((l) => l.length), [16, 32]);
+  assert.deepEqual(
+    levels.map((l) => l.length),
+    [16, 32],
+  );
   const open = MOTION_BLUR_DEFAULTS.shutter / 360 / 60;
   for (const grid of [ts, ...levels]) {
     const slot = open / grid.length;
-    assert.ok(Math.abs(grid[0]! - slot / 2 - 10 / 60) < 1e-12 && Math.abs(grid.at(-1)! + slot / 2 - (10 / 60 + open)) < 1e-12, `${grid.length}: spans the open shutter`);
+    assert.ok(
+      Math.abs(grid[0]! - slot / 2 - 10 / 60) < 1e-12 && Math.abs(grid.at(-1)! + slot / 2 - (10 / 60 + open)) < 1e-12,
+      `${grid.length}: spans the open shutter`,
+    );
     const centre = grid.reduce((a, t) => a + t, 0) / grid.length;
     assert.ok(Math.abs(centre - (10 / 60 + open / 2)) < 1e-12, `${grid.length}: centred on it`);
-    assert.ok(grid.every((t, j) => j === 0 || t > grid[j - 1]!), "in time order");
+    assert.ok(
+      grid.every((t, j) => j === 0 || t > grid[j - 1]!),
+      "in time order",
+    );
   }
-  assert.deepEqual(blurLevels(subFrameTimes(0, 60, { samples: 16, shutter: 90 })).map((l) => l.length), [32]);
-  assert.deepEqual(blurLevels(subFrameTimes(0, 60, { samples: 2, shutter: 90 })).map((l) => l.length), [8, 16, 32]);
+  assert.deepEqual(
+    blurLevels(subFrameTimes(0, 60, { samples: 16, shutter: 90 })).map((l) => l.length),
+    [32],
+  );
+  assert.deepEqual(
+    blurLevels(subFrameTimes(0, 60, { samples: 2, shutter: 90 })).map((l) => l.length),
+    [8, 16, 32],
+  );
   assert.deepEqual(blurLevels([0.5]), []);
 });

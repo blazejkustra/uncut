@@ -76,9 +76,7 @@ export const layer = Layer.effect(
           duration: Duration.seconds(5),
           orElse: () => Effect.fail(fail(`${mediaBin} didn't reply within 5s`)),
         }),
-        Effect.catchTag("PlatformError", (e) =>
-          Effect.fail(fail(`can't run ${mediaBin}: ${e.message}`)),
-        ),
+        Effect.catchTag("PlatformError", (e) => Effect.fail(fail(`can't run ${mediaBin}: ${e.message}`))),
       );
 
     // One helper for a whole batch: every request goes in on stdin, one reply line comes back
@@ -137,11 +135,8 @@ export const layer = Layer.effect(
       probeMany,
       version: request("version").pipe(
         Effect.flatMap((result) => {
-          const version =
-            typeof result === "object" && result !== null ? (result as { version?: unknown }).version : undefined;
-          return typeof version === "string"
-            ? Effect.succeed(version)
-            : Effect.fail(fail(`bad version reply: ${JSON.stringify(result)}`));
+          const version = typeof result === "object" && result !== null ? (result as { version?: unknown }).version : undefined;
+          return typeof version === "string" ? Effect.succeed(version) : Effect.fail(fail(`bad version reply: ${JSON.stringify(result)}`));
         }),
       ),
     });

@@ -19,7 +19,20 @@ const fakeServer = (dir: string, body: string) => {
   return entry;
 };
 const start = (dir: string, entry: string, onExit: (reason: string) => void) =>
-  startServer({ serverEntry: entry, mediaBin: "", modulesDir: "", sfxDir: "", graphicLibsDir: "", fontsDir: "", bundledPluginsDir: "", pluginSdkDir: "", dataDir: dir, renderEntry: undefined, onExit, keys });
+  startServer({
+    serverEntry: entry,
+    mediaBin: "",
+    modulesDir: "",
+    sfxDir: "",
+    graphicLibsDir: "",
+    fontsDir: "",
+    bundledPluginsDir: "",
+    pluginSdkDir: "",
+    dataDir: dir,
+    renderEntry: undefined,
+    onExit,
+    keys,
+  });
 
 test("a server that dies leaves its stderr and its exit in server.log", async () => {
   const dir = tempDir();
@@ -42,7 +55,16 @@ setInterval(() => {}, 1000);
     assert.deepEqual(reasons, ["server exited unexpectedly (code 3)"]);
     for (let i = 0; i < 100 && !readFileSync(join(dir, SERVER_LOG), "utf8").includes("exited unexpectedly"); i++) await sleep(20);
     const log = readFileSync(join(dir, SERVER_LOG), "utf8");
-    for (const want of ["[desktop] server started (pid", "starting up", "[desktop] server ready on port 4567", "after ready", "TypeError: boom", "    at somewhere (x.ts:1:1)", "[desktop] server exited unexpectedly (code 3)"]) assert.ok(log.includes(want), `missing ${want}:\n${log}`);
+    for (const want of [
+      "[desktop] server started (pid",
+      "starting up",
+      "[desktop] server ready on port 4567",
+      "after ready",
+      "TypeError: boom",
+      "    at somewhere (x.ts:1:1)",
+      "[desktop] server exited unexpectedly (code 3)",
+    ])
+      assert.ok(log.includes(want), `missing ${want}:\n${log}`);
     // Every line is timestamped.
     for (const line of log.trimEnd().split("\n")) assert.match(line, /^\d{4}-\d\d-\d\dT[\d:.]+Z /);
     // The crash's stack comes before the verdict.
@@ -115,12 +137,18 @@ test("the server notes event-loop stalls and a heartbeat with memory", async () 
   const stop = watchLiveness({ write: (l) => lines.push(l), tickMs: 20, stallMs: 150, heartbeatMs: 40 });
   try {
     await sleep(120);
-    assert.ok(lines.some((l) => /^\[uncut\] alive \(rss \d+ MB, heap \d+\/\d+ MB\)$/.test(l)), lines.join("\n"));
+    assert.ok(
+      lines.some((l) => /^\[uncut\] alive \(rss \d+ MB, heap \d+\/\d+ MB\)$/.test(l)),
+      lines.join("\n"),
+    );
     assert.ok(!lines.some((l) => l.includes("stalled")), lines.join("\n"));
     const until = Date.now() + 400;
     while (Date.now() < until) {} // synchronous work holding the event loop
     await sleep(60);
-    assert.ok(lines.some((l) => /^\[uncut\] event loop stalled for 0\.[3-9] s \(rss \d+ MB/.test(l)), lines.join("\n"));
+    assert.ok(
+      lines.some((l) => /^\[uncut\] event loop stalled for 0\.[3-9] s \(rss \d+ MB/.test(l)),
+      lines.join("\n"),
+    );
   } finally {
     stop();
   }

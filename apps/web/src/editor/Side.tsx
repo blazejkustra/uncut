@@ -32,7 +32,19 @@ import { rememberedSideTab, rememberSideTab, type SideTab } from "./layout.ts";
 import { useDocking } from "./agentStage.ts";
 
 /** `staged` (#75, D255): the agent is centre stage; the Agent tab says so (one AgentPanel at a time). */
-export function Side({ snapshot, project, online, staged = false, onDock }: { snapshot: ProjectSnapshot; project: Project; online: boolean; staged?: boolean; onDock?: () => void }) {
+export function Side({
+  snapshot,
+  project,
+  online,
+  staged = false,
+  onDock,
+}: {
+  snapshot: ProjectSnapshot;
+  project: Project;
+  online: boolean;
+  staged?: boolean;
+  onDock?: () => void;
+}) {
   // U14 (D180): each project keeps the tab it was left on; a new project starts on the Agent.
   const [tab, setTabState] = useState<SideTab>(() => rememberedSideTab(snapshot.dir) ?? "inspector");
   const [tabDir, setTabDir] = useState(snapshot.dir);
@@ -129,7 +141,14 @@ function ProjectInspector({ snapshot, project, online }: { snapshot: ProjectSnap
   );
 }
 
-const TYPE_NAMES: Readonly<Record<string, string>> = { clip: "Clip", component: "Component", graphic: "Graphic", text: "Text", captions: "Captions", audio: "Audio" };
+const TYPE_NAMES: Readonly<Record<string, string>> = {
+  clip: "Clip",
+  component: "Component",
+  graphic: "Graphic",
+  text: "Text",
+  captions: "Captions",
+  audio: "Audio",
+};
 
 /** The selected item: text and backgrounds get their editors (chunk 4), every item its basics (chunk 3). */
 function ItemInspector({ project, placed }: { project: Project; placed: NonNullable<ReturnType<typeof findItem>> }) {
@@ -152,13 +171,21 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
         {item.type === "text" || item.type === "captions" ? <Type /> : item.type === "audio" ? <Music /> : <Film />}
         <span className="ellipsis grow">{itemLabel(project, item)}</span>
         {/* D141: this item as a chip in the Agent tab's composer. */}
-        <button className="small-btn insp-chat" data-testid="insp-add-to-chat" title="Add this item to the agent chat" onClick={() => actions.addItemToChat(item.id)}>
+        <button
+          className="small-btn insp-chat"
+          data-testid="insp-add-to-chat"
+          title="Add this item to the agent chat"
+          onClick={() => actions.addItemToChat(item.id)}
+        >
           <AtSign />
           Add to chat
         </button>
       </div>
       <div className="insp-sub">
-        {item.type === "component" && item.component === SOLID ? "Background" : (componentInfo(item.component)?.name ?? TYPE_NAMES[item.type] ?? item.type)} on {track.name}
+        {item.type === "component" && item.component === SOLID
+          ? "Background"
+          : (componentInfo(item.component)?.name ?? TYPE_NAMES[item.type] ?? item.type)} on{" "}
+        {track.name}
         {locked ? ", locked" : ""}
       </div>
       {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
@@ -193,20 +220,20 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
         </div>
       )}
       <Section title="Advanced" testId="insp-sec-advanced" remember="advanced">
-      <NamesEditor project={project} item={item} locked={locked} />
-      <div className="group">
-        <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
-        <Row k="Track" id="insp-track" v={track.name} />
-        <Row k="Start" id="insp-start" v={tc(start)} title={`frame ${start}`} />
-        <Row k="Duration" id="insp-duration" v={`${(item.duration / fps).toFixed(2)}s`} title={`${item.duration} frames`} />
-        {media && (
-          <>
-            <Row k="Media" id="insp-media" v={media.name} />
-            <Row k="Source in" id="insp-in" v={tc(item.in ?? 0)} title={`frame ${item.in ?? 0}`} />
-            <Row k="Source out" id="insp-out" v={tc((item.in ?? 0) + item.duration)} title={`frame ${(item.in ?? 0) + item.duration}`} />
-          </>
-        )}
-      </div>
+        <NamesEditor project={project} item={item} locked={locked} />
+        <div className="group">
+          <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
+          <Row k="Track" id="insp-track" v={track.name} />
+          <Row k="Start" id="insp-start" v={tc(start)} title={`frame ${start}`} />
+          <Row k="Duration" id="insp-duration" v={`${(item.duration / fps).toFixed(2)}s`} title={`${item.duration} frames`} />
+          {media && (
+            <>
+              <Row k="Media" id="insp-media" v={media.name} />
+              <Row k="Source in" id="insp-in" v={tc(item.in ?? 0)} title={`frame ${item.in ?? 0}`} />
+              <Row k="Source out" id="insp-out" v={tc((item.in ?? 0) + item.duration)} title={`frame ${(item.in ?? 0) + item.duration}`} />
+            </>
+          )}
+        </div>
       </Section>
     </div>
   );

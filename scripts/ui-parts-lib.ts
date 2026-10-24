@@ -8,7 +8,12 @@ import { stripTypeScriptTypes } from "node:module";
 
 /** One scene's capture (apps/web/src/uiparts/extract.ts). */
 export interface SceneCapture {
-  readonly parts: Readonly<Record<string, { readonly html: string; readonly width: number; readonly height: number; readonly ancestors: ReadonlyArray<unknown>; readonly [key: string]: unknown }>>;
+  readonly parts: Readonly<
+    Record<
+      string,
+      { readonly html: string; readonly width: number; readonly height: number; readonly ancestors: ReadonlyArray<unknown>; readonly [key: string]: unknown }
+    >
+  >;
   readonly rules: ReadonlyArray<{ readonly key: string; readonly selectors: ReadonlyArray<string>; readonly body: string; readonly rootish: boolean }>;
   readonly keyframes: Readonly<Record<string, string>>;
 }
@@ -33,7 +38,15 @@ export function uiPartsInputs(root: string): Array<string> {
   };
   walk(web, (f) => f.endsWith(".css"));
   out.push(...importClosure(join(web, "uiparts/harness.tsx")));
-  for (const f of ["scripts/ui-parts.ts", "scripts/ui-parts-lib.ts", "apps/web/src/uiparts/extract.ts", "apps/web/src/uiparts/runtime.ts", "apps/web/uiparts.html", "apps/web/package.json"]) out.push(join(root, f));
+  for (const f of [
+    "scripts/ui-parts.ts",
+    "scripts/ui-parts-lib.ts",
+    "apps/web/src/uiparts/extract.ts",
+    "apps/web/src/uiparts/runtime.ts",
+    "apps/web/uiparts.html",
+    "apps/web/package.json",
+  ])
+    out.push(join(root, f));
   return [...new Set(out)].map((f) => relative(root, f)).sort();
 }
 
@@ -48,7 +61,9 @@ export function importClosure(entry: string): Array<string> {
     const src = readFileSync(f, "utf8");
     for (const m of src.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g)) {
       const base = resolve(dirname(f), m[1]!);
-      const hit = [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")].find((p) => /\.tsx?$/.test(p) && existsSync(p) && statSync(p).isFile());
+      const hit = [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")].find(
+        (p) => /\.tsx?$/.test(p) && existsSync(p) && statSync(p).isFile(),
+      );
       if (hit) queue.push(hit);
     }
   }
@@ -90,7 +105,8 @@ function rootBody(selectors: ReadonlyArray<string>, body: string): string {
 }
 
 /** Uncut's own additions to the parts' CSS: the composer's caret; a piece's light theme (literal colours made of --fg's opposite). */
-const EXTRA_CSS = ".uncut-ui{text-align:left;-webkit-font-smoothing:antialiased}.uncut-ui .uncut-ui-caret{display:inline-block;width:1.5px;height:1.2em;margin:0 -1.5px 0 0;vertical-align:-0.25em;background:var(--fg)}.uncut-ui.uncut-ui-light{--bg:#fff;--panel:#fff;--panel-2:#fff;--raised:#efeeea;--border:#00000010;--border-strong:#0000001c;--fg:#111;--muted:#62625e;--dim:#9a9993;--select-soft:#6d8cff24;color-scheme:light;color:var(--fg)}.uncut-ui.uncut-ui-light .send:not(:disabled){color:#fff}.uncut-ui.uncut-ui-light .clip{border-color:#0000001a}";
+const EXTRA_CSS =
+  ".uncut-ui{text-align:left;-webkit-font-smoothing:antialiased}.uncut-ui .uncut-ui-caret{display:inline-block;width:1.5px;height:1.2em;margin:0 -1.5px 0 0;vertical-align:-0.25em;background:var(--fg)}.uncut-ui.uncut-ui-light{--bg:#fff;--panel:#fff;--panel-2:#fff;--raised:#efeeea;--border:#00000010;--border-strong:#0000001c;--fg:#111;--muted:#62625e;--dim:#9a9993;--select-soft:#6d8cff24;color-scheme:light;color:var(--fg)}.uncut-ui.uncut-ui-light .send:not(:disabled){color:#fff}.uncut-ui.uncut-ui-light .clip{border-color:#0000001a}";
 
 /** A rule body without transitions or animations: they run on the wall clock, and a graphic's frame is a function of t alone. */
 function timeless(body: string): string {
@@ -144,7 +160,9 @@ export function runtimeJs(source: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   // Line-based stripping can't see inside a template literal: one spanning lines must come through as written.
-  for (const span of out.match(/`[^`]*`/g) ?? []) if (span.includes("\n") && !plain.includes(span)) throw new Error(`runtimeJs: stripping comments would change a multi-line template literal: ${span.slice(0, 80)}`);
+  for (const span of out.match(/`[^`]*`/g) ?? [])
+    if (span.includes("\n") && !plain.includes(span))
+      throw new Error(`runtimeJs: stripping comments would change a multi-line template literal: ${span.slice(0, 80)}`);
   return out;
 }
 
@@ -275,7 +293,8 @@ export function pooled(parts: Record<string, SceneCapture["parts"][string]>): { 
     return `\u0001${i}\u0002`;
   };
   const out: Record<string, SceneCapture["parts"][string]> = {};
-  for (const [name, p] of Object.entries(parts)) out[name] = { ...p, html: p.html.replace(/<svg[\s\S]*?<\/svg>|data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/g, ref) };
+  for (const [name, p] of Object.entries(parts))
+    out[name] = { ...p, html: p.html.replace(/<svg[\s\S]*?<\/svg>|data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/g, ref) };
   return { parts: out, pool };
 }
 
@@ -283,7 +302,9 @@ export function pooled(parts: Record<string, SceneCapture["parts"][string]>): { 
 export function buildUiLib(capture: Capture, hash: string, runtimeSource: string): string {
   const data = { css: partsCss(capture), ...pooled(partsOf(capture)) };
   // No "<" in the data at all: nothing in it can close the inline script it is inlined into.
-  const json = JSON.stringify(data).replace(/</g, "\\u003c").replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
+  const json = JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
   return `${UI_HEADER}
 /* uncut-ui-inputs: ${hash} */
 (function () {

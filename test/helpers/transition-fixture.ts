@@ -24,13 +24,46 @@ export function makeTransitionMedia(root: string) {
     ["Red.mp4", "red"],
     ["Blue.mp4", "blue"],
   ] as const) {
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${colour}:s=640x360:r=30`, "-t", "10", ...bt709, "-c:v", "libx264", join(root, name)]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${colour}:s=640x360:r=30`,
+      "-t",
+      "10",
+      ...bt709,
+      "-c:v",
+      "libx264",
+      join(root, name),
+    ]);
   }
   // A left-to-right ramp (green rises, blue falls across the width), for checking a wipe keeps the picture in place.
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:r=30,format=rgb24,geq=r='0':g='X*255/W':b='255-X*255/W'", "-t", "10", ...bt709, "-c:v", "libx264", "-crf", "10", join(root, "Ramp.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black:s=640x360:r=30,format=rgb24,geq=r='0':g='X*255/W':b='255-X*255/W'",
+    "-t",
+    "10",
+    ...bt709,
+    "-c:v",
+    "libx264",
+    "-crf",
+    "10",
+    join(root, "Ramp.mp4"),
+  ]);
 }
 
-export function transitionProject(root: string, transitions: { crossfade?: number; dip?: number; wipe?: number } = { crossfade: 20, dip: 20, wipe: 20 }): Project {
+export function transitionProject(
+  root: string,
+  transitions: { crossfade?: number; dip?: number; wipe?: number } = { crossfade: 20, dip: 20, wipe: 20 },
+): Project {
   const probe = { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false };
   const tr = (module: string, duration: number | undefined) => (duration ? { transitionIn: { module, duration } } : {});
   return {
@@ -159,14 +192,26 @@ export const GREEN: Rgb = [0, 255, 0];
  * solid colours: each visual covers the point unless a wipe, an iris or a push leaves it out (a zoom
  * of a full-frame colour changes nothing), blended by its opacity over the canvas grey.
  */
-export function expectedAt(project: Project, f: number, x: number, y: number, palette: { readonly red: Rgb; readonly blue: Rgb; readonly green?: Rgb } = { red: RED, blue: BLUE }): Rgb {
+export function expectedAt(
+  project: Project,
+  f: number,
+  x: number,
+  y: number,
+  palette: { readonly red: Rgb; readonly blue: Rgb; readonly green?: Rgb } = { red: RED, blue: BLUE },
+): Rgb {
   const { width: W, height: H } = project.canvas;
   let c: Array<number> = [128, 128, 128];
   for (const v of visualsAt(project, layout(project).starts, f)) {
     if (v.wipe !== undefined && x >= v.wipe) continue;
     if (v.iris !== undefined && Math.hypot((x - 0.5) * W, (y - 0.5) * H) > (v.iris * Math.hypot(W, H)) / 2) continue;
     if (v.shift !== undefined && (x * W < v.shift || x * W >= v.shift + W)) continue;
-    const colour: Rgb = v.item.id.startsWith("dip:") ? [0, 0, 0] : v.item.media === "m-red" ? palette.red : v.item.media === "m-blue" ? palette.blue : (palette.green ?? GREEN);
+    const colour: Rgb = v.item.id.startsWith("dip:")
+      ? [0, 0, 0]
+      : v.item.media === "m-red"
+        ? palette.red
+        : v.item.media === "m-blue"
+          ? palette.blue
+          : (palette.green ?? GREEN);
     c = c.map((k, i) => k * (1 - v.opacity) + colour[i]! * v.opacity);
   }
   return c.map(Math.round) as unknown as Rgb;

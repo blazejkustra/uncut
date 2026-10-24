@@ -32,7 +32,9 @@ export function watchSockets(rootPid: number, remote: Array<string>) {
   void (async () => {
     while (on) {
       const pids = treeOf(rootPid);
-      const listing = await new Promise<string>((done) => execFile("lsof", ["-nP", "-a", "-i", "-p", pids.join(",")], { encoding: "utf8" }, (_e, stdout) => done(stdout ?? "")));
+      const listing = await new Promise<string>((done) =>
+        execFile("lsof", ["-nP", "-a", "-i", "-p", pids.join(",")], { encoding: "utf8" }, (_e, stdout) => done(stdout ?? "")),
+      );
       for (const line of listing.split("\n").slice(1)) {
         const m = /->(\S+)/.exec(line);
         if (m && !/^(127\.0\.0\.1|\[::1\]|localhost):/.test(m[1]!)) remote.push(line.trim());

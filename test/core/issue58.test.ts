@@ -3,7 +3,17 @@
 // lands on them, linked sounds follow (still linked), and it's one edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, loadModules, resolveStarts, timelineProblems, validateProject, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  loadModules,
+  resolveStarts,
+  timelineProblems,
+  validateProject,
+  type Item,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { shiftMainItems, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
 import { draftOf, planGroupMove } from "../../apps/web/src/timeline/edit.ts";
 
@@ -38,7 +48,10 @@ const order = (p: Project) => p.tracks.find((t) => t.role === "main")!.items.map
 const item = (p: Project, id: string) => p.tracks.flatMap((t) => t.items).find((i) => i.id === id)!;
 
 test("a main clip and its linked sound move together: the clip leaves a gap, the sound follows still linked", () => {
-  const p = projectWith([clip("a", 30), clip("b", 30), clip("c", 30)], [{ id: "mic", type: "audio", media: "m", in: 100, start: 30, duration: 30, linkedTo: "b" }]);
+  const p = projectWith(
+    [clip("a", 30), clip("b", 30), clip("c", 30)],
+    [{ id: "mic", type: "audio", media: "m", in: 100, start: 30, duration: 30, linkedTo: "b" }],
+  );
   const plan = ok(planGroupMove(p, ["b", "mic"], 20, 0, lanes));
   assert.equal(plan.delta, 20);
   // The sound gets no op of its own (a move would unlink it).
@@ -110,8 +123,19 @@ test("core shiftMainItems: reorders with the fewest moves and returns where each
   const track = { items: [clip("a", 30), clip("b", 30), clip("c", 30), clip("d", 30)] };
   const { ops, starts } = shiftMainItems(track, new Set(["a"]), 100);
   // a's middle (115) passes d's (105): it goes last; b keeps its frame (a gap where a was).
-  assert.deepEqual(ops.filter((o) => o.op === "move_item"), [{ op: "move_item", item: "a", index: 3 }]);
-  assert.deepEqual([...starts], [["b", 30], ["c", 60], ["d", 90], ["a", 120]]);
+  assert.deepEqual(
+    ops.filter((o) => o.op === "move_item"),
+    [{ op: "move_item", item: "a", index: 3 }],
+  );
+  assert.deepEqual(
+    [...starts],
+    [
+      ["b", 30],
+      ["c", 60],
+      ["d", 90],
+      ["a", 120],
+    ],
+  );
   // Same order: gaps only, no move_item.
   const same = shiftMainItems({ items: [clip("a", 30), clip("b", 30, { gap: 50 })] }, new Set(["a"]), 20);
   assert.deepEqual(same.ops, [
@@ -124,7 +148,15 @@ test("core shiftMainItems: reorders with the fewest moves and returns where each
 // the main clips have moved, linked sounds included.
 test("a free item may land where a following linked sound was; it can't land where one is going (no silent unlink)", () => {
   // b (60–90) and its mic move left by 30; x lands on the mic's old frames, which are free by then.
-  const sound = (id: string, start: number, duration: number, extra: Partial<Item> = {}): Item => ({ id, type: "audio", media: "m", in: 100, start, duration, ...extra });
+  const sound = (id: string, start: number, duration: number, extra: Partial<Item> = {}): Item => ({
+    id,
+    type: "audio",
+    media: "m",
+    in: 100,
+    start,
+    duration,
+    ...extra,
+  });
   const p = projectWith([clip("a", 30), clip("b", 30, { gap: 30 })], [sound("mic", 60, 30, { linkedTo: "b" }), sound("x", 90, 10)]);
   const plan = ok(planGroupMove(p, ["b", "x"], -30, 0, lanes));
   const q = run(p, plan.ops);

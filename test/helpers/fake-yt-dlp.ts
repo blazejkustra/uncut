@@ -20,7 +20,11 @@ if (argv[0] === "--version") {
   console.log("2026.07.04");
   process.exit(0);
 }
-if (process.env.FAKE_YTDLP_LOG) appendFileSync(process.env.FAKE_YTDLP_LOG, `${JSON.stringify({ argv, pid: process.pid, uncutEnv: Object.keys(process.env).filter((k) => k.startsWith("UNCUT_")).length })}\n`);
+if (process.env.FAKE_YTDLP_LOG)
+  appendFileSync(
+    process.env.FAKE_YTDLP_LOG,
+    `${JSON.stringify({ argv, pid: process.pid, uncutEnv: Object.keys(process.env).filter((k) => k.startsWith("UNCUT_")).length })}\n`,
+  );
 const dash = argv.indexOf("--");
 const url = dash >= 0 ? argv[dash + 1] : argv[argv.length - 1];
 const opts = dash >= 0 ? argv.slice(0, dash) : argv;
@@ -44,7 +48,11 @@ if (error) {
   console.error(error);
   process.exit(1);
 }
-const fill = (t: string, file: string) => t.replace(/%\(title\)s/g, title).replace(/%\(filepath\)s/g, file).replace(/%\(ext\)s/g, audio ? "m4a" : "mp4");
+const fill = (t: string, file: string) =>
+  t
+    .replace(/%\(title\)s/g, title)
+    .replace(/%\(filepath\)s/g, file)
+    .replace(/%\(ext\)s/g, audio ? "m4a" : "mp4");
 const out = fill(template, "");
 const printFor = (when: string, file: string) => {
   for (const p of prints) if (p.startsWith(`${when}:`)) console.log(fill(p.slice(when.length + 1), file));

@@ -3,7 +3,8 @@ import { n } from "./num.ts";
 import type { RasterOutput, Caps, VideoChoice } from "./codec.ts";
 import type { AudioOptions } from "./audio.ts";
 
-export const fadeFilters = (ramps: ReadonlyArray<Ramp>, fps: number) => ramps.map((r) => `fade=t=${r.type}:st=${n(Math.max(0, r.st) / fps)}:d=${n(r.d / fps)}:alpha=1`);
+export const fadeFilters = (ramps: ReadonlyArray<Ramp>, fps: number) =>
+  ramps.map((r) => `fade=t=${r.type}:st=${n(Math.max(0, r.st) / fps)}:d=${n(r.d / fps)}:alpha=1`);
 
 /**
  * For a video without colour tags (its height given), filters that make ffmpeg read it as the
@@ -35,7 +36,9 @@ export interface CommandOptions {
   /** Shaded layers' pictures (D213): the file of the frames the rasteriser drew, by layer. */
   readonly shaded?: ReadonlyMap<VisualLayer, string> | undefined;
   /** A soft subtitle track (D105): an .srt file muxed as mov_text with an ISO 639-2 language tag. */
-  readonly subtitles?: { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined } | undefined;
+  readonly subtitles?:
+    | { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined }
+    | undefined;
 }
 
 /**
@@ -114,7 +117,10 @@ export function boxGraph(frames: ReadonlyArray<Placement>, input: string, output
     // Same parity as the box, so the crop sits exactly on the centre.
     const PW = Math.max(w, ...cws) + 2 + ((Math.max(w, ...cws) - w) % 2);
     const PH = Math.max(h, ...chs) + 2 + ((Math.max(h, ...chs) - h) % 2);
-    chain.push(`pad=w=${PW}:h=${PH}:x='floor((ow-iw)/2)':y='floor((oh-ih)/2)':color=black@0:eval=frame`, `crop=w=${w}:h=${h}:x=${Math.floor((PW - w) / 2)}:y=${Math.floor((PH - h) / 2)}:exact=1`);
+    chain.push(
+      `pad=w=${PW}:h=${PH}:x='floor((ow-iw)/2)':y='floor((oh-ih)/2)':color=black@0:eval=frame`,
+      `crop=w=${w}:h=${h}:x=${Math.floor((PW - w) / 2)}:y=${Math.floor((PH - h) / 2)}:exact=1`,
+    );
   }
   if (radius <= 0) return [`[${input}]${chain.join(",")}[${output}]`];
   const id = output;
@@ -153,7 +159,14 @@ export function placeAt(layer: VisualLayer, frames: ReadonlyArray<Placement>, fp
  * the filters from `[index:v:0]` to its frames on the layer's 1/fps grid (frames from f0). Shared
  * with the shader pass (D213), which decodes the same frames for the rasteriser.
  */
-export function videoSource(layer: Extract<VisualLayer, { kind: "video" }>, index: number, opts: Pick<CommandOptions, "caps" | "untagged">, W: number, H: number, fps: number): { readonly inputs: Array<string>; readonly picked: Array<string> } {
+export function videoSource(
+  layer: Extract<VisualLayer, { kind: "video" }>,
+  index: number,
+  opts: Pick<CommandOptions, "caps" | "untagged">,
+  W: number,
+  H: number,
+  fps: number,
+): { readonly inputs: Array<string>; readonly picked: Array<string> } {
   const frames = layer.f1 - layer.f0;
   const geo = layer.geometry?.frames;
   // Seek a second early and let fps pick, for each frame, the last source frame that starts at
@@ -161,7 +174,14 @@ export function videoSource(layer: Extract<VisualLayer, { kind: "video" }>, inde
   // A held clip (D94) seeks up to 2 s early, so a probe that overstates the stream still leaves frames to clone.
   const pre = layer.cycle ? 0 : Math.min(layer.last !== undefined ? 2 : 1, layer.source);
   const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + (frames / fps) * layer.speed + 1;
-  const inputs = [...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]), "-t", n(length), "-i", layer.file];
+  const inputs = [
+    ...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []),
+    ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]),
+    "-t",
+    n(length),
+    "-i",
+    layer.file,
+  ];
   const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
   // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
   // are padded with clones of the last one (before fps picks, so even a slice that starts at or
@@ -174,7 +194,16 @@ export function videoSource(layer: Extract<VisualLayer, { kind: "video" }>, inde
     const shrink = geo
       ? `scale=w=${Math.max(...geo.map((p) => p.cw))}:h=${Math.max(...geo.map((p) => p.ch))}`
       : `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
-    picked = [decoded, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${L}`, `${shrink}:out_color_matrix=bt709:out_range=tv`, `loop=loop=-1:size=${L}:start=0`, `trim=start_frame=${offset}:end_frame=${offset + frames}`, `settb=1/${fps}`, "setpts=N"];
+    picked = [
+      decoded,
+      `fps=${fps}:start_time=0:round=up`,
+      `trim=end_frame=${L}`,
+      `${shrink}:out_color_matrix=bt709:out_range=tv`,
+      `loop=loop=-1:size=${L}:start=0`,
+      `trim=start_frame=${offset}:end_frame=${offset + frames}`,
+      `settb=1/${fps}`,
+      "setpts=N",
+    ];
   }
   return { inputs, picked };
 }
@@ -198,5 +227,22 @@ export function shaderSourceArgs(layer: VisualLayer, opts: Pick<CommandOptions, 
     inputs = ["-f", "image2", "-pattern_type", "none", "-i", layer.file];
     chain = [`[0:v:0]${size}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`, "setpts=N"];
   }
-  return ["-hide_banner", "-nostdin", "-v", "error", ...inputs, "-filter_complex", `${chain.join(",")}[out]`, "-map", "[out]", "-frames:v", String(frames), "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"];
+  return [
+    "-hide_banner",
+    "-nostdin",
+    "-v",
+    "error",
+    ...inputs,
+    "-filter_complex",
+    `${chain.join(",")}[out]`,
+    "-map",
+    "[out]",
+    "-frames:v",
+    String(frames),
+    "-f",
+    "rawvideo",
+    "-pix_fmt",
+    "rgba",
+    "pipe:1",
+  ];
 }

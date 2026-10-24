@@ -8,7 +8,14 @@ import type { StoredTurn } from "../session/types.ts";
 
 /** A tool_result's words: its text, or its text blocks joined (pictures left out). */
 export const resultText = (content: unknown): string =>
-  isString(content) ? content : Array.isArray(content) ? (content as Array<Record<string, unknown>>).filter((x) => x?.type === "text" && isString(x.text)).map((x) => x.text as string).join("\n") : "";
+  isString(content)
+    ? content
+    : Array.isArray(content)
+      ? (content as Array<Record<string, unknown>>)
+          .filter((x) => x?.type === "text" && isString(x.text))
+          .map((x) => x.text as string)
+          .join("\n")
+      : "";
 
 const historyFile = (dir: string) => join(dir, "agent", "turns.json");
 
@@ -28,7 +35,18 @@ function storedCard(raw: unknown): AgentCard {
   const review = normReview(c.review);
   return {
     type,
-    ...(q && isString(q.question) ? { question: { question: q.question, options: (Array.isArray(q.options) ? q.options : []).filter((o): o is { label: string; detail?: string } => !!o && typeof o === "object" && isString(o.label)).map((o) => ({ label: o.label, ...(isString(o.detail) ? { detail: o.detail } : {}) })), multi: q.multi === true, freeText: q.freeText !== false } } : {}),
+    ...(q && isString(q.question)
+      ? {
+          question: {
+            question: q.question,
+            options: (Array.isArray(q.options) ? q.options : [])
+              .filter((o): o is { label: string; detail?: string } => !!o && typeof o === "object" && isString(o.label))
+              .map((o) => ({ label: o.label, ...(isString(o.detail) ? { detail: o.detail } : {}) })),
+            multi: q.multi === true,
+            freeText: q.freeText !== false,
+          },
+        }
+      : {}),
     ...(a ? { answer: { choices: Array.isArray(a.choices) ? a.choices.filter(isString) : [], ...(isString(a.text) ? { text: a.text } : {}) } } : {}),
     ...(isString(c.outcome) ? { outcome: c.outcome } : {}),
     ...(brief ? { brief } : {}),
@@ -45,8 +63,19 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
   if (!isString(t.id) || !isString(t.prompt) || !isString(t.startedAt) || !isString(t.status) || !STATUSES.has(t.status)) return undefined;
   const items = Array.isArray(t.items)
     ? t.items
-        .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking" || (i.kind === "card" && !!i.card && typeof i.card === "object")) && isString(i.text))
-        .map(({ live: _live, doing: _doing, error, card, result, ...i }) => ({ ...i, ...(isString(error) ? { error } : {}), ...(isString(result) ? { result: result.slice(0, RESULT_MAX) } : {}), ...(i.kind === "card" ? { card: storedCard(card) } : {}) }))
+        .filter(
+          (i): i is StoredTurn["items"][number] =>
+            !!i &&
+            typeof i === "object" &&
+            (i.kind === "text" || i.kind === "step" || i.kind === "thinking" || (i.kind === "card" && !!i.card && typeof i.card === "object")) &&
+            isString(i.text),
+        )
+        .map(({ live: _live, doing: _doing, error, card, result, ...i }) => ({
+          ...i,
+          ...(isString(error) ? { error } : {}),
+          ...(isString(result) ? { result: result.slice(0, RESULT_MAX) } : {}),
+          ...(i.kind === "card" ? { card: storedCard(card) } : {}),
+        }))
     : [];
   const edits = Array.isArray(t.edits)
     ? t.edits.filter((e): e is AgentEdit => !!e && typeof e === "object" && typeof e.revision === "number" && isString(e.summary) && Array.isArray(e.lines))
@@ -59,11 +88,30 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     status: interrupted ? "error" : (t.status as StoredTurn["status"]),
     items: items.map((i) => (i.status === "running" ? { ...i, status: "error" as const } : i)),
     edits,
-    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: AgentMention["kind"]; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker", "moment", "range", "effect", "transition", "region"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
+    ...(Array.isArray(t.mentions)
+      ? {
+          mentions: t.mentions
+            .filter(
+              (m): m is { kind: AgentMention["kind"]; label: string } =>
+                !!m &&
+                typeof m === "object" &&
+                isString(m.label) &&
+                ["media", "item", "track", "marker", "moment", "range", "effect", "transition", "region"].includes(m.kind),
+            )
+            .map((m) => ({ kind: m.kind, label: m.label })),
+        }
+      : {}),
     ...(Array.isArray(t.images) ? { images: t.images.filter((x): x is string => isString(x) && AGENT_IMAGE_NAME.test(x)) } : {}),
     ...(isString(t.model) ? { model: t.model } : {}),
     ...(isString(t.note) ? { note: t.note } : {}),
-    ...(Array.isArray(t.folders) ? { folders: t.folders.filter((f): f is AgentFolder => !!f && typeof f === "object" && isString(f.path) && typeof f.files === "number" && typeof f.folders === "number").slice(0, 16).map((f) => ({ path: f.path, files: f.files, folders: f.folders, ...(isString(f.problem) ? { problem: f.problem } : {}) })) } : {}),
+    ...(Array.isArray(t.folders)
+      ? {
+          folders: t.folders
+            .filter((f): f is AgentFolder => !!f && typeof f === "object" && isString(f.path) && typeof f.files === "number" && typeof f.folders === "number")
+            .slice(0, 16)
+            .map((f) => ({ path: f.path, files: f.files, folders: f.folders, ...(isString(f.problem) ? { problem: f.problem } : {}) })),
+        }
+      : {}),
     ...(isString(t.finishedAt) ? { finishedAt: t.finishedAt } : {}),
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
     ...(typeof t.seconds === "number" ? { seconds: t.seconds } : {}),

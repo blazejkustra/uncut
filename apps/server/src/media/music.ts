@@ -56,10 +56,15 @@ async function copyOnce(source: string, projectDir: string, file: string, bundle
     await mkdir(folder, { recursive: true });
     // media/ must be the project's own folder, not a link out of it.
     const real = await realpath(folder);
-    if (!real.startsWith(`${await realpath(projectDir)}${sep}`)) return { problem: "The project's media folder points outside the project, so the track wasn't copied." };
+    if (!real.startsWith(`${await realpath(projectDir)}${sep}`))
+      return { problem: "The project's media folder points outside the project, so the track wasn't copied." };
     const ext = extname(track.file);
     const stem = ext ? track.file.slice(0, -ext.length) : track.file;
-    const exists = (path: string) => stat(path).then(() => true, () => false);
+    const exists = (path: string) =>
+      stat(path).then(
+        () => true,
+        () => false,
+      );
     for (let n = 1; n < 100; n++) {
       const name = n === 1 ? track.file : `${stem}-${n}${ext}`;
       const target = join(real, name);

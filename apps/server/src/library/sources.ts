@@ -25,7 +25,13 @@ export function fetchableUrl(raw: unknown): string | undefined {
   return undefined;
 }
 
-const text = (v: unknown, max = 300) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, max) : "");
+const text = (v: unknown, max = 300) =>
+  typeof v === "string"
+    ? v
+        .replace(/[\u0000-\u001f]+/g, " ")
+        .trim()
+        .slice(0, max)
+    : "";
 
 // ---- Openverse ----
 
@@ -67,7 +73,12 @@ export function openverseHit(r: Record<string, unknown>): { hit: LibraryHit; fil
     licenseUrl: fetchableUrl(r.license_url) ?? licenseUrl(license, version),
   };
   const duration = typeof r.duration === "number" && r.duration > 0 ? r.duration / 1000 : undefined;
-  const tags = Array.isArray(r.tags) ? r.tags.map((t) => text((t as { name?: unknown })?.name, 40)).filter(Boolean).slice(0, 12) : [];
+  const tags = Array.isArray(r.tags)
+    ? r.tags
+        .map((t) => text((t as { name?: unknown })?.name, 40))
+        .filter(Boolean)
+        .slice(0, 12)
+    : [];
   const creatorUrl = fetchableUrl(r.creator_url);
   const provider = text(r.provider, 40);
   const filetype = text(r.filetype, 8).toLowerCase();
@@ -103,11 +114,18 @@ export function freesoundUrl(q: LibraryQuery, tag?: string): string {
   if (tag && /^[a-z0-9-]{1,40}$/.test(tag)) filters.push(`tag:${tag}`);
   if (q.length) filters.push(FREESOUND_LENGTH[q.length]);
   if (q.kind === "music" && q.songs) filters.push("tag:music");
-  const params = new URLSearchParams({ query: q.query.trim(), filter: filters.join(" "), fields: FREESOUND_FIELDS, page_size: String(PAGE_SIZE), page: String(Math.max(1, Math.floor(q.page ?? 1))) });
+  const params = new URLSearchParams({
+    query: q.query.trim(),
+    filter: filters.join(" "),
+    fields: FREESOUND_FIELDS,
+    page_size: String(PAGE_SIZE),
+    page: String(Math.max(1, Math.floor(q.page ?? 1))),
+  });
   return `${freesoundBase()}/apiv2/search/text/?${params}`;
 }
 
-export const freesoundDetailUrl = (id: string) => `${freesoundBase()}/apiv2/sounds/${encodeURIComponent(id)}/?${new URLSearchParams({ fields: FREESOUND_FIELDS })}`;
+export const freesoundDetailUrl = (id: string) =>
+  `${freesoundBase()}/apiv2/sounds/${encodeURIComponent(id)}/?${new URLSearchParams({ fields: FREESOUND_FIELDS })}`;
 
 /** Freesound's licence URL as ours: CC0 1.0 or CC BY (its version); anything else (BY-NC, sampling+) undefined. */
 export function freesoundLicense(raw: unknown): { license: LibraryLicense; version: string } | undefined {
@@ -125,7 +143,13 @@ export function freesoundHit(r: Record<string, unknown>): { hit: LibraryHit; fil
   const landing = fetchableUrl(r.url);
   if (!lic || !fileUrl || !id || !landing) return undefined;
   const creator = text(r.username, 120) || "Unknown";
-  const base = { title: text(r.name, 200) || "Untitled", creator, license: lic.license, licenseVersion: lic.version, licenseUrl: licenseUrl(lic.license, lic.version) };
+  const base = {
+    title: text(r.name, 200) || "Untitled",
+    creator,
+    license: lic.license,
+    licenseVersion: lic.version,
+    licenseUrl: licenseUrl(lic.license, lic.version),
+  };
   const duration = typeof r.duration === "number" && r.duration > 0 ? r.duration : undefined;
   return {
     fileUrl,
@@ -138,7 +162,12 @@ export function freesoundHit(r: Record<string, unknown>): { hit: LibraryHit; fil
       provider: "freesound",
       attribution: attributionLine(base),
       ...(duration ? { seconds: Math.round(duration * 100) / 100 } : {}),
-      tags: Array.isArray(r.tags) ? r.tags.map((t) => text(t, 40)).filter(Boolean).slice(0, 12) : [],
+      tags: Array.isArray(r.tags)
+        ? r.tags
+            .map((t) => text(t, 40))
+            .filter(Boolean)
+            .slice(0, 12)
+        : [],
       filetype: "mp3",
     },
   };

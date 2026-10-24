@@ -112,7 +112,8 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
       for (const m of source.matchAll(IMPORT)) {
         const spec = m[1] ?? m[2]!;
         if (shaderSources.has(rel)) {
-          if (!allowedShaderImport(spec)) say(`${rel} imports ${spec}: a shader effect's source imports only typegpu, typegpu/data, typegpu/std and its own files (./x.ts).`);
+          if (!allowedShaderImport(spec))
+            say(`${rel} imports ${spec}: a shader effect's source imports only typegpu, typegpu/data, typegpu/std and its own files (./x.ts).`);
         } else if (!allowedImport(spec)) say(`${rel} imports ${spec}: a plugin imports only node: built-ins, @uncut/plugin-sdk and its own files (./x.ts).`);
       }
     }
@@ -173,7 +174,8 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
     // Its manifest, plus the TypeGPU sources its shader effects name (D213): resolved by
     // plugin:check, never run by Uncut (the manifest carries their WGSL).
     const names = files.map((f) => f.path.slice(dir.length + 1));
-    if (!names.includes(MANIFEST_FILE) || names.some((n) => n !== MANIFEST_FILE && n !== iconFile && !shaderSources.has(n))) say(`a data plugin is its ${MANIFEST_FILE} alone, no code (and the .ts sources of its shader effects); an icon .svg may sit beside it.`);
+    if (!names.includes(MANIFEST_FILE) || names.some((n) => n !== MANIFEST_FILE && n !== iconFile && !shaderSources.has(n)))
+      say(`a data plugin is its ${MANIFEST_FILE} alone, no code (and the .ts sources of its shader effects); an icon .svg may sit beside it.`);
     for (const source of shaderSources) if (!names.includes(source)) say(`its shader effects' source ${source} isn't in the folder.`);
   } else if (runtime.command === "node") {
     const entry = (runtime.args ?? []).find((a) => a.endsWith(".ts"));

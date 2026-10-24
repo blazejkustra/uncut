@@ -3,14 +3,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applyEdit, clipBox, createSession, EASES, layout, loadModules, validateProject, visualsAt, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  clipBox,
+  createSession,
+  EASES,
+  layout,
+  loadModules,
+  validateProject,
+  visualsAt,
+  type Item,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { componentInfo, defaultComponentBox } from "../../packages/core/src/visual/components.ts";
 import { cameraName } from "../../packages/core/src/text/mentions.ts";
 import { planSetSpeed } from "../../packages/core/src/timeline/arrange.ts";
 import { planEffect, planSetLook } from "../../packages/core/src/visual/fx.ts";
 import { planInsertText } from "../../packages/core/src/text/textPlan.ts";
 import { safeMargin } from "../../packages/core/src/visual/render.ts";
-import { cutFit, newTrackIndexOver, planGroupTrim, planGrouping, planLayer, planMoveToNewTrack, planSetTransition, planTrim, withGroups, withOverlayRipple } from "../../apps/web/src/timeline/edit.ts";
+import {
+  cutFit,
+  newTrackIndexOver,
+  planGroupTrim,
+  planGrouping,
+  planLayer,
+  planMoveToNewTrack,
+  planSetTransition,
+  planTrim,
+  withGroups,
+  withOverlayRipple,
+} from "../../apps/web/src/timeline/edit.ts";
 import { keyEase, keyFrames, nearbyKey, planKeyEase, planResetPosition } from "../../apps/web/src/timeline/clip.ts";
 import { planForAll } from "../../apps/web/src/timeline/multi.ts";
 import { copyItems, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
@@ -28,8 +51,18 @@ const base: Project = {
     { id: "song", kind: "audio", name: "song.m4a", path: "/song.m4a", probe: { frames: 900, hasAudio: true } },
   ],
   tracks: [
-    { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 200, duration: 60, text: "Hi", transform: { x: 100, y: 100 }, style: { size: 96 } }] },
-    { id: "overlay", kind: "video", name: "Overlay", items: [{ id: "pip", type: "clip", media: "m", in: 0, start: 160, duration: 60, transform: { x: 1200, y: 600, w: 640, h: 360 } }] },
+    {
+      id: "text",
+      kind: "text",
+      name: "Text",
+      items: [{ id: "t1", type: "text", start: 200, duration: 60, text: "Hi", transform: { x: 100, y: 100 }, style: { size: 96 } }],
+    },
+    {
+      id: "overlay",
+      kind: "video",
+      name: "Overlay",
+      items: [{ id: "pip", type: "clip", media: "m", in: 0, start: 160, duration: 60, transform: { x: 1200, y: 600, w: 640, h: 360 } }],
+    },
     {
       id: "main",
       kind: "video",
@@ -55,21 +88,55 @@ const trackOf = (project: Project, id: string) => project.tracks.find((t) => t.i
 
 test("F2 (D147): a filter or effect on several clips is one edit on each of them; items it doesn't apply to are skipped", () => {
   const ids = ["a", "b", "c", "t1"];
-  const look = planForAll(base, ids, (p, id) => planSetLook(p, id, "teal-orange"), (n) => `Filter Teal & Orange on ${n} clips`);
+  const look = planForAll(
+    base,
+    ids,
+    (p, id) => planSetLook(p, id, "teal-orange"),
+    (n) => `Filter Teal & Orange on ${n} clips`,
+  );
   assert.ok("ops" in look);
   assert.deepEqual(look.ids, ["a", "b", "c"], "the text is skipped");
   assert.equal(look.summary, "Filter Teal & Orange on 3 clips");
   const p = apply(base, look);
-  for (const id of ["a", "b", "c"]) assert.equal((itemIn(p, id).effects?.[0]?.params as { look?: string }).look, "teal-orange");
-  const blur = planForAll(p, ["a", "c"], (q, id) => planEffect(q, id, "effect.blur"), (n) => `Add blur to ${n} clips`);
+  for (const id of ["a", "b", "c"]) assert.equal((itemIn(p, id).effects?.[0]?.params as { look?: string } | undefined)?.look, "teal-orange");
+  const blur = planForAll(
+    p,
+    ["a", "c"],
+    (q, id) => planEffect(q, id, "effect.blur"),
+    (n) => `Add blur to ${n} clips`,
+  );
   assert.ok("ops" in blur && blur.ops.length === 2);
   // None applies: the first reason.
-  const none = planForAll(base, ["t1"], (q, id) => planSetLook(q, id, "teal-orange"), () => "");
+  const none = planForAll(
+    base,
+    ["t1"],
+    (q, id) => planSetLook(q, id, "teal-orange"),
+    () => "",
+  );
   assert.ok("problem" in none);
 });
 
 test("F5 (D148): key frames for the timeline's diamonds, previous / next key, and a key's ease drawn by the same curve everywhere", () => {
-  const keyed: Project = { ...base, tracks: base.tracks.map((t) => (t.id === "overlay" ? { ...t, items: [{ ...t.items[0]!, keys: [{ frame: 5, scale: 1 }, { frame: 20, scale: 2 }, { frame: 40, x: 0, scale: 1 }] }] } : t)) };
+  const keyed: Project = {
+    ...base,
+    tracks: base.tracks.map((t) =>
+      t.id === "overlay"
+        ? {
+            ...t,
+            items: [
+              {
+                ...t.items[0]!,
+                keys: [
+                  { frame: 5, scale: 1 },
+                  { frame: 20, scale: 2 },
+                  { frame: 40, x: 0, scale: 1 },
+                ],
+              },
+            ],
+          }
+        : t,
+    ),
+  };
   const pip = itemIn(keyed, "pip");
   assert.deepEqual(keyFrames(pip), [5, 20, 40]);
   // Project frames: the clip starts at 160.
@@ -97,7 +164,10 @@ test("F6 (D149): a clip dragged from Main onto a text lane lands on a new video 
   const index = newTrackIndexOver(base, itemIn(base, "b"), text);
   assert.equal(index, 1);
   const p = apply(base, planMoveToNewTrack(base, "b", { index: index! }, 150));
-  assert.deepEqual(p.tracks.map((t) => t.id), ["text", "video-track-1", "overlay", "main", "sfx"]);
+  assert.deepEqual(
+    p.tracks.map((t) => t.id),
+    ["text", "video-track-1", "overlay", "main", "sfx"],
+  );
   assert.equal(itemIn(p, "b").start, 150);
   assert.equal(newTrackIndexOver(base, itemIn(base, "t1"), base.tracks[2]!), undefined, "D215: text over main is a plain move (Main takes text)");
   assert.equal(newTrackIndexOver(base, itemIn(base, "t1"), base.tracks[1]!), 1, "text over an overlay video lane: a new text track above it");
@@ -106,15 +176,37 @@ test("F6 (D149): a clip dragged from Main onto a text lane lands on a new video 
 });
 
 test("F7 (D152): every element's default box sits inside the safe area on 9:16, 1:1, 4:5 and 16:9; a lower third bottom-left", () => {
-  const ids = ["component.lower-third", "component.callout", "component.subscribe", "component.progress-bar", "component.countdown", "component.sticker", "component.image-frame", "component.shape", "component.chart", "component.code-block", "component.terminal", "component.agent-log", "component.compare-table"];
-  for (const [w, h] of [[1080, 1920], [1080, 1080], [1080, 1350], [1920, 1080]] as const) {
+  const ids = [
+    "component.lower-third",
+    "component.callout",
+    "component.subscribe",
+    "component.progress-bar",
+    "component.countdown",
+    "component.sticker",
+    "component.image-frame",
+    "component.shape",
+    "component.chart",
+    "component.code-block",
+    "component.terminal",
+    "component.agent-log",
+    "component.compare-table",
+  ];
+  for (const [w, h] of [
+    [1080, 1920],
+    [1080, 1080],
+    [1080, 1350],
+    [1920, 1080],
+  ] as const) {
     const canvas = { width: w, height: h, fps: 30 as const };
     const m = safeMargin({ canvas });
     for (const id of ids) {
       if (!componentInfo(id)) continue;
       const box = defaultComponentBox(id, { canvas })!;
       assert.ok(box, `${id} has a box`);
-      assert.ok(box.x >= m - 1 && box.y >= m - 1 && box.x + box.w <= w - m + 1 && box.y + box.h <= h - m + 1, `${id} on ${w}x${h} inside the safe area: ${JSON.stringify(box)}`);
+      assert.ok(
+        box.x >= m - 1 && box.y >= m - 1 && box.x + box.w <= w - m + 1 && box.y + box.h <= h - m + 1,
+        `${id} on ${w}x${h} inside the safe area: ${JSON.stringify(box)}`,
+      );
     }
     const lt = defaultComponentBox("component.lower-third", { canvas })!;
     assert.equal(lt.x, m, `lower third at the left margin on ${w}x${h}`);
@@ -150,7 +242,25 @@ test("F10 (D155): a new canvas size rescales boxes, text and elements in the sam
   const p = { ...base, canvas: { width: 1080, height: 1350, fps: 30 as const } };
   const fourFive: Project = {
     ...p,
-    tracks: p.tracks.map((t) => (t.id === "overlay" ? { ...t, items: [{ ...t.items[0]!, transform: { x: 0, y: 0, w: 1080, h: 1350 } }, { id: "lt", type: "component", component: "component.lower-third", start: 300, duration: 60, props: {}, transform: { x: 72, y: 1000, w: 900, h: 200 } }] } : t)),
+    tracks: p.tracks.map((t) =>
+      t.id === "overlay"
+        ? {
+            ...t,
+            items: [
+              { ...t.items[0]!, transform: { x: 0, y: 0, w: 1080, h: 1350 } },
+              {
+                id: "lt",
+                type: "component",
+                component: "component.lower-third",
+                start: 300,
+                duration: 60,
+                props: {},
+                transform: { x: 72, y: 1000, w: 900, h: 200 },
+              },
+            ],
+          }
+        : t,
+    ),
   };
   const plan = planCanvas(fourFive, { width: 1080, height: 1080 });
   assert.ok("ops" in plan);
@@ -206,12 +316,25 @@ test("F15 (D151): bring forward / send backward and reset position", () => {
   // The PiP forward: the text track above isn't for video, so a new video track goes above it.
   const up = planLayer(base, "pip", -1);
   const p = apply(base, up);
-  assert.deepEqual(p.tracks.map((t) => t.id), ["video-track-1", "text", "main", "sfx"], "the empty Overlay track goes");
+  assert.deepEqual(
+    p.tracks.map((t) => t.id),
+    ["video-track-1", "text", "main", "sfx"],
+    "the empty Overlay track goes",
+  );
   const { starts } = layout(p);
-  assert.deepEqual(visualsAt(p, starts, 161).map((v) => v.item.id).at(-1), "pip", "drawn on top");
+  assert.deepEqual(
+    visualsAt(p, starts, 161)
+      .map((v) => v.item.id)
+      .at(-1),
+    "pip",
+    "drawn on top",
+  );
   // Back down past main: behind the footage.
   const down = apply(base, planLayer(base, "pip", 1));
-  assert.deepEqual(down.tracks.map((t) => t.id), ["text", "main", "video-track-1", "sfx"]);
+  assert.deepEqual(
+    down.tracks.map((t) => t.id),
+    ["text", "main", "video-track-1", "sfx"],
+  );
   assert.ok("problem" in planLayer(base, "a", -1), "main clips stay");
   const reset = apply(base, planResetPosition(base, "pip"));
   assert.equal(itemIn(reset, "pip").transform, undefined);

@@ -72,12 +72,30 @@ function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => 
   }, [plugins]);
   const q = query.trim().toLowerCase();
   const all = pluginCatalog?.plugins ?? [];
-  const shown = all.filter((e) => !q || [e.id, e.name, e.description, e.kind, ...(e.contributes ? [...e.contributes.looks, ...e.contributes.components, ...e.contributes.rules, ...(e.contributes.shaders ?? [])] : [])].some((v) => v.toLowerCase().includes(q)));
+  const shown = all.filter(
+    (e) =>
+      !q ||
+      [
+        e.id,
+        e.name,
+        e.description,
+        e.kind,
+        ...(e.contributes ? [...e.contributes.looks, ...e.contributes.components, ...e.contributes.rules, ...(e.contributes.shaders ?? [])] : []),
+      ].some((v) => v.toLowerCase().includes(q)),
+  );
   const busy = offline || !!pluginInstalling;
   return (
     <div className="wiz-check plugin-browse" data-testid="plugin-browse-panel">
       <div className="wiz-sub">Plugins that come with Uncut and are off until you enable them. Each one asks before it's allowed.</div>
-      {all.length > 0 && <input className="field input" data-testid="plugin-catalog-search" placeholder="Search plugins" value={query} onChange={(e) => setQuery(e.target.value)} />}
+      {all.length > 0 && (
+        <input
+          className="field input"
+          data-testid="plugin-catalog-search"
+          placeholder="Search plugins"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
       {pluginCatalog && !all.length && <div className="wiz-sub">No plugins in the catalog yet.</div>}
       {shown.map((e) => (
         <div className="plugin-browse-row" key={e.id} data-testid="plugin-catalog-entry" data-id={e.id} data-enabled={e.enabled ? "true" : "false"}>
@@ -86,7 +104,13 @@ function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => 
             <div className="wiz-name">{e.name}</div>
             {e.description && <div className="wiz-sub">{e.description}</div>}
             <div className="plugin-browse-tags">
-              {[e.contributes ? addsLine(e.contributes) : "", e.tools.length ? `Gives the agent ${e.tools.join(", ")}` : "", e.runs ? "Runs as a program" : "Runs no program"].filter(Boolean).join(". ")}
+              {[
+                e.contributes ? addsLine(e.contributes) : "",
+                e.tools.length ? `Gives the agent ${e.tools.join(", ")}` : "",
+                e.runs ? "Runs as a program" : "Runs no program",
+              ]
+                .filter(Boolean)
+                .join(". ")}
             </div>
           </div>
           {e.enabled ? (
@@ -196,12 +220,26 @@ export function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () 
 
 /** What a plugin adds (D103), in words: "Text looks: Soft card. Components: Corner sticker. Checks: …". */
 export const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
-  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : "", c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "", c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : "", c.skills?.length ? `Skills: ${c.skills.join(", ")}` : ""].filter(Boolean).join(". ");
+  [
+    c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "",
+    c.components.length ? `Components: ${c.components.join(", ")}` : "",
+    c.rules.length ? `Checks: ${c.rules.join(", ")}` : "",
+    c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "",
+    c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : "",
+    c.skills?.length ? `Skills: ${c.skills.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(". ");
 
 /** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
 const originLines = (p: PluginInfo): Array<[string, string]> => {
   if (p.source === "bundled") return [["Source", "Ships with Uncut"]];
-  if (p.origin?.kind === "git") return [["Source", p.origin.source], ...(p.origin.ref ? [["Branch or tag", p.origin.ref] as [string, string]] : []), ["Commit", p.origin.commit ?? "unknown"]];
+  if (p.origin?.kind === "git")
+    return [
+      ["Source", p.origin.source],
+      ...(p.origin.ref ? [["Branch or tag", p.origin.ref] as [string, string]] : []),
+      ["Commit", p.origin.commit ?? "unknown"],
+    ];
   if (p.origin?.kind === "catalog") return [["Source", "Uncut's plugin catalog"]];
   if (p.origin?.kind === "folder") return [["Source", `Copied from ${p.origin.source}`]];
   return [["Source", `The folder ${p.dir}`]];
@@ -212,11 +250,21 @@ export function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; off
   const [rights, ...rest] = p.asks;
   // Above Settings (itself a modal), outside its scrolling list.
   return createPortal(
-    <div className="modal-layer plugin-approval-layer" data-testid="plugin-dialog" onMouseDown={(e) => e.target === e.currentTarget && actions.openPluginDialog(undefined)}>
+    <div
+      className="modal-layer plugin-approval-layer"
+      data-testid="plugin-dialog"
+      onMouseDown={(e) => e.target === e.currentTarget && actions.openPluginDialog(undefined)}
+    >
       <div className="modal plugin-approval" role="dialog" aria-label={`Allow ${p.name}?`}>
         <h2>Allow {p.name}?</h2>
         <div className="plugin-facts">
-          {[...originLines(p), ["Id", p.id] as [string, string], ...(p.version ? [["Version", p.version] as [string, string]] : []), ["Tools for the agent", p.tools.length ? p.tools.join(", ") : "None"] as [string, string], ...(p.contributes ? [["Adds", addsLine(p.contributes)] as [string, string]] : [])].map(([k, v]) => (
+          {[
+            ...originLines(p),
+            ["Id", p.id] as [string, string],
+            ...(p.version ? [["Version", p.version] as [string, string]] : []),
+            ["Tools for the agent", p.tools.length ? p.tools.join(", ") : "None"] as [string, string],
+            ...(p.contributes ? [["Adds", addsLine(p.contributes)] as [string, string]] : []),
+          ].map(([k, v]) => (
             <div className="plugin-fact" key={k} data-testid={`plugin-dialog-${k.toLowerCase().replace(/\W+/g, "-")}`}>
               <span className="k">{k}</span>
               <span className="v">{v}</span>
@@ -257,7 +305,10 @@ export function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; off
 export const pluginSummary = (p: Pick<PluginInfo, "description" | "tools" | "contributes">): string => {
   const skills = p.contributes?.skills?.length ?? 0;
   if (skills && !p.tools.length) return `${skills} editing skill${skills === 1 ? "" : "s"}. Type / in the composer to use one`;
-  const first = p.description?.trim().split(/(?<=[.!?])\s/)[0]?.replace(/[.!?]$/, "");
+  const first = p.description
+    ?.trim()
+    .split(/(?<=[.!?])\s/)[0]
+    ?.replace(/[.!?]$/, "");
   if (first) {
     if (first.length <= 72) return first;
     const cut = first.lastIndexOf(", ", 72);
@@ -265,7 +316,15 @@ export const pluginSummary = (p: Pick<PluginInfo, "description" | "tools" | "con
   }
   const c = p.contributes;
   const n = (k: number, one: string, many = `${one}s`) => (k ? `${k} ${k === 1 ? one : many}` : "");
-  const parts = [n(p.tools.length, "agent tool"), n(c?.looks.length ?? 0, "text look"), n(c?.components.length ?? 0, "component"), n(c?.rules.length ?? 0, "check"), n(c?.filters?.length ?? 0, "filter"), n(c?.shaders?.length ?? 0, "shader effect"), n(skills, "skill")].filter(Boolean);
+  const parts = [
+    n(p.tools.length, "agent tool"),
+    n(c?.looks.length ?? 0, "text look"),
+    n(c?.components.length ?? 0, "component"),
+    n(c?.rules.length ?? 0, "check"),
+    n(c?.filters?.length ?? 0, "filter"),
+    n(c?.shaders?.length ?? 0, "shader effect"),
+    n(skills, "skill"),
+  ].filter(Boolean);
   return parts.length ? `Adds ${parts.join(", ")}` : "No agent tools";
 };
 
@@ -277,7 +336,16 @@ const skillParts = (s: string): [string, string] => {
 
 function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
   const [open, setOpen] = useState(false);
-  const from = p.source === "bundled" ? "Ships with Uncut" : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin?.kind === "catalog" ? "From Uncut's catalog" : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
+  const from =
+    p.source === "bundled"
+      ? "Ships with Uncut"
+      : p.origin?.kind === "git"
+        ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}`
+        : p.origin?.kind === "catalog"
+          ? "From Uncut's catalog"
+          : p.origin
+            ? `Copied from ${p.origin.source}`
+            : `From ${p.dir}`;
   const broken = p.status === "broken";
   const summary = broken ? "Skipped" : pluginSummary(p);
   const skills = p.contributes?.skills ?? [];
@@ -314,7 +382,12 @@ function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolea
         </div>
         {!broken && (
           <Tooltip label={open ? "Hide details" : "Show details"}>
-            <button className={`icon-btn plugin-more${open ? " open" : ""}`} data-testid={`plugin-more-${p.id}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            <button
+              className={`icon-btn plugin-more${open ? " open" : ""}`}
+              data-testid={`plugin-more-${p.id}`}
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+            >
               <ChevronDown />
             </button>
           </Tooltip>

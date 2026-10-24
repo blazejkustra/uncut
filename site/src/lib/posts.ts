@@ -48,7 +48,8 @@ function readDir(dir: string, draft: boolean): Array<Post> {
     .map((file) => {
       const slug = file.replace(/\.md$/, "");
       const { data, content } = matter(fs.readFileSync(path.join(dir, file), "utf8"));
-      const title = str(data.title), date = str(data.date);
+      const title = str(data.title),
+        date = str(data.date);
       if (!title || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`${where}/${file}: needs a title and a YYYY-MM-DD date`);
       return {
         slug,

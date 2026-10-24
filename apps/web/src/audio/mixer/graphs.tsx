@@ -62,7 +62,25 @@ const EQ_RANGE = 18;
 const gy = (db: number) => H / 2 - (Math.max(-EQ_RANGE, Math.min(EQ_RANGE, db)) / EQ_RANGE) * (H / 2 - 6);
 
 /** The EQ's response 20 Hz–20 kHz on a log axis, ±18 dB, with a handle per band (drag: frequency sideways, gain up and down). */
-export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, onCancel, disabled, testId = "fx-eq-graph" }: { stages: ReadonlyArray<Stage>; handles: ReadonlyArray<EqHandle>; bypassed: boolean; onDrag?: (id: string, freq: number, gainDb: number) => void; onDrop?: () => void; onCancel?: () => void; disabled?: boolean; testId?: string }) {
+export function EqGraph({
+  stages,
+  handles,
+  bypassed,
+  onDrag,
+  onDrop,
+  onCancel,
+  disabled,
+  testId = "fx-eq-graph",
+}: {
+  stages: ReadonlyArray<Stage>;
+  handles: ReadonlyArray<EqHandle>;
+  bypassed: boolean;
+  onDrag?: (id: string, freq: number, gainDb: number) => void;
+  onDrop?: () => void;
+  onCancel?: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
   const svg = useRef<SVGSVGElement>(null);
   // A drag's window listeners, removed when it ends, is cancelled (pointercancel), or the graph goes
   // away mid-drag (the popover closed: D262), so no listener or scrub preview is left behind.
@@ -115,7 +133,15 @@ export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, onCancel, d
     window.addEventListener("pointercancel", cancelled);
   };
   return (
-    <svg ref={svg} className={`fxg ${bypassed ? "bypassed" : ""}`} viewBox={`0 0 ${W} ${H}`} data-testid={testId} data-at1k={at1k.toFixed(2)} role="img" aria-label={`EQ response${bypassed ? " (bypassed)" : ""}`}>
+    <svg
+      ref={svg}
+      className={`fxg ${bypassed ? "bypassed" : ""}`}
+      viewBox={`0 0 ${W} ${H}`}
+      data-testid={testId}
+      data-at1k={at1k.toFixed(2)}
+      role="img"
+      aria-label={`EQ response${bypassed ? " (bypassed)" : ""}`}
+    >
       {[100, 1000, 10000].map((f) => (
         <g key={f}>
           <line className="fxg-grid" x1={fx(f)} x2={fx(f)} y1={0} y2={H} />
@@ -136,7 +162,15 @@ export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, onCancel, d
       <polyline className="fxg-fill" points={`0,${gy(0)} ${points.join(" ")} ${W},${gy(0)}`} />
       <polyline className="fxg-curve" points={points.join(" ")} />
       {handles.map((h) => (
-        <g key={h.id} className={`fxg-handle ${disabled ? "" : "live"}`} data-testid={`fx-eq-handle-${h.id}`} data-freq={h.freq} data-gain={h.gainDb} transform={`translate(${fx(h.freq).toFixed(1)},${gy(h.vertical ? h.gainDb : stagesResponseDb(stages, 48000, h.freq)).toFixed(1)})`} onPointerDown={down(h)}>
+        <g
+          key={h.id}
+          className={`fxg-handle ${disabled ? "" : "live"}`}
+          data-testid={`fx-eq-handle-${h.id}`}
+          data-freq={h.freq}
+          data-gain={h.gainDb}
+          transform={`translate(${fx(h.freq).toFixed(1)},${gy(h.vertical ? h.gainDb : stagesResponseDb(stages, 48000, h.freq)).toFixed(1)})`}
+          onPointerDown={down(h)}
+        >
           <circle r={7} />
           <text y={3}>{h.label}</text>
           <title>{`${h.id}: ${hzText(h.freq)}${h.vertical ? `, ${dbText(h.gainDb)}` : ""} (drag)`}</title>
@@ -159,7 +193,13 @@ export function CompressorGraph({ stage, trackId, bypassed }: { stage: Extract<S
   const meterH = H - 22;
   const grH = (Math.min(24, -gr) / 24) * meterH;
   return (
-    <svg className={`fxg ${bypassed ? "bypassed" : ""}`} viewBox={`0 0 ${W} ${H}`} data-testid="fx-comp-graph" role="img" aria-label="Compressor curve and gain reduction">
+    <svg
+      className={`fxg ${bypassed ? "bypassed" : ""}`}
+      viewBox={`0 0 ${W} ${H}`}
+      data-testid="fx-comp-graph"
+      role="img"
+      aria-label="Compressor curve and gain reduction"
+    >
       {[-48, -36, -24, -12].map((d) => (
         <line key={d} className="fxg-grid" x1={cx(d)} x2={cx(d)} y1={0} y2={H} />
       ))}
@@ -195,7 +235,14 @@ export function DuckGraph({ keys, frames, amountDb, bypassed }: { keys: Readonly
   const x = (f: number) => (f / span) * W;
   const pts = [`0,${y(0)}`, ...keys.map((k) => `${x(k.frame).toFixed(1)},${y(k.db).toFixed(1)}`), `${W},${y(0)}`];
   return (
-    <svg className={`fxg duck ${bypassed ? "bypassed" : ""}`} viewBox={`0 0 ${W} ${H}`} data-testid="duck-graph" data-keys={keys.length} role="img" aria-label="Duck curve over the timeline">
+    <svg
+      className={`fxg duck ${bypassed ? "bypassed" : ""}`}
+      viewBox={`0 0 ${W} ${H}`}
+      data-testid="duck-graph"
+      data-keys={keys.length}
+      role="img"
+      aria-label="Duck curve over the timeline"
+    >
       <line className="fxg-grid" x1={0} x2={W} y1={y(depth)} y2={y(depth)} />
       <text className="fxg-tick" x={3} y={y(depth) - 3}>
         {dbText(depth)}
@@ -220,7 +267,13 @@ export function LimiterGraph({ ceilingDb, on }: { ceilingDb: number; on: boolean
   const LO = -36;
   const X = (db: number) => ((Math.max(LO, Math.min(0, db)) - LO) / -LO) * (W - 8) + 4;
   return (
-    <svg className={`fxg limiter ${on ? "" : "bypassed"}`} viewBox={`0 0 ${W} 46`} data-testid="limiter-graph" role="img" aria-label="Master peak, ceiling and limiting">
+    <svg
+      className={`fxg limiter ${on ? "" : "bypassed"}`}
+      viewBox={`0 0 ${W} 46`}
+      data-testid="limiter-graph"
+      role="img"
+      aria-label="Master peak, ceiling and limiting"
+    >
       <rect className="fxg-meter" x={4} y={6} width={W - 8} height={10} rx={2} />
       <rect className="fxg-peak" data-testid="limiter-pop-peak" data-value={live.peak} x={4} y={6} width={Math.max(0, X(live.peak) - 4)} height={10} rx={2} />
       <line className="fxg-threshold" x1={X(ceilingDb)} x2={X(ceilingDb)} y1={2} y2={20} />
@@ -228,7 +281,16 @@ export function LimiterGraph({ ceilingDb, on }: { ceilingDb: number; on: boolean
         ceiling {dbText(ceilingDb, "dBTP")}
       </text>
       <rect className="fxg-meter" x={4} y={34} width={W * 0.4} height={6} rx={2} />
-      <rect className="fxg-gr" data-testid="limiter-pop-gr" data-value={live.gr} x={4} y={34} width={(Math.min(12, -live.gr) / 12) * W * 0.4} height={6} rx={2} />
+      <rect
+        className="fxg-gr"
+        data-testid="limiter-pop-gr"
+        data-value={live.gr}
+        x={4}
+        y={34}
+        width={(Math.min(12, -live.gr) / 12) * W * 0.4}
+        height={6}
+        rx={2}
+      />
       <text className="fxg-value" x={W * 0.4 + 10} y={41}>
         {on ? `limiting ${live.gr < -0.05 ? dbText(live.gr) : "0 dB"}` : "limiter off"}
       </text>

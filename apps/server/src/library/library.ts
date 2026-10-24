@@ -16,7 +16,23 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { LibraryError, type LibraryLimit, type LibrarySearchResult, type LibraryState } from "@uncut/contracts";
-import { type SoundFolder, creditOf, expandQuery, hitKey, LIBRARY_MODULES, limitSentence, parseFolderKey, parseHitKey, rankSounds, sfxCredit, sfxSound, type LibraryCredit, type LibraryHit, type LibraryQuery, type LibrarySource } from "@uncut/core/library";
+import {
+  type SoundFolder,
+  creditOf,
+  expandQuery,
+  hitKey,
+  LIBRARY_MODULES,
+  limitSentence,
+  parseFolderKey,
+  parseHitKey,
+  rankSounds,
+  sfxCredit,
+  sfxSound,
+  type LibraryCredit,
+  type LibraryHit,
+  type LibraryQuery,
+  type LibrarySource,
+} from "@uncut/core/library";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -109,7 +125,10 @@ export function extensionOf(hit: Pick<LibraryHit, "filetype">, url: string) {
 
 export function soundLibrary(options: LibraryOptions) {
   const now = options.now ?? Date.now;
-  const limiters: Record<LibrarySource, Limiter> = { openverse: new Limiter(OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, now), freesound: new Limiter(FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, now) };
+  const limiters: Record<LibrarySource, Limiter> = {
+    openverse: new Limiter(OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, now),
+    freesound: new Limiter(FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, now),
+  };
   const cache = new Map<string, { readonly at: number; readonly result: LibrarySearchResult }>();
   const known = new Map<string, { readonly hit: LibraryHit; readonly fileUrl: string }>();
   let lastLeft: Partial<Record<LibrarySource, { minute?: number; day?: number }>> = {};
@@ -160,7 +179,10 @@ export function soundLibrary(options: LibraryOptions) {
     }
     if (res.status === 401 || res.status === 403) {
       await res.body?.cancel().catch(() => {});
-      throw fail("refused", source === "freesound" ? "Freesound didn't accept your key. Check it in Settings." : `${SOURCE_NAME[source]} refused the search (${res.status}).`);
+      throw fail(
+        "refused",
+        source === "freesound" ? "Freesound didn't accept your key. Check it in Settings." : `${SOURCE_NAME[source]} refused the search (${res.status}).`,
+      );
     }
     if (!res.ok) {
       await res.body?.cancel().catch(() => {});
@@ -185,7 +207,16 @@ export function soundLibrary(options: LibraryOptions) {
 
   /** One page from a source for words as sent (cached), its hits parsed and remembered. */
   async function fetchPage(source: LibrarySource, q: LibraryQuery, tag: string | undefined): Promise<LibrarySearchResult> {
-    const cacheKey = JSON.stringify([source, q.kind, q.query.toLowerCase(), tag ?? "", q.license ?? "", q.length ?? "", q.kind === "music" && q.songs ? 1 : 0, q.page]);
+    const cacheKey = JSON.stringify([
+      source,
+      q.kind,
+      q.query.toLowerCase(),
+      tag ?? "",
+      q.license ?? "",
+      q.length ?? "",
+      q.kind === "music" && q.songs ? 1 : 0,
+      q.page,
+    ]);
     const hit = cache.get(cacheKey);
     if (hit && now() - hit.at < CACHE_MS) return { ...hit.result, cached: true, ...(limiters[source].limit() ? { limit: limiters[source].limit()! } : {}) };
     const key = await keyOf(source);
@@ -199,7 +230,15 @@ export function soundLibrary(options: LibraryOptions) {
     const total = typeof body.result_count === "number" ? body.result_count : typeof body.count === "number" ? body.count : parsed.length;
     const pages = typeof body.page_count === "number" ? body.page_count : Math.ceil(total / PAGE_SIZE);
     const left = lastLeft[source];
-    const result: LibrarySearchResult = { hits: parsed.map((e) => e.hit), total, page: q.page!, pages, source, cached: false, ...(left && (left.minute !== undefined || left.day !== undefined) ? { left } : {}) };
+    const result: LibrarySearchResult = {
+      hits: parsed.map((e) => e.hit),
+      total,
+      page: q.page!,
+      pages,
+      source,
+      cached: false,
+      ...(left && (left.minute !== undefined || left.day !== undefined) ? { left } : {}),
+    };
     cache.set(cacheKey, { at: now(), result });
     while (cache.size > MAX_CACHED_SEARCHES) cache.delete(cache.keys().next().value!);
     return result;
@@ -286,7 +325,12 @@ export function soundLibrary(options: LibraryOptions) {
       if ("problem" in copied) throw fail("io", copied.problem);
       const seconds = await options.probeSeconds(join(projectDir, copied.path)).catch(() => undefined);
       if (!seconds || !(seconds > 0)) throw fail("refused", `${found.sound.name} isn't a sound Uncut can read.`);
-      return { path: copied.path, seconds, name: found.sound.name, source: { module: LIBRARY_MODULES.folder, libraryId: id, title: found.sound.name, origin: found.path, folder: found.folder.name } };
+      return {
+        path: copied.path,
+        seconds,
+        name: found.sound.name,
+        source: { module: LIBRARY_MODULES.folder, libraryId: id, title: found.sound.name, origin: found.path, folder: found.folder.name },
+      };
     }
     const { hit, fileUrl } = await lookup(id, signal);
     return serialisedFor(projectDir, () => download(hit, fileUrl, projectDir, signal, outer));
@@ -298,7 +342,8 @@ export function soundLibrary(options: LibraryOptions) {
     try {
       await mkdir(folder, { recursive: true });
       real = await realpath(folder);
-      if (!real.startsWith(`${await realpath(projectDir)}${sep}`)) throw fail("io", "The project's media folder points outside the project, so nothing was downloaded.");
+      if (!real.startsWith(`${await realpath(projectDir)}${sep}`))
+        throw fail("io", "The project's media folder points outside the project, so nothing was downloaded.");
     } catch (error) {
       if (error instanceof LibraryError) throw error;
       throw fail("io", `Couldn't make the project's media folder: ${(error as Error).message}`);
@@ -351,14 +396,25 @@ export function soundLibrary(options: LibraryOptions) {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw fail("io", `Couldn't save the sound into the project: ${(error as Error).message}`);
           // The same file already there (added before, then undone): reuse it.
-          if ((await stat(target)).size === bytes && createHash("sha256").update(await readFile(target)).digest("hex") === sha256) return done(`media/${name}`);
+          if (
+            (await stat(target)).size === bytes &&
+            createHash("sha256")
+              .update(await readFile(target))
+              .digest("hex") === sha256
+          )
+            return done(`media/${name}`);
           continue;
         }
         return done(`media/${name}`);
       }
       throw fail("io", `The project's media folder already holds 99 files named like ${stem}.${ext}.`);
       function done(path: string): Added {
-        return { path, seconds: Math.round(seconds! * 1000) / 1000, name: hit.title, source: creditOf(hit, { fileUrl, sha256, downloaded: new Date(now()).toISOString() }) };
+        return {
+          path,
+          seconds: Math.round(seconds! * 1000) / 1000,
+          name: hit.title,
+          source: creditOf(hit, { fileUrl, sha256, downloaded: new Date(now()).toISOString() }),
+        };
       }
     } finally {
       await rm(part, { force: true });
@@ -402,7 +458,7 @@ export async function getFollowing(start: string, headers: Record<string, string
 /** A content type a sound may come as: audio/*, Ogg, and (downloads only) a generic binary or none. Never a page, JSON or text. */
 export function isAudioType(raw: string | null, strict: boolean): boolean {
   const type = (raw ?? "").split(";")[0]!.trim().toLowerCase();
-  if (/^audio\//.test(type) || type === "application/ogg") return true;
+  if (type.startsWith("audio/") || type === "application/ogg") return true;
   return !strict && (type === "" || type === "application/octet-stream" || type === "binary/octet-stream");
 }
 
@@ -442,12 +498,16 @@ export const layer = Layer.effect(
       musicRoot: musicLibraryRoot(),
       probeSeconds: async (path) => {
         const [outcome] = await Effect.runPromise(mediaCore.probeMany([path]).pipe(Effect.catch(() => Effect.succeed([]))));
-        if (outcome?.ok && outcome.info.kind === "audio" && outcome.info.durationSeconds && outcome.info.durationSeconds > 0) return outcome.info.durationSeconds;
+        if (outcome?.ok && outcome.info.kind === "audio" && outcome.info.durationSeconds && outcome.info.durationSeconds > 0)
+          return outcome.info.durationSeconds;
         // Formats the media core doesn't read (mp3): ffprobe, as the import does. It must find an audio stream.
         await config.shellReady;
         const bin = await which("ffprobe", process.env.PATH ?? "");
         if (!bin) return undefined;
-        const r = await runProbe(bin, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type:format=duration", "-of", "json", path], { timeoutMs: 15000, env: withoutApiKey(process.env) });
+        const r = await runProbe(bin, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type:format=duration", "-of", "json", path], {
+          timeoutMs: 15000,
+          env: withoutApiKey(process.env),
+        });
         if (r.kind !== "done" || r.code !== 0) return undefined;
         try {
           const j = JSON.parse(r.stdout) as { streams?: Array<{ codec_type?: string }>; format?: { duration?: string } };

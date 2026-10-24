@@ -1,7 +1,8 @@
-# Every push to main and every PR (#89, D254): the whole suite, typecheck + the fast tests + the
-# packaged-app tests (test/app), split over 5 parallel macOS jobs. Each job builds the app itself,
-# then runs its share of the test files (scripts/test-shard.ts, balanced by test/durations.json):
-# fast files two at a time, then app files one at a time. 5 because GitHub runs at most 5 macOS jobs
+# Every push to main and every PR (#89, D254): the quick checks (typecheck, lint, format, file size)
+# on one Linux job, and the whole suite, the fast tests + the packaged-app tests (test/app), split
+# over 5 parallel macOS jobs. Each job builds the app itself, then runs its share of the test files
+# (scripts/test-shard.ts, balanced by test/durations.json): fast files two at a time, then app
+# files one at a time. 5 because GitHub runs at most 5 macOS jobs
 # at once on this plan: a 6th would only queue.
 #
 # Skipped on these runners, each with its reason in the log and the job summary
@@ -38,6 +39,41 @@ env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
 jobs:
+  # The quick checks, on Linux and without building the app, so they answer in a minute or two:
+  # types, lint (oxlint), formatting (oxfmt) and no source file over 1000 lines.
+  checks:
+    name: typecheck, lint, format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: Find the pnpm store
+        run: echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PNPM_STORE }}
+          key: checks-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: checks-${{ runner.os }}-
+      # No install scripts: nothing here runs Electron or the native media core.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm typecheck
+      - name: Lint (pnpm lint)
+        if: ${{ !cancelled() }}
+        run: pnpm lint --format github
+      - name: Format (pnpm format to fix)
+        if: ${{ !cancelled() }}
+        run: pnpm format:check
+      - name: File size
+        if: ${{ !cancelled() }}
+        run: node --test test/repo/file-size.test.ts
+
   test:
     name: tests ${{ matrix.shard }}/5
     runs-on: macos-latest
@@ -72,9 +108,6 @@ jobs:
       # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck
-        if: matrix.shard == 1
-        run: pnpm typecheck
       # The fast tests start the bundled server and media core (pnpm build, part of dist); the app
       # tests launch the packaged app.
       - run: pnpm dist

@@ -134,7 +134,10 @@ export function endPreview(afterEdit: boolean) {
   });
 }
 
-export async function timelineEdit(plan: Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+export async function timelineEdit(
+  plan: Plan | { readonly problem: string },
+  origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {},
+): Promise<boolean> {
   if (previewing) return (previewPlan(plan), false);
   const snapshot = state.snapshot;
   if (!snapshot || !online()) return false;
@@ -175,7 +178,10 @@ const settled = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
  * project when it's this edit's turn. `baseRevision` is what the user saw when the gesture began
  * (a typing burst, a drag), so the server refuses it if the agent changed the item since (D6).
  */
-export function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+export function itemEdit(
+  makePlan: (project: ProjectModel) => Plan | { readonly problem: string },
+  origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {},
+): Promise<boolean> {
   if (previewing) {
     const snapshot = state.snapshot;
     if (snapshot && (origin.dir === undefined || origin.dir === snapshot.dir)) previewPlan(makePlan(projectOf(snapshot)));
@@ -184,7 +190,7 @@ export function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly 
   queuedEdits++;
   let started = false;
   const run = async () => {
-    if (!started) (started = true, queuedEdits--);
+    if (!started) ((started = true), queuedEdits--);
     while (adding) await settled();
     const snapshot = state.snapshot;
     if (!snapshot || (origin.dir !== undefined && origin.dir !== snapshot.dir)) return false;
@@ -208,7 +214,8 @@ export function speedPlan(project: ProjectModel, itemId: string, speed: number, 
  */
 export function shaderDefs(project: ProjectModel | undefined): Array<ShaderDef & { readonly from: string }> {
   const out = new Map<string, ShaderDef & { readonly from: string }>();
-  for (const s of state.contributions?.shaders ?? []) out.set(s.id, { id: s.id, name: s.name, description: s.description, params: s.params as ShaderDef["params"], wgsl: s.wgsl, from: s.pluginName });
+  for (const s of state.contributions?.shaders ?? [])
+    out.set(s.id, { id: s.id, name: s.name, description: s.description, params: s.params as ShaderDef["params"], wgsl: s.wgsl, from: s.pluginName });
   for (const t of project?.tracks ?? [])
     for (const it of t.items)
       for (const e of it.effects ?? []) {

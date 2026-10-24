@@ -1,8 +1,54 @@
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, censusOf, SMALL_TEXT, type CensusRun, type SoftRun, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
+import {
+  type Project,
+  type Media,
+  motionBlurDefault,
+  itemMotionBlur,
+  subFrameTimes,
+  layout,
+  visualsAt,
+  isSvg,
+  SOLID,
+  isDrawnComponent,
+  textHtml,
+  solidHtml,
+  componentHtml,
+  MAX_GRAPHIC_BYTES,
+  graphicDocument,
+  graphicInfo,
+  graphicLocal,
+  censusOf,
+  SMALL_TEXT,
+  type CensusRun,
+  type SoftRun,
+  irisRadius,
+  maskGeq,
+  clipFx,
+  needsPicturePass,
+  hasOverlay,
+  fxOverlayHtml,
+  isPlainBox,
+  baseBox,
+  fitRect,
+  colourLut,
+  cubeText,
+  moveBox,
+  canvasBox,
+} from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
-import { RASTER_CSS, planExport, mediaToken, sourceFramePick, svgClipHtml, untaggedFilter, blurFilters, placementOf, fxGraph, boxGraph } from "../exportPlan.ts";
+import {
+  RASTER_CSS,
+  planExport,
+  mediaToken,
+  sourceFramePick,
+  svgClipHtml,
+  untaggedFilter,
+  blurFilters,
+  placementOf,
+  fxGraph,
+  boxGraph,
+} from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
 import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
@@ -44,7 +90,11 @@ export interface FrameSession {
    */
   /** `motionBlur`: graphics drawn with the export's motion blur (the project's samples and shutter, the sub-frames' pictures averaged as the export averages them). */
   /** `census`: each graphic's words measured too (RenderedFrame.small), the DOM text a viewer must read. */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean }) => Promise<Array<RenderedFrame>>;
+  readonly render: (
+    frames: ReadonlyArray<number>,
+    width: number,
+    o?: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean },
+  ) => Promise<Array<RenderedFrame>>;
   /** A contact sheet's grid (agentFootage sheetHtml) drawn by this session's rasteriser, as a JPEG. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Promise<Buffer>;
   /**
@@ -62,7 +112,16 @@ export interface FrameSession {
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
  * Chromium with the frame's opacity and motion), one ffmpeg run per frame.
  */
-export async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, frames: ReadonlyArray<number>, width: number, signal: AbortSignal, css: string = RASTER_CSS): Promise<Array<RenderedFrame>> {
+export async function renderFramesWith(
+  bin: string,
+  unsized: Project,
+  mediaPath: (m: Media) => string,
+  graphics: ReadonlyMap<string, string>,
+  frames: ReadonlyArray<number>,
+  width: number,
+  signal: AbortSignal,
+  css: string = RASTER_CSS,
+): Promise<Array<RenderedFrame>> {
   const session = await openFrameSession(bin, unsized, mediaPath, graphics, signal, css);
   try {
     return await session.render(frames, width);
@@ -76,7 +135,15 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
  * number of renderFramesWith-style renders (the picture sizes, the plan, the background and the
  * untagged files once per width). `signal` (and each render's own) stops it.
  */
-export async function openFrameSession(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, signal: AbortSignal, css: string = RASTER_CSS, options: FrameSessionOptions = {}): Promise<FrameSession> {
+export async function openFrameSession(
+  bin: string,
+  unsized: Project,
+  mediaPath: (m: Media) => string,
+  graphics: ReadonlyMap<string, string>,
+  signal: AbortSignal,
+  css: string = RASTER_CSS,
+  options: FrameSessionOptions = {},
+): Promise<FrameSession> {
   const project = await withPictureSizes(bin, unsized, mediaPath, signal);
   const { starts, duration } = layout(project);
   const caps = await capsOf(bin);
@@ -131,7 +198,11 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
     return got;
   };
 
-  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean } = {}): Promise<Array<RenderedFrame>> => {
+  const render = async (
+    frames: ReadonlyArray<number>,
+    width: number,
+    o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean } = {},
+  ): Promise<Array<RenderedFrame>> => {
     if (closed) throw new Error("The frame session is closed.");
     const call = o.signal ? AbortSignal.any([signal, o.signal]) : signal;
     const onCallAbort = () => void raster?.close();
@@ -143,11 +214,19 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
     }
   };
 
-  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined, motionBlur = false, census = false): Promise<Array<RenderedFrame>> => {
+  const renderIn = async (
+    frames: ReadonlyArray<number>,
+    width: number,
+    signal: AbortSignal,
+    until: (() => boolean) | undefined,
+    motionBlur = false,
+    census = false,
+  ): Promise<Array<RenderedFrame>> => {
     const W = Math.max(2, Math.round(width / 2) * 2);
     const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
     const { background, untagged, small: sized } = await forWidth(W, H, signal);
-    const draw = async (html: string, png: string) => rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...sized });
+    const draw = async (html: string, png: string) =>
+      rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...sized });
     const out: Array<RenderedFrame> = [];
     for (const requested of frames) {
       if (until?.()) break;
@@ -169,14 +248,19 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
         const pick = sourceFramePick(v.source, project.canvas.fps, v.item.type === "clip" && v.item.hold === true && !v.item.loop);
         const local = f - (starts.get(v.item.id) ?? 0);
         const svg = v.item.type === "clip" && isSvg(media) && !!v.box;
-        if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
+        if (v.item.type === "clip" && media && media.kind === "video")
+          input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
         else if (svg) {
           // An SVG (D76): drawn by Chromium in its box, as the export does.
           const png = join(temp, `w${W}-f${f}-${k}.png`);
           await draw(svgClipHtml(v.item, v.box!, mediaToken(media!.id), v.opacity), png);
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         } else if (v.item.type === "clip" && media && media.kind === "image") input = ["-f", "image2", "-pattern_type", "none", "-i", mediaPath(media)];
-        else if ((v.item.type === "text" && typeof v.item.text === "string") || (v.item.type === "component" && v.item.component === SOLID) || isDrawnComponent(v.item)) {
+        else if (
+          (v.item.type === "text" && typeof v.item.text === "string") ||
+          (v.item.type === "component" && v.item.component === SOLID) ||
+          isDrawnComponent(v.item)
+        ) {
           const png = join(temp, `w${W}-f${f}-${k}.png`);
           const html =
             v.item.type === "text"
@@ -190,7 +274,9 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           // A graphic (D78) at this frame; its opacity goes on below, like a clip's.
           const html = graphics.get(v.item.src);
           if (html === undefined) {
-            notes.push(`the graphic "${v.item.name ?? v.item.id}" isn't drawn: ${v.item.src} couldn't be read (missing, outside graphics/, over ${MAX_GRAPHIC_BYTES / 1024} KB or a name it doesn't take)`);
+            notes.push(
+              `the graphic "${v.item.name ?? v.item.id}" isn't drawn: ${v.item.src} couldn't be read (missing, outside graphics/, over ${MAX_GRAPHIC_BYTES / 1024} KB or a name it doesn't take)`,
+            );
             continue;
           }
           const png = join(temp, `w${W}-f${f}-${k}-g.png`);
@@ -200,7 +286,19 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           const ts = blur ? subFrameTimes(at, project.canvas.fps, blur, at !== (v.item.in ?? 0) + local) : undefined;
           // The census only for a graphic seen whole and mostly opaque (a zoomed or fading one's words aren't at their drawn size).
           const counted = census && v.opacity >= 0.35 && v.zoom === undefined && !v.box;
-          const reply = await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, ...(ts && ts.length > 1 ? { ts } : {}), info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...(counted ? { census: SMALL_TEXT } : {}), ...sized });
+          const reply = await rs.render({
+            kind: "graphic",
+            width: cw,
+            height: ch,
+            doc: graphicDocument(html, project.canvas),
+            t: at / project.canvas.fps,
+            ...(ts && ts.length > 1 ? { ts } : {}),
+            info: graphicInfo(v.item, project.canvas, at),
+            out: png,
+            name: `"${v.item.name ?? v.item.id}" (${v.item.src})`,
+            ...(counted ? { census: SMALL_TEXT } : {}),
+            ...sized,
+          });
           const got = counted && reply ? censusOf(reply.census) : undefined;
           if (census && !got && v.opacity >= 0.35) unseen++;
           if (got) {
@@ -240,7 +338,9 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           await draw(fxOverlayHtml(effects, v.box, local), png);
           k++;
           inputs.push("-f", "image2", "-pattern_type", "none", "-i", png);
-          graph.push(`[${k}:v:0]scale=${W}:${H},format=rgba,colorchannelmixer=aa=${v.opacity.toFixed(4)}${blur}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
+          graph.push(
+            `[${k}:v:0]scale=${W}:${H},format=rgba,colorchannelmixer=aa=${v.opacity.toFixed(4)}${blur}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`,
+          );
           graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
           base = `b${k}`;
         };
@@ -258,16 +358,50 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
             const sh = v.box.scale !== 1 ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch;
             const raw = join(temp, `w${W}-f${f}-${k}-src.rgba`);
             const drawn = join(temp, `w${W}-f${f}-${k}-shader.rgba`);
-            const d = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...input, "-filter_complex", `[0:v:0]${picked}scale=w=${sw}:h=${sh}:out_range=pc,format=rgba[o]`, "-map", "[o]", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", raw], signal);
+            const d = await run(
+              bin,
+              [
+                "-hide_banner",
+                "-nostdin",
+                "-y",
+                "-v",
+                "error",
+                ...input,
+                "-filter_complex",
+                `[0:v:0]${picked}scale=w=${sw}:h=${sh}:out_range=pc,format=rgba[o]`,
+                "-map",
+                "[o]",
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgba",
+                raw,
+              ],
+              signal,
+            );
             if (d.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(d.stderr)}`);
             const params = shaderParamBytes(shader.def.params, shader.values);
             try {
-              await rs.render({ kind: "shader", width: sw, height: sh, code: shaderModuleCode(shader.def), frame: [...new Float32Array(shaderFrameBytes(sw, sh, shaderTime(f, starts.get(v.item.id) ?? 0, project.canvas.fps), false))], ...(params ? { params: [...new Float32Array(params)] } : {}), input: raw, out: drawn, name: `the shader effect ${shader.def.name}` });
+              await rs.render({
+                kind: "shader",
+                width: sw,
+                height: sh,
+                code: shaderModuleCode(shader.def),
+                frame: [...new Float32Array(shaderFrameBytes(sw, sh, shaderTime(f, starts.get(v.item.id) ?? 0, project.canvas.fps), false))],
+                ...(params ? { params: [...new Float32Array(params)] } : {}),
+                input: raw,
+                out: drawn,
+                name: `the shader effect ${shader.def.name}`,
+              });
               source = ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${sw}x${sh}`, "-i", drawn];
               pick = "trim=end_frame=1,setpts=0,";
             } catch (error) {
               // Never silently different (D213): the frame shows the clip plain and says why.
-              notes.push(`the shader effect ${shader.def.name} on "${v.item.name ?? v.item.id}" isn't drawn: ${(error as Error).message.replace(/^The text renderer failed: /, "").replace(/^no-webgpu: /, "this Mac has no WebGPU: ")}`);
+              notes.push(
+                `the shader effect ${shader.def.name} on "${v.item.name ?? v.item.id}" isn't drawn: ${(error as Error).message.replace(/^The text renderer failed: /, "").replace(/^no-webgpu: /, "this Mac has no WebGPU: ")}`,
+              );
             }
           }
           k++;
@@ -282,8 +416,19 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
             // The effects' size as the export's: the picture's fit before any zoom (its placement's when unzoomed).
             const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
             const zoomed = v.box.scale !== 1;
-            const lf = { fx: effects ?? {}, start: starts.get(v.item.id) ?? 0, w: zoomed ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw, h: zoomed ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch, k: H / ch, ...(lut ? { lut } : {}) };
-            graph.push(`[${k}:v:0]${pick}null[e${k}]`, ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts), ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+            const lf = {
+              fx: effects ?? {},
+              start: starts.get(v.item.id) ?? 0,
+              w: zoomed ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw,
+              h: zoomed ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch,
+              k: H / ch,
+              ...(lut ? { lut } : {}),
+            };
+            graph.push(
+              `[${k}:v:0]${pick}null[e${k}]`,
+              ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts),
+              ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps),
+            );
           } else graph.push(`[${k}:v:0]${pick}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
           graph.push(`[r${k}]format=rgba${fade}${blur}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
@@ -310,10 +455,45 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       }
       graph.push(`[${base}]format=yuvj420p[out]`);
       const file = join(temp, `w${W}-frame-${f}.jpg`);
-      const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
+      const r = await run(
+        bin,
+        [
+          "-hide_banner",
+          "-nostdin",
+          "-y",
+          "-v",
+          "error",
+          ...inputs,
+          "-filter_complex",
+          graph.join(";"),
+          "-map",
+          "[out]",
+          "-frames:v",
+          "1",
+          "-q:v",
+          "4",
+          "-update",
+          "1",
+          file,
+        ],
+        signal,
+      );
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
       small.sort((a, b) => b.share - a.share);
-      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}), ...(emptyPreview ? { emptyPreview } : {}), ...(soft.length ? { soft: soft.sort((a, b) => b.share - a.share).slice(0, 8) } : {}) } : {}) });
+      out.push({
+        frame: f,
+        jpeg: await readFile(file),
+        ...(notes.length ? { notes } : {}),
+        ...(census
+          ? {
+              small: small.slice(0, 40),
+              measured,
+              ...(unseen ? { unseen } : {}),
+              ...(emptyPreview ? { emptyPreview } : {}),
+              ...(soft.length ? { soft: soft.sort((a, b) => b.share - a.share).slice(0, 8) } : {}),
+            }
+          : {}),
+      });
     }
     return out;
   };

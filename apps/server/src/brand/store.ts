@@ -13,7 +13,20 @@
 import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
-import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, IntendedFinding, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
+import type {
+  AgentPlan,
+  BrandActive,
+  BrandKit,
+  BrandScope,
+  BrandSkill,
+  BrandState,
+  BrandStyle,
+  Brief,
+  IntendedFinding,
+  Review,
+  Storyboard,
+  StoryboardBeat,
+} from "@uncut/contracts";
 import { AGENT_IMAGE_NAME } from "@uncut/contracts";
 
 import type { PluginSkill } from "@uncut/core";
@@ -52,7 +65,13 @@ export const normHex = (hex: string): string | undefined => {
 };
 
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
-const strs = (v: unknown, n = 40, max = 400) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, n).map((x) => x.slice(0, max)) : []);
+const strs = (v: unknown, n = 40, max = 400) =>
+  Array.isArray(v)
+    ? v
+        .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+        .slice(0, n)
+        .map((x) => x.slice(0, max))
+    : [];
 const num = (v: unknown, fallback = 0) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 const fileName = (v: unknown) => (typeof v === "string" && BRAND_FILE.test(v) ? v : undefined);
 
@@ -69,7 +88,16 @@ export function normStyle(raw: unknown): BrandStyle | undefined {
     .slice(0, 16);
   const notes = str(s.notes, 4000);
   const source = str(s.source, 400);
-  return { ...(source ? { source } : {}), palette, type: str(s.type), shotLengths: str(s.shotLengths), transitions: str(s.transitions), camera: str(s.camera), grain: str(s.grain), ...(notes ? { notes } : {}) };
+  return {
+    ...(source ? { source } : {}),
+    palette,
+    type: str(s.type),
+    shotLengths: str(s.shotLengths),
+    transitions: str(s.transitions),
+    camera: str(s.camera),
+    grain: str(s.grain),
+    ...(notes ? { notes } : {}),
+  };
 }
 
 export function normKit(raw: unknown, scope: BrandScope, id?: string): BrandKit | undefined {
@@ -81,24 +109,30 @@ export function normKit(raw: unknown, scope: BrandScope, id?: string): BrandKit 
   const light = fileName(logos.light);
   const dark = fileName(logos.dark);
   const mark = fileName(logos.mark);
-  const colors = (Array.isArray(k.colors) ? k.colors : []).flatMap((c) => {
-    if (!c || typeof c !== "object") return [];
-    const o = c as Record<string, unknown>;
-    const hex = normHex(str(o.hex, 16));
-    if (!hex) return [];
-    const name = str(o.name, 60);
-    return [{ hex, role: str(o.role, 60) || "accent", ...(name ? { name } : {}) }];
-  }).slice(0, 24);
-  const fonts = (Array.isArray(k.fonts) ? k.fonts : []).flatMap((f) => {
-    if (!f || typeof f !== "object") return [];
-    const o = f as Record<string, unknown>;
-    const family = str(o.family, 80).trim();
-    if (!family) return [];
-    const weight = typeof o.weight === "number" && o.weight >= 100 && o.weight <= 900 ? Math.round(o.weight) : undefined;
-    // D198: the family's font file in the kit's folder.
-    const file = fileName(o.file);
-    return [{ family, role: str(o.role, 40) || "body", ...(weight ? { weight } : {}), ...(file && FONT_EXT.has(extname(file).toLowerCase()) ? { file } : {}) }];
-  }).slice(0, 8);
+  const colors = (Array.isArray(k.colors) ? k.colors : [])
+    .flatMap((c) => {
+      if (!c || typeof c !== "object") return [];
+      const o = c as Record<string, unknown>;
+      const hex = normHex(str(o.hex, 16));
+      if (!hex) return [];
+      const name = str(o.name, 60);
+      return [{ hex, role: str(o.role, 60) || "accent", ...(name ? { name } : {}) }];
+    })
+    .slice(0, 24);
+  const fonts = (Array.isArray(k.fonts) ? k.fonts : [])
+    .flatMap((f) => {
+      if (!f || typeof f !== "object") return [];
+      const o = f as Record<string, unknown>;
+      const family = str(o.family, 80).trim();
+      if (!family) return [];
+      const weight = typeof o.weight === "number" && o.weight >= 100 && o.weight <= 900 ? Math.round(o.weight) : undefined;
+      // D198: the family's font file in the kit's folder.
+      const file = fileName(o.file);
+      return [
+        { family, role: str(o.role, 40) || "body", ...(weight ? { weight } : {}), ...(file && FONT_EXT.has(extname(file).toLowerCase()) ? { file } : {}) },
+      ];
+    })
+    .slice(0, 8);
   const style = normStyle(k.style);
   const updatedAt = str(k.updatedAt, 40);
   return {
@@ -126,7 +160,14 @@ export function normSkill(raw: unknown, scope: BrandScope, id?: string): BrandSk
   const sid = id ?? (typeof k.id === "string" && BRAND_ID.test(k.id) ? k.id : undefined);
   if (!sid) return undefined;
   const updatedAt = str(k.updatedAt, 40);
-  return { id: sid, name: str(k.name, 80).trim() || sid, scope, description: str(k.description, 300), body: str(k.body, 20000), ...(updatedAt ? { updatedAt } : {}) };
+  return {
+    id: sid,
+    name: str(k.name, 80).trim() || sid,
+    scope,
+    description: str(k.description, 300),
+    body: str(k.body, 20000),
+    ...(updatedAt ? { updatedAt } : {}),
+  };
 }
 
 export const globalBrandDir = (dataDir: string) => join(dataDir, "brand");
@@ -143,7 +184,16 @@ export interface BrandDirs {
 
 /** D232: a plugin's skill as the brand state lists it: its name is its id (what /name calls), its title its name. */
 // D248: builtin (labelled as Uncut's own) only for a plugin that ships with Uncut, never from the id alone.
-export const skillOfPlugin = (x: PluginSkill): BrandSkill => ({ id: x.name, name: x.title, scope: "global", description: x.description, body: x.instructions, plugin: x.plugin, pluginName: x.pluginName, ...(x.bundled ? { builtin: true } : {}) });
+export const skillOfPlugin = (x: PluginSkill): BrandSkill => ({
+  id: x.name,
+  name: x.title,
+  scope: "global",
+  description: x.description,
+  body: x.instructions,
+  plugin: x.plugin,
+  pluginName: x.pluginName,
+  ...(x.bundled ? { builtin: true } : {}),
+});
 
 const readJson = async (file: string): Promise<unknown> => {
   try {
@@ -202,7 +252,10 @@ export async function useSkills(projectDir: string, ids: ReadonlyArray<string>):
 export async function writeActive(projectDir: string, active: BrandActive): Promise<void> {
   await mkdir(projectBrandDir(projectDir), { recursive: true });
   const kit = active.kit && BRAND_ID.test(active.kit) ? active.kit : null;
-  await writeAtomic(join(projectBrandDir(projectDir), "active.json"), `${JSON.stringify({ kit, skills: [...new Set(active.skills.filter((s) => BRAND_ID.test(s)))].slice(0, 20) }, null, 2)}\n`);
+  await writeAtomic(
+    join(projectBrandDir(projectDir), "active.json"),
+    `${JSON.stringify({ kit, skills: [...new Set(active.skills.filter((s) => BRAND_ID.test(s)))].slice(0, 20) }, null, 2)}\n`,
+  );
 }
 
 /**
@@ -230,7 +283,13 @@ export async function migrateProjectKits(dirs: BrandDirs): Promise<Array<string>
     const kit = normKit(raw, "global", id);
     if (!kit || (raw as { pinned?: unknown }).pinned === true) continue;
     done.add(id);
-    if (await stat(to).then(() => true, () => false)) continue;
+    if (
+      await stat(to).then(
+        () => true,
+        () => false,
+      )
+    )
+      continue;
     try {
       await mkdir(to, { recursive: true });
       for (const name of await list(from)) if (name === "kit.json" || BRAND_FILE.test(name)) await copyFile(join(from, name), join(to, name));
@@ -252,7 +311,11 @@ export async function migrateProjectKits(dirs: BrandDirs): Promise<Array<string>
 /** The renames migrateShadowedSkills made in the user's library (old id → new id), for the projects opened later. */
 const renamedFile = (dataDir: string) => join(globalBrandDir(dataDir), "renamed-skills.json");
 const renamesIn = (raw: unknown): Record<string, string> =>
-  Object.fromEntries(Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}).filter((e): e is [string, string] => BRAND_ID.test(e[0]) && typeof e[1] === "string" && BRAND_ID.test(e[1])));
+  Object.fromEntries(
+    Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}).filter(
+      (e): e is [string, string] => BRAND_ID.test(e[0]) && typeof e[1] === "string" && BRAND_ID.test(e[1]),
+    ),
+  );
 
 /** Renames one skill file to a free id (its json's id too); the new id, or undefined when it couldn't. */
 async function renameSkillFile(base: string, id: string, taken: Set<string>): Promise<string | undefined> {
@@ -285,7 +348,13 @@ export async function migrateShadowedSkills(dirs: BrandDirs): Promise<void> {
   const names = new Set((dirs.skills ?? []).map((x) => x.name));
   const globalBase = globalBrandDir(dirs.dataDir);
   const projectBase = dirs.projectDir ? projectBrandDir(dirs.projectDir) : undefined;
-  const ids = async (base: string | undefined) => (base ? (await list(join(base, "skills"))).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => BRAND_ID.test(id)) : []);
+  const ids = async (base: string | undefined) =>
+    base
+      ? (await list(join(base, "skills")))
+          .filter((n) => n.endsWith(".json"))
+          .map((n) => n.slice(0, -5))
+          .filter((id) => BRAND_ID.test(id))
+      : [];
   const globalIds = await ids(globalBase);
   const projectIds = await ids(projectBase);
   const taken = new Set([...names, ...globalIds, ...projectIds]);
@@ -322,11 +391,16 @@ export async function migrateShadowedSkills(dirs: BrandDirs): Promise<void> {
   const activeFile = join(projectBase, "active.json");
   const active = await readJson(activeFile);
   if (active && typeof active === "object" && Array.isArray((active as { skills?: unknown }).skills)) {
-    await writeAtomic(activeFile, `${JSON.stringify({ ...(active as object), skills: rewrite((active as { skills: unknown }).skills) }, null, 2)}\n`).catch(() => {});
+    await writeAtomic(activeFile, `${JSON.stringify({ ...(active as object), skills: rewrite((active as { skills: unknown }).skills) }, null, 2)}\n`).catch(
+      () => {},
+    );
   }
   const brief = await readJson(briefFile(dirs.projectDir));
   if (brief && typeof brief === "object" && Array.isArray((brief as { skills?: unknown }).skills)) {
-    await writeAtomic(briefFile(dirs.projectDir), `${JSON.stringify({ ...(brief as object), skills: rewrite((brief as { skills: unknown }).skills) }, null, 2)}\n`).catch(() => {});
+    await writeAtomic(
+      briefFile(dirs.projectDir),
+      `${JSON.stringify({ ...(brief as object), skills: rewrite((brief as { skills: unknown }).skills) }, null, 2)}\n`,
+    ).catch(() => {});
   }
   try {
     await mkdir(projectBase, { recursive: true });
@@ -346,7 +420,8 @@ export async function readBrand(dirs: BrandDirs): Promise<BrandState> {
   const skills = new Map<string, BrandSkill>((dirs.skills ?? []).map((x) => [x.name, skillOfPlugin(x)]));
   const fromPlugin = new Set(skills.keys());
   for (const s of await skillsIn(globalBrandDir(dirs.dataDir), "global")) if (!fromPlugin.has(s.id) && !s.id.startsWith("builtin-")) skills.set(s.id, s);
-  if (dirs.projectDir) for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) if (!fromPlugin.has(s.id) && !s.id.startsWith("builtin-")) skills.set(s.id, s);
+  if (dirs.projectDir)
+    for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) if (!fromPlugin.has(s.id) && !s.id.startsWith("builtin-")) skills.set(s.id, s);
   const active = dirs.projectDir ? await readActive(dirs.projectDir) : { kit: null, skills: [] };
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
   return {
@@ -390,9 +465,19 @@ export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<Bra
   // D248: a new skill named like a plugin's (Explainer) gets a free id of its own (explainer-2).
   if (!BRAND_ID.test(skill.id) && dirs.skills?.some((x) => x.name === id)) {
     const stem = id;
-    for (let n = 2; dirs.skills.some((x) => x.name === id) || (await stat(join(scopeDir(skill.scope, dirs), "skills", `${id}.json`)).then(() => true, () => false)); n++) id = `${stem}-${n}`;
+    for (
+      let n = 2;
+      dirs.skills.some((x) => x.name === id) ||
+      (await stat(join(scopeDir(skill.scope, dirs), "skills", `${id}.json`)).then(
+        () => true,
+        () => false,
+      ));
+      n++
+    )
+      id = `${stem}-${n}`;
   }
-  if (skill.builtin || skill.plugin || id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id)) throw new Error("A plugin's skills can't be changed: duplicate it and edit the copy.");
+  if (skill.builtin || skill.plugin || id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id))
+    throw new Error("A plugin's skills can't be changed: duplicate it and edit the copy.");
   const { builtin: _b, plugin: _p, pluginName: _n, ...own } = skill;
   const norm = normSkill({ ...own, updatedAt: new Date().toISOString() }, skill.scope, id);
   if (!norm) throw new Error("That skill isn't valid.");
@@ -405,7 +490,8 @@ export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<Bra
 
 export async function deleteSkill(dirs: BrandDirs, id: string, scope: BrandScope): Promise<void> {
   if (!BRAND_ID.test(id)) throw new Error("No such skill.");
-  if (id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id)) throw new Error("A plugin's skills can't be deleted here; remove the plugin in Settings, Plugins.");
+  if (id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id))
+    throw new Error("A plugin's skills can't be deleted here; remove the plugin in Settings, Plugins.");
   if (scope === "project" && !dirs.projectDir) throw new Error("Open a project first.");
   await rm(join(scopeDir(scope, dirs), "skills", `${id}.json`), { force: true });
 }
@@ -415,13 +501,18 @@ export async function addKitFile(dirs: BrandDirs, kitId: string, scope: BrandSco
   if (!BRAND_ID.test(kitId)) throw new Error("No such kit.");
   if (scope === "project" && !dirs.projectDir) throw new Error("Open a project first.");
   const ext = extname(path).toLowerCase();
-  if (!BRAND_FILE_TYPES.has(ext)) throw new Error(`A kit keeps pictures, fonts and short clips (${[...BRAND_FILE_TYPES].join(", ")}), not ${ext || "files without an extension"}.`);
+  if (!BRAND_FILE_TYPES.has(ext))
+    throw new Error(`A kit keeps pictures, fonts and short clips (${[...BRAND_FILE_TYPES].join(", ")}), not ${ext || "files without an extension"}.`);
   const info = await stat(path).catch(() => undefined);
   if (!info?.isFile()) throw new Error(`${basename(path)} isn't a file.`);
   if (info.size > BRAND_FILE_MAX) throw new Error(`${basename(path)} is over 200 MB.`);
   const dir = join(scopeDir(scope, dirs), "kits", kitId);
   await mkdir(dir, { recursive: true });
-  const stem = basename(path, extname(path)).replace(/[^A-Za-z0-9._ -]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 80) || "file";
+  const stem =
+    basename(path, extname(path))
+      .replace(/[^A-Za-z0-9._ -]+/g, "-")
+      .replace(/^[^A-Za-z0-9]+/, "")
+      .slice(0, 80) || "file";
   const taken = new Set(await list(dir));
   let name = `${stem}${ext}`;
   for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
@@ -467,7 +558,19 @@ export function normBeats(raw: unknown): Array<StoryboardBeat> {
       const end = Math.max(start, num(b.end, start));
       const sound = str(b.sound, 200);
       const still = typeof b.still === "string" && AGENT_IMAGE_NAME.test(b.still) ? b.still : undefined;
-      return [{ start, end, title: str(b.title, 120), entry: str(b.entry, 600), exit: str(b.exit, 600), purpose: str(b.purpose, 400), assets: strs(b.assets, 12, 200), ...(sound ? { sound } : {}), ...(still ? { still } : {}) }];
+      return [
+        {
+          start,
+          end,
+          title: str(b.title, 120),
+          entry: str(b.entry, 600),
+          exit: str(b.exit, 600),
+          purpose: str(b.purpose, 400),
+          assets: strs(b.assets, 12, 200),
+          ...(sound ? { sound } : {}),
+          ...(still ? { still } : {}),
+        },
+      ];
     })
     .slice(0, 40);
 }
@@ -479,7 +582,14 @@ export function normStoryboard(raw: unknown): Storyboard | undefined {
   const approvedBy = s.approvedBy === "user" || s.approvedBy === "setting" || s.approvedBy === "agent" ? s.approvedBy : undefined;
   const note = str(s.note, 2000);
   const updatedAt = str(s.updatedAt, 40);
-  return { summary: str(s.summary, 600), beats: normBeats(s.beats), status, ...(approvedBy ? { approvedBy } : {}), ...(note ? { note } : {}), ...(updatedAt ? { updatedAt } : {}) };
+  return {
+    summary: str(s.summary, 600),
+    beats: normBeats(s.beats),
+    status,
+    ...(approvedBy ? { approvedBy } : {}),
+    ...(note ? { note } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+  };
 }
 
 export function normReview(raw: unknown): Review | undefined {
@@ -487,8 +597,21 @@ export function normReview(raw: unknown): Review | undefined {
   const r = raw as Record<string, unknown>;
   const sc = (r.scores && typeof r.scores === "object" ? r.scores : {}) as Record<string, unknown>;
   // D217: only the categories that were scored (a rubric's na ones are absent); a review before D217 has all six.
-  const scores = Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].flatMap((k) => (typeof sc[k] === "number" && Number.isFinite(sc[k]) ? [[k, Math.max(0, Math.min(10, sc[k] as number))]] : [])));
-  const rubric = r.rubric && typeof r.rubric === "object" ? Object.fromEntries(Object.entries(r.rubric as Record<string, unknown>).flatMap(([k, v]) => (["hook", "readability", "motion", "variety", "sound", "brand"].includes(k) && (v === "required" || v === "optional" || v === "na") ? [[k, v as "required" | "optional" | "na"]] : []))) : undefined;
+  const scores = Object.fromEntries(
+    ["hook", "readability", "motion", "variety", "sound", "brand"].flatMap((k) =>
+      typeof sc[k] === "number" && Number.isFinite(sc[k]) ? [[k, Math.max(0, Math.min(10, sc[k] as number))]] : [],
+    ),
+  );
+  const rubric =
+    r.rubric && typeof r.rubric === "object"
+      ? Object.fromEntries(
+          Object.entries(r.rubric as Record<string, unknown>).flatMap(([k, v]) =>
+            ["hook", "readability", "motion", "variety", "sound", "brand"].includes(k) && (v === "required" || v === "optional" || v === "na")
+              ? [[k, v as "required" | "optional" | "na"]]
+              : [],
+          ),
+        )
+      : undefined;
   const opt = (o: Record<string, unknown>) => ({
     ...(str(o.rule, 60) ? { rule: str(o.rule, 60) } : {}),
     ...(typeof o.to === "number" && Number.isFinite(o.to) ? { to: Math.max(0, o.to) } : {}),
@@ -504,7 +627,17 @@ export function normReview(raw: unknown): Review | undefined {
       .flatMap((x) => {
         if (!x || typeof x !== "object") return [];
         const d = x as Record<string, unknown>;
-        return [{ at: Math.max(0, num(d.at)), what: str(d.what, 300), ...(str(d.fix, 300) ? { fix: str(d.fix, 300) } : {}), ...(str(d.id, 20) ? { id: str(d.id, 20) } : {}), ...(str(d.kind, 40) ? { kind: str(d.kind, 40) } : {}), ...(d.source === "check" || d.source === "critic" ? { source: d.source } : {}), ...opt(d) }];
+        return [
+          {
+            at: Math.max(0, num(d.at)),
+            what: str(d.what, 300),
+            ...(str(d.fix, 300) ? { fix: str(d.fix, 300) } : {}),
+            ...(str(d.id, 20) ? { id: str(d.id, 20) } : {}),
+            ...(str(d.kind, 40) ? { kind: str(d.kind, 40) } : {}),
+            ...(d.source === "check" || d.source === "critic" ? { source: d.source } : {}),
+            ...opt(d),
+          },
+        ];
       })
       .slice(0, 12),
     ...(notes ? { notes } : {}),
@@ -516,19 +649,49 @@ export function normReview(raw: unknown): Review | undefined {
             .flatMap((b) => {
               const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
               const what = str(o.what, 300);
-              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic", ...opt(o), ...(str(o.fix, 300) ? { fix: str(o.fix, 300) } : {}) }] : [];
+              return what
+                ? [
+                    {
+                      ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}),
+                      kind: str(o.kind, 40) || "other",
+                      what,
+                      ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}),
+                      source: o.source === "check" ? "check" : "critic",
+                      ...opt(o),
+                      ...(str(o.fix, 300) ? { fix: str(o.fix, 300) } : {}),
+                    },
+                  ]
+                : [];
             })
             .slice(0, 20),
         }
       : {}),
-    ...(r.evidence && typeof r.evidence === "object" ? { evidence: Object.fromEntries(Object.entries(r.evidence as Record<string, unknown>).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k.slice(0, 40), v.slice(0, 400)]] : [])).slice(0, 12)) } : {}),
+    ...(r.evidence && typeof r.evidence === "object"
+      ? {
+          evidence: Object.fromEntries(
+            Object.entries(r.evidence as Record<string, unknown>)
+              .flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k.slice(0, 40), v.slice(0, 400)]] : []))
+              .slice(0, 12),
+          ),
+        }
+      : {}),
     ...(Array.isArray(r.fixes)
       ? {
           fixes: r.fixes
             .flatMap((f) => {
               const o = (f && typeof f === "object" ? f : {}) as Record<string, unknown>;
               const defect = str(o.defect, 20);
-              return defect ? [{ defect, what: str(o.what, 300), ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), verified: o.verified === true, ...(str(o.note, 300) ? { note: str(o.note, 300) } : {}) }] : [];
+              return defect
+                ? [
+                    {
+                      defect,
+                      what: str(o.what, 300),
+                      ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}),
+                      verified: o.verified === true,
+                      ...(str(o.note, 300) ? { note: str(o.note, 300) } : {}),
+                    },
+                  ]
+                : [];
             })
             .slice(0, 10),
         }
@@ -562,7 +725,15 @@ export function normIntended(raw: unknown): Array<IntendedFinding> {
       if (!kind) return [];
       const from = typeof o.from === "number" && Number.isFinite(o.from) ? Math.max(0, o.from) : undefined;
       const to = typeof o.to === "number" && Number.isFinite(o.to) && from !== undefined ? Math.max(from, o.to) : undefined;
-      return [{ kind, what: str(o.what, 300), ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}), at: str(o.at, 40) || new Date().toISOString() }];
+      return [
+        {
+          kind,
+          what: str(o.what, 300),
+          ...(from !== undefined ? { from } : {}),
+          ...(to !== undefined ? { to } : {}),
+          at: str(o.at, 40) || new Date().toISOString(),
+        },
+      ];
     })
     .slice(-100);
 }
@@ -602,7 +773,10 @@ export async function writeStoryboard(dir: string, storyboard: Storyboard): Prom
 /** Saves a review as the next review-<n>.json; returns it. */
 export async function writeReview(dir: string, review: Review): Promise<Review> {
   await mkdir(reviewsDir(dir), { recursive: true });
-  const taken = (await list(reviewsDir(dir))).map((n) => /^review-(\d+)\.json$/.exec(n)?.[1]).filter(Boolean).map(Number);
+  const taken = (await list(reviewsDir(dir)))
+    .map((n) => /^review-(\d+)\.json$/.exec(n)?.[1])
+    .filter(Boolean)
+    .map(Number);
   const n = (taken.length ? Math.max(...taken) : 0) + 1;
   await writeAtomic(join(reviewsDir(dir), `review-${n}.json`), `${JSON.stringify(review, null, 2)}\n`);
   return review;

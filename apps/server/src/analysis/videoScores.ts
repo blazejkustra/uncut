@@ -56,7 +56,13 @@ export function windowScores(w: VideoWindow): Scores {
   const stability = stabilityOf(w.jitter);
   const sharpness = sharpnessOf(w.blur);
   const exposure = exposureOf(w.brightness, w.dark, w.bright);
-  return { cleanScore: r3(cleanOf(stability, sharpness, exposure, w.frozen)), stability: stability === null ? null : r3(stability), sharpness: sharpness === null ? null : r3(sharpness), exposure: r3(exposure), frozen: r3(w.frozen) };
+  return {
+    cleanScore: r3(cleanOf(stability, sharpness, exposure, w.frozen)),
+    stability: stability === null ? null : r3(stability),
+    sharpness: sharpness === null ? null : r3(sharpness),
+    exposure: r3(exposure),
+    frozen: r3(w.frozen),
+  };
 }
 
 /** Frame-weighted means of the windows' scores (a component no window measured stays null). */

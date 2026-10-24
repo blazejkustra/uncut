@@ -10,10 +10,12 @@ import { actions, recentThumbUrl, useApp, type Project } from "../state/store.ts
 
 const ORIGIN: Record<MediaRecentEntry["origin"], string> = { capture: "Recording", import: "Import", generated: "Generated" };
 
-const length = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`);
+const length = (s: number | undefined) =>
+  s === undefined ? "" : s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 /** "Recording from test argent, 12 s, iPhone 16 Pro" (commas, never dots between words). */
-export const recentMeta = (e: MediaRecentEntry) => [`${ORIGIN[e.origin]} from ${e.project.name}`, length(e.seconds), e.device ?? "", e.app ?? ""].filter(Boolean).join(", ");
+export const recentMeta = (e: MediaRecentEntry) =>
+  [`${ORIGIN[e.origin]} from ${e.project.name}`, length(e.seconds), e.device ?? "", e.app ?? ""].filter(Boolean).join(", ");
 
 export function RecentSection({ project }: { project: Project }) {
   const app = useApp();
@@ -46,7 +48,13 @@ export function RecentSection({ project }: { project: Project }) {
       </div>
       <label className="recent-search">
         <Search />
-        <input className="field input" data-testid="recent-media-search" value={query} placeholder="Search other projects" onChange={(ev) => setQuery(ev.target.value)} />
+        <input
+          className="field input"
+          data-testid="recent-media-search"
+          value={query}
+          placeholder="Search other projects"
+          onChange={(ev) => setQuery(ev.target.value)}
+        />
       </label>
       <div className="gen-results">
         {entries.length === 0 && <div className="recent-none">Nothing matches.</div>}
@@ -68,7 +76,13 @@ export function RecentSection({ project }: { project: Project }) {
                       {added[e.id]}
                     </span>
                   ) : (
-                    <button className="link-btn" data-testid="recent-media-add" disabled={!online || busy === e.id} title={e.copies ? "Copy it into this project's media" : "Add it to this project's media"} onClick={() => void add(e)}>
+                    <button
+                      className="link-btn"
+                      data-testid="recent-media-add"
+                      disabled={!online || busy === e.id}
+                      title={e.copies ? "Copy it into this project's media" : "Add it to this project's media"}
+                      onClick={() => void add(e)}
+                    >
                       <Plus />
                       Add to this project
                     </button>

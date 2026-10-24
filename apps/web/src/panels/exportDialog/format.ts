@@ -22,7 +22,16 @@ export function loudnessCards(target: number): ReadonlyArray<LoudnessCard> {
   };
   return [
     ...LOUDNESS_PRESETS.map((p) => ({ id: p.id, label: p.name, sub: lufsText(p.lufs), hint: hints[p.id]! })),
-    ...(choiceOfTarget(target) === "target" ? [{ id: "target" as const, label: "Project", sub: lufsText(target), hint: `The project's own loudness target (${targetWords(target)}), set in the Mixer.` }] : []),
+    ...(choiceOfTarget(target) === "target"
+      ? [
+          {
+            id: "target" as const,
+            label: "Project",
+            sub: lufsText(target),
+            hint: `The project's own loudness target (${targetWords(target)}), set in the Mixer.`,
+          },
+        ]
+      : []),
     { id: "off", label: "As mixed", sub: "No change", hint: "Keeps your levels exactly as they sound in the editor." },
   ];
 }
@@ -48,7 +57,8 @@ export const dirName = (path: string) => path.slice(0, path.lastIndexOf("/")) ||
 export const folderName = (path: string) => baseName(dirName(path)) || "/";
 export const fpsText = (fps: number) => `${Number(fps.toFixed(3))} fps`;
 
-export const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`);
+export const eta = (s: number | undefined) =>
+  s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`;
 
 /**
  * A preparing export's line and how far its step is (0–1, undefined when it can't be counted): the
@@ -60,6 +70,14 @@ export function preparingStatus(job: Pick<ExportJob, "step">, graphics = true): 
   const s = job.step;
   const counted = s && s.done !== undefined && s.total ? { done: Math.min(s.done, s.total), total: s.total } : undefined;
   const frames = counted ? `: frame ${counted.done} of ${counted.total}` : "…";
-  const text = !s ? "Getting ready…" : s.kind === "sound" ? "Measuring the sound…" : s.kind === "loudness" ? "Measuring the loudness…" : s.kind === "graphics" ? `Drawing the ${graphics ? "graphics" : "text"}${frames}` : `Drawing the shader effects${frames}`;
+  const text = !s
+    ? "Getting ready…"
+    : s.kind === "sound"
+      ? "Measuring the sound…"
+      : s.kind === "loudness"
+        ? "Measuring the loudness…"
+        : s.kind === "graphics"
+          ? `Drawing the ${graphics ? "graphics" : "text"}${frames}`
+          : `Drawing the shader effects${frames}`;
   return { text, fraction: counted && (s!.kind === "graphics" || s!.kind === "shaders") ? counted.done / counted.total : undefined };
 }

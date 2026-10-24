@@ -5,10 +5,45 @@
 // the words the agent gets for them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anySolo, applyEdit, audibleAt, audibleTracks, mixNote, trackHasSound, createSession, dbToGain, describeOp, itemGain, keyDbAt, layout, loadModules, masterGain, outputGains, panGains, trackAudible, validateProject, type Op, type Project, type Track } from "../../packages/core/src/index.ts";
+import {
+  anySolo,
+  applyEdit,
+  audibleAt,
+  audibleTracks,
+  mixNote,
+  trackHasSound,
+  createSession,
+  dbToGain,
+  describeOp,
+  itemGain,
+  keyDbAt,
+  layout,
+  loadModules,
+  masterGain,
+  outputGains,
+  panGains,
+  trackAudible,
+  validateProject,
+  type Op,
+  type Project,
+  type Track,
+} from "../../packages/core/src/index.ts";
 import { audioGraph, planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { planTrackFlag } from "../../apps/web/src/timeline/edit.ts";
-import { clampPan, envelopeDbAt, levelY, panShort, panWords, keyIndexAt, planAddGainKey, planMasterGain, planMoveGainKey, planRemoveGainKey, planTrackPan, yLevel } from "../../apps/web/src/audio/sound.ts";
+import {
+  clampPan,
+  envelopeDbAt,
+  levelY,
+  panShort,
+  panWords,
+  keyIndexAt,
+  planAddGainKey,
+  planMasterGain,
+  planMoveGainKey,
+  planRemoveGainKey,
+  planTrackPan,
+  yLevel,
+} from "../../apps/web/src/audio/sound.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const near = (a: number, b: number, eps = 1e-9, what = "") => assert.ok(Math.abs(a - b) <= eps, `${what} ${a} ≉ ${b}`);
@@ -24,7 +59,28 @@ const project = (patch: { voice?: Partial<Track>; music?: Partial<Track>; master
   ],
   tracks: [
     { id: "main", kind: "video", role: "main", name: "Main", items: [] },
-    { id: "voice", kind: "audio", name: "Voice", ...patch.voice, items: [{ id: "v", type: "audio", media: "m-voice", in: 0, start: 0, duration: 120, gainDb: -3, gainKeys: [{ frame: 30, db: 0 }, { frame: 90, db: -12 }], fadeOut: 30 }] },
+    {
+      id: "voice",
+      kind: "audio",
+      name: "Voice",
+      ...patch.voice,
+      items: [
+        {
+          id: "v",
+          type: "audio",
+          media: "m-voice",
+          in: 0,
+          start: 0,
+          duration: 120,
+          gainDb: -3,
+          gainKeys: [
+            { frame: 30, db: 0 },
+            { frame: 90, db: -12 },
+          ],
+          fadeOut: 30,
+        },
+      ],
+    },
     { id: "music", kind: "audio", name: "Music", ...patch.music, items: [{ id: "s", type: "audio", media: "m-song", in: 0, start: 0, duration: 120 }] },
   ],
   ...(patch.master ? { master: patch.master } : {}),
@@ -49,7 +105,10 @@ test("dB → gain: 0 dB is 1, −6 dB is 0.501, +12 dB is 3.98, −60 dB and bel
 });
 
 test("gainKeys: linear in dB between keys, held before the first and after the last", () => {
-  const keys = [{ frame: 30, db: 0 }, { frame: 90, db: -12 }];
+  const keys = [
+    { frame: 30, db: 0 },
+    { frame: 90, db: -12 },
+  ];
   assert.equal(keyDbAt(keys, 0), 0);
   assert.equal(keyDbAt(keys, 30), 0);
   assert.equal(keyDbAt(keys, 45), -3);
@@ -58,8 +117,28 @@ test("gainKeys: linear in dB between keys, held before the first and after the l
   assert.equal(keyDbAt(keys, 90), -12);
   assert.equal(keyDbAt(keys, 200), -12);
   // Unsorted keys are read in frame order; two keys on one frame are a step (the later one after it).
-  assert.equal(keyDbAt([{ frame: 60, db: -6 }, { frame: 0, db: 0 }], 30), -3);
-  assert.equal(keyDbAt([{ frame: 0, db: 0 }, { frame: 30, db: -6 }, { frame: 30, db: -20 }, { frame: 60, db: -20 }], 31), -20);
+  assert.equal(
+    keyDbAt(
+      [
+        { frame: 60, db: -6 },
+        { frame: 0, db: 0 },
+      ],
+      30,
+    ),
+    -3,
+  );
+  assert.equal(
+    keyDbAt(
+      [
+        { frame: 0, db: 0 },
+        { frame: 30, db: -6 },
+        { frame: 30, db: -20 },
+        { frame: 60, db: -20 },
+      ],
+      31,
+    ),
+    -20,
+  );
 });
 
 test("pan law: θ = (pan+1)·π/4, near side 1, far side √2·cos θ / √2·sin θ; centre unity, never a boost, ends exact", () => {
@@ -105,14 +184,36 @@ test("the whole chain: item gain × keys × fades × track × pan × master, per
 
 test("solo and mute: mute wins, any solo silences the unsoloed, a muted solo still silences the rest", () => {
   const audible = (p: Project) => p.tracks.filter((t) => t.kind === "audio").map((t) => [t.id, trackAudible(p, t)]);
-  assert.deepEqual(audible(project()), [["voice", true], ["music", true]]);
-  assert.deepEqual(audible(project({ music: { mixer: { mute: true } } })), [["voice", true], ["music", false]]);
-  assert.deepEqual(audible(project({ voice: { mixer: { solo: true } } })), [["voice", true], ["music", false]]);
-  assert.deepEqual(audible(project({ voice: { mixer: { solo: true } }, music: { mixer: { solo: true } } })), [["voice", true], ["music", true]]);
-  assert.deepEqual(audible(project({ voice: { mixer: { solo: true, mute: true } } })), [["voice", false], ["music", false]]);
+  assert.deepEqual(audible(project()), [
+    ["voice", true],
+    ["music", true],
+  ]);
+  assert.deepEqual(audible(project({ music: { mixer: { mute: true } } })), [
+    ["voice", true],
+    ["music", false],
+  ]);
+  assert.deepEqual(audible(project({ voice: { mixer: { solo: true } } })), [
+    ["voice", true],
+    ["music", false],
+  ]);
+  assert.deepEqual(audible(project({ voice: { mixer: { solo: true } }, music: { mixer: { solo: true } } })), [
+    ["voice", true],
+    ["music", true],
+  ]);
+  assert.deepEqual(audible(project({ voice: { mixer: { solo: true, mute: true } } })), [
+    ["voice", false],
+    ["music", false],
+  ]);
   const p = project({ voice: { mixer: { solo: true } } });
   const at = audibleAt(p, layout(p).starts, 10);
-  assert.deepEqual(at.map((a) => [a.item.id, a.muted, a.gain > 0]), [["v", false, true], ["s", true, false]], "the unsoloed item stays listed (kept warm) but silent");
+  assert.deepEqual(
+    at.map((a) => [a.item.id, a.muted, a.gain > 0]),
+    [
+      ["v", false, true],
+      ["s", true, false],
+    ],
+    "the unsoloed item stays listed (kept warm) but silent",
+  );
   assert.deepEqual(outputGains(p, track(p, "music"), 0, 10), { left: 0, right: 0 });
 });
 
@@ -120,7 +221,10 @@ test("solo and the notes: a solo on a track that can't sound is ignored; solo + 
   const text: Track = { id: "titles", kind: "text", name: "Titles", mixer: { solo: true }, items: [] };
   const withText = { ...project(), tracks: [...project().tracks, text] };
   assert.equal(anySolo(withText), false, "a soloed text track isn't a solo");
-  assert.deepEqual(audibleTracks(withText).map((t) => t.id), ["voice", "music"]);
+  assert.deepEqual(
+    audibleTracks(withText).map((t) => t.id),
+    ["voice", "music"],
+  );
   assert.equal(mixNote(withText), undefined);
   // An audio track whose last item was deleted, soloed: ignored too.
   const empty = project({ voice: { mixer: { solo: true } } });
@@ -130,12 +234,18 @@ test("solo and the notes: a solo on a track that can't sound is ignored; solo + 
   assert.equal(trackHasSound(emptied, track(emptied, "voice")), false);
   // Solo: who is heard.
   assert.equal(mixNote(project({ voice: { mixer: { solo: true } } })), "Solo is on: only Voice will be heard, in the preview and the export.");
-  assert.equal(mixNote(project({ voice: { mixer: { solo: true } }, music: { mixer: { solo: true } } })), "Solo is on: only Voice and Music will be heard, in the preview and the export.");
+  assert.equal(
+    mixNote(project({ voice: { mixer: { solo: true } }, music: { mixer: { solo: true } } })),
+    "Solo is on: only Voice and Music will be heard, in the preview and the export.",
+  );
   // Solo + mute on the only soloed track: nothing.
   const soloMuted = project({ voice: { mixer: { solo: true, mute: true } } });
   assert.deepEqual(audibleTracks(soloMuted), []);
   assert.equal(mixNote(soloMuted), "Nothing will be heard: Voice is soloed but muted.");
-  assert.equal(mixNote(project({ voice: { mixer: { mute: true } }, music: { mixer: { mute: true } } })), "Nothing will be heard: every track with sound is muted.");
+  assert.equal(
+    mixNote(project({ voice: { mixer: { mute: true } }, music: { mixer: { mute: true } } })),
+    "Nothing will be heard: every track with sound is muted.",
+  );
   assert.equal(mixNote(project({ master: { gainDb: -60 } })), "Nothing will be heard: the master volume is at −∞.");
   assert.equal(mixNote(project()), undefined);
   assert.equal(mixNote({ ...project(), tracks: [project().tracks[0]!] }), undefined, "nothing to hear anyway: nothing to say");
@@ -152,21 +262,33 @@ test("export plan: each layer carries its track's pan, the plan the master volum
   const plan = planExport(p, { mediaPath: (m) => m.path, width: 640, height: 360 });
   assert.ok(!("problem" in plan));
   near(plan.masterGain, dbToGain(-6), 1e-12);
-  assert.deepEqual(plan.audio.map((a) => [a.item.id, a.pan]), [["v", { left: 1, right: 0 }], ["s", { left: 1, right: 1 }]]);
+  assert.deepEqual(
+    plan.audio.map((a) => [a.item.id, a.pan]),
+    [
+      ["v", { left: 1, right: 0 }],
+      ["s", { left: 1, right: 1 }],
+    ],
+  );
   const graph = audioGraph(plan, 0).filters.join(";\n");
   assert.match(graph, /pan=stereo\|c0=1\*c0\|c1=0\*c1/, "the voice is panned");
   assert.equal(graph.match(/pan=stereo\|c0=/g)?.length, 1, "the centred music isn't");
   assert.match(graph, /normalize=0,volume=0\.501187,atrim/, "master volume after the sum");
   const solo = planExport(project({ music: { mixer: { solo: true } } }), { mediaPath: (m) => m.path, width: 640, height: 360 });
   assert.ok(!("problem" in solo));
-  assert.deepEqual(solo.audio.map((a) => a.item.id), ["s"]);
+  assert.deepEqual(
+    solo.audio.map((a) => a.item.id),
+    ["s"],
+  );
   const plain = planExport(project(), { mediaPath: (m) => m.path, width: 640, height: 360 });
   assert.ok(!("problem" in plain));
   assert.doesNotMatch(audioGraph(plain, 0).filters.join(";"), /normalize=0,volume|pan=stereo\|c0/, "nothing added without pan or master");
 });
 
 test("schema: master.gainDb and mixer pan/solo are valid in range, refused outside", () => {
-  assert.deepEqual(validateProject(project({ voice: { mixer: { gainDb: -6, pan: -0.3, solo: true } }, master: { gainDb: -3, loudness: { targetLufs: -14 } } }), modules), []);
+  assert.deepEqual(
+    validateProject(project({ voice: { mixer: { gainDb: -6, pan: -0.3, solo: true } }, master: { gainDb: -3, loudness: { targetLufs: -14 } } }), modules),
+    [],
+  );
   assert.ok(validateProject(project({ master: { gainDb: 13 } }), modules).some((e) => e.code === "schema"));
   assert.ok(validateProject(project({ voice: { mixer: { pan: 1.5 } } }), modules).some((e) => e.code === "schema"));
 });
@@ -212,11 +334,20 @@ test("Mixer planners: pan (hundredths, centre removes it), solo, master volume; 
   const bare = apply(project({ master: { gainDb: -2 } }), planMasterGain(project({ master: { gainDb: -2 } }), 0));
   assert.equal(bare.master, undefined, "an empty master goes");
   // The agent's update_track without a summary that says which: everything listed.
-  assert.equal(describeOp({ op: "update_track", track: "voice", set: { mixer: { pan: 0.4, solo: true } } }, p), "Set mixer of track voice: panned 40 % right, soloed");
-  assert.equal(describeOp({ op: "update_track", track: "voice", set: { mixer: { gainDb: -8, pan: -1 } } }, p), "Set volume of track voice to −8 dB, panned 100 % left");
+  assert.equal(
+    describeOp({ op: "update_track", track: "voice", set: { mixer: { pan: 0.4, solo: true } } }, p),
+    "Set mixer of track voice: panned 40 % right, soloed",
+  );
+  assert.equal(
+    describeOp({ op: "update_track", track: "voice", set: { mixer: { gainDb: -8, pan: -1 } } }, p),
+    "Set volume of track voice to −8 dB, panned 100 % left",
+  );
   assert.equal(describeOp({ op: "update_project", set: { master: { gainDb: -2 } } }, p), "Set master volume to −2 dB");
   // D87: the loudness target is said too.
-  assert.equal(describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -16 } } } }, p), "Set the master: loudness target Quieter (−16 LUFS)");
+  assert.equal(
+    describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -16 } } } }, p),
+    "Set the master: loudness target Quieter (−16 LUFS)",
+  );
 });
 
 test("volume keys on the timeline: add at the line's value or a dB, move between neighbours, remove; the level scale", () => {
@@ -229,7 +360,11 @@ test("volume keys on the timeline: add at the line's value or a dB, move between
   assert.ok("ops" in add && add.summary === "Add volume key at 2.0 s");
   let p = apply(base, add);
   const v = (q: Project) => q.tracks[1]!.items[0]!;
-  assert.deepEqual(v(p).gainKeys, [{ frame: 30, db: 0 }, { frame: 60, db: -6 }, { frame: 90, db: -12 }]);
+  assert.deepEqual(v(p).gainKeys, [
+    { frame: 30, db: 0 },
+    { frame: 60, db: -6 },
+    { frame: 90, db: -12 },
+  ]);
   for (const f of [0, 31, 45, 60, 75, 119]) near(envelopeDbAt(v(p), f), envelopeDbAt(voice(), f), 1e-9, `frame ${f}`);
   assert.deepEqual(planAddGainKey(p, "v", 60), { ops: [], summary: "" }, "the same key again is no edit");
   // Add with a dB (the item's dB there): stored relative to gainDb, clamped so the sum stays in range.
@@ -239,17 +374,30 @@ test("volume keys on the timeline: add at the line's value or a dB, move between
   assert.deepEqual(v(p).gainKeys?.[0], { frame: 10, db: 15 });
   // Move (keys by index in frame order: 10, 30, 60, 90): frame and dB, one frame clear of its
   // neighbours, so dragging onto a neighbour never makes two keys share a frame.
-  assert.deepEqual(v(p).gainKeys?.map((k) => k.frame), [10, 30, 60, 90]);
+  assert.deepEqual(
+    v(p).gainKeys?.map((k) => k.frame),
+    [10, 30, 60, 90],
+  );
   const move = planMoveGainKey(p, "v", 2, 200, -20);
   assert.ok("ops" in move && move.summary === "Move volume key to 3.0 s, −20 dB", JSON.stringify(move));
   p = apply(p, move);
-  assert.deepEqual(v(p).gainKeys?.map((k) => k.frame), [10, 30, 89, 90]);
+  assert.deepEqual(
+    v(p).gainKeys?.map((k) => k.frame),
+    [10, 30, 89, 90],
+  );
   assert.deepEqual(v(p).gainKeys?.[2], { frame: 89, db: -17 });
   p = apply(p, planMoveGainKey(p, "v", 2, 0, -20));
-  assert.deepEqual(v(p).gainKeys?.map((k) => k.frame), [10, 30, 31, 90], "back onto the left neighbour: stops one frame after it");
+  assert.deepEqual(
+    v(p).gainKeys?.map((k) => k.frame),
+    [10, 30, 31, 90],
+    "back onto the left neighbour: stops one frame after it",
+  );
   // No room either side (neighbours one apart): the frame stays, the dB moves.
   const tight = apply(p, planMoveGainKey(p, "v", 1, 31, -20));
-  assert.deepEqual(tight.tracks[1]!.items[0]!.gainKeys?.map((k) => k.frame), [10, 30, 31, 90]);
+  assert.deepEqual(
+    tight.tracks[1]!.items[0]!.gainKeys?.map((k) => k.frame),
+    [10, 30, 31, 90],
+  );
   p = apply(p, planMoveGainKey(p, "v", 3, 500, -12));
   assert.deepEqual(v(p).gainKeys?.at(-1), { frame: 120, db: -9 }, "the last key stops at the item's end");
   assert.ok("problem" in planMoveGainKey(p, "v", 7, 70, 0), "a key that isn't there");
@@ -257,10 +405,40 @@ test("volume keys on the timeline: add at the line's value or a dB, move between
   const rm = planRemoveGainKey(p, "v", 0);
   assert.ok("ops" in rm && rm.summary === "Remove volume key at 0.3 s");
   p = apply(p, rm);
-  const step = apply(p, { ops: [{ op: "update_item", item: "v", set: { gainKeys: [{ frame: 30, db: 0 }, { frame: 60, db: -6 }, { frame: 60, db: -20 }] } }] });
+  const step = apply(p, {
+    ops: [
+      {
+        op: "update_item",
+        item: "v",
+        set: {
+          gainKeys: [
+            { frame: 30, db: 0 },
+            { frame: 60, db: -6 },
+            { frame: 60, db: -20 },
+          ],
+        },
+      },
+    ],
+  });
   const one = apply(step, planRemoveGainKey(step, "v", 2));
-  assert.deepEqual(one.tracks[1]!.items[0]!.gainKeys, [{ frame: 30, db: 0 }, { frame: 60, db: -6 }], "one of the two keys at 60 goes");
-  assert.equal(keyIndexAt([{ frame: 90, db: 0 }, { frame: 30, db: 0 }], 90), 1);
+  assert.deepEqual(
+    one.tracks[1]!.items[0]!.gainKeys,
+    [
+      { frame: 30, db: 0 },
+      { frame: 60, db: -6 },
+    ],
+    "one of the two keys at 60 goes",
+  );
+  assert.equal(
+    keyIndexAt(
+      [
+        { frame: 90, db: 0 },
+        { frame: 30, db: 0 },
+      ],
+      90,
+    ),
+    1,
+  );
   while (v(p).gainKeys?.length) p = apply(p, planRemoveGainKey(p, "v", 0));
   assert.equal(v(p).gainKeys, undefined);
   assert.ok("problem" in planAddGainKey({ ...base, media: [] }, "v", 10), "no sound, no keys");

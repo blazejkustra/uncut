@@ -12,13 +12,7 @@ const BIN = resolve("native/media/target/release/uncut-media");
 const hasFfmpeg = !spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).error && !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = !existsSync(BIN) ? "media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg and ffprobe for the comparison" : false;
 
-const REAL = [
-  DJI_CLIP,
-  FIRST_FLIGHT,
-  DJI_STILL,
-  resolve("fixtures/synth-hevc10.mp4"),
-  resolve("fixtures/trim-proxy.mp4"),
-];
+const REAL = [DJI_CLIP, FIRST_FLIGHT, DJI_STILL, resolve("fixtures/synth-hevc10.mp4"), resolve("fixtures/trim-proxy.mp4")];
 
 let dir: string;
 const made: Record<string, string> = {};
@@ -30,14 +24,58 @@ before(() => {
   const p = (name: string) => (made[name] = join(dir, name));
   ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", p("audio-only.mov"));
   ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1.5", "-c:a", "aac", p("audio-only.m4a"));
-  for (const [name, rate] of [["24fps.mp4", "24"], ["25fps.mp4", "25"], ["29.97fps.mp4", "30000/1001"]]) {
+  for (const [name, rate] of [
+    ["24fps.mp4", "24"],
+    ["25fps.mp4", "25"],
+    ["29.97fps.mp4", "30000/1001"],
+  ]) {
     ffmpeg("-f", "lavfi", "-i", `testsrc=size=320x240:rate=${rate}`, "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", p(name));
   }
-  ffmpeg("-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=duration=1", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", p("with-audio.mov"));
+  ffmpeg(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=640x360:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=1",
+    "-t",
+    "1",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    p("with-audio.mov"),
+  );
   // A phone-style clip: stored landscape, shown turned 90°.
   ffmpeg("-display_rotation", "-90", "-i", made["25fps.mp4"]!, "-c", "copy", p("rotated.mp4"));
   // Fragmented MP4 (moov without sample tables, durations in moof/trun).
-  ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-f", "lavfi", "-i", "sine=duration=2", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-movflags", "frag_keyframe+empty_moov", p("fragmented.mp4"));
+  ffmpeg(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=2",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    "-movflags",
+    "frag_keyframe+empty_moov",
+    p("fragmented.mp4"),
+  );
   ffmpeg("-f", "lavfi", "-i", "testsrc=size=640x360", "-frames:v", "1", p("still.png"));
   ffmpeg("-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1", p("still.jpg"));
 });
@@ -64,7 +102,7 @@ function reference(path: string) {
     videoProfile: image ? undefined : main?.profile,
     audioCodec: audio?.codec_name,
     hasAudio: Boolean(audio),
-    rotation: image || !main ? undefined : (((-(rot ?? 0)) % 360) + 360) % 360,
+    rotation: image || !main ? undefined : ((-(rot ?? 0) % 360) + 360) % 360,
     creationTime: created ? `${created.slice(0, 19)}Z` : undefined,
   };
 }
@@ -76,7 +114,8 @@ function compare(path: string) {
   for (const key of ["kind", "width", "height", "fps", "videoCodec", "videoProfile", "audioCodec", "hasAudio", "rotation", "creationTime"] as const) {
     assert.deepEqual(ours[key], ref[key], `${path}: ${key} native=${ours[key]} ffprobe=${ref[key]}`);
   }
-  if (ref.durationSeconds !== undefined) assert.ok(Math.abs(ours.durationSeconds - ref.durationSeconds) < 0.002, `${path}: duration ${ours.durationSeconds} vs ${ref.durationSeconds}`);
+  if (ref.durationSeconds !== undefined)
+    assert.ok(Math.abs(ours.durationSeconds - ref.durationSeconds) < 0.002, `${path}: duration ${ours.durationSeconds} vs ${ref.durationSeconds}`);
   console.log(`# ${path.split("/").pop()}: ${JSON.stringify({ native: ours, ffprobe: ref })}`);
   return ours;
 }
@@ -104,9 +143,32 @@ const REPRO = SCRATCH ? ["twoedits.mp4", "frag.mp4"].map((name) => join(SCRATCH,
 test("variable frame rate: fps is the most used frame duration (ffprobe packet durations), not r_frame_rate by luck", { skip }, () => {
   // 60 fps for the first second, then every other frame: 60 frames at 1/60 s, 60 at 1/30 s, plus a few odd ones.
   const path = join(dir, "vfr.mp4");
-  ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=60", "-t", "4", "-vf", "select='lt(n\,60)+not(mod(n\,2))+gte(n\,180)*not(mod(n\,2))'", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", path);
-  const durations = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration", "-of", "csv=p=0", path], { encoding: "utf8" }).trim().split("\n").map(Number);
-  const tb = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=time_base", "-of", "csv=p=0", path], { encoding: "utf8" }).trim();
+  ffmpeg(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=60",
+    "-t",
+    "4",
+    "-vf",
+    "select='lt(n,60)+not(mod(n,2))+gte(n,180)*not(mod(n,2))'",
+    "-fps_mode",
+    "vfr",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    path,
+  );
+  const durations = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration", "-of", "csv=p=0", path], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .map(Number);
+  const tb = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=time_base", "-of", "csv=p=0", path], {
+    encoding: "utf8",
+  }).trim();
   const counts = new Map();
   for (const d of durations) counts.set(d, (counts.get(d) ?? 0) + 1);
   const mode = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
@@ -117,23 +179,31 @@ test("variable frame rate: fps is the most used frame duration (ffprobe packet d
   console.log(`# vfr: native fps ${ours.fps}; packet-duration mode ${expected}; ffprobe avg_frame_rate differs by design`);
 });
 
-test("the reviewer's repro files (when present): two edit-list entries, fragmented, VFR", { skip: skip || ((!REPRO.length || !REPRO.every((f) => existsSync(f))) && "set UNCUT_PROBE_REPRO_DIR to the folder with twoedits.mp4 and frag.mp4") }, () => {
-  const twoEdits = native(join(SCRATCH, "twoedits.mp4"));
-  assert.equal(twoEdits.durationSeconds, reference(join(SCRATCH, "twoedits.mp4")).durationSeconds);
-  const frag = native(join(SCRATCH, "frag.mp4"));
-  assert.equal(frag.durationSeconds, 3);
-  assert.equal(frag.fps, "30/1");
-});
+test(
+  "the reviewer's repro files (when present): two edit-list entries, fragmented, VFR",
+  { skip: skip || ((!REPRO.length || !REPRO.every((f) => existsSync(f))) && "set UNCUT_PROBE_REPRO_DIR to the folder with twoedits.mp4 and frag.mp4") },
+  () => {
+    const twoEdits = native(join(SCRATCH, "twoedits.mp4"));
+    assert.equal(twoEdits.durationSeconds, reference(join(SCRATCH, "twoedits.mp4")).durationSeconds);
+    const frag = native(join(SCRATCH, "frag.mp4"));
+    assert.equal(frag.durationSeconds, 3);
+    assert.equal(frag.fps, "30/1");
+  },
+);
 
-test("the DJI clip: main 4K HEVC track chosen over the MJPEG preview, in well under a second", { skip: skip || (!existsSync(REAL[0]) && "DJI clip isn't here") }, () => {
-  native(REAL[0]); // warm the page cache like a second import would
-  const started = process.hrtime.bigint();
-  const p = native(REAL[0]);
-  const ms = Number(process.hrtime.bigint() - started) / 1e6;
-  assert.deepEqual([p.width, p.height, p.fps, p.videoCodec, p.videoProfile, p.hasAudio], [3840, 2160, "60000/1001", "hevc", "Main 10", false]);
-  assert.ok(ms < 1000, `${ms} ms`);
-  console.log(`# DJI 3.6 GB probe, warm: ${ms.toFixed(1)} ms`);
-});
+test(
+  "the DJI clip: main 4K HEVC track chosen over the MJPEG preview, in well under a second",
+  { skip: skip || (!existsSync(REAL[0]) && "DJI clip isn't here") },
+  () => {
+    native(REAL[0]); // warm the page cache like a second import would
+    const started = process.hrtime.bigint();
+    const p = native(REAL[0]);
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    assert.deepEqual([p.width, p.height, p.fps, p.videoCodec, p.videoProfile, p.hasAudio], [3840, 2160, "60000/1001", "hevc", "Main 10", false]);
+    assert.ok(ms < 1000, `${ms} ms`);
+    console.log(`# DJI 3.6 GB probe, warm: ${ms.toFixed(1)} ms`);
+  },
+);
 
 test("typed errors: missing file, folder, and something that isn't media", { skip: skip && skip.startsWith("media core") ? skip : false }, () => {
   const run = (path: string) => JSON.parse(spawnSync(BIN, ["probe", path], { encoding: "utf8" }).stdout);

@@ -32,8 +32,24 @@ let app: LaunchedApp | undefined;
 let page: Page;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `inspector-${name}.png`);
-const T1: Item = { id: "t1", type: "text", start: 0, duration: 150, text: "Inspector", transform: { x: 200, y: 300 }, style: { preset: "text.title", size: 120, weight: 700 } };
-const T2: Item = { id: "t2", type: "text", start: 0, duration: 150, text: "Second line", transform: { x: 200, y: 700 }, style: { preset: "text.header", size: 64, weight: 500 } };
+const T1: Item = {
+  id: "t1",
+  type: "text",
+  start: 0,
+  duration: 150,
+  text: "Inspector",
+  transform: { x: 200, y: 300 },
+  style: { preset: "text.title", size: 120, weight: 700 },
+};
+const T2: Item = {
+  id: "t2",
+  type: "text",
+  start: 0,
+  duration: 150,
+  text: "Second line",
+  transform: { x: 200, y: 700 },
+  style: { preset: "text.header", size: 64, weight: 500 },
+};
 const PROJECT: Project = {
   format: "uncut/0",
   name: "Inspector",
@@ -43,14 +59,28 @@ const PROJECT: Project = {
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [T1] },
     { id: "text-2", kind: "text", name: "Text 2", items: [T2] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "base", type: "component", component: "component.solid", duration: 300, props: { color: "#202830" } }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "base", type: "component", component: "component.solid", duration: 300, props: { color: "#202830" } }],
+    },
   ],
 };
 
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const item = (id: string): Item | undefined => onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === id);
+const item = (id: string): Item | undefined =>
+  onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.id === id);
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) >= r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) >= r,
+    { timeout: 10000 },
+    n,
+  );
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const box = async (selector: string) => {
   const el = (await page.$(selector))!;
@@ -121,7 +151,7 @@ test("X3: the text Inspector is a property panel; every control is one edit and 
   // Font: the picker draws each name in its font; DM Mono picked; the preview uses it.
   await page.click("[data-testid=insp-font]");
   await waitFor("[data-testid=insp-font-popover]");
-  assert.equal(await page.$eval('[data-testid=insp-font-option][data-font="DM Mono"]', (el) => (el as HTMLElement).style.fontFamily), "\"DM Mono\"");
+  assert.equal(await page.$eval('[data-testid=insp-font-option][data-font="DM Mono"]', (el) => (el as HTMLElement).style.fontFamily), '"DM Mono"');
   await (await page.$(".side"))!.screenshot({ path: out("font-picker") });
   await page.type("[data-testid=insp-font-search]", "dm mo");
   await clickEdit('[data-testid=insp-font-option][data-font="DM Mono"]');
@@ -185,7 +215,15 @@ test("X3: the text Inspector is a property panel; every control is one edit and 
   assert.equal(await revision(), r + 1);
   assert.deepEqual([item("t1")!.style!.weight, item("t2")!.style!.weight], [300, 300]);
   const labels = historyLabels();
-  assert.ok(labels.includes("Set font to DM Mono") && labels.includes("Set text in italic") && labels.includes("Set text in title case") && labels.includes("Rotate text -8°") && labels.includes("Align text to the right") && labels.includes("Set weight to Light (2 items)"), labels.join(" | "));
+  assert.ok(
+    labels.includes("Set font to DM Mono") &&
+      labels.includes("Set text in italic") &&
+      labels.includes("Set text in title case") &&
+      labels.includes("Rotate text -8°") &&
+      labels.includes("Align text to the right") &&
+      labels.includes("Set weight to Light (2 items)"),
+    labels.join(" | "),
+  );
 });
 
 test("E1/E2/E3: the Elements grid (general elements, + centred, hide remembered, one Background)", { skip, timeout: 180000 }, async () => {
@@ -194,7 +232,8 @@ test("E1/E2/E3: the Elements grid (general elements, + centred, hide remembered,
   await page.click("[data-testid=rail-elements]");
   await waitFor("[data-testid=components-grid]");
   const grid = await page.$$eval("[data-testid=components-grid] [data-component]", (els) => els.map((e) => (e as HTMLElement).dataset.component));
-  for (const id of ["shape", "lower-third", "callout", "progress-bar", "countdown", "subscribe", "sticker", "image-frame", "solid"]) assert.ok(grid.includes(`component.${id}`), `${id} in the grid`);
+  for (const id of ["shape", "lower-third", "callout", "progress-bar", "countdown", "subscribe", "sticker", "image-frame", "solid"])
+    assert.ok(grid.includes(`component.${id}`), `${id} in the grid`);
   for (const id of ["agent-log", "compare-table", "device-frame", "terminal", "code-block"]) assert.ok(!grid.includes(`component.${id}`), `${id} hidden`);
   assert.equal(await page.$$eval("[data-testid=background-tile]", (els) => els.length), 1, "one Background element");
   assert.equal(await page.$("[data-testid=background-preset]"), null);
@@ -206,7 +245,12 @@ test("E1/E2/E3: the Elements grid (general elements, + centred, hide remembered,
     const t = tile.getBoundingClientRect();
     const btn = tile.querySelector("[data-testid=component-add]")!.getBoundingClientRect();
     const icon = tile.querySelector("[data-testid=component-add] svg")!.getBoundingClientRect();
-    return { dx: icon.x + icon.width / 2 - (btn.x + btn.width / 2), dy: icon.y + icon.height / 2 - (btn.y + btn.height / 2), right: t.right - btn.right, top: btn.top - t.top };
+    return {
+      dx: icon.x + icon.width / 2 - (btn.x + btn.width / 2),
+      dy: icon.y + icon.height / 2 - (btn.y + btn.height / 2),
+      right: t.right - btn.right,
+      top: btn.top - t.top,
+    };
   });
   assert.ok(Math.abs(plus.dx) < 0.6 && Math.abs(plus.dy) < 0.6, `+ centred (${plus.dx}, ${plus.dy})`);
   assert.ok(Math.abs(plus.right - 4) < 1.5 && Math.abs(plus.top - 4) < 1.5, `4 px from the corner (${plus.right}, ${plus.top})`);
@@ -246,7 +290,10 @@ test("E1/E2/E3: the Elements grid (general elements, + centred, hide remembered,
   await setField("bg-noise", "35");
   assert.deepEqual(item(id)!.props, { color: "#0B1D3A", to: "#F5C26B", gradient: "radial", via: "#2A1A4A", noise: 0.35 });
   const drawn = await page.$eval(`.pv-solid[data-item="${id}"]`, (el) => getComputedStyle(el).backgroundImage);
-  assert.match(drawn, /^url\("data:image\/svg\+xml,.*"\), radial-gradient\(circle(?: at 50% 50%)?, rgb\(11, 29, 58\), rgb\(42, 26, 74\), rgb\(245, 194, 107\)\)$/);
+  assert.match(
+    drawn,
+    /^url\("data:image\/svg\+xml,.*"\), radial-gradient\(circle(?: at 50% 50%)?, rgb\(11, 29, 58\), rgb\(42, 26, 74\), rgb\(245, 194, 107\)\)$/,
+  );
   await (await page.$(".side"))!.screenshot({ path: out("background") });
   await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path: out("background-preview") });
 });
@@ -287,7 +334,8 @@ test("X2: a dragged tile is a small chip; the canvas and the timeline show where
     const tile = document.querySelector<HTMLElement>("[data-testid=text-preset][data-preset=title]")!;
     const dt = new DataTransfer();
     let image: { cls: string; thumb: boolean; text: string; w: number } | undefined;
-    dt.setDragImage = (el: Element) => void (image = { cls: el.className, thumb: !!el.querySelector(".text-thumb .tt-text"), text: el.textContent ?? "", w: (el as HTMLElement).offsetWidth });
+    dt.setDragImage = (el: Element) =>
+      void (image = { cls: el.className, thumb: !!el.querySelector(".text-thumb .tt-text"), text: el.textContent ?? "", w: (el as HTMLElement).offsetWidth });
     tile.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }));
     return image;
   });
@@ -311,7 +359,9 @@ test("X2: a dragged tile is a small chip; the canvas and the timeline show where
   assert.ok(Math.abs(ghost.x - (frame.x + frame.width * 0.3)) < 3, "starts at the pointer");
   assert.ok(ghost.y < frame.y + frame.height * 0.7 && ghost.y + ghost.height > frame.y + frame.height * 0.7, "its line on the pointer's height");
   await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path: out("drag-canvas") });
-  await page.evaluate(() => document.querySelector("[data-testid=preview-frame]")!.dispatchEvent(new DragEvent("dragleave", { bubbles: true, relatedTarget: null })));
+  await page.evaluate(() =>
+    document.querySelector("[data-testid=preview-frame]")!.dispatchEvent(new DragEvent("dragleave", { bubbles: true, relatedTarget: null })),
+  );
   await page.waitForFunction(() => !document.querySelector("[data-testid=drop-ghost]"));
   // Over the timeline: the span it would fill (3 s from the pointer's frame).
   const lanes = await box("[data-testid=lanes]");

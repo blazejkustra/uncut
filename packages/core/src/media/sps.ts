@@ -52,7 +52,7 @@ class Bits {
   ue(): number {
     let zeros = 0;
     while (this.bit() === 0) if (++zeros > 31) throw new RangeError("bad exp-Golomb code");
-    return (2 ** zeros - 1) + this.u(zeros);
+    return 2 ** zeros - 1 + this.u(zeros);
   }
   se(): number {
     const k = this.ue();

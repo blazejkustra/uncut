@@ -5,7 +5,14 @@ import { fileURLToPath } from "node:url";
 
 /** The plist's <string> entries (XML-unescaped). */
 const plistStrings = (xml: string) =>
-  [...xml.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]!.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"));
+  [...xml.matchAll(/<string>([^<]*)<\/string>/g)].map((m) =>
+    m[1]!
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&"),
+  );
 
 /** The absolute paths from file URLs (one a line) and an NSFilenamesPboardType plist (either may be ""). */
 export function pastedPaths(fileUrl: string, filenames: string): Array<string> {

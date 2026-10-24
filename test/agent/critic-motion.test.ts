@@ -15,7 +15,56 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_CONTENT, EMPTY_HARD_S, THIN_FLAT, THIN_TALL, THIN_WIDTH, thinMeasure, thinRuns, thinSize, scanRenderWidth, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
+import {
+  EMPTY_CONTENT,
+  EMPTY_HARD_S,
+  THIN_FLAT,
+  THIN_TALL,
+  THIN_WIDTH,
+  thinMeasure,
+  thinRuns,
+  thinSize,
+  scanRenderWidth,
+  emptyMeasure,
+  emptySize,
+  emptyRuns,
+  type ScanFrame,
+  FAST_STEP,
+  nearlyEmpty,
+  OPEN_MAX_S,
+  refineEmpty,
+  JUMP_OVER,
+  refineJumps,
+  beatWordLines,
+  beatWords,
+  canvasShare,
+  dropBeat,
+  dropLine,
+  FLAT_MAX,
+  flatFindings,
+  flatFraction,
+  flatLines,
+  budgetLine,
+  frameDiff,
+  grayFrames,
+  MAX_STRIPS,
+  motionAnchors,
+  motionFindings,
+  motionFrames,
+  motionIntent,
+  motionLines,
+  motionRenderOrder,
+  motionScan,
+  SCAN_BUDGET,
+  SCAN_WINDOW,
+  scanPlan,
+  scanSize,
+  STRIP_CELL,
+  stripLayout,
+  stripPlan,
+  blurPicks,
+  BLUR_CELL,
+} from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -37,7 +86,11 @@ test("anchors, strips and the scan plan stay bounded", () => {
   assert.equal(anchors.length, MAX_STRIPS);
   assert.equal(anchors[0]!.frame, 0);
   assert.equal(anchors.at(-1)!.frame, 28 * fps, "the last beat is in");
-  assert.deepEqual(motionAnchors(undefined, 30, 150).map((a) => a.frame), [0, 60, 120], "no storyboard: every 2 s");
+  assert.deepEqual(
+    motionAnchors(undefined, 30, 150).map((a) => a.frame),
+    [0, 60, 120],
+    "no storyboard: every 2 s",
+  );
   const strips = stripPlan(anchors, fps, duration);
   for (const s of strips) {
     assert.equal(s.frames.length, 6);
@@ -52,7 +105,11 @@ test("anchors, strips and the scan plan stay bounded", () => {
   assert.ok(plan.length <= SCAN_BUDGET + 8, `${plan.length} frames`);
   for (const a of anchors) for (let d = -5; d <= 5; d++) if (a.frame + d >= 0) assert.ok(plan.includes(a.frame + d), `around ${a.frame}`);
   assert.ok(plan.includes(0) && plan.includes(duration - 1));
-  assert.deepEqual(scanPlan(anchors, 30, 90), Array.from({ length: 90 }, (_, i) => i), "a short film: every frame");
+  assert.deepEqual(
+    scanPlan(anchors, 30, 90),
+    Array.from({ length: 90 }, (_, i) => i),
+    "a short film: every frame",
+  );
   // A strip's sheet is one downscaled row.
   const l = stripLayout(6, 1080 / 1350);
   assert.equal(l.rows, 1);
@@ -80,9 +137,15 @@ function film(n: number, o: { pop?: number; jump?: number; holdFrom?: number; ho
 test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a hold, the seam measured", () => {
   const fps = 30;
   const scan = motionScan(film(100, { pop: 20, jump: 50, holdFrom: 60, holdTo: 99 }), fps);
-  assert.deepEqual(scan.pops.map((p) => p.frame), [20]);
+  assert.deepEqual(
+    scan.pops.map((p) => p.frame),
+    [20],
+  );
   assert.ok(scan.pops[0]!.ratio >= 3);
-  assert.deepEqual(scan.jumps.map((j) => j.frame), [50]);
+  assert.deepEqual(
+    scan.jumps.map((j) => j.frame),
+    [50],
+  );
   assert.deepEqual(scan.holds, [{ start: 60, end: 99 }]);
   assert.deepEqual(motionScan(film(100, { holdFrom: 60, holdTo: 89 }), fps).holds, [], "29 frames at 30 fps is under a second");
   assert.ok(scan.seam && scan.seam.diff > 0.05, "the last frame isn't the first");
@@ -92,23 +155,44 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   // Pure: the same frames in another order, the same answer.
   assert.deepEqual(motionScan([...film(100, { pop: 20, jump: 50, holdFrom: 60, holdTo: 99 })].reverse(), fps), scan);
   // Sparse samples aren't judged for pops (a pop needs both neighbours).
-  assert.deepEqual(motionScan(film(90, { pop: 20 }).filter((x) => x.frame % 2 === 0 || x.frame === 21), fps).pops, []);
+  assert.deepEqual(
+    motionScan(
+      film(90, { pop: 20 }).filter((x) => x.frame % 2 === 0 || x.frame === 21),
+      fps,
+    ).pops,
+    [],
+  );
   assert.equal(frameDiff(new Uint8Array([0, 255]), new Uint8Array([255, 255])), 0.5);
 
   // Findings: the pop always; the jump and hold only in a one-take film; the seam only for a loop.
   const plain = motionFindings(scan, fps);
-  assert.deepEqual(plain.map((f) => f.key), ["motion:pop:20"]);
+  assert.deepEqual(
+    plain.map((f) => f.key),
+    ["motion:pop:20"],
+  );
   const oneTake = motionFindings(scan, fps, { oneTake: true, loop: true });
-  assert.deepEqual(oneTake.map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:hold:60", "motion:seam:0"]);
+  assert.deepEqual(
+    oneTake.map((f) => f.key),
+    ["motion:pop:20", "motion:jump:50", "motion:hold:60", "motion:seam:0"],
+  );
   assert.ok(oneTake.every((f) => f.rule === "motion" && !f.hard));
   // D297: in a motion film pops, jumps (cuts) and the seam are blockers; a hold stays a finding.
   const filmFound = motionFindings(scan, fps, { oneTake: true, loop: true, hard: true });
-  assert.deepEqual(filmFound.filter((f) => f.hard).map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:seam:0"]);
+  assert.deepEqual(
+    filmFound.filter((f) => f.hard).map((f) => f.key),
+    ["motion:pop:20", "motion:jump:50", "motion:seam:0"],
+  );
   assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
   // Since the ablations cut the skill, it no longer prescribes a loop: only the brief's words ask for one.
   assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, true);
-  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
+  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), {
+    asked: false,
+    oneTake: true,
+    loop: false,
+    footage: false,
+    footageCuts: false,
+  });
   assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { asked: false, oneTake: false, loop: false, footage: false, footageCuts: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
   assert.equal(motionIntent({ skills: [], words: "", hasFootage: true }).footage, true);
@@ -124,30 +208,64 @@ test("the scan: a 2-frame flash (the picture goes back) is a pop with a span; a 
   const fps = 60;
   const size = 64 * 80;
   // The old shot drifting slowly; `other` frames show a different shot (another texture).
-  const shots = (n: number, other: (f: number) => boolean) => Array.from({ length: n }, (_, f) => {
-    const g = new Uint8Array(size);
-    for (let i = 0; i < size; i++) g[i] = other(f) ? (((i >> 6) * 7 + (i % 64) * 5) % 180) + 40 : (((i % 64) * 2 + f) % 200) + 20;
-    return { frame: f, gray: g };
-  });
-  const flash = motionScan(shots(90, (f) => f === 30 || f === 31), fps);
-  assert.deepEqual(flash.pops.map((p) => [p.frame, p.span]), [[30, 2]]);
+  const shots = (n: number, other: (f: number) => boolean) =>
+    Array.from({ length: n }, (_, f) => {
+      const g = new Uint8Array(size);
+      for (let i = 0; i < size; i++) g[i] = other(f) ? (((i >> 6) * 7 + (i % 64) * 5) % 180) + 40 : (((i % 64) * 2 + f) % 200) + 20;
+      return { frame: f, gray: g };
+    });
+  const flash = motionScan(
+    shots(90, (f) => f === 30 || f === 31),
+    fps,
+  );
+  assert.deepEqual(
+    flash.pops.map((p) => [p.frame, p.span]),
+    [[30, 2]],
+  );
   assert.ok(flash.pops[0]!.ratio >= 3);
   assert.deepEqual(flash.jumps, [], "its edges aren't jumps");
   const found = motionFindings(flash, fps, { oneTake: true, hard: true });
-  assert.deepEqual(found.map((f) => [f.key, f.hard]), [["motion:pop:30", true]]);
+  assert.deepEqual(
+    found.map((f) => [f.key, f.hard]),
+    [["motion:pop:30", true]],
+  );
   assert.match(found[0]!.message, /2-frame flash at f 30 to f 31 \(0\.50 s\)/);
   assert.deepEqual(found[0]!.range, { start: 30, end: 31 });
   assert.match(motionLines(flash, fps, { consecutive: true }).join("\n"), /f 30 to f 31 \(0\.50 s/);
   // Three frames at 60 fps still flash (0.05 s); four are a shot, its in and out two jumps.
-  assert.deepEqual(motionScan(shots(90, (f) => f >= 30 && f <= 32), fps).pops.map((p) => p.span), [3]);
-  const four = motionScan(shots(90, (f) => f >= 30 && f <= 33), fps);
+  assert.deepEqual(
+    motionScan(
+      shots(90, (f) => f >= 30 && f <= 32),
+      fps,
+    ).pops.map((p) => p.span),
+    [3],
+  );
+  const four = motionScan(
+    shots(90, (f) => f >= 30 && f <= 33),
+    fps,
+  );
   assert.deepEqual([four.pops.length, four.jumps.map((j) => j.frame)], [0, [30, 34]]);
   // A cut that stays: a jump, no flash. A single frame: still the plain pop.
-  const cut = motionScan(shots(90, (f) => f >= 30), fps);
+  const cut = motionScan(
+    shots(90, (f) => f >= 30),
+    fps,
+  );
   assert.deepEqual([cut.pops.length, cut.jumps.map((j) => j.frame)], [0, [30]]);
-  assert.deepEqual(motionScan(shots(90, (f) => f === 30), fps).pops.map((p) => [p.frame, p.span]), [[30, undefined]]);
+  assert.deepEqual(
+    motionScan(
+      shots(90, (f) => f === 30),
+      fps,
+    ).pops.map((p) => [p.frame, p.span]),
+    [[30, undefined]],
+  );
   // Sparse samples (the frames before and after missing) aren't judged.
-  assert.deepEqual(motionScan(shots(90, (f) => f === 30 || f === 31).filter((x) => x.frame !== 29), fps).pops, []);
+  assert.deepEqual(
+    motionScan(
+      shots(90, (f) => f === 30 || f === 31).filter((x) => x.frame !== 29),
+      fps,
+    ).pops,
+    [],
+  );
 });
 
 test("the scan: a sampled frame of a 2-frame flash is narrowed by refineJumps and found (A1r8: f 780 and 930 were samples)", async () => {
@@ -162,7 +280,10 @@ test("the scan: a sampled frame of a 2-frame flash is narrowed by refineJumps an
   const sampled = all.filter((x) => x.frame % 10 === 0);
   assert.deepEqual(motionScan(sampled, fps).pops, [], "samples alone can't judge it");
   const added = await refineJumps({ frames: sampled, fps, duration: all.length, render: async (fs) => fs.map((f) => all[f]!) });
-  assert.deepEqual(motionScan([...sampled, ...added], fps).pops.map((p) => [p.frame, p.span]), [[79, 2]]);
+  assert.deepEqual(
+    motionScan([...sampled, ...added], fps).pops.map((p) => [p.frame, p.span]),
+    [[79, 2]],
+  );
 });
 
 // Blind round 3: the references' first real change lands by 0.6 s; Uncut's light films drifted under a
@@ -172,19 +293,23 @@ test("the open: the first real change is measured; later than a second is a stat
   const fps = 60;
   const size = 64 * 80;
   // A big shape under a slow drift (one grey level every 15 frames), then (from `at`) sliding 2 px a frame.
-  const opening = (at: number, n = 180) => Array.from({ length: n }, (_, f) => {
-    const x = Math.max(0, f - at) * 2;
-    const lift = Math.floor(Math.min(f, at) / 15);
-    const g = new Uint8Array(size);
-    for (let i = 0; i < size; i++) g[i] = ((i % 64) >= 10 + x && (i % 64) < 30 + x ? 200 : 30) + lift;
-    return { frame: f, gray: g };
-  });
+  const opening = (at: number, n = 180) =>
+    Array.from({ length: n }, (_, f) => {
+      const x = Math.max(0, f - at) * 2;
+      const lift = Math.floor(Math.min(f, at) / 15);
+      const g = new Uint8Array(size);
+      for (let i = 0; i < size; i++) g[i] = (i % 64 >= 10 + x && i % 64 < 30 + x ? 200 : 30) + lift;
+      return { frame: f, gray: g };
+    });
   const lively = motionScan(opening(30), fps);
   assert.ok(lively.open && lively.open.frame! <= 40 && lively.open.frame! >= 30, JSON.stringify(lively.open));
   assert.ok(!motionFindings(lively, fps, { oneTake: true }).some((f) => f.key === "motion:open:0"));
   const late = motionScan(opening(100), fps);
   assert.ok(late.open!.frame! > OPEN_MAX_S * fps && late.open!.peak < 0.015, JSON.stringify(late.open));
-  const sampled = motionScan(opening(100).filter((x) => x.frame <= 5 || x.frame % 9 === 0), fps);
+  const sampled = motionScan(
+    opening(100).filter((x) => x.frame <= 5 || x.frame % 9 === 0),
+    fps,
+  );
   assert.ok(Math.abs(sampled.open!.frame! - late.open!.frame!) <= 9, "a 0.15 s sampling lands within a sample of every frame");
   const found = motionFindings(late, fps, { oneTake: true, hard: true }).find((f) => f.key === "motion:open:0")!;
   assert.ok(found && !found.hard && found.range!.start === 0, "a finding, never a blocker");
@@ -194,7 +319,10 @@ test("the open: the first real change is measured; later than a second is a stat
   assert.match(motionLines(lively, fps, { consecutive: true }).join("\n"), /The open: the first real change .* lands at f \d+ \(0\.\d\d s\)\./);
   // Nothing at all in the first 2 s; samples that stop before a second measure nothing.
   assert.equal(motionScan(opening(500, 130), fps).open!.frame, undefined);
-  assert.match(motionFindings(motionScan(opening(500, 130), fps), fps, { oneTake: true }).find((f) => f.key === "motion:open:0")!.message, /nothing really changes in the first 2 s/);
+  assert.match(
+    motionFindings(motionScan(opening(500, 130), fps), fps, { oneTake: true }).find((f) => f.key === "motion:open:0")!.message,
+    /nothing really changes in the first 2 s/,
+  );
   assert.equal(motionScan(opening(30, 50), fps).open, undefined);
 });
 
@@ -221,9 +349,30 @@ test("the critic gets the strips and the scan in <motion>; pops become review de
   assert.match(text, /Image 1: frame strip around beat 1/);
   assert.match(CRITIC_SYSTEM, /frame strips/);
   assert.match(CRITIC_SYSTEM, /single-frame|a frame unlike both its neighbours/);
-  assert.match(text, /changes land on the music's beats, no single-frame pops or few-frame flashes, no hold over 1 s/, "the rubric judges timing, pops, holds and the seam");
-  const answer = { scores: { hook: 9, readability: 9, motion: 9, variety: 9, sound: 9, brand: 9 }, evidence: {}, blockers: [], defects: [], fixes: [], summary: "", unproven: [] };
-  const review = criticReview(answer, { round: 1, claims: [], checks, determinism: { checked: [], differed: [] }, looked: { sheet: true, phone: true }, revision: 1, turnId: "t", fps: 30 });
+  assert.match(
+    text,
+    /changes land on the music's beats, no single-frame pops or few-frame flashes, no hold over 1 s/,
+    "the rubric judges timing, pops, holds and the seam",
+  );
+  const answer = {
+    scores: { hook: 9, readability: 9, motion: 9, variety: 9, sound: 9, brand: 9 },
+    evidence: {},
+    blockers: [],
+    defects: [],
+    fixes: [],
+    summary: "",
+    unproven: [],
+  };
+  const review = criticReview(answer, {
+    round: 1,
+    claims: [],
+    checks,
+    determinism: { checked: [], differed: [] },
+    looked: { sheet: true, phone: true },
+    revision: 1,
+    turnId: "t",
+    fps: 30,
+  });
   const pop = review.defects.find((d) => (d as { kind?: string }).kind === "motion");
   assert.ok(pop, "the pop is a defect");
   assert.equal((pop as { rule?: string }).rule, "motion:pop", "Intended can match it by its rule family");
@@ -275,13 +424,30 @@ test("D296: flat background share, the scale finding for footage-first films, th
   assert.equal(found[0]!.rule, "scale");
   assert.match(found[0]!.message, /3 of 4 scene changes \(worst 60 % at 2\.00 s\)[\s\S]*70 %/);
   assert.deepEqual(flatFindings(strips, 60, false), [], "not footage first: no finding");
-  assert.deepEqual(flatFindings(strips.map((x) => ({ ...x, flat: 0.2 })), 60, true), []);
+  assert.deepEqual(
+    flatFindings(
+      strips.map((x) => ({ ...x, flat: 0.2 })),
+      60,
+      true,
+    ),
+    [],
+  );
   assert.match(flatLines(strips, 60, true).join("\n"), /beat 1 \(0\.00 s\) 55 %[\s\S]*Over 35 % at 3 of 4 strips/);
   assert.equal(FLAT_MAX, 0.35);
   // The words a beat says it shows, from its quotes (straight, curly, single).
-  assert.deepEqual(beatWords({ title: "Open: the claim", entry: "Coastal road in the card, Uncut mark, 'Edit videos by talking to an agent'", exit: "“Free and open source” rises; the user's car" }), ["Edit videos by talking to an agent", "Free and open source"]);
+  assert.deepEqual(
+    beatWords({
+      title: "Open: the claim",
+      entry: "Coastal road in the card, Uncut mark, 'Edit videos by talking to an agent'",
+      exit: "“Free and open source” rises; the user's car",
+    }),
+    ["Edit videos by talking to an agent", "Free and open source"],
+  );
   assert.deepEqual(beatWords({ entry: 'The line "Hands every change back to you" rises' }), ["Hands every change back to you"]);
-  const lines = beatWordLines([{ start: 0, end: 2.5, entry: "'Edit videos'" }, { start: 2.5, end: 4, entry: "no words" }]);
+  const lines = beatWordLines([
+    { start: 0, end: 2.5, entry: "'Edit videos'" },
+    { start: 2.5, end: 4, entry: "no words" },
+  ]);
   assert.equal(lines.length, 2);
   assert.match(lines[1]!, /^beat 1 \(0 s to 2\.5 s\): "Edit videos"$/);
   assert.match(CRITIC_SYSTEM, /over 35 % at most scene changes[\s\S]*storyboard's words/);
@@ -296,9 +462,18 @@ test("render order: the strips' frames and the scene changes' windows first, the
   const order = motionRenderOrder(strips, scanList, anchors, duration);
   assert.equal(new Set(order).size, order.length, "each frame once");
   const want = new Set([...strips.flatMap((s) => s.frames), ...scanList]);
-  assert.deepEqual([...order].sort((a, b) => a - b), [...want].sort((a, b) => a - b), "the union of both");
-  const firstPart = order.slice(0, order.findIndex((f, i) => i > 0 && f < order[i - 1]!));
-  for (const a of anchors) for (let d = -SCAN_WINDOW; d <= SCAN_WINDOW; d++) if (a.frame + d >= 0) assert.ok(firstPart.includes(a.frame + d), `f ${a.frame + d} near ${a.label} comes first`);
+  assert.deepEqual(
+    [...order].sort((a, b) => a - b),
+    [...want].sort((a, b) => a - b),
+    "the union of both",
+  );
+  const firstPart = order.slice(
+    0,
+    order.findIndex((f, i) => i > 0 && f < order[i - 1]!),
+  );
+  for (const a of anchors)
+    for (let d = -SCAN_WINDOW; d <= SCAN_WINDOW; d++)
+      if (a.frame + d >= 0) assert.ok(firstPart.includes(a.frame + d), `f ${a.frame + d} near ${a.label} comes first`);
   for (const s of strips) for (const f of s.frames) assert.ok(firstPart.includes(f));
   assert.ok(firstPart.includes(duration - 1) && firstPart.includes(duration - 2), "the seam's frames come first");
 });
@@ -327,100 +502,182 @@ test("the time budget: a slow renderer is stopped, the scan runs on what was ren
   assert.equal(got.byFrame.size, 51, "frames until 15 s had gone by: 51 at 300 ms (the 51st starts at exactly 15 s)");
   assert.equal(got.planned, scanList.length);
   assert.ok(got.scanned.length < scanList.length && got.scanned.length > 0);
-  for (const a of anchors) assert.ok(got.scanned.includes(a.frame) && got.scanned.includes(Math.min(duration - 1, a.frame + 1)), `the scene change at f ${a.frame} is covered`);
+  for (const a of anchors)
+    assert.ok(got.scanned.includes(a.frame) && got.scanned.includes(Math.min(duration - 1, a.frame + 1)), `the scene change at f ${a.frame} is covered`);
   for (const s of strips) for (const f of s.frames) assert.ok(got.byFrame.has(f), `strip frame ${f} rendered`);
   // The scan on those frames says it was cut short, with the words the tool result uses.
-  const scan = motionScan(got.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16).fill(f % 7) })), fps);
+  const scan = motionScan(
+    got.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16).fill(f % 7) })),
+    fps,
+  );
   const lines = motionLines(scan, fps, { consecutive: false, planned: got.planned });
   assert.equal(lines[0], budgetLine(got.scanned.length, got.planned));
   assert.match(lines[0]!, new RegExp(`frame-difference scan covered ${got.scanned.length} of ${scanList.length} frames: time budget`, "i"));
   // A fast renderer isn't cut: every frame, no budget line.
   clock = 0;
-  const fast = await motionFrames({ strips, scanList, anchors, duration, render: async (frames, until) => frames.flatMap((frame) => (until() ? [] : [{ frame, jpeg: Buffer.alloc(1) }])), budgetMs: 15_000, now: () => clock });
+  const fast = await motionFrames({
+    strips,
+    scanList,
+    anchors,
+    duration,
+    render: async (frames, until) => frames.flatMap((frame) => (until() ? [] : [{ frame, jpeg: Buffer.alloc(1) }])),
+    budgetMs: 15_000,
+    now: () => clock,
+  });
   assert.equal(fast.cut, false);
   assert.equal(fast.scanned.length, scanList.length);
-  const full = motionScan(fast.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16) })), fps);
+  const full = motionScan(
+    fast.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16) })),
+    fps,
+  );
   assert.ok(!motionLines(full, fps, { consecutive: false, planned: fast.planned }).some((l) => /time budget/.test(l)));
 });
 
-test("a synthetic graphic rendered like review_submit renders it: the flash frame is the pop, the jump the jump; a strip is one small image", { skip, timeout: 180000 }, async () => {
-  const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
-  const project = {
-    format: "uncut/0",
-    name: "Pop",
-    canvas: { width: 400, height: 500, fps: 30 },
-    media: [],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/pop.html", start: 0, duration: 36 }] }],
-  } as unknown as Project;
-  const graphics = new Map([["graphics/pop.html", resolveGraphicLibs(POP_GRAPHIC, libs)]]);
-  const frames = Array.from({ length: 36 }, (_, i) => i);
-  // As review_submit renders them (D292): one session, the capture shrunk by the rasteriser, at the strips' width.
-  const session = await openFrameSession("ffmpeg", project, () => "", graphics, new AbortController().signal, undefined, { downscale: true });
-  let rendered: Awaited<ReturnType<typeof session.render>>;
-  let sessionSheet: Buffer;
-  try {
-    rendered = await session.render(frames, STRIP_CELL);
-    sessionSheet = await session.sheet(rendered.slice(0, 3).map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}` })), stripLayout(3, 400 / 500));
-    // `until` stops it: frames after it says true aren't rendered.
-    let n = 0;
-    assert.equal((await session.render(frames, STRIP_CELL, { until: () => n++ >= 4 })).length, 4);
-  } finally {
-    await session.close();
-  }
-  assert.equal(rendered.length, 36);
-  const sized = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], { input: rendered[0]!.jpeg, encoding: "utf8" });
-  assert.equal(sized.stdout.trim(), "200,250");
-  assert.equal(sessionSheet[1], 0xd8, "the session's sheet is a JPEG");
-  // The plain path (render_frames, full-size captures) finds the same.
-  const plain = await renderFramesWith("ffmpeg", project, () => "", graphics, frames, 96, new AbortController().signal);
-  const plainGrays = await grayFrames("ffmpeg", plain.map((f) => f.jpeg), 64, 80);
-  const plainScan = motionScan(plain.map((f, i) => ({ frame: f.frame, gray: plainGrays[i]! })), 30);
-  assert.deepEqual([plainScan.pops.map((p) => p.frame), plainScan.jumps.map((j) => j.frame)], [[12], [24]]);
-  const { w, h } = scanSize(project.canvas);
-  assert.deepEqual([w, h], [64, 80]);
-  const grays = await grayFrames("ffmpeg", rendered.map((f) => f.jpeg), w, h);
-  assert.equal(grays.length, 36);
-  const scan = motionScan(rendered.map((f, i) => ({ frame: f.frame, gray: grays[i]! })), 30);
-  assert.deepEqual(scan.pops.map((p) => p.frame), [12], JSON.stringify(scan.pops));
-  assert.deepEqual(scan.jumps.map((j) => j.frame), [24], JSON.stringify(scan.jumps));
-  // The same frames twice decode to the same greys (deterministic graphic, deterministic scan).
-  const again = await grayFrames("ffmpeg", rendered.map((f) => f.jpeg), w, h);
-  assert.deepEqual(again.map((g) => Buffer.from(g).toString("base64")), grays.map((g) => Buffer.from(g).toString("base64")));
-  // A strip: six frames around the jump as one downscaled image.
-  const strip = stripPlan([{ frame: 24, label: "beat 2" }], 30, 36)[0]!;
-  const cells = strip.frames.map((f) => ({ jpeg: rendered[f]!.jpeg, caption: `f ${f}` }));
-  const layout = stripLayout(cells.length, 400 / 500);
-  const sheet = await drawSheet(cells, layout);
-  assert.equal(sheet[0], 0xff);
-  assert.equal(sheet[1], 0xd8, "a JPEG");
-  const probe = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], { input: sheet, encoding: "utf8" });
-  assert.equal(probe.stdout.trim(), `${layout.width},${layout.height}`);
-});
+test(
+  "a synthetic graphic rendered like review_submit renders it: the flash frame is the pop, the jump the jump; a strip is one small image",
+  { skip, timeout: 180000 },
+  async () => {
+    const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
+    const project = {
+      format: "uncut/0",
+      name: "Pop",
+      canvas: { width: 400, height: 500, fps: 30 },
+      media: [],
+      tracks: [
+        { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/pop.html", start: 0, duration: 36 }] },
+      ],
+    } as unknown as Project;
+    const graphics = new Map([["graphics/pop.html", resolveGraphicLibs(POP_GRAPHIC, libs)]]);
+    const frames = Array.from({ length: 36 }, (_, i) => i);
+    // As review_submit renders them (D292): one session, the capture shrunk by the rasteriser, at the strips' width.
+    const session = await openFrameSession("ffmpeg", project, () => "", graphics, new AbortController().signal, undefined, { downscale: true });
+    let rendered: Awaited<ReturnType<typeof session.render>>;
+    let sessionSheet: Buffer;
+    try {
+      rendered = await session.render(frames, STRIP_CELL);
+      sessionSheet = await session.sheet(
+        rendered.slice(0, 3).map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}` })),
+        stripLayout(3, 400 / 500),
+      );
+      // `until` stops it: frames after it says true aren't rendered.
+      let n = 0;
+      assert.equal((await session.render(frames, STRIP_CELL, { until: () => n++ >= 4 })).length, 4);
+    } finally {
+      await session.close();
+    }
+    assert.equal(rendered.length, 36);
+    const sized = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], {
+      input: rendered[0]!.jpeg,
+      encoding: "utf8",
+    });
+    assert.equal(sized.stdout.trim(), "200,250");
+    assert.equal(sessionSheet[1], 0xd8, "the session's sheet is a JPEG");
+    // The plain path (render_frames, full-size captures) finds the same.
+    const plain = await renderFramesWith("ffmpeg", project, () => "", graphics, frames, 96, new AbortController().signal);
+    const plainGrays = await grayFrames(
+      "ffmpeg",
+      plain.map((f) => f.jpeg),
+      64,
+      80,
+    );
+    const plainScan = motionScan(
+      plain.map((f, i) => ({ frame: f.frame, gray: plainGrays[i]! })),
+      30,
+    );
+    assert.deepEqual([plainScan.pops.map((p) => p.frame), plainScan.jumps.map((j) => j.frame)], [[12], [24]]);
+    const { w, h } = scanSize(project.canvas);
+    assert.deepEqual([w, h], [64, 80]);
+    const grays = await grayFrames(
+      "ffmpeg",
+      rendered.map((f) => f.jpeg),
+      w,
+      h,
+    );
+    assert.equal(grays.length, 36);
+    const scan = motionScan(
+      rendered.map((f, i) => ({ frame: f.frame, gray: grays[i]! })),
+      30,
+    );
+    assert.deepEqual(
+      scan.pops.map((p) => p.frame),
+      [12],
+      JSON.stringify(scan.pops),
+    );
+    assert.deepEqual(
+      scan.jumps.map((j) => j.frame),
+      [24],
+      JSON.stringify(scan.jumps),
+    );
+    // The same frames twice decode to the same greys (deterministic graphic, deterministic scan).
+    const again = await grayFrames(
+      "ffmpeg",
+      rendered.map((f) => f.jpeg),
+      w,
+      h,
+    );
+    assert.deepEqual(
+      again.map((g) => Buffer.from(g).toString("base64")),
+      grays.map((g) => Buffer.from(g).toString("base64")),
+    );
+    // A strip: six frames around the jump as one downscaled image.
+    const strip = stripPlan([{ frame: 24, label: "beat 2" }], 30, 36)[0]!;
+    const cells = strip.frames.map((f) => ({ jpeg: rendered[f]!.jpeg, caption: `f ${f}` }));
+    const layout = stripLayout(cells.length, 400 / 500);
+    const sheet = await drawSheet(cells, layout);
+    assert.equal(sheet[0], 0xff);
+    assert.equal(sheet[1], 0xd8, "a JPEG");
+    const probe = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], {
+      input: sheet,
+      encoding: "utf8",
+    });
+    assert.equal(probe.stdout.trim(), `${layout.width},${layout.height}`);
+  },
+);
 
 // Rehearsal 3 (D297): the drop always gets a strip and a fact; a UI-first film naming its footage
 // isn't judged footage first; the canvas around the picture; this run's true facts.
 test("D297: the drop's strip and fact, UI-first intent, the canvas around the picture, the run's facts", () => {
   const fps = 60;
-  const beats = Array.from({ length: 12 }, (_, i) => ({ start: i * 2, end: i * 2 + 2, title: i === 6 ? "6. Drop: the preview floods" : `${i + 1}. beat`, sound: i === 6 ? "Drop, downbeat 12.0 s" : "beat" }));
+  const beats = Array.from({ length: 12 }, (_, i) => ({
+    start: i * 2,
+    end: i * 2 + 2,
+    title: i === 6 ? "6. Drop: the preview floods" : `${i + 1}. beat`,
+    sound: i === 6 ? "Drop, downbeat 12.0 s" : "beat",
+  }));
   assert.equal(dropBeat(beats), 6);
   assert.equal(dropBeat([{ start: 0, title: "dropdown menu" }]), undefined, "a word, not the drop");
   const anchors = motionAnchors(beats, fps, 24 * fps);
   assert.equal(anchors.length, MAX_STRIPS);
-  assert.ok(anchors.some((a) => a.frame === 720), anchors.map((a) => a.frame).join(", "));
+  assert.ok(
+    anchors.some((a) => a.frame === 720),
+    anchors.map((a) => a.frame).join(", "),
+  );
   assert.equal(anchors[0]!.frame, 0);
   assert.equal(anchors.at(-1)!.frame, 22 * fps);
   // Around the drop: a flood that already happened vs one landing on it.
   const flat = (v: number) => new Uint8Array(64 * 80).fill(v);
-  const frames = (before: number, after: number) => [{ frame: 720 - SCAN_WINDOW, gray: flat(before) }, { frame: 719, gray: flat(after) }, { frame: 720 + SCAN_WINDOW, gray: flat(after) }];
+  const frames = (before: number, after: number) => [
+    { frame: 720 - SCAN_WINDOW, gray: flat(before) },
+    { frame: 719, gray: flat(after) },
+    { frame: 720 + SCAN_WINDOW, gray: flat(after) },
+  ];
   assert.match(dropLine(frames(20, 200), 720, fps)!, /came before it/);
-  const landing = [{ frame: 720 - SCAN_WINDOW, gray: flat(20) }, { frame: 719, gray: flat(20) }, { frame: 720 + SCAN_WINDOW, gray: flat(200) }];
+  const landing = [
+    { frame: 720 - SCAN_WINDOW, gray: flat(20) },
+    { frame: 719, gray: flat(20) },
+    { frame: 720 + SCAN_WINDOW, gray: flat(200) },
+  ];
   assert.match(dropLine(landing, 720, fps)!, /lands on it/);
   assert.equal(dropLine([], 720, fps), undefined);
   // Footage words in a UI-first brief don't make it footage first.
-  assert.equal(motionIntent({ skills: ["motion-film"], words: "You type into the composer, the agent builds the timeline, the drone footage floods on the drop" }).footage, false);
+  assert.equal(
+    motionIntent({ skills: ["motion-film"], words: "You type into the composer, the agent builds the timeline, the drone footage floods on the drop" }).footage,
+    false,
+  );
   assert.equal(motionIntent({ skills: ["motion-film"], words: "A travel film from my drone footage" }).footage, true);
   // Canvas: a framed card on black, a full-bleed noisy picture, a borderless dark panel on black.
-  const w = 64, h = 80;
+  const w = 64,
+    h = 80;
   const card = flat(10);
   for (let y = 10; y < 70; y++) for (let x = 8; x < 56; x++) card[y * w + x] = y === 10 || y === 69 || x === 8 || x === 55 ? 60 : 12;
   const c = canvasShare(card, w, h);
@@ -434,10 +691,22 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
   const lines = flatLines([{ label: "beat 1", at: 0, flat: 0.5, canvas: 0.3, level: 241 }], fps, false).join("\n");
   assert.match(lines, /beat 1 30 % at grey 241/);
   // The run's facts.
-  assert.match(runFacts(12, [{ round: 1, blockers: [1, 2] }, { round: 2, blockers: [] }]), /12 beats; this is review 3 \(before it: round 1: not passed, 2 blockers; round 2: no blockers\)/);
+  assert.match(
+    runFacts(12, [
+      { round: 1, blockers: [1, 2] },
+      { round: 2, blockers: [] },
+    ]),
+    /12 beats; this is review 3 \(before it: round 1: not passed, 2 blockers; round 2: no blockers\)/,
+  );
   // Round 2's A1: the exact scores and result of each round, so an in-film score card is checked the same way every round.
-  const facts = runFacts(8, [{ round: 1, passed: false, blockers: [1, 2, 3], scores: { hook: 7, readability: 8, motion: 5, variety: 7, brand: 8 } }, { round: 2, passed: true, blockers: [], scores: { hook: 8, readability: 8, motion: 8, variety: 8, brand: 9 } }]);
-  assert.match(facts, /round 1: not passed, 3 blockers, scores hook 7, readability 8, motion 5, variety 7, brand 8; round 2: passed, no blockers, scores hook 8/);
+  const facts = runFacts(8, [
+    { round: 1, passed: false, blockers: [1, 2, 3], scores: { hook: 7, readability: 8, motion: 5, variety: 7, brand: 8 } },
+    { round: 2, passed: true, blockers: [], scores: { hook: 8, readability: 8, motion: 8, variety: 8, brand: 9 } },
+  ]);
+  assert.match(
+    facts,
+    /round 1: not passed, 3 blockers, scores hook 7, readability 8, motion 5, variety 7, brand 8; round 2: passed, no blockers, scores hook 8/,
+  );
   assert.match(facts, /scores shown without its result when it didn't pass/);
   assert.match(runFacts(undefined, []), /no storyboard has been proposed yet .*; this is review 1, the first/);
   assert.match(runFacts(8, []), /the brief asks for X, but this run shows Y/);
@@ -450,9 +719,17 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
 // still isn't suggested with it, and a scan that couldn't run is Uncut's problem, not the video's.
 test("D297 after the cut: every checklist reaches the critic, no motion craft with the film, no film sound profile, an unmeasured scan isn't marked down", () => {
   // Built the way the brand state lists them: a plugin skill's name is its id, its title the name shown.
-  const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) => skillOfPlugin({ name, title: `The ${name} skill`, description: "", instructions: "", plugin: "uncut-skills", pluginName: "Uncut skills", bundled: true }));
-  assert.deepEqual(criticSkills(skills).map((x) => x.id), ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"]);
-  assert.deepEqual(criticSkills(skills.slice(0, 3)).map((x) => x.id), ["launch-promo", "motion-craft", "sound-design"]);
+  const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) =>
+    skillOfPlugin({ name, title: `The ${name} skill`, description: "", instructions: "", plugin: "uncut-skills", pluginName: "Uncut skills", bundled: true }),
+  );
+  assert.deepEqual(
+    criticSkills(skills).map((x) => x.id),
+    ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"],
+  );
+  assert.deepEqual(
+    criticSkills(skills.slice(0, 3)).map((x) => x.id),
+    ["launch-promo", "motion-craft", "sound-design"],
+  );
   const film = suggestOf({ film: "Our launch film: one take, never cut, a single shape morphing on the beat", type: "launch-promo" });
   assert.ok(film.includes("motion-film") && !film.includes("motion-craft"), film.join(", "));
   assert.ok(suggestOf({ film: "Our launch film", type: "launch-promo" }).includes("motion-craft"));
@@ -479,7 +756,7 @@ function cutFilm(n: number, cuts: ReadonlyArray<number>, easeAfter: ReadonlyArra
     const eased = into ? Math.round(48 * 0.63 ** since) : 0;
     const look = into ? shot - 1 : shot;
     const g = new Uint8Array(size);
-    for (let i = 0; i < size; i++) g[i] = ((((i % 64) * (3 + look * 2) + Math.floor(i / 64) * look * 5 + f) % 100) + 20) + eased;
+    for (let i = 0; i < size; i++) g[i] = (((i % 64) * (3 + look * 2) + Math.floor(i / 64) * look * 5 + f) % 100) + 20 + eased;
     out.push({ frame: f, gray: g });
   }
   return out;
@@ -492,21 +769,33 @@ test("A1: hard cuts between the sampled frames are found, a cut into a fast move
   const frames = cutFilm(n, cuts, [389]);
   const at = new Map(frames.map((x) => [x.frame, x.gray]));
   // The every-frame scan: every cut, the one into the eased move included (it was judged against the move).
-  assert.deepEqual(motionScan(frames, fps).jumps.map((j) => j.frame), cuts);
+  assert.deepEqual(
+    motionScan(frames, fps).jumps.map((j) => j.frame),
+    cuts,
+  );
   const step = (f: number) => frameDiff(at.get(f - 1)!, at.get(f)!);
   assert.ok(step(389) < 3 * step(390) && step(389) >= JUMP_OVER * step(390), `${step(389)} then ${step(390)}: the old rule (3× the busier side) missed it`);
   // As review_submit samples it: anchors at the beats (none near the cuts), windows and an even sampling.
   const anchors = motionAnchors([{ start: 0 }, { start: 4 }, { start: 12 }], fps, n);
   const plan = scanPlan(anchors, fps, n, 80);
-  assert.ok(cuts.every((c) => !(plan.includes(c - 1) && plan.includes(c))), "no cut has both its frames sampled");
+  assert.ok(
+    cuts.every((c) => !(plan.includes(c - 1) && plan.includes(c))),
+    "no cut has both its frames sampled",
+  );
   const sampled = plan.map((f) => ({ frame: f, gray: at.get(f)! }));
   assert.deepEqual(motionScan(sampled, fps).jumps, [], "the sampling alone misses them (the A1 bug)");
   let calls = 0;
   const added = await refineJumps({ frames: sampled, fps, duration: n, render: async (fs) => (calls++, fs.map((f) => ({ frame: f, gray: at.get(f)! }))) });
-  assert.deepEqual(motionScan([...sampled, ...added], fps).jumps.map((j) => j.frame), cuts);
+  assert.deepEqual(
+    motionScan([...sampled, ...added], fps).jumps.map((j) => j.frame),
+    cuts,
+  );
   assert.ok(added.length <= 16 * 10 && calls <= 8, `${added.length} frames in ${calls} renders`);
   // Out of time: it stops, adding nothing more.
-  assert.deepEqual(await refineJumps({ frames: sampled, fps, duration: n, until: () => true, render: async () => assert.fail("rendered past the budget") }), []);
+  assert.deepEqual(
+    await refineJumps({ frames: sampled, fps, duration: n, until: () => true, render: async () => assert.fail("rendered past the budget") }),
+    [],
+  );
   // Smooth motion only: nothing narrowed down is a jump.
   const smooth = cutFilm(n, []);
   const sAt = new Map(smooth.map((x) => [x.frame, x.gray]));
@@ -527,15 +816,36 @@ test("the card's summary agrees with the round's blockers", () => {
   // Review: a "no blockers" or stale count mid-sentence takes its whole sentence, not a garbled half.
   assert.equal(agreeingNotes("The film has no blockers but the hook is weak. Motion is good.", [{ kind: "motion" }]), "1 blocker (motion). Motion is good.");
   assert.equal(agreeingNotes("2 blockers remain: the font and the overflow. The drop lands.", [{ kind: "font" }]), "1 blocker (font). The drop lands.");
-  assert.equal(agreeingNotes("Two blockers: the font and the overflow. The drop lands.", [{ kind: "font" }, { kind: "overflow" }]), "Two blockers: the font and the overflow. The drop lands.", "a count that agrees stays");
+  assert.equal(
+    agreeingNotes("Two blockers: the font and the overflow. The drop lands.", [{ kind: "font" }, { kind: "overflow" }]),
+    "Two blockers: the font and the overflow. The drop lands.",
+    "a count that agrees stays",
+  );
   // Zero final blockers (the user marked them Intended): a stale count goes; nothing left says none.
   assert.equal(agreeingNotes("3 blockers: the font, the overflow and a pop. The drop lands.", []), "The drop lands.");
   assert.equal(agreeingNotes("One blocker remains.", []), "No blockers.");
   assert.equal(agreeingNotes("No blockers. The drop lands.", []), "No blockers. The drop lands.");
   // criticReview: an unverified claim makes a blocker, and the notes say so.
   const review = criticReview(
-    { scores: { hook: 8, readability: 8, motion: 8, variety: 8, sound: 8, brand: 8 }, evidence: {}, blockers: [], defects: [], fixes: [{ defect: "d1", verified: false, note: "still holds" }], summary: "No blockers, and it lands.", unproven: [] },
-    { round: 3, claims: [{ defect: "d1", what: "moved the cursor", at: 19 }], checks: [], determinism: { checked: [], differed: [] }, looked: { sheet: true, phone: true }, revision: 1, turnId: "t", fps: 60 },
+    {
+      scores: { hook: 8, readability: 8, motion: 8, variety: 8, sound: 8, brand: 8 },
+      evidence: {},
+      blockers: [],
+      defects: [],
+      fixes: [{ defect: "d1", verified: false, note: "still holds" }],
+      summary: "No blockers, and it lands.",
+      unproven: [],
+    },
+    {
+      round: 3,
+      claims: [{ defect: "d1", what: "moved the cursor", at: 19 }],
+      checks: [],
+      determinism: { checked: [], differed: [] },
+      looked: { sheet: true, phone: true },
+      revision: 1,
+      turnId: "t",
+      fps: 60,
+    },
   );
   assert.equal(review.blockers?.length, 1);
   assert.equal(review.notes, "1 blocker (claimed fix not seen). It lands.");
@@ -562,7 +872,15 @@ test("a rendered film with real cuts mid-beat: review_submit's sampling plus the
   const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
   const fps = 30;
   const n = 240;
-  const project = { format: "uncut/0", name: "Cuts", canvas: { width: 400, height: 500, fps }, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/cuts.html", start: 0, duration: n }] }] } as unknown as Project;
+  const project = {
+    format: "uncut/0",
+    name: "Cuts",
+    canvas: { width: 400, height: 500, fps },
+    media: [],
+    tracks: [
+      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/cuts.html", start: 0, duration: n }] },
+    ],
+  } as unknown as Project;
   const graphics = new Map([["graphics/cuts.html", resolveGraphicLibs(CUT_GRAPHIC, libs)]]);
   const anchors = motionAnchors([{ start: 0 }, { start: 4 }], fps, n);
   const plan = scanPlan(anchors, fps, n, 60);
@@ -572,14 +890,23 @@ test("a rendered film with real cuts mid-beat: review_submit's sampling plus the
     const { w, h } = scanSize(project.canvas);
     const grey = async (frames: ReadonlyArray<number>) => {
       const shot = await session.render(frames, STRIP_CELL);
-      const gs = await grayFrames("ffmpeg", shot.map((x) => x.jpeg), w, h);
+      const gs = await grayFrames(
+        "ffmpeg",
+        shot.map((x) => x.jpeg),
+        w,
+        h,
+      );
       return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
     };
     const sampled = await grey(plan);
     assert.deepEqual(motionScan(sampled, fps).jumps, []);
     const added = await refineJumps({ frames: sampled, fps, duration: n, render: grey });
     const scan = motionScan([...sampled, ...added], fps);
-    assert.deepEqual(scan.jumps.map((j) => j.frame), [70, 151], JSON.stringify(scan.jumps));
+    assert.deepEqual(
+      scan.jumps.map((j) => j.frame),
+      [70, 151],
+      JSON.stringify(scan.jumps),
+    );
     assert.deepEqual(scan.pops, []);
   } finally {
     await session.close();
@@ -590,7 +917,10 @@ test("a rendered film with real cuts mid-beat: review_submit's sampling plus the
 // (the night review: A2's 4.2 s Send and the reference 2.mp4's 0.27 s black bleed are findings);
 // fast moves that the export's blur stacks into copies (A2 14.0 s) are a finding with the fix.
 test("nearly empty stretches are measured to the frame and block a motion film; very fast moves are findings", async () => {
-  const fps = 60, w = 64, h = 80, n = 600;
+  const fps = 60,
+    w = 64,
+    h = 80,
+    n = 600;
   const canvas = (cursor: boolean) => {
     const g = new Uint8Array(w * h).fill(237);
     if (cursor) for (let y = 40; y < 42; y++) for (let x = 30; x < 32; x++) g[y * w + x] = 10;
@@ -602,7 +932,7 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
     return g;
   };
   // Empty from 253 to 266 (0.23 s, cursor only) and from 400 to 405 (0.1 s, too short to count).
-  const frameAt = (f: number) => ((f >= 253 && f <= 266) ? canvas(true) : f >= 400 && f <= 405 ? canvas(false) : hero(f));
+  const frameAt = (f: number) => (f >= 253 && f <= 266 ? canvas(true) : f >= 400 && f <= 405 ? canvas(false) : hero(f));
   assert.ok(nearlyEmpty(canvas(true), w, h) && !nearlyEmpty(hero(0), w, h));
   assert.ok(EMPTY_CONTENT <= 0.02);
   const plan = scanPlan(motionAnchors([{ start: 0 }, { start: 5 }], fps, n), fps, n, 120);
@@ -617,12 +947,28 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   assert.match(empty.message, /f 253 to f 266 \(4\.22 s to 4\.45 s, 0\.23 s\)/);
   // A1 22.1 s's cursor-only beat (0.42 s) still blocks a motion film; a finding elsewhere.
   assert.ok(EMPTY_HARD_S > 0.27 && EMPTY_HARD_S < 0.38);
-  const longAt = (f: number) => ((f >= 253 && f <= 277) ? canvas(true) : hero(f));
-  const longScan = motionScan([...sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })), ...(await refineEmpty({ frames: sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })), fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: longAt(f) })) }))], fps, { size: { w, h } });
+  const longAt = (f: number) => (f >= 253 && f <= 277 ? canvas(true) : hero(f));
+  const longScan = motionScan(
+    [
+      ...sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })),
+      ...(await refineEmpty({
+        frames: sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })),
+        fps,
+        size: { w, h },
+        render: async (fs) => fs.map((f) => ({ frame: f, gray: longAt(f) })),
+      })),
+    ],
+    fps,
+    { size: { w, h } },
+  );
   assert.deepEqual(emptyRuns(longScan, fps), [{ start: 253, end: 277 }]);
   assert.ok(motionFindings(longScan, fps, { oneTake: true, hard: true }).find((f) => f.key === "motion:empty:253")!.hard, "0.42 s blocks a motion film");
   assert.ok(!motionFindings(longScan, fps, { oneTake: true }).find((f) => f.key === "motion:empty:253")!.hard, "a finding elsewhere");
-  assert.deepEqual(motionFindings(scan, fps).filter((f) => /empty/.test(f.key ?? "")), [], "not one take: no finding");
+  assert.deepEqual(
+    motionFindings(scan, fps).filter((f) => /empty/.test(f.key ?? "")),
+    [],
+    "not one take: no finding",
+  );
   assert.match(motionLines(scan, fps, { consecutive: false }).join("\n"), /Nearly empty frames .* f 253 to f 266/);
   // Without the frame size there's no claim either way.
   assert.ok(!motionLines(motionScan(sampled, fps), fps, { consecutive: false }).some((l) => /empty/i.test(l)));
@@ -650,16 +996,29 @@ test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of so
     frames: 600,
     pops: [10, 20, 30, 40].map(ev),
     jumps: [100, 110, 120, 130].map(ev),
-    holds: [{ start: 200, end: 280 }, { start: 300, end: 380 }],
-    empty: [{ start: 400, end: 420 }, { start: 450, end: 470 }],
+    holds: [
+      { start: 200, end: 280 },
+      { start: 300, end: 380 },
+    ],
+    empty: [
+      { start: 400, end: 420 },
+      { start: 450, end: 470 },
+    ],
     emptyMeasured: true,
-    fast: [{ start: 500, end: 504, peak: 0.1 }, { start: 520, end: 524, peak: 0.1 }, { start: 540, end: 544, peak: 0.1 }],
+    fast: [
+      { start: 500, end: 504, peak: 0.1 },
+      { start: 520, end: 524, peak: 0.1 },
+      { start: 540, end: 544, peak: 0.1 },
+    ],
     seam: { diff: 0.3, typical: 0.01 },
     typical: 0.01,
   };
   const found = motionFindings(scan, 60, { oneTake: true, loop: true, hard: true });
   assert.equal(found.length, 12);
-  assert.ok(found.some((f) => f.key === "motion:seam:0" && f.hard), found.map((f) => f.key).join(", "));
+  assert.ok(
+    found.some((f) => f.key === "motion:seam:0" && f.hard),
+    found.map((f) => f.key).join(", "),
+  );
   const firstSoft = found.findIndex((f) => !f.hard);
   assert.ok(firstSoft < 0 || found.slice(firstSoft).every((f) => !f.hard), "hard ones lead");
 });
@@ -667,7 +1026,8 @@ test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of so
 // Review of 72a73b9: a canvas share alone flagged a dark full-bleed UI and sat close to a lone
 // wordmark. Frames drawn at 1080 × 1350, encoded at the renderer's 200 px and decoded at EMPTY_WIDTH
 // like review_submit: only the cursor-only frame is nearly empty.
-const W1 = 1080, H1 = 1350;
+const W1 = 1080,
+  H1 = 1350;
 function drawn(bg: number, paint: (set: (x0: number, y0: number, x1: number, y1: number, v: number) => void) => void) {
   const g = new Uint8Array(W1 * H1).fill(bg);
   paint((x0, y0, x1, y1, v) => {
@@ -684,7 +1044,10 @@ const glyph = (set: (x0: number, y0: number, x1: number, y1: number, v: number) 
 const FIXTURES: Record<string, Uint8Array> = {
   darkUI: drawn(28, (set) => {
     // Two panels a few levels off the near-black, soft edges, then lines of small light text.
-    for (const [x0, y0, x1, y1] of [[40, 60, 1040, 700], [40, 740, 1040, 1300]] as const) {
+    for (const [x0, y0, x1, y1] of [
+      [40, 60, 1040, 700],
+      [40, 740, 1040, 1300],
+    ] as const) {
       set(x0, y0, x1, y1, 30);
       set(x0 + 6, y0 + 6, x1 - 6, y1 - 6, 32);
     }
@@ -711,33 +1074,71 @@ const FIXTURES: Record<string, Uint8Array> = {
   }),
 };
 const jpegOf = (gray: Uint8Array) => {
-  const out = spawnSync("ffmpeg", ["-v", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${W1}x${H1}`, "-i", "-", "-vf", "scale=200:-2:flags=area", "-q:v", "4", "-f", "image2pipe", "-c:v", "mjpeg", "-"], { input: gray, maxBuffer: 1 << 26 });
+  const out = spawnSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "gray",
+      "-s",
+      `${W1}x${H1}`,
+      "-i",
+      "-",
+      "-vf",
+      "scale=200:-2:flags=area",
+      "-q:v",
+      "4",
+      "-f",
+      "image2pipe",
+      "-c:v",
+      "mjpeg",
+      "-",
+    ],
+    { input: gray, maxBuffer: 1 << 26 },
+  );
   assert.equal(out.status, 0, String(out.stderr));
   return out.stdout;
 };
 
-test("review of 72a73b9: a dark full-bleed UI, a lone wordmark and a huge headline aren't empty; a cursor alone on a light canvas is", { skip: hasFfmpeg ? false : "needs ffmpeg" }, async () => {
-  const size = emptySize({ width: W1, height: H1 });
-  assert.deepEqual(size, { w: 160, h: 200 });
-  const names = Object.keys(FIXTURES);
-  const greys = await grayFrames("ffmpeg", names.map((n) => jpegOf(FIXTURES[n]!)), size.w, size.h);
-  const m = Object.fromEntries(names.map((n, i) => [n, emptyMeasure(greys[i]!, size.w, size.h)]));
-  for (const n of ["darkUI", "wordmark", "headline"]) assert.ok(!m[n]!.empty, `${n}: ${JSON.stringify(m[n])}`);
-  assert.ok(m.cursorOnly!.empty, JSON.stringify(m.cursorOnly));
-  // The dark UI really is the case the old measure got wrong: at the scan's 64 px its soft panels
-  // and its text read as 97.5 % canvas or more.
-  const small = scanSize({ width: W1, height: H1 });
-  const [dark64] = await grayFrames("ffmpeg", [jpegOf(FIXTURES.darkUI!)], small.w, small.h);
-  assert.ok(canvasShare(dark64!, small.w, small.h).share >= 0.975, JSON.stringify(canvasShare(dark64!, small.w, small.h)));
-  // The reviewer's probe: soft panels on 28 and 1.5 % of scattered light pixels, at 96 px.
-  const w = 96, h = 120, g = new Uint8Array(w * h).fill(28);
-  for (let y = 10; y < 110; y++) for (let x = 6; x < 90; x++) g[y * w + x] = x < 8 || x > 87 || y < 12 || y > 107 ? 30 : 32;
-  for (let i = 0, lit = 0; i < w * h && lit < w * h * 0.015; i += 67, lit++) g[i] = 60;
-  assert.ok(!emptyMeasure(g, w, h).empty);
-});
+test(
+  "review of 72a73b9: a dark full-bleed UI, a lone wordmark and a huge headline aren't empty; a cursor alone on a light canvas is",
+  { skip: hasFfmpeg ? false : "needs ffmpeg" },
+  async () => {
+    const size = emptySize({ width: W1, height: H1 });
+    assert.deepEqual(size, { w: 160, h: 200 });
+    const names = Object.keys(FIXTURES);
+    const greys = await grayFrames(
+      "ffmpeg",
+      names.map((n) => jpegOf(FIXTURES[n]!)),
+      size.w,
+      size.h,
+    );
+    const m = Object.fromEntries(names.map((n, i) => [n, emptyMeasure(greys[i]!, size.w, size.h)]));
+    for (const n of ["darkUI", "wordmark", "headline"]) assert.ok(!m[n]!.empty, `${n}: ${JSON.stringify(m[n])}`);
+    assert.ok(m.cursorOnly!.empty, JSON.stringify(m.cursorOnly));
+    // The dark UI really is the case the old measure got wrong: at the scan's 64 px its soft panels
+    // and its text read as 97.5 % canvas or more.
+    const small = scanSize({ width: W1, height: H1 });
+    const [dark64] = await grayFrames("ffmpeg", [jpegOf(FIXTURES.darkUI!)], small.w, small.h);
+    assert.ok(canvasShare(dark64!, small.w, small.h).share >= 0.975, JSON.stringify(canvasShare(dark64!, small.w, small.h)));
+    // The reviewer's probe: soft panels on 28 and 1.5 % of scattered light pixels, at 96 px.
+    const w = 96,
+      h = 120,
+      g = new Uint8Array(w * h).fill(28);
+    for (let y = 10; y < 110; y++) for (let x = 6; x < 90; x++) g[y * w + x] = x < 8 || x > 87 || y < 12 || y > 107 ? 30 : 32;
+    for (let i = 0, lit = 0; i < w * h && lit < w * h * 0.015; i += 67, lit++) g[i] = 60;
+    assert.ok(!emptyMeasure(g, w, h).empty);
+  },
+);
 
 test("review of 72a73b9: refineEmpty samples closer next to a bare frame, edges every stretch (more than 8), and an unrefined run reaches out to its neighbours", async () => {
-  const fps = 60, w = 64, h = 80, n = 1200;
+  const fps = 60,
+    w = 64,
+    h = 80,
+    n = 1200;
   const flat = () => new Uint8Array(w * h).fill(237);
   const cursor = () => {
     const g = flat();
@@ -769,7 +1170,10 @@ test("review of 72a73b9: refineEmpty samples closer next to a bare frame, edges 
   const found2 = await refineEmpty({ frames: samples2, fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: at2(f) })), duration: n });
   const runs2 = emptyRuns(motionScan([...samples2, ...found2], fps, { size: { w, h } }), fps);
   assert.equal(runs2.length, 12);
-  assert.ok(runs2.every((r) => !r.upto && r.start % 100 === 40 && r.end % 100 === 59), JSON.stringify(runs2));
+  assert.ok(
+    runs2.every((r) => !r.upto && r.start % 100 === 40 && r.end % 100 === 59),
+    JSON.stringify(runs2),
+  );
   // Out of time: one empty sample between non-empty ones 9 frames away may be 17 frames long.
   const at3 = (f: number) => (f >= 300 && f <= 305 ? cursor() : hero(f));
   const samples3: Array<ScanFrame> = [291, 300, 309].map((f) => ({ frame: f, gray: at3(f) }));
@@ -784,9 +1188,13 @@ test("review of 72a73b9: refineEmpty samples closer next to a bare frame, edges 
   assert.equal(motionScan([sure, { frame: 1, gray: hero(1), bare: { content: 0.5, parts: 9, empty: false } }], fps).empty.length, 1);
 });
 
-
 test("round 2's A1: the fast moves get a strip drawn with the export's blur, and the critic is told what to look for", () => {
-  const picks = blurPicks([{ start: 361, end: 364, peak: 0.07 }, { start: 721, end: 725, peak: 0.09 }, { start: 10, end: 11, peak: 0.1 }, { start: 900, end: 905, peak: 0.1 }]);
+  const picks = blurPicks([
+    { start: 361, end: 364, peak: 0.07 },
+    { start: 721, end: 725, peak: 0.09 },
+    { start: 10, end: 11, peak: 0.1 },
+    { start: 900, end: 905, peak: 0.1 },
+  ]);
   assert.equal(picks.length, 3);
   assert.deepEqual(picks[0]!.frames, [361, 363, 364]);
   assert.deepEqual(picks[2]!.frames, [10, 11]);
@@ -798,7 +1206,10 @@ test("round 2's A1: the fast moves get a strip drawn with the export's blur, and
 
 test("the blurred strip's label says it's the project's motion blur, not a claim about the export's quality", () => {
   const label = blurStripLabel({ start: 361, end: 364 }, 60, { samples: 12, shutter: 180 }, [361, 363, 364], false);
-  assert.match(label, /drawn WITH the project's motion blur \(12 sub-frames, more on a fast move, over a 180° shutter; as a Standard or High export draws it; a Draft export draws it sharp\): frames 361, 363, 364/);
+  assert.match(
+    label,
+    /drawn WITH the project's motion blur \(12 sub-frames, more on a fast move, over a 180° shutter; as a Standard or High export draws it; a Draft export draws it sharp\): frames 361, 363, 364/,
+  );
   assert.doesNotMatch(label, /as the export will look|export's motion blur/);
   assert.match(blurStripLabel({ start: 1, end: 3 }, 30, { samples: 8, shutter: 90 }, [1, 3], true), /the project turns it on for every export/);
   // The critic is told to judge the strips by that label.
@@ -824,7 +1235,10 @@ test("a quick swap (a cut spread over a few frames) is a jump with its span; a f
     frames.push({ frame: f + 1, gray: gray.slice() });
   }
   const scan = motionScan(frames, fps);
-  assert.deepEqual(scan.jumps.map((j) => [j.frame, j.span]), [[203, 4]]);
+  assert.deepEqual(
+    scan.jumps.map((j) => [j.frame, j.span]),
+    [[203, 4]],
+  );
   assert.ok(scan.jumps[0]!.diff > 0.2, `${scan.jumps[0]!.diff}: the whole swap's change`);
   const [finding] = motionFindings(scan, fps, { oneTake: true, hard: true }).filter((x) => x.key?.startsWith("motion:jump"));
   assert.match(finding!.message, /^Quick swap at f 203 \(3\.38 s\): 2\d\.\d % of the picture changes in 4 frames \(0\.07 s\)[\s\S]*that is a cut/);
@@ -837,7 +1251,10 @@ test("a quick swap (a cut spread over a few frames) is a jump with its span; a f
   const at = new Map(frames.map((x) => [x.frame, x.gray]));
   const sampled = frames.filter((x) => x.frame % 12 === 5);
   const added = await refineJumps({ frames: sampled, fps, duration: n, render: async (fs) => fs.map((f) => ({ frame: f, gray: at.get(f)! })) });
-  assert.deepEqual(motionScan([...sampled, ...added], fps).jumps.map((j) => [j.frame, j.span]), [[203, 4]]);
+  assert.deepEqual(
+    motionScan([...sampled, ...added], fps).jumps.map((j) => [j.frame, j.span]),
+    [[203, 4]],
+  );
 });
 
 // T1, T1b: after Send, the agent panel (grey 17 on the canvas's 10) with one bubble and a line or two
@@ -845,7 +1262,9 @@ test("a quick swap (a cut spread over a few frames) is a jump with its span; a f
 // round. A low-information frame is mostly one flat colour family with only marks that small; a big
 // pill or headline on a calm canvas, footage, and a frame with no mark at all (the empty rule's) aren't.
 test("low-information frames: a dark panel with small lines blocks a motion film from 0.5 s; one big element on a calm canvas doesn't", async () => {
-  const w = THIN_WIDTH, h = 250, fps = 60;
+  const w = THIN_WIDTH,
+    h = 250,
+    fps = 60;
   const field = (bg: number) => {
     const g = new Uint8Array(w * h).fill(bg);
     for (let y = 0; y < h; y++) for (let x = 40; x < w; x++) g[y * w + x] = bg + 7; // the panel, one colour family with the canvas
@@ -891,7 +1310,11 @@ test("low-information frames: a dark panel with small lines blocks a motion film
   const short = run(18);
   assert.equal(short.found.length, 1);
   assert.ok(!short.found[0]!.hard, "0.3 s is a finding");
-  assert.deepEqual(motionFindings(long.scan, fps, { hard: true }).filter((x) => x.key?.startsWith("motion:thin:")), [], "not one take: no finding");
+  assert.deepEqual(
+    motionFindings(long.scan, fps, { hard: true }).filter((x) => x.key?.startsWith("motion:thin:")),
+    [],
+    "not one take: no finding",
+  );
 });
 
 // The night review: thinSize was THIN_WIDTH wide whatever the canvas, so a 16:9 frame was 112 px tall
@@ -904,7 +1327,11 @@ test("low-information frames on 16:9 and 9:16 canvases: judged by the frame's sh
   assert.deepEqual(thinSize({ width: 1080, height: 1920 }), { w: THIN_WIDTH, h: 356 });
   assert.equal(scanRenderWidth({ width: 1920, height: 1080 }), 356, "a landscape canvas renders its scan frames wider");
   assert.equal(scanRenderWidth({ width: 1080, height: 1350 }), 200);
-  for (const canvas of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1350 }]) {
+  for (const canvas of [
+    { width: 1920, height: 1080 },
+    { width: 1080, height: 1920 },
+    { width: 1080, height: 1350 },
+  ]) {
     const { w, h } = thinSize(canvas);
     const name = `${canvas.width}x${canvas.height}`;
     // A dark panel (one colour family with the canvas) holding lines `share` of the height tall.
@@ -912,8 +1339,13 @@ test("low-information frames on 16:9 and 9:16 canvases: judged by the frame's sh
       const g = new Uint8Array(w * h).fill(10);
       for (let y = 0; y < h; y++) for (let x = Math.round(w * 0.2); x < w; x++) g[y * w + x] = 17;
       const px = Math.max(1, Math.round(share * h));
-      for (const [y0, x0, len] of [[0.15, 0.3, 0.45], [0.25, 0.25, 0.35]] as const)
-        for (let k = 0; k < len * w; k += 3) for (let y = Math.round(y0 * h); y < Math.round(y0 * h) + px; y++) for (let x = Math.round(x0 * w) + k; x < Math.round(x0 * w) + k + 2; x++) g[y * w + x] = 220;
+      for (const [y0, x0, len] of [
+        [0.15, 0.3, 0.45],
+        [0.25, 0.25, 0.35],
+      ] as const)
+        for (let k = 0; k < len * w; k += 3)
+          for (let y = Math.round(y0 * h); y < Math.round(y0 * h) + px; y++)
+            for (let x = Math.round(x0 * w) + k; x < Math.round(x0 * w) + k + 2; x++) g[y * w + x] = 220;
       return g;
     };
     const small = thinMeasure(panel(0.015), w, h);
@@ -924,7 +1356,8 @@ test("low-information frames on 16:9 and 9:16 canvases: judged by the frame's sh
     assert.ok(!thinMeasure(pill, w, h).thin, `${name}: one big pill`);
     // A cursor (a 12 x 20 px arrow on a 1080 px short side) is no mark, whichever side is short.
     const cur = new Uint8Array(w * h).fill(10);
-    const cw = Math.max(1, Math.round((12 / 1080) * Math.min(w, h))), ch = Math.max(1, Math.round((20 / 1080) * Math.min(w, h)));
+    const cw = Math.max(1, Math.round((12 / 1080) * Math.min(w, h))),
+      ch = Math.max(1, Math.round((20 / 1080) * Math.min(w, h)));
     for (let y = 50; y < 50 + ch; y++) for (let x = 60; x < 60 + cw; x++) cur[y * w + x] = 240;
     assert.ok(!thinMeasure(cur, w, h).thin, `${name}: a cursor alone is the empty rule's`);
   }

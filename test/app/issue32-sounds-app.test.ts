@@ -41,14 +41,12 @@ const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(sele
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
 async function savedAfter(after: number) {
-  await page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r, { timeout: 15000 }, after);
+  await page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r,
+    { timeout: 15000 },
+    after,
+  );
   return revision();
-}
-async function waitUntil(check: () => boolean, ms = 10000) {
-  for (let t = 0; !check(); t += 50) {
-    if (t > ms) throw new Error("timed out");
-    await sleep(50);
-  }
 }
 const rows = (selector: string) => page.$$eval(selector, (els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
 async function typeSearch(text: string, enter = false) {
@@ -80,20 +78,48 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue32-app-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=2", "-c:a", "libmp3lame", "-b:a", "96k", join(root, "tone.mp3")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:duration=2",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "96k",
+    join(root, "tone.mp3"),
+  ]);
   mp3 = readFileSync(join(root, "tone.mp3"));
   // The user's own sounds: a meme clip they have, a whoosh in a subfolder, and things that aren't sounds.
   sounds = join(root, "My Sounds");
   mkdirSync(join(sounds, "transitions"), { recursive: true });
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=520:duration=1.2", join(sounds, "FAHHH meme.wav")]);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.8:a=0.3", "-c:a", "libmp3lame", "-b:a", "96k", join(sounds, "transitions", "big_whoosh_02.mp3")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=0.8:a=0.3",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "96k",
+    join(sounds, "transitions", "big_whoosh_02.mp3"),
+  ]);
   writeFileSync(join(sounds, "readme.txt"), "not a sound");
   stub = createServer((req, res) => {
     const url = new URL(req.url!, "http://x");
     if (url.pathname === "/v1/audio/") {
       searches.push(url.searchParams);
       const q = url.searchParams.get("q") ?? "";
-      const results = /yell/.test(q) ? [hit(BIRDS, "Forest birds", "cc0", 60000, ["nature"]), hit(YELL, "vocals frustrated yell", "cc0", 3200, ["yell", "frustrated"])] : [];
+      const results = /yell/.test(q)
+        ? [hit(BIRDS, "Forest birds", "cc0", 60000, ["nature"]), hit(YELL, "vocals frustrated yell", "cc0", 3200, ["yell", "frustrated"])]
+        : [];
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({ result_count: results.length, page_count: 1, results }));
     }
@@ -110,7 +136,15 @@ before(async () => {
     name: "Sounds",
     canvas: { width: 1280, height: 720, fps: 30 },
     media: [],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#202840" } }] }],
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#202840" } }],
+      },
+    ],
   };
   dir = writeProject(root, "Sounds", project);
 });
@@ -125,7 +159,16 @@ after(async () => {
 test("issue #32: the designed pack with waveforms, meme names to free sound-alikes, the user's sound folders (D208)", { skip, timeout: 300000 }, async () => {
   app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, sounds]), UNCUT_CLAUDE: FAKE, UNCUT_OPENVERSE_BASE: base, UNCUT_FREESOUND_BASE: "http://127.0.0.1:9", UNCUT_OPENAI_BASE: "http://127.0.0.1:9", UNCUT_GOOGLE_BASE: "http://127.0.0.1:9", UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9" },
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir, sounds]),
+      UNCUT_CLAUDE: FAKE,
+      UNCUT_OPENVERSE_BASE: base,
+      UNCUT_FREESOUND_BASE: "http://127.0.0.1:9",
+      UNCUT_OPENAI_BASE: "http://127.0.0.1:9",
+      UNCUT_GOOGLE_BASE: "http://127.0.0.1:9",
+      UNCUT_ELEVENLABS_BASE: "http://127.0.0.1:9",
+    },
   });
   page = app.page;
   const external: Array<string> = [];
@@ -149,8 +192,15 @@ test("issue #32: the designed pack with waveforms, meme names to free sound-alik
   const categories = await page.$$eval("[data-testid=library-mood] option", (els) => els.map((e) => e.textContent));
   for (const c of ["Swipes", "Pops", "Success", "Glitch", "Typing"]) assert.ok(categories.includes(c), `${c} in ${categories.join(", ")}`);
   await page.select("[data-testid=library-mood]", "typing");
-  await page.waitForFunction((n) => document.querySelectorAll("[data-testid=sfx-row]").length === n, {}, SFX_SOUNDS.filter((s) => s.category === "typing").length);
-  assert.deepEqual(await rows("[data-testid=sfx-row]"), SFX_SOUNDS.filter((s) => s.category === "typing").map((s) => s.id));
+  await page.waitForFunction(
+    (n) => document.querySelectorAll("[data-testid=sfx-row]").length === n,
+    {},
+    SFX_SOUNDS.filter((s) => s.category === "typing").length,
+  );
+  assert.deepEqual(
+    await rows("[data-testid=sfx-row]"),
+    SFX_SOUNDS.filter((s) => s.category === "typing").map((s) => s.id),
+  );
   await page.select("[data-testid=library-mood]", "");
   // Synonyms and meme names find the pack's sounds.
   await typeSearch("keyboard");

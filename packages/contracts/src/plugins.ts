@@ -22,11 +22,27 @@ export const PluginInfo = Schema.Struct({
   warnings: Schema.Array(Schema.String),
   problem: Schema.optional(Schema.String),
   // Installed by Uncut (D102): where from ("folder" path, or git URL with the ref asked for and the commit cloned).
-  origin: Schema.optional(Schema.Struct({ kind: Schema.Literals(["folder", "git", "catalog"]), source: Schema.String, ref: Schema.optional(Schema.String), commit: Schema.optional(Schema.String) })),
+  origin: Schema.optional(
+    Schema.Struct({
+      kind: Schema.Literals(["folder", "git", "catalog"]),
+      source: Schema.String,
+      ref: Schema.optional(Schema.String),
+      commit: Schema.optional(Schema.String),
+    }),
+  ),
   // In Uncut's own plugins folder, so Remove can delete it.
   removable: Schema.optional(Schema.Boolean),
   // What it adds as data (D103), by name: text looks, components, checks.
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
+  contributes: Schema.optional(
+    Schema.Struct({
+      looks: Schema.Array(Schema.String),
+      components: Schema.Array(Schema.String),
+      rules: Schema.Array(Schema.String),
+      filters: Schema.optional(Schema.Array(Schema.String)),
+      shaders: Schema.optional(Schema.Array(Schema.String)),
+      skills: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
   // D248: a hash of its skills (when it has any): the approval is for these skills; plugins.approve sends it back.
   skillsHash: Schema.optional(Schema.String),
   // D258 (the marketplace cards): who made it, and whether it runs a program.
@@ -44,12 +60,45 @@ export type PluginInfo = typeof PluginInfo.Type;
  */
 export const PluginContributions = Schema.Struct({
   looks: Schema.Array(Schema.Unknown),
-  components: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, params: Schema.Unknown, defaults: Schema.Unknown })),
+  components: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      description: Schema.String,
+      plugin: Schema.String,
+      pluginName: Schema.String,
+      params: Schema.Unknown,
+      defaults: Schema.Unknown,
+    }),
+  ),
   rules: Schema.Array(Schema.Unknown),
   // D136: colour looks for the Effects tab (core LookDef numbers).
-  filters: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, look: Schema.Unknown }))),
+  filters: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        description: Schema.String,
+        plugin: Schema.String,
+        pluginName: Schema.String,
+        look: Schema.Unknown,
+      }),
+    ),
+  ),
   // D213: shader effects (core ShaderDef: typed params and the TypeGPU function's WGSL).
-  shaders: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, params: Schema.Array(Schema.Unknown), wgsl: Schema.String }))),
+  shaders: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        description: Schema.String,
+        plugin: Schema.String,
+        pluginName: Schema.String,
+        params: Schema.Array(Schema.Unknown),
+        wgsl: Schema.String,
+      }),
+    ),
+  ),
 });
 export type PluginContributions = typeof PluginContributions.Type;
 
@@ -67,7 +116,16 @@ export const CatalogEntry = Schema.Struct({
   tools: Schema.Array(Schema.String),
   // Whether it runs a program (a "process" plugin) or only adds data.
   runs: Schema.Boolean,
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
+  contributes: Schema.optional(
+    Schema.Struct({
+      looks: Schema.Array(Schema.String),
+      components: Schema.Array(Schema.String),
+      rules: Schema.Array(Schema.String),
+      filters: Schema.optional(Schema.Array(Schema.String)),
+      shaders: Schema.optional(Schema.Array(Schema.String)),
+      skills: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
   // Enabled: a copy is in Uncut's plugins folder (it may still need allowing).
   enabled: Schema.Boolean,
   // D258 (the marketplace): who made it, what allowing it means (PluginInfo.asks, as if installed),

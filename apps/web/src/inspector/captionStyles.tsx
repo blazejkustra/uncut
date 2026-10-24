@@ -39,11 +39,29 @@ const TILE_CSS = RENDER_CSS.split("\n")
   .map((rule) => rule.replaceAll(".pv-text", ".cap-style-inner .cap-tt"))
   .join("\n");
 
-function StyleTile({ project, id, name, active, disabled, onPick }: { project: ProjectModel; id: string; name: string; active: boolean; disabled: boolean; onPick: () => void }) {
+function StyleTile({
+  project,
+  id,
+  name,
+  active,
+  disabled,
+  onPick,
+}: {
+  project: ProjectModel;
+  id: string;
+  name: string;
+  active: boolean;
+  disabled: boolean;
+  onPick: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [k, setK] = useState(0);
   const sample = captionStyleSample(id, SAMPLE_CANVAS, 960);
-  const html = sample ? textHtml(sample, { canvas: SAMPLE_CANVAS, theme: project.theme, textLooks: 1 }).replace(/^<div class="pv-text/, '<div class="cap-tt').replace(/ data-item="[^"]*"/, "") : "";
+  const html = sample
+    ? textHtml(sample, { canvas: SAMPLE_CANVAS, theme: project.theme, textLooks: 1 })
+        .replace(/^<div class="pv-text/, '<div class="cap-tt')
+        .replace(/ data-item="[^"]*"/, "")
+    : "";
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -54,9 +72,20 @@ function StyleTile({ project, id, name, active, disabled, onPick }: { project: P
     return () => observer.disconnect();
   }, []);
   return (
-    <button className={`cap-style ${active ? "active" : ""}`} data-testid="cap-style" data-style={id} aria-pressed={active} disabled={disabled} onClick={onPick}>
+    <button
+      className={`cap-style ${active ? "active" : ""}`}
+      data-testid="cap-style"
+      data-style={id}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onPick}
+    >
       <div className="cap-style-thumb" ref={ref}>
-        <div className="cap-style-inner" style={{ transform: `translateY(${((46 - SAMPLE_CANVAS.height * k) / 2).toFixed(1)}px) scale(${k})` }} dangerouslySetInnerHTML={{ __html: html }} />
+        <div
+          className="cap-style-inner"
+          style={{ transform: `translateY(${((46 - SAMPLE_CANVAS.height * k) / 2).toFixed(1)}px) scale(${k})` }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       </div>
       <span className="cap-style-name">{name}</span>
     </button>
@@ -76,13 +105,28 @@ export function CaptionStyleGallery({ project, item, disabled }: { project: Proj
       <Group label="Caption style">
         <div className="cap-styles" data-testid="cap-styles">
           {CAPTION_STYLES.map((c) => (
-            <StyleTile key={c.id} project={project} id={c.id} name={c.name} active={chosen === c.id} disabled={disabled} onPick={() => send((p) => planCaptionStyle(p, item.id, c.id))} />
+            <StyleTile
+              key={c.id}
+              project={project}
+              id={c.id}
+              name={c.name}
+              active={chosen === c.id}
+              disabled={disabled}
+              onPick={() => send((p) => planCaptionStyle(p, item.id, c.id))}
+            />
           ))}
         </div>
       </Group>
       <Group label="Speaking word">
         <Prop label="Colour">
-          <SettledColorField project={project} testId="cap-accent" value={accent ?? "accent"} noAlpha disabled={disabled || !words} onCommit={(color) => send((p) => planCaptionHighlight(p, item.id, { accent: color }))} />
+          <SettledColorField
+            project={project}
+            testId="cap-accent"
+            value={accent ?? "accent"}
+            noAlpha
+            disabled={disabled || !words}
+            onCommit={(color) => send((p) => planCaptionHighlight(p, item.id, { accent: color }))}
+          />
         </Prop>
         <Prop label="Fill">
           <Segmented
@@ -97,11 +141,23 @@ export function CaptionStyleGallery({ project, item, disabled }: { project: Proj
           />
         </Prop>
         <Prop label="Box">
-          <Toggle testId="cap-box" value={!!box} disabled={disabled || !words} onChange={(on) => send((p) => planCaptionHighlight(p, item.id, { accentBox: on ? "#7C5CFF" : null }))} />
+          <Toggle
+            testId="cap-box"
+            value={!!box}
+            disabled={disabled || !words}
+            onChange={(on) => send((p) => planCaptionHighlight(p, item.id, { accentBox: on ? "#7C5CFF" : null }))}
+          />
         </Prop>
         {box && (
           <Prop label="Box colour">
-            <SettledColorField project={project} testId="cap-box-color" value={box} noAlpha disabled={disabled} onCommit={(color) => send((p) => planCaptionHighlight(p, item.id, { accentBox: color }))} />
+            <SettledColorField
+              project={project}
+              testId="cap-box-color"
+              value={box}
+              noAlpha
+              disabled={disabled}
+              onCommit={(color) => send((p) => planCaptionHighlight(p, item.id, { accentBox: color }))}
+            />
           </Prop>
         )}
       </Group>

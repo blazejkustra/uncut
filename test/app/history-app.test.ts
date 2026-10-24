@@ -20,7 +20,10 @@ let dir = "";
 let app: LaunchedApp | undefined;
 let page: Page;
 const waitFor = (selector: string, timeout = 20000) => page.waitForSelector(selector, { timeout });
-const texts = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).tracks.filter((t: { kind: string }) => t.kind === "text").flatMap((t: { items: Array<{ text: string }> }) => t.items.map((i) => i.text));
+const texts = () =>
+  JSON.parse(readFileSync(join(dir, "project.json"), "utf8"))
+    .tracks.filter((t: { kind: string }) => t.kind === "text")
+    .flatMap((t: { items: Array<{ text: string }> }) => t.items.map((i) => i.text));
 const until = async (check: () => boolean, what: string, timeout = 10000) => {
   const end = Date.now() + timeout;
   while (!check()) {
@@ -76,15 +79,21 @@ test("⌘Z works after quitting and reopening; the History tab lists, previews a
   await until(() => texts().length === 1, "the title");
   // End goes to the timeline's end once the editor has the title (it's on disk first; a slow runner's
   // editor can still be at an empty timeline, and the lower third then lands before it, #89).
-  await page.waitForFunction(() => {
-    const tc = document.querySelector("[data-testid=timecode]")?.textContent ?? "";
-    return !/\/ 00:00:00:00$/.test(tc);
-  }, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const tc = document.querySelector("[data-testid=timecode]")?.textContent ?? "";
+      return !tc.endsWith("/ 00:00:00:00");
+    },
+    { timeout: 10000 },
+  );
   await page.keyboard.press("End");
-  await page.waitForFunction(() => {
-    const [at, end] = (document.querySelector("[data-testid=timecode]")?.textContent ?? "").split(" / ");
-    return !!end && at === end;
-  }, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const [at, end] = (document.querySelector("[data-testid=timecode]")?.textContent ?? "").split(" / ");
+      return !!end && at === end;
+    },
+    { timeout: 10000 },
+  );
   await page.click('[data-testid=text-preset][data-preset="lower-third"]');
   await until(() => texts().length === 2, "the lower third");
   assert.deepEqual(texts(), ["Title", "Lower third"]);
@@ -106,7 +115,14 @@ test("⌘Z works after quitting and reopening; the History tab lists, previews a
   await page.click("[data-testid=tab-history]");
   await waitFor("[data-testid=history-panel]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=history-entry]").length === 3, { timeout: 10000 });
-  const rows = await page.$$eval("[data-testid=history-entry]", (els) => els.map((el) => [(el as HTMLElement).dataset.kind, (el as HTMLElement).dataset.author, (el as HTMLElement).dataset.current, el.querySelector(".history-what")?.textContent]));
+  const rows = await page.$$eval("[data-testid=history-entry]", (els) =>
+    els.map((el) => [
+      (el as HTMLElement).dataset.kind,
+      (el as HTMLElement).dataset.author,
+      (el as HTMLElement).dataset.current,
+      el.querySelector(".history-what")?.textContent,
+    ]),
+  );
   assert.deepEqual(rows, [
     ["edit", "user", "false", "Add lower third"],
     ["edit", "user", "true", "Add title"],

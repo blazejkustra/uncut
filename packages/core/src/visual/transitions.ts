@@ -99,19 +99,32 @@ const t = (id: string, name: string, kind: TransitionKind, description: string, 
 
 export const TRANSITIONS: ReadonlyArray<TransitionInfo> = [
   t("crossfade", "Crossfade", "fade", "The next clip fades in over this one.", { minFrames: 2, maxFrames: 60, fades: true }),
-  t("dip-to-black", "Dip to black", "dip", "Fades to black and back up; the sound dips with it. Needs no spare footage.", { maxFrames: 90, defaultSeconds: 0.8, overlaps: false, color: "#000000" }),
+  t("dip-to-black", "Dip to black", "dip", "Fades to black and back up; the sound dips with it. Needs no spare footage.", {
+    maxFrames: 90,
+    defaultSeconds: 0.8,
+    overlaps: false,
+    color: "#000000",
+  }),
   t("wipe", "Wipe", "reveal", "The next clip is revealed from the left edge."),
   t("iris", "Iris", "reveal", "The next clip opens in a growing circle from the centre.", { minFrames: 6 }),
   t("push-left", "Push", "move", "The next clip slides in from the right, pushing this one out to the left.", { enter: { x: 1, y: 0 }, exit: { x: -1, y: 0 } }),
   t("zoom", "Zoom", "fade", "This clip zooms in as the next one fades in over it.", { fades: true, outZoom: ZOOM_SCALE }),
   // D133
-  t("dip-to-white", "Dip to white", "dip", "Fades to white and back down; the sound dips with it. Needs no spare footage.", { maxFrames: 90, defaultSeconds: 0.8, overlaps: false, color: "#ffffff" }),
+  t("dip-to-white", "Dip to white", "dip", "Fades to white and back down; the sound dips with it. Needs no spare footage.", {
+    maxFrames: 90,
+    defaultSeconds: 0.8,
+    overlaps: false,
+    color: "#ffffff",
+  }),
   t("flash", "Flash", "dip", "A white flash at the cut while the next clip fades in.", { minFrames: 2, defaultSeconds: 0.3, fades: true, color: "#ffffff" }),
   t("blur", "Blur", "fade", "This clip blurs out as the next one fades in sharp.", { minFrames: 6, maxFrames: 60, fades: true, blur: 0.02 }),
   t("wipe-left", "Wipe left", "reveal", "The next clip is revealed from the right edge.", { mask: "wipe-left" }),
   t("wipe-up", "Wipe up", "reveal", "The next clip is revealed from the bottom edge.", { mask: "wipe-up" }),
   t("wipe-down", "Wipe down", "reveal", "The next clip is revealed from the top edge.", { mask: "wipe-down" }),
-  t("push-right", "Push right", "move", "The next clip slides in from the left, pushing this one out to the right.", { enter: { x: -1, y: 0 }, exit: { x: 1, y: 0 } }),
+  t("push-right", "Push right", "move", "The next clip slides in from the left, pushing this one out to the right.", {
+    enter: { x: -1, y: 0 },
+    exit: { x: 1, y: 0 },
+  }),
   t("push-up", "Push up", "move", "The next clip slides in from below, pushing this one out the top.", { enter: { x: 0, y: 1 }, exit: { x: 0, y: -1 } }),
   t("push-down", "Push down", "move", "The next clip slides in from above, pushing this one out the bottom.", { enter: { x: 0, y: -1 }, exit: { x: 0, y: 1 } }),
   t("slide-left", "Slide left", "move", "The next clip slides in from the right over this one.", { enter: { x: 1, y: 0 } }),
@@ -138,7 +151,9 @@ export const transitionInfo = (module: string | undefined) => TRANSITIONS.find((
  * Frame limits of every built-in transition module (their manifests'; a test keeps them equal), so
  * a length set by hand is clamped as the server checks it. transition.cut has none.
  */
-export const TRANSITION_LIMITS: Readonly<Record<string, { readonly minFrames: number; readonly maxFrames: number }>> = Object.fromEntries(TRANSITIONS.map((t) => [t.id, { minFrames: t.minFrames, maxFrames: t.maxFrames }]));
+export const TRANSITION_LIMITS: Readonly<Record<string, { readonly minFrames: number; readonly maxFrames: number }>> = Object.fromEntries(
+  TRANSITIONS.map((t) => [t.id, { minFrames: t.minFrames, maxFrames: t.maxFrames }]),
+);
 
 /** Whether a transition overlaps the clips at its cut (all but the dips to black / white; unknown ones draw as a crossfade). */
 export const overlaps = (module: string) => transitionInfo(module)?.overlaps ?? true;
@@ -412,7 +427,8 @@ export function transitionLimits(project: Pick<Project, "tracks" | "media">, ite
   if (!track) return { problem: "Transitions go between two clips on the main track." };
   const index = track.items.findIndex((i) => i.id === itemId);
   if (index < 1) return { problem: "The first clip on the main track has nothing to transition from." };
-  if ((track.items[index]!.gap ?? 0) > 0) return { problem: "There's a gap before this clip: close it (move the clip up to the one before) to put a transition here." };
+  if ((track.items[index]!.gap ?? 0) > 0)
+    return { problem: "There's a gap before this clip: close it (move the clip up to the one before) to put a transition here." };
   const limits = TRANSITION_LIMITS[module];
   const prev = track.items[index - 1]!;
   const item = track.items[index]!;

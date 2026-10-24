@@ -40,7 +40,13 @@ export const thumbDir = (projectDir: string) => join(projectDir, ".cache", "thum
 
 /** "DJI_0005 (final).MP4" → "m-dji-0005-final", made unique against `taken`. */
 export const mediaId = (name: string, taken: Set<string>) => {
-  const stem = name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "media";
+  const stem =
+    name
+      .replace(/\.[^.]+$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "media";
   let id = `m-${stem}`;
   for (let n = 2; taken.has(id); n++) id = `m-${stem}-${n}`;
   taken.add(id);
@@ -96,7 +102,9 @@ export const fromFfprobe = (json: string): ProbeInfo | undefined => {
     .sort((a, b) => Number(b.width) * Number(b.height) - Number(a.width) * Number(a.height))[0];
   const audio = streams.find((s) => s.codec_type === "audio");
   if (!video && !audio) return undefined;
-  const [num, den] = String(video?.r_frame_rate ?? "0/0").split("/").map(Number);
+  const [num, den] = String(video?.r_frame_rate ?? "0/0")
+    .split("/")
+    .map(Number);
   const duration = Number(j.format?.duration ?? video?.duration ?? audio?.duration);
   return {
     kind: image ? "image" : video ? "video" : "audio",
@@ -137,5 +145,11 @@ export const probeOf = (info: ProbeInfo, fps: number): MediaEntry["probe"] => {
   const width = turned ? info.height : info.width;
   const height = turned ? info.width : info.height;
   const frames = info.kind !== "image" && info.durationSeconds ? Math.max(1, Math.floor(info.durationSeconds * fps)) : undefined;
-  return { ...(frames ? { frames } : {}), ...(info.fpsValue ? { fps: info.fpsValue } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}), hasAudio: info.hasAudio };
+  return {
+    ...(frames ? { frames } : {}),
+    ...(info.fpsValue ? { fps: info.fpsValue } : {}),
+    ...(width ? { width } : {}),
+    ...(height ? { height } : {}),
+    hasAudio: info.hasAudio,
+  };
 };

@@ -9,7 +9,9 @@ const project = {
   format: "uncut/0",
   name: "P",
   canvas: { width: 1920, height: 1080, fps: 30 },
-  media: [{ id: "m-dji-0005", kind: "video", name: "DJI_0005.MP4", path: "/x/DJI_0005.MP4", probe: { width: 3840, height: 2160, frames: 900, hasAudio: true } }],
+  media: [
+    { id: "m-dji-0005", kind: "video", name: "DJI_0005.MP4", path: "/x/DJI_0005.MP4", probe: { width: 3840, height: 2160, frames: 900, hasAudio: true } },
+  ],
   tracks: [
     { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-dji-0005", in: 0, duration: 150 }] },
     { id: "text", kind: "text", name: "Text", items: [{ id: "title-1", type: "text", start: 0, duration: 90, text: "Kraków from above" }] },
@@ -43,7 +45,10 @@ test("contextBlock: labels with real ids and facts; ranges in frames and seconds
   assert.ok(lines.includes('@Kraków from above = item title-1 (text on track text "Text", text "Kraków from above"), frames 0–90 (0.00 s–3.00 s)'));
   assert.ok(lines.includes("@Text = track text (text, 1 item)"));
   assert.ok(lines.includes("@Drop = marker at frame 60 (2.00 s)"));
-  assert.match(contextBlock(project, [{ kind: "item", id: "clip-1", label: "Clip", range: { start: 0, end: 150 }, frame: 30 }]), /@Clip = item clip-1 \(clip on track main "Main", media m-dji-0005\), frames 0–150 \(0\.00 s–5\.00 s\), picked at frame 30 \(1\.00 s\)/);
+  assert.match(
+    contextBlock(project, [{ kind: "item", id: "clip-1", label: "Clip", range: { start: 0, end: 150 }, frame: 30 }]),
+    /@Clip = item clip-1 \(clip on track main "Main", media m-dji-0005\), frames 0–150 \(0\.00 s–5\.00 s\), picked at frame 30 \(1\.00 s\)/,
+  );
   assert.ok(lines.includes("@Old = item nope (no longer on the timeline)"));
   assert.equal(lines.filter((l) => l.startsWith("@DJI_0005.MP4")).length, 1, "the same chip twice is listed once");
   assert.equal(contextBlock(project, []), "");
@@ -51,14 +56,17 @@ test("contextBlock: labels with real ids and facts; ranges in frames and seconds
 
 test("mentionCandidates: media, items, tracks and markers by name, none by id", () => {
   const all = mentionCandidates(project);
-  assert.deepEqual(all.map((c) => [c.kind, c.label]), [
-    ["media", "DJI_0005.MP4"],
-    ["item", "DJI_0005.MP4"],
-    ["item", "Kraków from above"],
-    ["track", "Main"],
-    ["track", "Text"],
-    ["marker", "Drop"],
-  ]);
+  assert.deepEqual(
+    all.map((c) => [c.kind, c.label]),
+    [
+      ["media", "DJI_0005.MP4"],
+      ["item", "DJI_0005.MP4"],
+      ["item", "Kraków from above"],
+      ["track", "Main"],
+      ["track", "Text"],
+      ["marker", "Drop"],
+    ],
+  );
 });
 
 test("labels are one line without angle brackets, at most 120 characters; a marker id that isn't a frame doesn't make NaN", () => {
@@ -81,7 +89,10 @@ test("D183: typed moments parse to frames, moments label as m:ss with tenths, an
   assert.equal(momentLabel(1875, 30), "1:02.5");
   assert.equal(momentLabel(0, 30), "0:00");
   assert.equal(momentLabel(3600 * 30, 30), "60:00");
-  assert.match(describeAt(project, 10, 11), /^on the timeline there: clip-1 \(clip "DJI_0005.MP4", track main, frames 0–150\); title-1 \(text "Kraków from above", track text, frames 0–90\)$/);
+  assert.match(
+    describeAt(project, 10, 11),
+    /^on the timeline there: clip-1 \(clip "DJI_0005.MP4", track main, frames 0–150\); title-1 \(text "Kraków from above", track text, frames 0–90\)$/,
+  );
   assert.equal(describeAt(project, 500, 600), "nothing on the timeline there");
   const block = contextBlock(project, [{ kind: "moment", id: "frame:120", label: "0:04", frame: 120 }]);
   assert.match(block, /@0:04 = the moment at frame 120 \(4\.00 s\): on the timeline there: clip-1/);

@@ -22,16 +22,38 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
       <div className="group">
         <div className="speed-row" role="group" aria-label="Speed">
           {SPEED_PRESETS.map((s) => (
-            <button key={s} className={`small-btn ${Math.abs(s - speed) < 1e-6 ? "active" : ""}`} data-testid={`insp-speed-${s}`} aria-pressed={Math.abs(s - speed) < 1e-6} disabled={locked} onClick={() => void actions.setSpeed(item.id, s)}>
+            <button
+              key={s}
+              className={`small-btn ${Math.abs(s - speed) < 1e-6 ? "active" : ""}`}
+              data-testid={`insp-speed-${s}`}
+              aria-pressed={Math.abs(s - speed) < 1e-6}
+              disabled={locked}
+              onClick={() => void actions.setSpeed(item.id, s)}
+            >
               {speedLabel(s)}
             </button>
           ))}
         </div>
         <div className="field-row">
-          <NumberField label="×" testId="insp-speed-custom" value={Math.round(speed * 1000) / 1000} step={0.05} min={SPEED_RANGE.min} max={SPEED_RANGE.max} disabled={locked} onCommit={(v) => v !== undefined && void actions.setSpeed(item.id, v)} />
+          <NumberField
+            label="×"
+            testId="insp-speed-custom"
+            value={Math.round(speed * 1000) / 1000}
+            step={0.05}
+            min={SPEED_RANGE.min}
+            max={SPEED_RANGE.max}
+            disabled={locked}
+            onCommit={(v) => v !== undefined && void actions.setSpeed(item.id, v)}
+          />
         </div>
         <label className="check-row">
-          <input type="checkbox" data-testid="insp-keep-pitch" checked={item.keepPitch !== false} disabled={locked} onChange={(e) => void actions.setSpeed(item.id, speed, e.target.checked)} />
+          <input
+            type="checkbox"
+            data-testid="insp-keep-pitch"
+            checked={item.keepPitch !== false}
+            disabled={locked}
+            onChange={(e) => void actions.setSpeed(item.id, speed, e.target.checked)}
+          />
           Keep pitch
         </label>
       </div>
@@ -40,7 +62,21 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
 }
 
 /** A name field: committed on Enter or blur, Esc puts the saved one back. */
-function NameField({ value, placeholder, testId, disabled, onCommit, label }: { value: string; placeholder?: string; testId: string; disabled: boolean; onCommit: (name: string) => void; label: string }) {
+function NameField({
+  value,
+  placeholder,
+  testId,
+  disabled,
+  onCommit,
+  label,
+}: {
+  value: string;
+  placeholder?: string;
+  testId: string;
+  disabled: boolean;
+  onCommit: (name: string) => void;
+  label: string;
+}) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   const commit = () => {
@@ -72,8 +108,19 @@ export function NamesEditor({ project, item, locked }: { project: ProjectModel; 
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   return (
     <Group label="Name">
-      {item.type !== "captions" && <NameField label="Item" testId="insp-name" value={item.name ?? ""} placeholder={media?.name ?? ""} disabled={locked} onCommit={(name) => void actions.renameItem(item.id, name)} />}
-      {media && <NameField label="Media" testId="insp-media-name" value={media.name} disabled={false} onCommit={(name) => void actions.renameMedia(media.id, name)} />}
+      {item.type !== "captions" && (
+        <NameField
+          label="Item"
+          testId="insp-name"
+          value={item.name ?? ""}
+          placeholder={media?.name ?? ""}
+          disabled={locked}
+          onCommit={(name) => void actions.renameItem(item.id, name)}
+        />
+      )}
+      {media && (
+        <NameField label="Media" testId="insp-media-name" value={media.name} disabled={false} onCommit={(name) => void actions.renameMedia(media.id, name)} />
+      )}
     </Group>
   );
 }

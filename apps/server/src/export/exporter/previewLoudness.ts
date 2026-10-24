@@ -12,7 +12,13 @@ import { makeTemp } from "./files.ts";
 
 export function makePreviewLoudness() {
   let running: AbortController | undefined;
-  return async (bin: string, project: Project, mediaPath: (m: Media) => string, envelopes: ReadonlyMap<string, SpeechEnvelope | null>, targetLufs: number): Promise<{ gainDb?: number; lufs?: number; cancelled?: boolean } | { problem: string }> => {
+  return async (
+    bin: string,
+    project: Project,
+    mediaPath: (m: Media) => string,
+    envelopes: ReadonlyMap<string, SpeechEnvelope | null>,
+    targetLufs: number,
+  ): Promise<{ gainDb?: number; lufs?: number; cancelled?: boolean } | { problem: string }> => {
     running?.abort();
     const controller = new AbortController();
     running = controller;

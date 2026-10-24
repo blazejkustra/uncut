@@ -66,7 +66,10 @@ const startMcp = async (cfg: { command: string; args: Array<string>; env: Record
   });
   await mcpCall("initialize", { protocolVersion: "2025-06-18" });
   const listed = await mcpCall("tools/list");
-  log(process.env.FAKE_TOOLS_LOG, ((listed.result?.tools ?? []) as Array<{ name: string }>).map((t) => t.name));
+  log(
+    process.env.FAKE_TOOLS_LOG,
+    ((listed.result?.tools ?? []) as Array<{ name: string }>).map((t) => t.name),
+  );
   return !!listed.result;
 };
 
@@ -98,10 +101,28 @@ async function playTurn(turnId: string, input: Array<Record<string, any>>, signa
   const n = existsSync(counter) ? Number(readFileSync(counter, "utf8")) : 0;
   writeFileSync(counter, String(n + 1));
   const plan: Array<Step> = (JSON.parse(readFileSync(process.env.FAKE_PLAN!, "utf8")) as Array<Array<Step>>)[n] ?? [];
-  const prompt = input.filter((i) => i.type === "text").map((i) => i.text).join("\n");
+  const prompt = input
+    .filter((i) => i.type === "text")
+    .map((i) => i.text)
+    .join("\n");
   const approvals: Array<unknown> = [];
   const { config: _config, ...shown } = threadConfig;
-  const entry = { prompt, input: input.map((i) => (i.type === "image" ? { type: "image", url: String(i.url).slice(0, 30) } : i)), resume: resumed, threadId, turn: n, threadConfig: { ...shown, mcp: Object.keys(threadConfig.config?.mcp_servers ?? {}), mcpApproval: threadConfig.config?.mcp_servers?.uncut?.default_tools_approval_mode ?? null }, pid: process.pid, mcpPid: mcp?.pid, mcpToken, approvals };
+  const entry = {
+    prompt,
+    input: input.map((i) => (i.type === "image" ? { type: "image", url: String(i.url).slice(0, 30) } : i)),
+    resume: resumed,
+    threadId,
+    turn: n,
+    threadConfig: {
+      ...shown,
+      mcp: Object.keys(threadConfig.config?.mcp_servers ?? {}),
+      mcpApproval: threadConfig.config?.mcp_servers?.uncut?.default_tools_approval_mode ?? null,
+    },
+    pid: process.pid,
+    mcpPid: mcp?.pid,
+    mcpToken,
+    approvals,
+  };
   note("turn/started", { turn: { id: turnId, items: [], status: "inProgress", error: null } });
   let item = 0;
   const id = () => `item_${turnId}_${++item}`;
@@ -132,7 +153,15 @@ async function playTurn(turnId: string, input: Array<Record<string, any>>, signa
         const got = await mcpCall("tools/call", { name: step.tool, arguments: args });
         const failed = !got.result || got.result.isError;
         if (step.tool === "project_read" && !failed) rev = JSON.parse(got.result.content[0].text).revision;
-        note("item/completed", { turnId, item: { ...base, status: failed ? "failed" : "completed", result: got.result ? { content: got.result.content, structuredContent: null, _meta: null } : null, error: failed ? { message: got.error?.message ?? got.result?.content?.[0]?.text ?? "failed" } : null } });
+        note("item/completed", {
+          turnId,
+          item: {
+            ...base,
+            status: failed ? "failed" : "completed",
+            result: got.result ? { content: got.result.content, structuredContent: null, _meta: null } : null,
+            error: failed ? { message: got.error?.message ?? got.result?.content?.[0]?.text ?? "failed" } : null,
+          },
+        });
       } else if ("command" in step) {
         const itemId = id();
         const base = { type: "commandExecution", id: itemId, command: `/bin/zsh -lc '${step.command}'`, cwd: threadConfig.cwd };
@@ -143,10 +172,18 @@ async function playTurn(turnId: string, input: Array<Record<string, any>>, signa
           decision = answer?.decision;
           approvals.push({ command: step.command, decision });
         }
-        if (decision === "accept" || decision === "acceptForSession") note("item/completed", { turnId, item: { ...base, status: "completed", aggregatedOutput: step.output ?? "ok\n", exitCode: 0 } });
+        if (decision === "accept" || decision === "acceptForSession")
+          note("item/completed", { turnId, item: { ...base, status: "completed", aggregatedOutput: step.output ?? "ok\n", exitCode: 0 } });
         else note("item/completed", { turnId, item: { ...base, status: "declined", aggregatedOutput: null, exitCode: null } });
       } else if ("usage" in step) {
-        const last = { totalTokens: step.usage.input + step.usage.output, inputTokens: step.usage.input, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: step.usage.output, reasoningOutputTokens: 0 };
+        const last = {
+          totalTokens: step.usage.input + step.usage.output,
+          inputTokens: step.usage.input,
+          cachedInputTokens: 0,
+          cacheWriteInputTokens: 0,
+          outputTokens: step.usage.output,
+          reasoningOutputTokens: 0,
+        };
         note("thread/tokenUsage/updated", { turnId, tokenUsage: { total: last, last, modelContextWindow: step.window ?? null } });
       } else if ("limit" in step) {
         out({ method: "account/rateLimits/updated", params: { rateLimits: step.limit } });
@@ -179,7 +216,8 @@ const account = () => {
 
 const openThread = async (params: Record<string, any>, id: number, resume: boolean) => {
   threadConfig = params;
-  if (resume && process.env.FAKE_RESUME_GONE === params.threadId) return out({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
+  if (resume && process.env.FAKE_RESUME_GONE === params.threadId)
+    return out({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   const uncut = params.config?.mcp_servers?.uncut;
   if (uncut && !mcp) {
     const ok = await startMcp(uncut);

@@ -6,17 +6,56 @@
 // textHtml, the export's path too, so the export matches.
 import { TEXT_STYLES, textLook } from "@uncut/core/render";
 import type { Item } from "@uncut/core/types";
-import { AlignCenter, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, Italic, Minus, Plus, RotateCcw } from "lucide-react";
+import {
+  AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignLeft,
+  AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  Italic,
+  Minus,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 
 import { type ProjectModel } from "../../state/project.ts";
 import { measureText } from "../../preview/measure.ts";
-import { caseOf, planCase, planFrameAlign, planPreset, planResetLook, planShadow, planStroke, planStyle, planTextBox, planTransform, textBox, textDecorOf, type FrameEdge, type TextCase } from "../../preview/text.ts";
+import {
+  caseOf,
+  planCase,
+  planFrameAlign,
+  planPreset,
+  planResetLook,
+  planShadow,
+  planStroke,
+  planStyle,
+  planTextBox,
+  planTransform,
+  textBox,
+  textDecorOf,
+  type FrameEdge,
+  type TextCase,
+} from "../../preview/text.ts";
 import { NumInput, Prop, Section, Segmented, SettledColorField, SliderNum } from "../controls.tsx";
 import { FontPicker } from "./fonts.tsx";
 import { useTextEdit, type TextEdit } from "./edit.ts";
 
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
-const WEIGHT_NAMES: Readonly<Record<number, string>> = { 100: "Thin", 200: "Extra light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semibold", 700: "Bold", 800: "Heavy", 900: "Black" };
+const WEIGHT_NAMES: Readonly<Record<number, string>> = {
+  100: "Thin",
+  200: "Extra light",
+  300: "Light",
+  400: "Regular",
+  500: "Medium",
+  600: "Semibold",
+  700: "Bold",
+  800: "Heavy",
+  900: "Black",
+};
 const CASES: ReadonlyArray<readonly [TextCase, string, string]> = [
   ["none", "Aa", "As typed"],
   ["upper", "AA", "Capitals"],
@@ -42,11 +81,17 @@ function LookPicker({ item, edit, disabled }: { item: Item; edit: TextEdit; disa
   const known = !!TEXT_STYLES[preset];
   return (
     <div className="look-row">
-      <select className="pselect" data-testid="insp-preset" value={known ? preset : ""} disabled={disabled} onChange={(e) => {
+      <select
+        className="pselect"
+        data-testid="insp-preset"
+        value={known ? preset : ""}
+        disabled={disabled}
+        onChange={(e) => {
           // Read now: the plan runs later, when React has put the controlled value back.
           const look = e.target.value;
           if (look) edit.commit((p, id) => planPreset(p, id, look));
-        }}>
+        }}
+      >
         {!known && <option value="">{preset ? textLook(preset).name || "Custom" : "No look"}</option>}
         {Object.entries(TEXT_STYLES).map(([id, look]) => (
           <option key={id} value={id}>
@@ -54,7 +99,14 @@ function LookPicker({ item, edit, disabled }: { item: Item; edit: TextEdit; disa
           </option>
         ))}
       </select>
-      <button className="icon-btn" data-testid="insp-reset-look" title="Reset to the look" aria-label="Reset to the look" disabled={disabled || !known} onClick={() => edit.commit((p, id) => planResetLook(p, id))}>
+      <button
+        className="icon-btn"
+        data-testid="insp-reset-look"
+        title="Reset to the look"
+        aria-label="Reset to the look"
+        disabled={disabled || !known}
+        onClick={() => edit.commit((p, id) => planResetLook(p, id))}
+      >
         <RotateCcw />
       </button>
     </div>
@@ -66,11 +118,19 @@ function Typography({ project, item, edit, disabled }: { project: ProjectModel; 
   const d = textDecorOf(item, project);
   const s = item.style ?? {};
   const maxSize = Math.round(project.canvas.height * 0.4);
-  const reset = (key: keyof NonNullable<Item["style"]>, label: string) => (s[key] !== undefined && TEXT_STYLES[s.preset ?? ""] ? () => edit.commit((p, id) => planStyle(p, id, { [key]: null }, `Use the look's ${label}`)) : undefined);
+  const reset = (key: keyof NonNullable<Item["style"]>, label: string) =>
+    s[key] !== undefined && TEXT_STYLES[s.preset ?? ""]
+      ? () => edit.commit((p, id) => planStyle(p, id, { [key]: null }, `Use the look's ${label}`))
+      : undefined;
   return (
     <Section title="Typography" testId="insp-sec-type">
       <Prop label="Font" onReset={reset("font", "font")} testId="insp-prop-font">
-        <FontPicker testId="insp-font" value={s.font ?? ""} disabled={disabled} onPick={(font) => edit.commit((p, id) => planStyle(p, id, { font: font || null }, font ? `Set font to ${font}` : "Use the look's font"))} />
+        <FontPicker
+          testId="insp-font"
+          value={s.font ?? ""}
+          disabled={disabled}
+          onPick={(font) => edit.commit((p, id) => planStyle(p, id, { font: font || null }, font ? `Set font to ${font}` : "Use the look's font"))}
+        />
       </Prop>
       <Prop label="Weight" onReset={reset("weight", "weight")}>
         <div className="prop-pair">
@@ -90,7 +150,15 @@ function Typography({ project, item, edit, disabled }: { project: ProjectModel; 
               </option>
             ))}
           </select>
-          <button className={`icon-btn square ${s.italic ? "active" : ""}`} data-testid="insp-italic" title="Italic" aria-label="Italic" aria-pressed={!!s.italic} disabled={disabled} onClick={() => edit.commit((p, id) => planStyle(p, id, { italic: s.italic ? null : true }, s.italic ? "Set text upright" : "Set text in italic"))}>
+          <button
+            className={`icon-btn square ${s.italic ? "active" : ""}`}
+            data-testid="insp-italic"
+            title="Italic"
+            aria-label="Italic"
+            aria-pressed={!!s.italic}
+            disabled={disabled}
+            onClick={() => edit.commit((p, id) => planStyle(p, id, { italic: s.italic ? null : true }, s.italic ? "Set text upright" : "Set text in italic"))}
+          >
             <Italic />
           </button>
         </div>
@@ -121,7 +189,11 @@ function Typography({ project, item, edit, disabled }: { project: ProjectModel; 
           clearable
           disabled={disabled}
           onPreview={(v) => edit.preview((p, id) => planStyle(p, id, { tracking: v }))}
-          onCommit={(v) => edit.commit((p, id) => planStyle(p, id, { tracking: v ?? null }, v === undefined ? "Use the look's letter spacing" : `Set letter spacing to ${v} em`))}
+          onCommit={(v) =>
+            edit.commit((p, id) =>
+              planStyle(p, id, { tracking: v ?? null }, v === undefined ? "Use the look's letter spacing" : `Set letter spacing to ${v} em`),
+            )
+          }
         />
         <NumInput
           testId="insp-line-height"
@@ -134,14 +206,30 @@ function Typography({ project, item, edit, disabled }: { project: ProjectModel; 
           clearable
           disabled={disabled}
           onPreview={(v) => edit.preview((p, id) => planStyle(p, id, { lineHeight: v }))}
-          onCommit={(v) => edit.commit((p, id) => planStyle(p, id, { lineHeight: v ?? null }, v === undefined ? "Use the look's line height" : `Set line height to ${v}`))}
+          onCommit={(v) =>
+            edit.commit((p, id) => planStyle(p, id, { lineHeight: v ?? null }, v === undefined ? "Use the look's line height" : `Set line height to ${v}`))
+          }
         />
       </div>
       <Prop label="Case">
-        <Segmented testId="insp-case" attr="case" options={CASES.map(([v, l, t]) => [v, l, t] as const)} value={caseOf(item)} disabled={disabled} onChange={(c) => edit.commit((p, id) => planCase(p, id, c))} />
+        <Segmented
+          testId="insp-case"
+          attr="case"
+          options={CASES.map(([v, l, t]) => [v, l, t] as const)}
+          value={caseOf(item)}
+          disabled={disabled}
+          onChange={(c) => edit.commit((p, id) => planCase(p, id, c))}
+        />
       </Prop>
       <Prop label="Align" onReset={reset("align", "alignment")}>
-        <Segmented testId="insp-align" attr="align" options={ALIGNS} value={box.align} disabled={disabled} onChange={(align) => edit.commit((p, id) => planStyle(p, id, { align }, `Align text ${align}`))} />
+        <Segmented
+          testId="insp-align"
+          attr="align"
+          options={ALIGNS}
+          value={box.align}
+          disabled={disabled}
+          onChange={(align) => edit.commit((p, id) => planStyle(p, id, { align }, `Align text ${align}`))}
+        />
       </Prop>
     </Section>
   );
@@ -164,7 +252,21 @@ function Fill({ project, item, edit, disabled }: { project: ProjectModel; item: 
 }
 
 /** A section's add (+) or remove (−) action. */
-const AddRemove = ({ on, testId, disabled, onAdd, onRemove, noun }: { on: boolean; testId: string; disabled: boolean; onAdd: () => void; onRemove: () => void; noun: string }) =>
+const AddRemove = ({
+  on,
+  testId,
+  disabled,
+  onAdd,
+  onRemove,
+  noun,
+}: {
+  on: boolean;
+  testId: string;
+  disabled: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+  noun: string;
+}) =>
   on ? (
     <button className="icon-btn" data-testid={`${testId}-none`} title={`Remove ${noun}`} aria-label={`Remove ${noun}`} disabled={disabled} onClick={onRemove}>
       <Minus />
@@ -180,15 +282,60 @@ function Decor({ project, item, edit, disabled }: { project: ProjectModel; item:
   const wrap = d.background ? (d.background.wrap ?? "box") : "none";
   return (
     <>
-      <Section title="Stroke" testId="insp-sec-stroke" action={<AddRemove on={!!d.stroke} testId="insp-stroke" noun="the stroke" disabled={disabled} onAdd={() => edit.commit((p, id) => planStroke(p, id, {}))} onRemove={() => edit.commit((p, id) => planStroke(p, id, false))} />}>
+      <Section
+        title="Stroke"
+        testId="insp-sec-stroke"
+        action={
+          <AddRemove
+            on={!!d.stroke}
+            testId="insp-stroke"
+            noun="the stroke"
+            disabled={disabled}
+            onAdd={() => edit.commit((p, id) => planStroke(p, id, {}))}
+            onRemove={() => edit.commit((p, id) => planStroke(p, id, false))}
+          />
+        }
+      >
         {d.stroke && (
           <div className="prop-grid">
-            <SettledColorField project={project} testId="insp-stroke-color" value={d.stroke.color ?? "#000000"} noAlpha disabled={disabled} onPreview={(color) => edit.preview((p, id) => planStroke(p, id, { color }))} onCommit={(color) => edit.commit((p, id) => planStroke(p, id, { color }))} />
-            <NumInput testId="insp-stroke-width" label="Width" unit="px" value={d.stroke.width} step={1} min={0} max={200} disabled={disabled} onPreview={(v) => edit.preview((p, id) => planStroke(p, id, { width: v }))} onCommit={(v) => v !== undefined && edit.commit((p, id) => planStroke(p, id, { width: v }))} />
+            <SettledColorField
+              project={project}
+              testId="insp-stroke-color"
+              value={d.stroke.color ?? "#000000"}
+              noAlpha
+              disabled={disabled}
+              onPreview={(color) => edit.preview((p, id) => planStroke(p, id, { color }))}
+              onCommit={(color) => edit.commit((p, id) => planStroke(p, id, { color }))}
+            />
+            <NumInput
+              testId="insp-stroke-width"
+              label="Width"
+              unit="px"
+              value={d.stroke.width}
+              step={1}
+              min={0}
+              max={200}
+              disabled={disabled}
+              onPreview={(v) => edit.preview((p, id) => planStroke(p, id, { width: v }))}
+              onCommit={(v) => v !== undefined && edit.commit((p, id) => planStroke(p, id, { width: v }))}
+            />
           </div>
         )}
       </Section>
-      <Section title="Shadow" testId="insp-sec-shadow" action={<AddRemove on={!!d.shadow} testId="insp-shadow" noun="the shadow" disabled={disabled} onAdd={() => edit.commit((p, id) => planShadow(p, id, {}))} onRemove={() => edit.commit((p, id) => planShadow(p, id, false))} />}>
+      <Section
+        title="Shadow"
+        testId="insp-sec-shadow"
+        action={
+          <AddRemove
+            on={!!d.shadow}
+            testId="insp-shadow"
+            noun="the shadow"
+            disabled={disabled}
+            onAdd={() => edit.commit((p, id) => planShadow(p, id, {}))}
+            onRemove={() => edit.commit((p, id) => planShadow(p, id, false))}
+          />
+        }
+      >
         {d.shadow && (
           <>
             <SettledColorField
@@ -243,8 +390,28 @@ function Decor({ project, item, edit, disabled }: { project: ProjectModel; item:
               onCommit={(color) => edit.commit((p, id) => planTextBox(p, id, { color }))}
             />
             <div className="prop-grid">
-              <NumInput testId="insp-box-padding" label="Padding" unit="px" value={d.background.padding ?? 0} min={0} max={1000} disabled={disabled} onPreview={(v) => edit.preview((p, id) => planTextBox(p, id, { padding: v }))} onCommit={(v) => v !== undefined && edit.commit((p, id) => planTextBox(p, id, { padding: v }))} />
-              <NumInput testId="insp-box-radius" label="Radius" unit="px" value={d.background.radius ?? 0} min={0} max={1000} disabled={disabled} onPreview={(v) => edit.preview((p, id) => planTextBox(p, id, { radius: v }))} onCommit={(v) => v !== undefined && edit.commit((p, id) => planTextBox(p, id, { radius: v }))} />
+              <NumInput
+                testId="insp-box-padding"
+                label="Padding"
+                unit="px"
+                value={d.background.padding ?? 0}
+                min={0}
+                max={1000}
+                disabled={disabled}
+                onPreview={(v) => edit.preview((p, id) => planTextBox(p, id, { padding: v }))}
+                onCommit={(v) => v !== undefined && edit.commit((p, id) => planTextBox(p, id, { padding: v }))}
+              />
+              <NumInput
+                testId="insp-box-radius"
+                label="Radius"
+                unit="px"
+                value={d.background.radius ?? 0}
+                min={0}
+                max={1000}
+                disabled={disabled}
+                onPreview={(v) => edit.preview((p, id) => planTextBox(p, id, { radius: v }))}
+                onCommit={(v) => v !== undefined && edit.commit((p, id) => planTextBox(p, id, { radius: v }))}
+              />
             </div>
           </>
         )}
@@ -263,15 +430,42 @@ function Layout({ project, item, edit, disabled }: { project: ProjectModel; item
       {text && (
         <div className="frame-align" role="group" aria-label="Align to the frame">
           {EDGES.map(([edge, icon, title]) => (
-            <button key={edge} className="icon-btn" data-testid="insp-frame-align" data-edge={edge} title={title} aria-label={title} disabled={disabled} onClick={() => edit.commit((p, id) => planFrameAlign(p, id, edge, measureText(p.tracks.flatMap((t) => t.items).find((i) => i.id === id) ?? item, p)))}>
+            <button
+              key={edge}
+              className="icon-btn"
+              data-testid="insp-frame-align"
+              data-edge={edge}
+              title={title}
+              aria-label={title}
+              disabled={disabled}
+              onClick={() =>
+                edit.commit((p, id) => planFrameAlign(p, id, edge, measureText(p.tracks.flatMap((t) => t.items).find((i) => i.id === id) ?? item, p)))
+              }
+            >
               {icon}
             </button>
           ))}
         </div>
       )}
       <div className="prop-grid">
-        <NumInput testId="insp-x" label="X" unit="px" value={box.x} disabled={disabled} onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { x: v }))} onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { x: v }))} />
-        <NumInput testId="insp-y" label="Y" unit="px" value={box.y} disabled={disabled} onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { y: v }))} onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { y: v }))} />
+        <NumInput
+          testId="insp-x"
+          label="X"
+          unit="px"
+          value={box.x}
+          disabled={disabled}
+          onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { x: v }))}
+          onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { x: v }))}
+        />
+        <NumInput
+          testId="insp-y"
+          label="Y"
+          unit="px"
+          value={box.y}
+          disabled={disabled}
+          onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { y: v }))}
+          onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { y: v }))}
+        />
         <NumInput
           testId="insp-w"
           label="W"
@@ -282,7 +476,9 @@ function Layout({ project, item, edit, disabled }: { project: ProjectModel; item
           clearable
           disabled={disabled}
           onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { w: v }))}
-          onCommit={(v) => edit.commit((p, id) => planTransform(p, id, { w: v ?? null }, v === undefined ? "Fit the text box to its text" : "Set the text box width"))}
+          onCommit={(v) =>
+            edit.commit((p, id) => planTransform(p, id, { w: v ?? null }, v === undefined ? "Fit the text box to its text" : "Set the text box width"))
+          }
         />
         {text && (
           <NumInput
@@ -331,4 +527,3 @@ export function TextStyleTab({ project, item, disabled }: { project: ProjectMode
     </div>
   );
 }
-

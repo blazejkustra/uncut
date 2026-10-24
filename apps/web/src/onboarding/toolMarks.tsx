@@ -29,6 +29,9 @@ export const ArgentMark: Mark = (props) => (
 /** Uncut's neutral mark for whisper.cpp (local speech to text): a speech bubble with a waveform. */
 export const WhisperCppMark: Mark = (props) => (
   <svg {...props} viewBox="0 0 24 24" fill="currentColor">
-    <path fillRule="evenodd" d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7l-5 4v-4H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM6.6 9.2h1.6v2.6H6.6zM9.6 7.2h1.6v6.6H9.6zM12.6 8.2h1.6v4.6h-1.6zM15.6 9.5h1.6v2h-1.6z" />
+    <path
+      fillRule="evenodd"
+      d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7l-5 4v-4H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM6.6 9.2h1.6v2.6H6.6zM9.6 7.2h1.6v6.6H9.6zM12.6 8.2h1.6v4.6h-1.6zM15.6 9.5h1.6v2h-1.6z"
+    />
   </svg>
 );

@@ -92,7 +92,10 @@ async function walk(root: string, folderId: string): Promise<{ sounds: Array<Fol
         break;
       }
       const full = join(dir, e.name);
-      const size = await stat(full).then((s) => s.size, () => -1);
+      const size = await stat(full).then(
+        (s) => s.size,
+        () => -1,
+      );
       if (size <= 0) continue;
       const id = hash(`${folderId}/${relPath}`);
       sounds.push({ id, folder: folderId, name: nameOf(e.name), rel: relPath, ext, bytes: size });
@@ -103,7 +106,17 @@ async function walk(root: string, folderId: string): Promise<{ sounds: Array<Fol
   return { sounds, paths, truncated };
 }
 
-export function soundFolders({ dataDir, now = Date.now, musicRoot, readMusic = readMusicLibrary }: { readonly dataDir: string; readonly now?: () => number; readonly musicRoot?: string | undefined; readonly readMusic?: typeof readMusicLibrary }) {
+export function soundFolders({
+  dataDir,
+  now = Date.now,
+  musicRoot,
+  readMusic = readMusicLibrary,
+}: {
+  readonly dataDir: string;
+  readonly now?: () => number;
+  readonly musicRoot?: string | undefined;
+  readonly readMusic?: typeof readMusicLibrary;
+}) {
   const file = join(dataDir, "sound-folders.json");
   const indexes = new Map<string, Indexed>();
   /** Indexes being made (a second list() at the same time waits for the same one). */
@@ -145,7 +158,16 @@ export function soundFolders({ dataDir, now = Date.now, musicRoot, readMusic = r
       const stamp = await musicLibraryStamp(musicRoot);
       if (known && !rescan && (stamp ? known.stamp === stamp : now() - known.at < INDEX_MS)) return known;
       const lib = await readMusic(musicRoot, f.id, walk);
-      const folder: SoundFolder = { id: f.id, path: lib.where || "~/Music", name: MUSIC_FOLDER_NAME, sounds: lib.sounds, system: "music", ...(lib.found ? {} : { missing: true }), ...(lib.truncated ? { truncated: true } : {}), ...(lib.skipped ? { skipped: lib.skipped } : {}) };
+      const folder: SoundFolder = {
+        id: f.id,
+        path: lib.where || "~/Music",
+        name: MUSIC_FOLDER_NAME,
+        sounds: lib.sounds,
+        system: "music",
+        ...(lib.found ? {} : { missing: true }),
+        ...(lib.truncated ? { truncated: true } : {}),
+        ...(lib.skipped ? { skipped: lib.skipped } : {}),
+      };
       const entry: Indexed = { at: now(), real: "", paths: lib.paths, folder, ...(stamp ? { stamp } : {}) };
       indexes.set(f.id, entry);
       return entry;
@@ -176,7 +198,9 @@ export function soundFolders({ dataDir, now = Date.now, musicRoot, readMusic = r
       if (r.status === "fulfilled") return r.value.folder;
       const f = folders[i]!;
       console.warn(`sound folder ${f.path} can't be read: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
-      return f.path === MUSIC_LIBRARY_PATH ? { id: f.id, path: "~/Music", name: MUSIC_FOLDER_NAME, sounds: [], system: "music" as const, missing: true } : { id: f.id, path: f.path, name: basename(f.path) || f.path, sounds: [], missing: true };
+      return f.path === MUSIC_LIBRARY_PATH
+        ? { id: f.id, path: "~/Music", name: MUSIC_FOLDER_NAME, sounds: [], system: "music" as const, missing: true }
+        : { id: f.id, path: f.path, name: basename(f.path) || f.path, sounds: [], missing: true };
     });
   }
 

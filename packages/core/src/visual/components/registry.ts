@@ -5,8 +5,42 @@ import chartJson from "../../../../../spec/modules/builtin/component.chart.json"
 import terminalJson from "../../../../../spec/modules/builtin/component.terminal.json" with { type: "json" };
 import agentLogJson from "../../../../../spec/modules/builtin/component.agent-log.json" with { type: "json" };
 import compareTableJson from "../../../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
-import { shapeJson, drawShape, lowerThirdJson, drawLowerThird, calloutJson, drawCallout, progressBarJson, drawProgressBar, countdownJson, drawCountdown, subscribeJson, drawSubscribe, stickerJson, drawSticker, imageFrameJson, drawImageFrame } from "../elements.ts";
-import { followJson, drawFollow, socialButtonJson, drawSocialButton, checklistJson, drawChecklist, quoteJson, drawQuote, ratingJson, drawRating, priceTagJson, drawPriceTag, mapPinJson, drawMapPin, beforeAfterJson, drawBeforeAfter } from "../elementsMore.ts";
+import {
+  shapeJson,
+  drawShape,
+  lowerThirdJson,
+  drawLowerThird,
+  calloutJson,
+  drawCallout,
+  progressBarJson,
+  drawProgressBar,
+  countdownJson,
+  drawCountdown,
+  subscribeJson,
+  drawSubscribe,
+  stickerJson,
+  drawSticker,
+  imageFrameJson,
+  drawImageFrame,
+} from "../elements.ts";
+import {
+  followJson,
+  drawFollow,
+  socialButtonJson,
+  drawSocialButton,
+  checklistJson,
+  drawChecklist,
+  quoteJson,
+  drawQuote,
+  ratingJson,
+  drawRating,
+  priceTagJson,
+  drawPriceTag,
+  mapPinJson,
+  drawMapPin,
+  beforeAfterJson,
+  drawBeforeAfter,
+} from "../elementsMore.ts";
 import { followCardJson, drawFollowCard, stepsJson, drawSteps } from "../elementsCards.ts";
 import { stickerArt } from "../stickers.ts";
 import { type ClipBox, clipBox, type Rect, baseBox } from "../box.ts";
@@ -72,8 +106,14 @@ const CATEGORY: Readonly<Record<string, readonly [ElementCategory, string]>> = {
   "component.end-card": ["Titles & text", "end outro logo website ending"],
   "component.subscribe": ["Social", "subscribe youtube channel button bell"],
   "component.social-button": ["Social", "like bell follow share comment save button heart"],
-  "component.follow": ["Social", "follow handle username account logo youtube instagram tiktok x twitter linkedin facebook threads bluesky mastodon reddit snapchat pinterest twitch kick discord whatsapp telegram github spotify soundcloud podcast vimeo patreon substack medium website email"],
-  "component.follow-card": ["Social", "follow card handle end outro logo avatar channel account profile youtube instagram tiktok x twitter linkedin twitch github"],
+  "component.follow": [
+    "Social",
+    "follow handle username account logo youtube instagram tiktok x twitter linkedin facebook threads bluesky mastodon reddit snapchat pinterest twitch kick discord whatsapp telegram github spotify soundcloud podcast vimeo patreon substack medium website email",
+  ],
+  "component.follow-card": [
+    "Social",
+    "follow card handle end outro logo avatar channel account profile youtube instagram tiktok x twitter linkedin twitch github",
+  ],
   "component.progress-bar": ["Info", "progress bar loading timer percent"],
   "component.countdown": ["Info", "countdown timer clock seconds"],
   "component.checklist": ["Info", "checklist list todo steps tick tasks"],
@@ -135,7 +175,11 @@ const sizedTransform = (item: Pick<Item, "component" | "props" | "transform">, c
 };
 
 /** A component's box at `local` frames (D75's box: transform, keys, opacity), or undefined if it isn't one drawn here. */
-export function componentBox(item: Pick<Item, "type" | "component" | "props" | "transform" | "keys">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number }, local: number): ClipBox | undefined {
+export function componentBox(
+  item: Pick<Item, "type" | "component" | "props" | "transform" | "keys">,
+  canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number },
+  local: number,
+): ClipBox | undefined {
   if (!isDrawnComponent(item)) return undefined;
   const { size, transform } = sizedTransform(item, canvas);
   return clipBox({ transform, keys: item.keys }, canvas, size, local);
@@ -156,7 +200,11 @@ export function componentRest(item: Pick<Item, "type" | "component" | "props" | 
  * canvas the bottom ones sit a tenth of the height higher, clear of the apps' own captions and
  * buttons. Undefined for full-frame components and device frames (their own planner places them).
  */
-export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canvas" | "theme">, props?: Record<string, unknown>): { x: number; y: number; w: number; h: number } | undefined {
+export function defaultComponentBox(
+  id: string,
+  target: Pick<RenderTarget, "canvas" | "theme">,
+  props?: Record<string, unknown>,
+): { x: number; y: number; w: number; h: number } | undefined {
   const c = componentInfo(id);
   if (!c || c.block.fullFrame || c.block.screens) return undefined;
   const { width: W, height: H } = target.canvas;
@@ -187,7 +235,12 @@ export const componentDefaults = (id: string) => structuredClone((componentInfo(
  * Deterministic: the same item, target and frame give the same string, so the export draws one PNG
  * per distinct look.
  */
-export function componentHtml(item: Item, target: RenderTarget, local: number, opts: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): string {
+export function componentHtml(
+  item: Item,
+  target: RenderTarget,
+  local: number,
+  opts: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {},
+): string {
   const parts = componentParts(item, target, local, opts);
   return parts ? wrapComponent(parts.wrapper, parts.body) : "";
 }
@@ -199,7 +252,12 @@ export function componentHtml(item: Item, target: RenderTarget, local: number, o
  * keyed box moves on every frame however long it is. `box` is the box to draw it in when a
  * transition moves it (D79: visualsAt's), else its own at `local`.
  */
-export function componentParts(item: Item, target: RenderTarget, local: number, { opacity = 1, motion, fps = 30, box: moved }: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): { wrapper: string; body: string } | undefined {
+export function componentParts(
+  item: Item,
+  target: RenderTarget,
+  local: number,
+  { opacity = 1, motion, fps = 30, box: moved }: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {},
+): { wrapper: string; body: string } | undefined {
   const c = componentInfo(item.component);
   const box = moved && isDrawnComponent(item) ? moved : componentBox(item, target.canvas, local);
   if (!c || !box) return undefined;

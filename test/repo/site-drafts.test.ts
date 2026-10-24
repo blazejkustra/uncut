@@ -19,8 +19,17 @@ test("readPosts: drafts only when asked, marked as drafts, newest first; a draft
     mkdirSync(join(root, "drafts"));
     writeFileSync(join(root, "blog", "first.md"), post("First", "2026-10-16"));
     writeFileSync(join(root, "drafts", "next.md"), post("Next", "2026-10-20"));
-    assert.deepEqual(readPosts(root, false).map((p) => [p.slug, p.draft]), [["first", false]]);
-    assert.deepEqual(readPosts(root, true).map((p) => [p.slug, p.draft]), [["next", true], ["first", false]]);
+    assert.deepEqual(
+      readPosts(root, false).map((p) => [p.slug, p.draft]),
+      [["first", false]],
+    );
+    assert.deepEqual(
+      readPosts(root, true).map((p) => [p.slug, p.draft]),
+      [
+        ["next", true],
+        ["first", false],
+      ],
+    );
     writeFileSync(join(root, "drafts", "first.md"), post("Clash", "2026-10-21"));
     assert.throws(() => readPosts(root, true), /already has this slug/);
   } finally {

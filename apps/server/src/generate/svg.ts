@@ -35,7 +35,10 @@ export type MarkupKind = "svg" | "html";
 
 /** The markup's kind, or undefined when it's neither an SVG document nor HTML. */
 export function markupKind(markup: string): MarkupKind | undefined {
-  const head = markup.trimStart().replace(/^<\?xml[^>]*>\s*/i, "").replace(/^<!--[\s\S]*?-->\s*/, "");
+  const head = markup
+    .trimStart()
+    .replace(/^<\?xml[^>]*>\s*/i, "")
+    .replace(/^<!--[\s\S]*?-->\s*/, "");
   if (/^<svg\b/i.test(head) && /<\/svg>\s*$/i.test(markup.trimEnd())) return "svg";
   if (/^<(!doctype html|html|head|body|div|canvas|svg|style|script|main|section)\b/i.test(head)) return "html";
   return undefined;
@@ -53,7 +56,10 @@ export function extractMarkup(answer: string): string | undefined {
 }
 
 /** "canvas" (or nothing) is the project's canvas; else "WxH", 16 to 4096 a side. */
-export function svgPixels(size: string | undefined, canvas: { readonly width: number; readonly height: number }): { width: number; height: number } | undefined {
+export function svgPixels(
+  size: string | undefined,
+  canvas: { readonly width: number; readonly height: number },
+): { width: number; height: number } | undefined {
   if (!size || size === "canvas") return { width: canvas.width, height: canvas.height };
   const m = /^(\d{2,4})x(\d{2,4})$/.exec(size);
   if (!m) return undefined;
@@ -77,7 +83,8 @@ const SEEK_SCRIPT = `<script>(() => {
 /** The page the rasteriser loads: the markup (an SVG fills the page) in D78's graphic document. */
 export function markupDocument(markup: string, size: { width: number; height: number }) {
   const kind = markupKind(markup);
-  const body = kind === "svg" ? `<style>body>svg{display:block;width:${size.width}px;height:${size.height}px}</style>${markup.replace(/^\s*<\?xml[^>]*>/i, "")}` : markup;
+  const body =
+    kind === "svg" ? `<style>body>svg{display:block;width:${size.width}px;height:${size.height}px}</style>${markup.replace(/^\s*<\?xml[^>]*>/i, "")}` : markup;
   return graphicDocument(`${body}\n${SEEK_SCRIPT}`, size);
 }
 
@@ -103,16 +110,28 @@ const run = (bin: string, args: ReadonlyArray<string>, signal: AbortSignal) =>
  */
 export async function renderMarkup(
   markup: string,
-  options: { readonly kind: "image" | "video"; readonly width: number; readonly height: number; readonly seconds: number; readonly outBase: string; readonly signal: AbortSignal; readonly status: (text: string) => void },
+  options: {
+    readonly kind: "image" | "video";
+    readonly width: number;
+    readonly height: number;
+    readonly seconds: number;
+    readonly outBase: string;
+    readonly signal: AbortSignal;
+    readonly status: (text: string) => void;
+  },
 ): Promise<{ path: string }> {
   const kind = markupKind(markup);
   if (!kind) throw new Error("content must be an SVG document (<svg …>…</svg>) or an HTML page.");
-  if (Buffer.byteLength(markup) > MAX_MARKUP_BYTES) throw new Error(`content is over ${MAX_MARKUP_BYTES / 1024} KB; keep it simple (no embedded videos or large images).`);
+  if (Buffer.byteLength(markup) > MAX_MARKUP_BYTES)
+    throw new Error(`content is over ${MAX_MARKUP_BYTES / 1024} KB; keep it simple (no embedded videos or large images).`);
   if (options.kind === "image" && kind === "svg") {
     if (!svgSize(markup)) throw new Error("content isn't an SVG document.");
     const path = `${options.outBase}.svg`;
     // A viewBox-less SVG gets the asked size, so it isn't drawn at 300×150.
-    const sized = /<svg\b[^>]*\bviewBox\s*=/i.test(markup) || /<svg\b[^>]*\bwidth\s*=/i.test(markup) ? markup : markup.replace(/<svg\b/i, `<svg width="${options.width}" height="${options.height}"`);
+    const sized =
+      /<svg\b[^>]*\bviewBox\s*=/i.test(markup) || /<svg\b[^>]*\bwidth\s*=/i.test(markup)
+        ? markup
+        : markup.replace(/<svg\b/i, `<svg width="${options.width}" height="${options.height}"`);
     await writeFile(path, sized, { flag: "wx" });
     return { path };
   }
@@ -131,7 +150,16 @@ export async function renderMarkup(
       options.status("Drawing it…");
       const path = `${options.outBase}.png`;
       const png = join(temp, "still.png");
-      await raster.render({ kind: "graphic", width: size.width, height: size.height, doc, t: 0, info: { frame: 0, fps: SVG_FPS, duration: 1, width: size.width, height: size.height, props: {} }, out: png, name: "the picture" });
+      await raster.render({
+        kind: "graphic",
+        width: size.width,
+        height: size.height,
+        doc,
+        t: 0,
+        info: { frame: 0, fps: SVG_FPS, duration: 1, width: size.width, height: size.height, props: {} },
+        out: png,
+        name: "the picture",
+      });
       await copyFile(png, path, constants.COPYFILE_EXCL);
       return { path };
     }
@@ -139,7 +167,16 @@ export async function renderMarkup(
     for (let f = 0; f < frames; f++) {
       if (options.signal.aborted) throw options.signal.reason ?? new Error("cancelled");
       if (f % 15 === 0) options.status(`Drawing frame ${f + 1} of ${frames}…`);
-      await raster.render({ kind: "graphic", width: size.width, height: size.height, doc, t: f / SVG_FPS, info: { frame: f, fps: SVG_FPS, duration: frames, width: size.width, height: size.height, props: {} }, out: join(temp, `f${String(f).padStart(5, "0")}.png`), name: "the animation" });
+      await raster.render({
+        kind: "graphic",
+        width: size.width,
+        height: size.height,
+        doc,
+        t: f / SVG_FPS,
+        info: { frame: f, fps: SVG_FPS, duration: frames, width: size.width, height: size.height, props: {} },
+        out: join(temp, `f${String(f).padStart(5, "0")}.png`),
+        name: "the animation",
+      });
     }
     options.status("Encoding the video…");
     const path = `${options.outBase}.mp4`;
@@ -147,7 +184,28 @@ export async function renderMarkup(
     const cleanup = () => rm(path, { force: true });
     const W = Math.round(size.width / 2) * 2;
     const H = Math.round(size.height / 2) * 2;
-    await run(ffmpeg!, ["-v", "error", "-n", "-framerate", String(SVG_FPS), "-i", join(temp, "f%05d.png"), "-vf", `scale=${W}:${H},format=yuv420p`, "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart", path], options.signal).catch(async (error) => {
+    await run(
+      ffmpeg!,
+      [
+        "-v",
+        "error",
+        "-n",
+        "-framerate",
+        String(SVG_FPS),
+        "-i",
+        join(temp, "f%05d.png"),
+        "-vf",
+        `scale=${W}:${H},format=yuv420p`,
+        "-c:v",
+        "libx264",
+        "-crf",
+        "18",
+        "-movflags",
+        "+faststart",
+        path,
+      ],
+      options.signal,
+    ).catch(async (error) => {
       await cleanup();
       throw error;
     });
@@ -165,7 +223,10 @@ A still: an SVG document with a viewBox of the given size (or an HTML page of th
 An animation: either an SVG with CSS or SMIL animations, or an HTML page that defines window.render = (t, info) => { ... } drawing the frame at t seconds (0 to the given length) synchronously; it must look right at any t, drawn out of order. Fill the whole frame with a background colour.`;
 
 /** Asks Claude Code (its own sign-in, no tools) for the markup. */
-export async function askClaude(input: { readonly prompt: string; readonly kind: "image" | "video"; readonly width: number; readonly height: number; readonly seconds: number }, signal: AbortSignal): Promise<string> {
+export async function askClaude(
+  input: { readonly prompt: string; readonly kind: "image" | "video"; readonly width: number; readonly height: number; readonly seconds: number },
+  signal: AbortSignal,
+): Promise<string> {
   const bin = process.env.UNCUT_CLAUDE || (await which("claude", process.env.PATH ?? ""));
   if (!bin) throw new Error("Claude Code isn't installed: the SVG generator writes its pictures with your Claude Code (Settings shows how to install it).");
   const ask = `${input.kind === "video" ? `An animation, ${input.seconds} seconds long` : "A still picture"}, ${input.width}x${input.height} pixels.\nWhat to draw: ${input.prompt}`;
@@ -191,7 +252,10 @@ export async function askClaude(input: { readonly prompt: string; readonly kind:
       child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
       child.stdin!.on("error", () => {});
       child.stdin!.end(ask);
-      child.once("error", (e) => (clearTimeout(timer), signal.removeEventListener("abort", onAbort), reject(new Error(`Couldn't start Claude Code: ${e.message}`))));
+      child.once(
+        "error",
+        (e) => (clearTimeout(timer), signal.removeEventListener("abort", onAbort), reject(new Error(`Couldn't start Claude Code: ${e.message}`))),
+      );
       child.once("close", (code) => {
         clearTimeout(timer);
         signal.removeEventListener("abort", onAbort);
@@ -205,7 +269,8 @@ export async function askClaude(input: { readonly prompt: string; readonly kind:
     } catch {
       throw new Error("Claude Code's answer wasn't readable.");
     }
-    if (answer.is_error === true || typeof answer.result !== "string") throw new Error(`Claude couldn't write it: ${String(answer.result ?? "no answer").slice(0, 300)}`);
+    if (answer.is_error === true || typeof answer.result !== "string")
+      throw new Error(`Claude couldn't write it: ${String(answer.result ?? "no answer").slice(0, 300)}`);
     const markup = extractMarkup(answer.result);
     if (!markup) throw new Error("Claude's answer had no SVG or HTML in it. Try again, or say more about what to draw.");
     return markup;

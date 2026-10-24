@@ -50,7 +50,8 @@ export interface DuckCurve {
   readonly missing: ReadonlyArray<string>;
 }
 
-const clamp = (v: unknown, fallback: number, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback);
+const clamp = (v: unknown, fallback: number, lo: number, hi: number) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 
 /** A duck entry's settings, defaults filled in. */
 export function duckSettings(params: ModuleUse["params"]): DuckSettings {
@@ -154,14 +155,22 @@ export function duckCurve(
   const out: Array<DuckKey> = [];
   if (settings.amountDb < 0) {
     for (const [s, e] of merged) {
-      out.push({ frame: round4((s - attack) * fps), db: 0 }, { frame: round4(s * fps), db: settings.amountDb }, { frame: round4(e * fps), db: settings.amountDb }, { frame: round4((e + release) * fps), db: 0 });
+      out.push(
+        { frame: round4((s - attack) * fps), db: 0 },
+        { frame: round4(s * fps), db: settings.amountDb },
+        { frame: round4(e * fps), db: settings.amountDb },
+        { frame: round4((e + release) * fps), db: 0 },
+      );
     }
   }
   return { settings, keys: out, keyTracks: keys.map((t) => t.id), missing: [...missing].sort() };
 }
 
 /** Every ducked track's curve, by track id. */
-export function duckCurves(project: Pick<Project, "tracks" | "media" | "canvas">, envelopes: ReadonlyMap<string, SpeechEnvelope | null>): Map<string, DuckCurve> {
+export function duckCurves(
+  project: Pick<Project, "tracks" | "media" | "canvas">,
+  envelopes: ReadonlyMap<string, SpeechEnvelope | null>,
+): Map<string, DuckCurve> {
   const out = new Map<string, DuckCurve>();
   const { starts } = layout(project);
   for (const track of project.tracks) {
@@ -198,10 +207,11 @@ export function duckKeysIn(keys: ReadonlyArray<DuckKey>, from: number, to: numbe
   if (i0 < 0) return [];
   i0 = Math.max(0, i0 - 1);
   let i1 = keys.length - 1;
-  for (let i = i0; i < keys.length; i++) if (keys[i]!.frame > to) {
-    i1 = i;
-    break;
-  }
+  for (let i = i0; i < keys.length; i++)
+    if (keys[i]!.frame > to) {
+      i1 = i;
+      break;
+    }
   const out = keys.slice(i0, i1 + 1);
   return out.some((k) => k.db !== 0) ? out : [];
 }

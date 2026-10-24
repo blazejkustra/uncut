@@ -44,14 +44,38 @@ function project(media: string): Project {
     format: "uncut/0",
     name: "Shaders",
     canvas: { width: 1280, height: 720, fps: 30, background: "#000000" },
-    media: [{ id: "m-colours", kind: "video", name: "Colours.mp4", path: join(media, "Colours.mp4"), probe: { frames: 60, fps: 30, width: 1280, height: 720, hasAudio: false } }],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c0", type: "clip", media: "m-colours", in: 0, duration: CLIP, effects: [shaderEntry(RIPPLE, { amplitude: 0.02, speed: 8 })] }, { id: "c1", type: "clip", media: "m-colours", in: 0, duration: CLIP }] }],
+    media: [
+      {
+        id: "m-colours",
+        kind: "video",
+        name: "Colours.mp4",
+        path: join(media, "Colours.mp4"),
+        probe: { frames: 60, fps: 30, width: 1280, height: 720, hasAudio: false },
+      },
+    ],
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "c0", type: "clip", media: "m-colours", in: 0, duration: CLIP, effects: [shaderEntry(RIPPLE, { amplitude: 0.02, speed: 8 })] },
+          { id: "c1", type: "clip", media: "m-colours", in: 0, duration: CLIP },
+        ],
+      },
+    ],
   };
 }
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const effectsOf = (id: string) => onDisk().tracks[0]!.items.find((i) => i.id === id)!.effects;
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 10000 },
+    n,
+  );
 const meta = async (key: Parameters<Page["keyboard"]["press"]>[0]) => {
   await page.keyboard.down("Meta");
   await page.keyboard.press(key);
@@ -64,13 +88,21 @@ async function goTo(frame: number) {
   await page.keyboard.up("Shift");
   for (let i = 0; i < frame % 30; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 10000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 10000 },
+  );
   await sleep(500);
 }
-const rgb = (file: string, w: number, h: number) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+const rgb = (file: string, w: number, h: number) =>
+  execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
 /** Luma SSIM at 480×270 and the mean colour difference per channel (0–255, at 48×27), as video-fx-app. */
 function compare(a: string, b: string) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   const ssim = Number(/All:([\d.]+)/.exec(r.stderr)![1]);
   const pa = rgb(a, 48, 27);
   const pb = rgb(b, 48, 27);
@@ -98,7 +130,16 @@ async function screenshotSpace(): Promise<"srgb" | "p3"> {
 }
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", png, "-vf", "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24", outPath]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    png,
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=pc,format=yuv444p,setparams=color_primaries=smpte432:color_trc=iec61966-2-1:colorspace=bt709:range=pc,colorspace=primaries=bt709:trc=iec61966-2-1:space=bt709:range=pc:format=yuv444p,scale=in_color_matrix=bt709:in_range=pc,format=rgb24",
+    outPath,
+  ]);
   return outPath;
 }
 async function exportTo(saveAs: string): Promise<{ phase: string; text: string }> {
@@ -131,7 +172,22 @@ before(async () => {
   plugins = join(root, "plugins");
   cpSync(resolve("plugins/catalog/typegpu-effects"), join(plugins, "typegpu-effects"), { recursive: true });
   mkdirSync(join(root, "data"), { recursive: true });
-  writeFileSync(join(root, "data", "settings.json"), JSON.stringify({ onboarded: true, pluginApprovals: { "typegpu.effects": { dir: join(plugins, "typegpu-effects"), version: manifest.version, command: "", args: [], capabilities: [], approvedAt: new Date().toISOString() } } }));
+  writeFileSync(
+    join(root, "data", "settings.json"),
+    JSON.stringify({
+      onboarded: true,
+      pluginApprovals: {
+        "typegpu.effects": {
+          dir: join(plugins, "typegpu-effects"),
+          version: manifest.version,
+          command: "",
+          args: [],
+          capabilities: [],
+          approvedAt: new Date().toISOString(),
+        },
+      },
+    }),
+  );
 });
 after(async () => {
   await app?.close();
@@ -141,7 +197,15 @@ after(async () => {
 
 test("D213: shader effects in the preview (WebGPU), the Effects tab and the Inspector, and the export matches", { skip, timeout: 600000 }, async () => {
   const saveAs = join(root, "out", "Shaders.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: plugins, UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_PLUGINS_DIR: plugins,
+      UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]),
+      UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts"),
+    },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -153,10 +217,20 @@ test("D213: shader effects in the preview (WebGPU), the Effects tab and the Insp
 
   // The ripple through its WebGPU canvas, at the picture's size, the video hidden under it.
   await goTo(15);
-  await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>("canvas[data-shader=c0]")?.style.visibility === "", { timeout: 15000 }).catch(async (error) => {
-    const state = await page.evaluate(async () => ({ canvas: document.querySelector<HTMLCanvasElement>("canvas[data-shader=c0]")?.outerHTML ?? null, frame: document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame, badge: document.querySelector("[data-shader-badge]")?.textContent ?? null, gpu: !!navigator.gpu, adapter: !!(await navigator.gpu?.requestAdapter()), secure: isSecureContext, video: document.querySelector<HTMLVideoElement>(".pv-box[data-item=c0] > video")?.readyState }));
-    throw new Error(`${error.message}: ${JSON.stringify(state)}`);
-  });
+  await page
+    .waitForFunction(() => document.querySelector<HTMLCanvasElement>("canvas[data-shader=c0]")?.style.visibility === "", { timeout: 15000 })
+    .catch(async (error) => {
+      const state = await page.evaluate(async () => ({
+        canvas: document.querySelector<HTMLCanvasElement>("canvas[data-shader=c0]")?.outerHTML ?? null,
+        frame: document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame,
+        badge: document.querySelector("[data-shader-badge]")?.textContent ?? null,
+        gpu: !!navigator.gpu,
+        adapter: !!(await navigator.gpu?.requestAdapter()),
+        secure: isSecureContext,
+        video: document.querySelector<HTMLVideoElement>(".pv-box[data-item=c0] > video")?.readyState,
+      }));
+      throw new Error(`${error.message}: ${JSON.stringify(state)}`);
+    });
   // Shown first, sized at its first draw (a beat later on a slow runner, #89).
   await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>("canvas[data-shader=c0]")?.width === 1280, { timeout: 15000 }).catch(() => {});
   assert.equal(await page.$eval("canvas[data-shader=c0]", (el) => (el as HTMLCanvasElement).width), 1280);
@@ -172,8 +246,15 @@ test("D213: shader effects in the preview (WebGPU), the Effects tab and the Insp
   // The Effects tab: the Shaders grid with the catalog's four, thumbnails drawn by WebGPU.
   await page.click("[data-testid=rail-effects]");
   await page.waitForSelector("[data-testid=shaders-grid]");
-  assert.deepEqual(await page.$$eval("[data-testid=shader-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.shader)), ["typegpu.effects.ripple", "typegpu.effects.rgb-shift", "typegpu.effects.halftone", "typegpu.effects.crt"]);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLCanvasElement>("[data-testid=shader-thumb] canvas")].every((c) => !!c.dataset.drawn), { timeout: 15000 });
+  assert.deepEqual(await page.$$eval("[data-testid=shader-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.shader)), [
+    "typegpu.effects.ripple",
+    "typegpu.effects.rgb-shift",
+    "typegpu.effects.halftone",
+    "typegpu.effects.crt",
+  ]);
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLCanvasElement>("[data-testid=shader-thumb] canvas")].every((c) => !!c.dataset.drawn), {
+    timeout: 15000,
+  });
   assert.equal(await page.$("[data-testid=shader-thumb-no-gpu]"), null);
   // Each thumbnail differs (four different effects on the same picture).
   const thumbs = await page.$$eval("[data-testid=shader-thumb] canvas", (els) =>
@@ -208,7 +289,7 @@ test("D213: shader effects in the preview (WebGPU), the Effects tab and the Insp
   await page.keyboard.type("0.6");
   await page.keyboard.press("Enter");
   await waitRevision(r + 1);
-  assert.equal(((effectsOf("c1")![0]!.params as { values: Record<string, unknown> }).values).strength, 0.6);
+  assert.equal((effectsOf("c1")![0]!.params as { values: Record<string, unknown> }).values.strength, 0.6);
   await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>("canvas[data-shader=c1]")?.style.visibility === "", { timeout: 15000 });
   await sleep(400);
   await page.screenshot({ path: out("issue20-inspector.png") });
@@ -240,7 +321,16 @@ test("D213: without WebGPU the clip shows plain with a badge, the tiles say so, 
   await app?.close();
   app = undefined;
   const saveAs = join(root, "out", "NoGpu.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: plugins, UNCUT_TEST_NO_GPU: "1", UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_PLUGINS_DIR: plugins,
+      UNCUT_TEST_NO_GPU: "1",
+      UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]),
+      UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts"),
+    },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
@@ -249,7 +339,10 @@ test("D213: without WebGPU the clip shows plain with a badge, the tiles say so, 
   await page.keyboard.press("Escape");
   await goTo(15);
   await page.waitForSelector("[data-shader-badge=c0]", { timeout: 15000 });
-  assert.match(await page.$eval("[data-shader-badge=c0]", (el) => el.textContent ?? ""), /^Ripple isn't drawn here: .*(WebGPU|GPU).*\. The export needs WebGPU too\.$/);
+  assert.match(
+    await page.$eval("[data-shader-badge=c0]", (el) => el.textContent ?? ""),
+    /^Ripple isn't drawn here: .*(WebGPU|GPU).*\. The export needs WebGPU too\.$/,
+  );
   assert.equal(await page.$("canvas[data-shader=c0]"), null);
   assert.equal(await page.$eval(".pv-box[data-item=c0] > video", (el) => (el as HTMLElement).style.visibility), "", "the plain picture shows");
   await page.click("[data-testid=rail-effects]");

@@ -47,7 +47,10 @@ export function parseSource(raw: string): InstallSource {
   if (!source) throw new InstallError("invalid", "Choose a folder or paste a git URL.");
   if (GIT_URL.test(source) || SCP_URL.test(source)) return { kind: "git", url: source };
   if (/^[a-z][a-z0-9+.-]*:/i.test(source) && !source.startsWith("/")) {
-    throw new InstallError("invalid", `Uncut installs plugins from a folder or a git URL starting with https://, ssh://, git:// or file://, not ${source.split(":")[0]}.`);
+    throw new InstallError(
+      "invalid",
+      `Uncut installs plugins from a folder or a git URL starting with https://, ssh://, git:// or file://, not ${source.split(":")[0]}.`,
+    );
   }
   if (!isAbsolute(source)) throw new InstallError("invalid", "Give the folder's full path (starting with /) or a git URL.");
   return { kind: "folder", path: resolve(source) };
@@ -57,7 +60,8 @@ export function parseSource(raw: string): InstallSource {
 export function checkRef(ref: string | undefined): string | undefined {
   const r = ref?.trim();
   if (!r) return undefined;
-  if (!REF.test(r) || r.includes("..") || r.endsWith("/") || r.endsWith(".lock")) throw new InstallError("invalid", `"${r.slice(0, 80)}" isn't a branch or tag name.`);
+  if (!REF.test(r) || r.includes("..") || r.endsWith("/") || r.endsWith(".lock"))
+    throw new InstallError("invalid", `"${r.slice(0, 80)}" isn't a branch or tag name.`);
   return r;
 }
 
@@ -105,7 +109,11 @@ class TooBig extends Error {}
  * Runs git (its own process group, killed on timeout, or when `watch.dir` grows past
  * `watch.maxBytes`); resolves stdout, rejects with git's last line.
  */
-function runGit(git: string, args: ReadonlyArray<string>, options: { cwd?: string; timeoutMs?: number; watch?: { dir: string; maxBytes: number } } = {}): Promise<string> {
+function runGit(
+  git: string,
+  args: ReadonlyArray<string>,
+  options: { cwd?: string; timeoutMs?: number; watch?: { dir: string; maxBytes: number } } = {},
+): Promise<string> {
   return new Promise((done, fail) => {
     const child = spawn(git, [...args], { cwd: options.cwd ?? tmpdir(), env: gitEnv(), stdio: ["ignore", "pipe", "pipe"], detached: true });
     let out = "";
@@ -144,17 +152,33 @@ function runGit(git: string, args: ReadonlyArray<string>, options: { cwd?: strin
       clearInterval(poll);
       if (tooBig) return fail(new TooBig());
       if (code === 0) return done(out);
-      const last = err.trim().split("\n").filter((l) => !/^warning:/i.test(l)).at(-1)?.replace(/^fatal:\s*/i, "") ?? "";
+      const last =
+        err
+          .trim()
+          .split("\n")
+          .filter((l) => !/^warning:/i.test(l))
+          .at(-1)
+          ?.replace(/^fatal:\s*/i, "") ?? "";
       fail(new Error(timedOut ? `it took longer than ${Math.round((options.timeoutMs ?? GIT_TIMEOUT_MS) / 1000)} s` : last || `git exited with code ${code}`));
     });
   });
 }
 
 /** A shallow clone of `url` (at `ref`) into `dest`, at most `maxBytes` on disk; returns the commit. */
-export async function gitClone(git: string, url: string, ref: string | undefined, dest: string, timeoutMs?: number, maxBytes = MAX_CLONE_BYTES): Promise<string> {
+export async function gitClone(
+  git: string,
+  url: string,
+  ref: string | undefined,
+  dest: string,
+  timeoutMs?: number,
+  maxBytes = MAX_CLONE_BYTES,
+): Promise<string> {
   const tooBig = new InstallError("invalid", `That repository is bigger than ${Math.round(maxBytes / 1024 / 1024)} MB, so Uncut stopped cloning it.`);
   try {
-    await runGit(git, ["clone", "--depth", "1", "--single-branch", "--no-tags", ...(ref ? ["--branch", ref] : []), "--", url, dest], { timeoutMs, watch: { dir: dest, maxBytes } });
+    await runGit(git, ["clone", "--depth", "1", "--single-branch", "--no-tags", ...(ref ? ["--branch", ref] : []), "--", url, dest], {
+      timeoutMs,
+      watch: { dir: dest, maxBytes },
+    });
   } catch (error) {
     if (error instanceof TooBig) throw tooBig;
     throw new InstallError("io", `Couldn't clone ${url}${ref ? ` at ${ref}` : ""}: ${(error as Error).message}.`);
@@ -206,7 +230,8 @@ export async function checkFiles(root: string, limits = { bytes: MAX_INSTALL_BYT
         await walk(path);
       } else if (info.isFile()) {
         bytes += info.size;
-        if (bytes > limits.bytes) throw new InstallError("invalid", `It's bigger than ${Math.round(limits.bytes / 1024 / 1024)} MB; Uncut installs plugins up to that size.`);
+        if (bytes > limits.bytes)
+          throw new InstallError("invalid", `It's bigger than ${Math.round(limits.bytes / 1024 / 1024)} MB; Uncut installs plugins up to that size.`);
         entries.push({ rel: path, type: "file", mode: info.mode & 0o777 });
       } else {
         throw new InstallError("invalid", `Its ${path} isn't a regular file or folder (a socket, pipe or device), so Uncut won't install it.`);
@@ -261,7 +286,10 @@ export interface InstallContext {
 }
 
 /** Installs a plugin folder (copied) or git repository (cloned, then copied). Throws InstallError. */
-export async function installPlugin(input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined }, ctx: InstallContext): Promise<Installed> {
+export async function installPlugin(
+  input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined },
+  ctx: InstallContext,
+): Promise<Installed> {
   const source = parseSource(input.source);
   const ref = checkRef(input.ref);
   if (ref && source.kind === "folder") throw new InstallError("invalid", "A branch or tag only goes with a git URL.");
@@ -291,14 +319,22 @@ export async function installPlugin(input: { readonly source: string; readonly r
     try {
       raw = JSON.parse(await readFile(join(from, MANIFEST_FILE), "utf8"));
     } catch (error) {
-      throw new InstallError("invalid", (error as NodeJS.ErrnoException).code === "ENOENT" ? `There's no ${MANIFEST_FILE} at the top of ${source.kind === "git" ? "that repository" : "that folder"}, so it isn't an Uncut plugin.` : `Its ${MANIFEST_FILE} isn't valid JSON.`);
+      throw new InstallError(
+        "invalid",
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? `There's no ${MANIFEST_FILE} at the top of ${source.kind === "git" ? "that repository" : "that folder"}, so it isn't an Uncut plugin.`
+          : `Its ${MANIFEST_FILE} isn't valid JSON.`,
+      );
     }
     const checked = checkManifest(raw, ctx.builtinIds, "user");
     if ("problem" in checked) throw new InstallError("invalid", checked.problem);
     const manifest: ModuleManifest = checked.manifest;
     const bundledName = ctx.bundled.get(manifest.id);
     if (bundledName !== undefined && !input.replaceBundled) {
-      throw new InstallError("replaces-bundled", `${manifest.name} has the id ${manifest.id}, like ${bundledName}, which ships with Uncut. Installing it replaces that one until you remove it.`);
+      throw new InstallError(
+        "replaces-bundled",
+        `${manifest.name} has the id ${manifest.id}, like ${bundledName}, which ships with Uncut. Installing it replaces that one until you remove it.`,
+      );
     }
     const entries = await checkFiles(from);
     await mkdir(ctx.pluginsRoot, { recursive: true });

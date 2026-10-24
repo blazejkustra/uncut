@@ -12,7 +12,11 @@ import type { Id, Item, Op, Track } from "../types.ts";
  * an earlier op in the same edit, e.g. move_item): those get one whenever it isn't 0. Also returns
  * where each lands.
  */
-export function gapOpsFor(order: ReadonlyArray<Item>, desired: (item: Item, index: number) => number, cleared: ReadonlySet<Id> = new Set()): { ops: Array<Op>; starts: Map<Id, number> } {
+export function gapOpsFor(
+  order: ReadonlyArray<Item>,
+  desired: (item: Item, index: number) => number,
+  cleared: ReadonlySet<Id> = new Set(),
+): { ops: Array<Op>; starts: Map<Id, number> } {
   const ops: Array<Op> = [];
   const starts = new Map<Id, number>();
   let end = 0;
@@ -39,7 +43,10 @@ export function mainStartsById(track: Pick<Track, "items">): Map<Id, number> {
  */
 export function keepMainTimes(track: Pick<Track, "items">, gone: ReadonlySet<Id>): Array<Op> {
   const before = mainStartsById(track);
-  return gapOpsFor(track.items.filter((i) => !gone.has(i.id)), (item) => before.get(item.id)!).ops;
+  return gapOpsFor(
+    track.items.filter((i) => !gone.has(i.id)),
+    (item) => before.get(item.id)!,
+  ).ops;
 }
 
 /**
@@ -78,7 +85,7 @@ export function shiftMainItems(track: Pick<Track, "items">, ids: ReadonlySet<Id>
   // Moved items next to each other move as one block: the others go before or after a block by
   // its middle, so they never land inside it.
   const middle = new Map<Id, number>();
-  for (let i = 0; i < track.items.length; ) {
+  for (let i = 0; i < track.items.length;) {
     const item = track.items[i]!;
     if (!ids.has(item.id)) {
       middle.set(item.id, desired(item) + item.duration / 2);
@@ -112,7 +119,8 @@ export function shiftMainItems(track: Pick<Track, "items">, ids: ReadonlySet<Id>
   const drops: Array<Op> = [];
   order.forEach((item, k) => {
     const start = gaps.starts.get(item.id)!;
-    if (item.transitionIn && (start > end || prevBefore.get(item.id) !== order[k - 1]?.id)) drops.push({ op: "set_transition", item: item.id, transition: null });
+    if (item.transitionIn && (start > end || prevBefore.get(item.id) !== order[k - 1]?.id))
+      drops.push({ op: "set_transition", item: item.id, transition: null });
     end = start + item.duration;
   });
   return { ops: [...drops, ...moves, ...gaps.ops], starts: gaps.starts };

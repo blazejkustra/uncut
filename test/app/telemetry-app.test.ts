@@ -17,11 +17,17 @@ const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to
 const T = { skip, timeout: 120000 };
 const TOKEN = "app-test-token-0123456789";
 
-let root: string, data: string, collector: Server | undefined, endpoint = "";
+let root: string,
+  data: string,
+  collector: Server | undefined,
+  endpoint = "";
 const bodies: Array<{ auth: string | undefined; body: string }> = [];
 const apps = new Set<LaunchedApp>();
 const launch = async (extra: NodeJS.ProcessEnv = {}) => {
-  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: TOKEN, DO_NOT_TRACK: "", ...extra } });
+  const app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: TOKEN, DO_NOT_TRACK: "", ...extra },
+  });
   apps.add(app);
   await waitForWelcome(app.page);
   return app;
@@ -32,8 +38,16 @@ const close = async (app: LaunchedApp) => {
 };
 const events = () =>
   bodies.flatMap(({ body }) => {
-    const json = JSON.parse(body) as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<{ key: string; value: Record<string, unknown> }> }> }> }> };
-    return json.resourceLogs.flatMap((rl) => rl.scopeLogs.flatMap((sl) => sl.logRecords.map((r) => ({ name: r.body.stringValue, attrs: Object.fromEntries(r.attributes.map((a) => [a.key, Object.values(a.value)[0]])) }))));
+    const json = JSON.parse(body) as {
+      resourceLogs: Array<{
+        scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<{ key: string; value: Record<string, unknown> }> }> }>;
+      }>;
+    };
+    return json.resourceLogs.flatMap((rl) =>
+      rl.scopeLogs.flatMap((sl) =>
+        sl.logRecords.map((r) => ({ name: r.body.stringValue, attrs: Object.fromEntries(r.attributes.map((a) => [a.key, Object.values(a.value)[0]])) })),
+      ),
+    );
   });
 const until = async (check: () => boolean, ms: number, what: string) => {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) if (check()) return;
@@ -47,14 +61,22 @@ const openUsageData = async (page: Page) => {
   await page.click("[data-testid=settings-nav-app]");
   await page.waitForSelector("[data-testid=settings-telemetry]:not([disabled]), [data-testid=settings-telemetry][disabled]", { timeout: 10000 });
   // The state comes from the server: wait until it has answered (the note then says more, or the box is enabled).
-  await page.waitForFunction(() => {
-    const box = document.querySelector<HTMLInputElement>("[data-testid=settings-telemetry]");
-    return box && (!box.disabled || /DO_NOT_TRACK|UNCUT_TELEMETRY|no telemetry token/.test(document.querySelector("[data-testid=settings-telemetry-note]")?.textContent ?? ""));
-  }, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const box = document.querySelector<HTMLInputElement>("[data-testid=settings-telemetry]");
+      return (
+        box &&
+        (!box.disabled ||
+          /DO_NOT_TRACK|UNCUT_TELEMETRY|no telemetry token/.test(document.querySelector("[data-testid=settings-telemetry-note]")?.textContent ?? ""))
+      );
+    },
+    { timeout: 10000 },
+  );
   await page.$eval("[data-testid=settings-telemetry]", (el) => el.scrollIntoView({ block: "center" }));
   await new Promise((r) => setTimeout(r, 300));
 };
-const checkbox = (page: Page) => page.$eval("[data-testid=settings-telemetry]", (el) => ({ checked: (el as HTMLInputElement).checked, disabled: (el as HTMLInputElement).disabled }));
+const checkbox = (page: Page) =>
+  page.$eval("[data-testid=settings-telemetry]", (el) => ({ checked: (el as HTMLInputElement).checked, disabled: (el as HTMLInputElement).disabled }));
 
 before(async () => {
   if (skip) return;
@@ -91,13 +113,21 @@ test("by default app:start reaches the collector with no identifier; the Setting
   const start = events().find((e) => e.name === "app:start")!;
   assert.equal(start.attrs.runtime, "electron");
   assert.equal(start.attrs.headless, false);
-  for (const e of events()) for (const k of Object.keys(e.attrs)) assert.ok(["app_version", "arch", "event.name", "headless", "os", "runtime", "process", "error_name", "crash_fingerprint", "code", "fatal"].includes(k), `unexpected attribute ${k}`);
+  for (const e of events())
+    for (const k of Object.keys(e.attrs))
+      assert.ok(
+        ["app_version", "arch", "event.name", "headless", "os", "runtime", "process", "error_name", "crash_fingerprint", "code", "fatal"].includes(k),
+        `unexpected attribute ${k}`,
+      );
   assert.ok(!existsSync(join(data, "install-id")) && !existsSync(join(data, "telemetry-id")), "no id file");
   for (const { body } of bodies) assert.doesNotMatch(body, new RegExp(root.replace(/[/.]/g, "\\$&")));
 
   await openUsageData(app.page);
   assert.deepEqual(await checkbox(app.page), { checked: true, disabled: false });
-  assert.match(await app.page.$eval("[data-testid=settings-telemetry]", (el) => (el.closest("label") as HTMLElement).innerText), /Send anonymous usage data and crash reports/);
+  assert.match(
+    await app.page.$eval("[data-testid=settings-telemetry]", (el) => (el.closest("label") as HTMLElement).innerText),
+    /Send anonymous usage data and crash reports/,
+  );
   assert.match(await app.page.$eval("[data-testid=settings-telemetry-note]", (el) => el.textContent ?? ""), /Never your footage, prompts, file names or paths/);
   await app.page.screenshot({ path: "test-output/telemetry-settings-on.png" });
   await app.page.click("[data-testid=settings-telemetry]");

@@ -17,7 +17,15 @@ const side = (v: number) => Math.min(8192, Math.max(16, Math.round(v / 2) * 2));
  * sides, and its rate when it's one of the canvas rates (else the canvas keeps its own). The
  * background is kept. Undefined when the clip has no size.
  */
-export function canvasForClip(canvas: Canvas, clip: { readonly width?: number | undefined; readonly height?: number | undefined; readonly fps?: number | undefined; readonly rotation?: number | undefined }): Canvas | undefined {
+export function canvasForClip(
+  canvas: Canvas,
+  clip: {
+    readonly width?: number | undefined;
+    readonly height?: number | undefined;
+    readonly fps?: number | undefined;
+    readonly rotation?: number | undefined;
+  },
+): Canvas | undefined {
   if (!clip.width || !clip.height) return undefined;
   const turned = clip.rotation === 90 || clip.rotation === 270;
   const width = side(turned ? clip.height : clip.width);

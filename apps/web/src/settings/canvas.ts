@@ -22,14 +22,28 @@ export const canvasSide = (v: number) => Math.min(8192, Math.max(16, Math.round(
  * A new size (F10, D155) also rescales what's placed on the canvas, in the same edit (one ⌘Z),
  * unless `keepPositions`: see rescaleItem.
  */
-export function planCanvas(project: ProjectModel, patch: Partial<Canvas>, { keepPositions = false }: { keepPositions?: boolean } = {}): Plan | { readonly problem: string } {
+export function planCanvas(
+  project: ProjectModel,
+  patch: Partial<Canvas>,
+  { keepPositions = false }: { keepPositions?: boolean } = {},
+): Plan | { readonly problem: string } {
   const next = { ...project.canvas, ...patch };
   if (patch.width !== undefined) next.width = canvasSide(patch.width);
   if (patch.height !== undefined) next.height = canvasSide(patch.height);
-  if (patch.fps !== undefined && patch.fps !== project.canvas.fps && project.tracks.some((t) => t.items.length)) return { problem: "The frame rate can only change while the timeline is empty." };
-  const same = next.width === project.canvas.width && next.height === project.canvas.height && next.fps === project.canvas.fps && next.background === project.canvas.background;
+  if (patch.fps !== undefined && patch.fps !== project.canvas.fps && project.tracks.some((t) => t.items.length))
+    return { problem: "The frame rate can only change while the timeline is empty." };
+  const same =
+    next.width === project.canvas.width &&
+    next.height === project.canvas.height &&
+    next.fps === project.canvas.fps &&
+    next.background === project.canvas.background;
   if (same) return { ops: [], summary: "" };
-  const what = patch.fps !== undefined ? `frame rate to ${next.fps} fps` : patch.background !== undefined ? `background to ${next.background}` : `canvas to ${next.width}×${next.height}`;
+  const what =
+    patch.fps !== undefined
+      ? `frame rate to ${next.fps} fps`
+      : patch.background !== undefined
+        ? `background to ${next.background}`
+        : `canvas to ${next.width}×${next.height}`;
   const resized = next.width !== project.canvas.width || next.height !== project.canvas.height;
   const items: Array<Op> = [];
   if (resized && !keepPositions) {
@@ -40,7 +54,10 @@ export function planCanvas(project: ProjectModel, patch: Partial<Canvas>, { keep
       }
     }
   }
-  return { ops: [{ op: "update_project", set: { canvas: next } }, ...items], summary: `Changed ${what}${items.length ? `, ${items.length === 1 ? "1 item" : `${items.length} items`} rescaled` : ""}` };
+  return {
+    ops: [{ op: "update_project", set: { canvas: next } }, ...items],
+    summary: `Changed ${what}${items.length ? `, ${items.length === 1 ? "1 item" : `${items.length} items`} rescaled` : ""}`,
+  };
 }
 
 const r = (n: number) => Math.round(n);
@@ -64,7 +81,12 @@ export function rescaleItem(item: Item, from: Pick<Canvas, "width" | "height">, 
     if (t && (t.x !== undefined || t.y !== undefined || t.w !== undefined)) {
       const w = t.w !== undefined ? t.w * k : undefined;
       const x = t.x !== undefined ? (t.w !== undefined ? (t.x + t.w / 2) * sx - w! / 2 : t.x * sx) : undefined;
-      set.transform = { ...t, ...(x !== undefined ? { x: r(x) } : {}), ...(t.y !== undefined ? { y: r(t.y * sy) } : {}), ...(w !== undefined ? { w: Math.max(1, r(w)) } : {}) };
+      set.transform = {
+        ...t,
+        ...(x !== undefined ? { x: r(x) } : {}),
+        ...(t.y !== undefined ? { y: r(t.y * sy) } : {}),
+        ...(w !== undefined ? { w: Math.max(1, r(w)) } : {}),
+      };
     }
     const style = item.style;
     if (style && (typeof style.size === "number" || (style.stroke && typeof style.stroke.width === "number"))) {

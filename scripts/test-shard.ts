@@ -47,7 +47,10 @@ const medianOf = (files: ReadonlyArray<string>, fallback: number) => {
   return v.length ? v[Math.floor(v.length / 2)]! : fallback;
 };
 const appMedian = medianOf(all.filter(isApp), 60);
-const fastMedian = medianOf(all.filter((f) => !isApp(f)), 10);
+const fastMedian = medianOf(
+  all.filter((f) => !isApp(f)),
+  10,
+);
 /** A file's share of its shard's wall time. */
 const weight = (f: string) => (isApp(f) ? (known[f] ?? appMedian) : (known[f] ?? fastMedian) / FAST_AT_ONCE);
 
@@ -157,7 +160,9 @@ const summary = [
   ...results.map((r) => `| ${r.file} | ${r.ok ? (r.tries > 1 ? `flaky (${r.tries} tries)` : "ok") : "**failed**"} | ${r.seconds} |`),
   "",
   ...(skippedTests.length ? ["<details><summary>Skipped tests</summary>", "", ...skippedTests.map((l) => `- ${l}`), "", "</details>", ""] : []),
-  ...(skippedChecks().length ? ["<details><summary>Checks not run on this machine</summary>", "", ...skippedChecks().map((l) => `- ${l}`), "", "</details>", ""] : []),
+  ...(skippedChecks().length
+    ? ["<details><summary>Checks not run on this machine</summary>", "", ...skippedChecks().map((l) => `- ${l}`), "", "</details>", ""]
+    : []),
 ].join("\n");
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
 console.log(summary);

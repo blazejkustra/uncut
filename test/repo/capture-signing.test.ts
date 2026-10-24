@@ -14,7 +14,12 @@ const read = (p: string) => readFileSync(p, "utf8");
 
 test("the signed build's entitlements: microphone, camera and what Electron needs under the hardened runtime", () => {
   const plist = read(`apps/desktop/${SIGNED_ENTITLEMENTS}`);
-  for (const key of ["com.apple.security.device.audio-input", "com.apple.security.device.camera", "com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"]) {
+  for (const key of [
+    "com.apple.security.device.audio-input",
+    "com.apple.security.device.camera",
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+  ]) {
     assert.match(plist, new RegExp(`<key>${key.replace(/\./g, "\\.")}</key>\\s*<true/>`), key);
   }
   // D247: every binary carries the team's signature, so library validation stays on.
@@ -36,7 +41,10 @@ test("Info.plist gets the microphone and camera usage strings; the default build
   assert.equal(pkg.scripts.dist, "pnpm build && pnpm --filter @uncut/desktop dist");
   // The script runs pnpm build itself, after its checks, with the telemetry token (D247).
   assert.equal(pkg.scripts["dist:signed"], "node apps/desktop/scripts/dist-signed.ts");
-  assert.equal((JSON.parse(read("apps/desktop/package.json")) as { scripts: Record<string, string> }).scripts.dist, "electron-builder --config electron-builder.yml");
+  assert.equal(
+    (JSON.parse(read("apps/desktop/package.json")) as { scripts: Record<string, string> }).scripts.dist,
+    "electron-builder --config electron-builder.yml",
+  );
 });
 
 test("after-sign re-seals an ad-hoc build with a pinned requirement and only verifies a real signature", () => {
@@ -57,7 +65,11 @@ test("dist:signed picks a Developer ID identity and passes the hardened runtime,
   assert.equal(ids.length, 2);
   assert.deepEqual(pickIdentity(ids), { identity: ids[1], shareable: true }, "Developer ID first, whatever the order");
   const devOnly = pickIdentity([ids[0]!]) as { problem: string };
-  assert.match(devOnly.problem, /No "Developer ID Application" identity in the keychain \(found "Apple Development: Jane Doe \(ABCDE12345\)"\)/, "Apple Development alone is not a release");
+  assert.match(
+    devOnly.problem,
+    /No "Developer ID Application" identity in the keychain \(found "Apple Development: Jane Doe \(ABCDE12345\)"\)/,
+    "Apple Development alone is not a release",
+  );
   assert.match(devOnly.problem, /UNCUT_SIGN_IDENTITY/);
   const forced = pickIdentity(ids, "Apple Development: Jane Doe (ABCDE12345)") as { identity: unknown; shareable: boolean; warning: string };
   assert.deepEqual([forced.identity, forced.shareable], [ids[0], false], "forced: local-only");
@@ -68,7 +80,15 @@ test("dist:signed picks a Developer ID identity and passes the hardened runtime,
   assert.match((pickIdentity([]) as { problem: string }).problem, /developer\.apple\.com/);
   const args = signedBuilderArgs("F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C");
   assert.deepEqual(args.slice(0, 5), ["--config", "electron-builder.yml", "--mac", "dir", "--arm64"]);
-  for (const a of ["-c.mac.identity=F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C", "-c.mac.hardenedRuntime=true", `-c.mac.entitlements=${SIGNED_ENTITLEMENTS}`, `-c.mac.entitlementsInherit=${SIGNED_ENTITLEMENTS}`, "-c.mac.notarize=false", `-c.directories.output=${SIGNED_OUTPUT}`]) assert.ok(args.includes(a), a);
+  for (const a of [
+    "-c.mac.identity=F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C",
+    "-c.mac.hardenedRuntime=true",
+    `-c.mac.entitlements=${SIGNED_ENTITLEMENTS}`,
+    `-c.mac.entitlementsInherit=${SIGNED_ENTITLEMENTS}`,
+    "-c.mac.notarize=false",
+    `-c.directories.output=${SIGNED_OUTPUT}`,
+  ])
+    assert.ok(args.includes(a), a);
   assert.ok(!args.some((a) => a.startsWith("-c.mac.timestamp")), "osx-sign's default: Apple's secure timestamp, which notarization requires");
   assert.equal(SIGNED_OUTPUT, "../../dist/signed", "never over dist/mac-arm64, the ad-hoc build the tests use");
 });
@@ -77,12 +97,20 @@ test("test media: only with UNCUT_CDP, fake devices, states from the test (grant
   assert.equal(testMedia({ UNCUT_TEST_MEDIA: "fake" }), undefined, "a stray variable can't change a release user's app");
   assert.equal(testMedia({ UNCUT_CDP: "9222" }), undefined);
   assert.deepEqual(testMedia({ UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake" })?.access, { microphone: "granted", camera: "granted", screen: "granted" });
-  assert.deepEqual(testMedia({ UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake", UNCUT_TEST_MEDIA_ACCESS: '{"microphone":"denied","screen":"not-determined","camera":"bogus"}' })?.access, { microphone: "denied", camera: "granted", screen: "not-determined" });
-  assert.deepEqual(testMedia({ UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake", UNCUT_TEST_MEDIA_ACCESS: "not json" })?.access, { microphone: "granted", camera: "granted", screen: "granted" });
+  assert.deepEqual(
+    testMedia({ UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake", UNCUT_TEST_MEDIA_ACCESS: '{"microphone":"denied","screen":"not-determined","camera":"bogus"}' })
+      ?.access,
+    { microphone: "denied", camera: "granted", screen: "not-determined" },
+  );
+  assert.deepEqual(testMedia({ UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake", UNCUT_TEST_MEDIA_ACCESS: "not json" })?.access, {
+    microphone: "granted",
+    camera: "granted",
+    screen: "granted",
+  });
   assert.deepEqual([...TEST_MEDIA_SWITCHES], ["use-fake-device-for-media-stream", "use-fake-ui-for-media-stream"]);
   assert.equal(privacySettingsUrl("microphone"), "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
   assert.equal(privacySettingsUrl("screen"), "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
-  assert.match(read("test/helpers/app.ts"), /UNCUT_TEST_MEDIA: "fake", \.\.\.extra, UNCUT_CDP: String\(port\)/, "every launched test app uses test media");
+  assert.match(read("test/helpers/app.ts"), /UNCUT_TEST_MEDIA: "fake",\s*\.\.\.extra,\s*UNCUT_CDP: String\(port\)/, "every launched test app uses test media");
 });
 
 test("the desktop shell asks macOS, lists screens and opens System Settings only outside test media", () => {
@@ -94,7 +122,11 @@ test("the desktop shell asks macOS, lists screens and opens System Settings only
     assert.ok(start >= 0, name);
     return app.slice(start, app.indexOf("\n}\n", start));
   };
-  for (const [fn, real] of [["mediaAccess", "getMediaAccessStatus"], ["askMediaAccess", "askForMediaAccess"], ["captureSources", "desktopCapturer.getSources"]] as const) {
+  for (const [fn, real] of [
+    ["mediaAccess", "getMediaAccessStatus"],
+    ["askMediaAccess", "askForMediaAccess"],
+    ["captureSources", "desktopCapturer.getSources"],
+  ] as const) {
     const b = body(fn);
     assert.ok(b.indexOf("if (mediaTest)") >= 0 && b.indexOf("if (mediaTest)") < b.indexOf(real), `${fn}: test media returns before ${real}`);
   }

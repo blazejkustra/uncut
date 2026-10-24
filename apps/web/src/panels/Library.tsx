@@ -16,7 +16,19 @@ import { ElementsLibrary } from "./library/ElementsLibrary.tsx";
 import { MediaLibrary } from "./library/MediaLibrary.tsx";
 export { mediaMeta, Empty } from "./library/MediaTile.tsx";
 
-export type LibraryTab = "media" | "transcript" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate" | "brand" | "skills";
+export type LibraryTab =
+  | "media"
+  | "transcript"
+  | "text"
+  | "elements"
+  | "audio"
+  | "sfx"
+  | "transitions"
+  | "effects"
+  | "capture"
+  | "generate"
+  | "brand"
+  | "skills";
 
 export function Library({ project, dir, tab, onTab }: { project: Project; dir: string; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
   return tab === "brand" ? (

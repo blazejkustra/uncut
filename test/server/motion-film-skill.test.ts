@@ -18,7 +18,13 @@ test("motion-film is one of Uncut's own skills, callable with /motion-film and l
   const skill = bundledSkill("motion-film");
   assert.ok(skill, "bundled");
   assert.equal(bundledSkills().at(-1)!.name, "motion-film", "listed after the others, in BUILTIN_IDS order");
-  assert.deepEqual(calledSkills("make it /motion-film style, then /sound-design", bundledSkills().map((x) => x.name)), ["motion-film", "sound-design"]);
+  assert.deepEqual(
+    calledSkills(
+      "make it /motion-film style, then /sound-design",
+      bundledSkills().map((x) => x.name),
+    ),
+    ["motion-film", "sound-design"],
+  );
   const argv = sessionArgs({ cfg: "/tmp/m.json", skills: bundledSkills() });
   assert.ok(argv[argv.indexOf("--append-system-prompt") + 1]!.includes(`- motion-film: ${skill.description}`));
 });
@@ -30,20 +36,69 @@ test("motion-film is one of Uncut's own skills, callable with /motion-film and l
 test("its instructions: direction first, honesty, measured defects as facts, the toolkit; no creative rules", () => {
   const body = bundledSkill("motion-film").instructions;
   assert.ok(body.length <= 2600, `${body.length} characters`);
-  for (const head of ["The user's direction comes first", "Honesty", "Defects Uncut measures", "Toolkit", "Review checklist"]) assert.match(body, new RegExp(`^${head}`, "m"), head);
+  for (const head of ["The user's direction comes first", "Honesty", "Defects Uncut measures", "Toolkit", "Review checklist"])
+    assert.match(body, new RegExp(`^${head}`, "m"), head);
   assert.match(body, /a review reads "Reviewing" until one passes; no invented counts, scores/);
-  for (const want of [/Hard cuts/, /quick swap/, /Single-frame pops/, /2 to 3 frame flashes/, /Near-empty or low-information frames/, /Text cut at the frame's edge/, /illegible at phone size \(360 px wide\)/, /facts about the render, not taste/]) assert.match(body, want);
+  for (const want of [
+    /Hard cuts/,
+    /quick swap/,
+    /Single-frame pops/,
+    /2 to 3 frame flashes/,
+    /Near-empty or low-information frames/,
+    /Text cut at the frame's edge/,
+    /illegible at phone size \(360 px wide\)/,
+    /facts about the render, not taste/,
+  ])
+    assert.match(body, want);
   // The blocking lengths the critic measures (EMPTY_HARD_S, THIN_HARD_S), not the old 0.2 s that blocked the references.
   assert.match(body, /a cursor or a speck, for 0\.33 s; tiny text in a big flat field for 0\.5 s/);
   assert.doesNotMatch(body, /0\.2 s/);
   assert.match(body, /logos and Claude mark go in as their files \(brand_read\), never redrawn/);
   assert.match(body, /Template \(#111/);
-  for (const want of ["uncut:lib/ui.js", "uncutUI.mount", "uncutUI.sequence", "uncutUI.fly", "uncutMotion.click", "uncutMotion.camera", "uncutMotion.grow", "uncutMotion.frameRect", "safe and keep", "docs_read graphics"]) assert.ok(body.includes(want), want);
+  for (const want of [
+    "uncut:lib/ui.js",
+    "uncutUI.mount",
+    "uncutUI.sequence",
+    "uncutUI.fly",
+    "uncutMotion.click",
+    "uncutMotion.camera",
+    "uncutMotion.grow",
+    "uncutMotion.frameRect",
+    "safe and keep",
+    "docs_read graphics",
+  ])
+    assert.ok(body.includes(want), want);
   // The removed creative direction stays out.
-  for (const gone of [/hero shape/i, /one hero/i, /storyboard_propose/, /About Uncut/, /headline/i, /end card/i, /flat black/i, /LUFS/, /Pace/, /Banned/, /seamless loop/i, /last frame equals frame 0/i]) assert.doesNotMatch(body, gone);
+  for (const gone of [
+    /hero shape/i,
+    /one hero/i,
+    /storyboard_propose/,
+    /About Uncut/,
+    /headline/i,
+    /end card/i,
+    /flat black/i,
+    /LUFS/,
+    /Pace/,
+    /Banned/,
+    /seamless loop/i,
+    /last frame equals frame 0/i,
+  ])
+    assert.doesNotMatch(body, gone);
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 4 && checklist.length <= 12, `${checklist.length} lines`);
-  for (const re of [/message is followed/, /about this run are true, else none/, /hard cut/, /pop/, /near-empty or low-information/, /cut at the frame's edge/, /kit's files/]) assert.ok(checklist.some((l) => re.test(l)), String(re));
+  for (const re of [
+    /message is followed/,
+    /about this run are true, else none/,
+    /hard cut/,
+    /pop/,
+    /near-empty or low-information/,
+    /cut at the frame's edge/,
+    /kit's files/,
+  ])
+    assert.ok(
+      checklist.some((l) => re.test(l)),
+      String(re),
+    );
   assert.doesNotMatch(body, /[·•]|\w \* \w/);
   // Every uncutMotion function it names is in the library.
   const window: Record<string, unknown> = {};

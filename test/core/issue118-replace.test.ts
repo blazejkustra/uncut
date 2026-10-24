@@ -44,13 +44,16 @@ test("replace a fragment: the piece plays the other media, and nothing after it 
   const after = apply(plan.ops);
   assert.deepEqual(validateProject(after, modules), []);
   const main = after.tracks[0]!.items;
-  assert.deepEqual(main.map((i) => [i.id, i.media, i.in, i.duration]), [
-    ["c1", "m-a", 0, 30],
-    [plan.piece, "m-b", 200, 30],
-    ["c1-2", "m-a", 60, 60],
-    ["c2", "m-a", 300, 150],
-    ["c3", "m-b", 0, 90],
-  ]);
+  assert.deepEqual(
+    main.map((i) => [i.id, i.media, i.in, i.duration]),
+    [
+      ["c1", "m-a", 0, 30],
+      [plan.piece, "m-b", 200, 30],
+      ["c1-2", "m-a", 60, 60],
+      ["c2", "m-a", 300, 150],
+      ["c3", "m-b", 0, 90],
+    ],
+  );
   // The piece keeps the clip's look.
   assert.deepEqual(main[1]!.effects, project.tracks[0]!.items[0]!.effects);
   // Every later clip, and the song, start where they did.
@@ -63,10 +66,17 @@ test("replace a fragment: the piece plays the other media, and nothing after it 
 test("replace a fragment: at an item's edges it splits only where needed; a sped-up clip's piece plays at normal speed", () => {
   const whole = planReplaceRange(project, { item: "c3", from: 270, to: 360, media: "m-a" });
   assert.ok(!("problem" in whole));
-  assert.deepEqual(whole.ops.map((o) => o.op), ["update_item"], "the whole item: no split");
+  assert.deepEqual(
+    whole.ops.map((o) => o.op),
+    ["update_item"],
+    "the whole item: no split",
+  );
   const head = planReplaceRange(project, { item: "c2", from: 120, to: 150, media: "m-b", in: 10 });
   assert.ok(!("problem" in head));
-  assert.deepEqual(head.ops.map((o) => o.op), ["split_item", "update_item"]);
+  assert.deepEqual(
+    head.ops.map((o) => o.op),
+    ["split_item", "update_item"],
+  );
   const after = apply(head.ops);
   const piece = after.tracks[0]!.items.find((i) => i.id === "c2")!;
   assert.deepEqual([piece.media, piece.in, piece.duration, piece.speed], ["m-b", 10, 30, undefined]);

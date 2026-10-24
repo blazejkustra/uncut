@@ -26,8 +26,38 @@ const skipFf = hasFfmpeg ? false : "needs ffmpeg";
 
 const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
 /** A 4K long-GOP H.264 clip (keyframe every 120 frames) of `seconds`, picture `src` (a lavfi source). */
-const make4k = (file: string, seconds = 1, src = "testsrc2") => ff("-f", "lavfi", "-i", `${src}=size=3840x2160:rate=30`, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", String(seconds), "-c:v", hasVt ? "h264_videotoolbox" : "libx264", ...(hasVt ? ["-b:v", "20M"] : ["-preset", "ultrafast"]), "-g", "120", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", file);
-const probe = (file: string) => JSON.parse(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_read_frames", "-of", "json", file], { encoding: "utf8" })).streams[0] as { codec_name: string; width: number; height: number; nb_read_frames: string };
+const make4k = (file: string, seconds = 1, src = "testsrc2") =>
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    `${src}=size=3840x2160:rate=30`,
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000",
+    "-t",
+    String(seconds),
+    "-c:v",
+    hasVt ? "h264_videotoolbox" : "libx264",
+    ...(hasVt ? ["-b:v", "20M"] : ["-preset", "ultrafast"]),
+    "-g",
+    "120",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    file,
+  );
+const probe = (file: string) =>
+  JSON.parse(
+    execFileSync(
+      "ffprobe",
+      ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_read_frames", "-of", "json", file],
+      { encoding: "utf8" },
+    ),
+  ).streams[0] as { codec_name: string; width: number; height: number; nb_read_frames: string };
 
 test("D212: 4K, HEVC and heavy long-GOP footage gets a proxy; light or intra footage doesn't", () => {
   assert.equal(needsProxy({ codec: "h264", width: 3840, height: 2160, bitrate: 50e6 }), true);
@@ -55,7 +85,12 @@ test("D212: only the preview reads proxies: export, render_frames and analysis u
       if (!preview.has(`${dir}/${f}`)) assert.doesNotMatch(text, /proxies\.ts|proxyDir|\.cache\/proxies|PROXY_PATH|proxyPath/, `${dir}/${f}`);
     }
   }
-  for (const f of ["apps/server/src/export/exporter/runJob.ts", "apps/server/src/export/exporter/frames.ts"]) assert.match(readFileSync(f, "utf8"), /graphicMediaSource\(\{ bin, media: \(\) => project\.media, mediaPath, videotoolbox: caps\.videotoolboxDecode \}\)/, `${f}: its graphics' media from the originals`);
+  for (const f of ["apps/server/src/export/exporter/runJob.ts", "apps/server/src/export/exporter/frames.ts"])
+    assert.match(
+      readFileSync(f, "utf8"),
+      /graphicMediaSource\(\{ bin, media: \(\) => project\.media, mediaPath, videotoolbox: caps\.videotoolboxDecode \}\)/,
+      `${f}: its graphics' media from the originals`,
+    );
 });
 
 const until = async (check: () => boolean, ms = 60000) => {
@@ -90,7 +125,11 @@ test("D212: the queue makes a keyed proxy, replaces it when the original changes
     ];
     await queue.sync(dir, media);
     await queue.idle();
-    assert.deepEqual(states.map((s) => [s.mediaId, s.phase]), [["m-big", "done"]], "the light clip has no proxy");
+    assert.deepEqual(
+      states.map((s) => [s.mediaId, s.phase]),
+      [["m-big", "done"]],
+      "the light clip has no proxy",
+    );
     const key = (await posterKey(big))!;
     assert.equal(states[0]!.key, key);
     const file = join(proxyDir(dir), `m-big--${key}.mp4`);
@@ -191,6 +230,8 @@ test("D212 on the server: the proxy is reported and served for the preview; the 
   const { jobId } = await client!.ok("export.start", { output, quality: "draft", loudness: "off" });
   await jobs.until((list: ReadonlyArray<{ id: string; phase: string }>) => list.some((j) => j.id === jobId && ["done", "failed"].includes(j.phase)), 120000);
   assert.equal(jobs.values.at(-1)!.find((j: { id: string }) => j.id === jobId).phase, "done");
-  const rgb = [...execFileSync("ffmpeg", ["-v", "error", "-ss", "0.5", "-i", output, "-frames:v", "1", "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+  const rgb = [
+    ...execFileSync("ffmpeg", ["-v", "error", "-ss", "0.5", "-i", output, "-frames:v", "1", "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]),
+  ];
   assert.ok(!(rgb[0]! > 200 && rgb[1]! < 60 && rgb[2]! < 60), `the export is not the red proxy: ${rgb}`);
 });

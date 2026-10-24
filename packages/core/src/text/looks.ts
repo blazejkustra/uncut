@@ -83,11 +83,27 @@ export interface TextLook {
   readonly with?: ReadonlyArray<{ readonly look: string; readonly text: string; readonly dy?: number }>;
 }
 
-type LookManifest = { readonly id: string; readonly name: string; readonly description?: string; readonly look: Omit<TextLook, "id" | "name" | "description" | "font" | "tracking" | "lineHeight" | "color" | "text"> & Partial<Pick<TextLook, "font" | "tracking" | "lineHeight" | "color" | "text">> };
+type LookManifest = {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly look: Omit<TextLook, "id" | "name" | "description" | "font" | "tracking" | "lineHeight" | "color" | "text"> &
+    Partial<Pick<TextLook, "font" | "tracking" | "lineHeight" | "color" | "text">>;
+};
 
 const lookOf = (json: unknown): TextLook => {
   const m = json as LookManifest;
-  return { font: "sans", tracking: 0, lineHeight: 1.1, color: "fg", text: m.name, ...m.look, id: m.id, name: m.name, description: m.description ?? "" } as TextLook;
+  return {
+    font: "sans",
+    tracking: 0,
+    lineHeight: 1.1,
+    color: "fg",
+    text: m.name,
+    ...m.look,
+    id: m.id,
+    name: m.name,
+    description: m.description ?? "",
+  } as TextLook;
 };
 
 /**
@@ -95,17 +111,50 @@ const lookOf = (json: unknown): TextLook => {
  * the curated ones (D80).
  */
 export const TEXT_STYLES: Readonly<Record<string, TextLook>> = Object.fromEntries(
-  [titleJson, headerJson, lowerThirdJson, footnoteJson, monoLabelJson, captionsJson, bigTitleJson, kickerTitleJson, kickerJson, highlightJson, captionJson, strokeTitleJson, outlineJson, boxedLabelJson, quoteJson, chapterJson].map((j) => {
+  [
+    titleJson,
+    headerJson,
+    lowerThirdJson,
+    footnoteJson,
+    monoLabelJson,
+    captionsJson,
+    bigTitleJson,
+    kickerTitleJson,
+    kickerJson,
+    highlightJson,
+    captionJson,
+    strokeTitleJson,
+    outlineJson,
+    boxedLabelJson,
+    quoteJson,
+    chapterJson,
+  ].map((j) => {
     const look = lookOf(j);
     return [look.id, look];
   }),
 );
 
 /** The looks from before D80: they keep the soft shadow every text had then. */
-export const LEGACY_LOOKS = Object.values(TEXT_STYLES).filter((l) => l.legacyShadow).map((l) => l.id);
+export const LEGACY_LOOKS = Object.values(TEXT_STYLES)
+  .filter((l) => l.legacyShadow)
+  .map((l) => l.id);
 
 /** Fallbacks for a text item with no preset (or one that isn't built in): as before D80, with the soft shadow. */
-export const PLAIN_LOOK: TextLook = { id: "", name: "Text", description: "", size: 0.08, weight: 600, font: "sans", tracking: -0.02, lineHeight: 1.05, color: "fg", x: 0.08, y: 0.42, legacyShadow: true, text: "Text" };
+export const PLAIN_LOOK: TextLook = {
+  id: "",
+  name: "Text",
+  description: "",
+  size: 0.08,
+  weight: 600,
+  font: "sans",
+  tracking: -0.02,
+  lineHeight: 1.05,
+  color: "fg",
+  x: 0.08,
+  y: 0.42,
+  legacyShadow: true,
+  text: "Text",
+};
 
 export const textLook = (preset: unknown): TextLook => (typeof preset === "string" && TEXT_STYLES[preset]) || PLAIN_LOOK;
 
@@ -117,20 +166,38 @@ export const TEXT_PRESETS = [
   { id: "title", module: "text.title", label: "Title", text: "Title" },
   { id: "text", module: "text.header", label: "Text", text: "Text" },
   { id: "lower-third", module: "text.lower-third", label: "Lower third", text: "Lower third" },
-  ...["text.big-title", "text.kicker-title", "text.highlight", "text.caption", "text.stroke-title", "text.outline", "text.boxed-label", "text.quote", "text.chapter"].map((module) => {
+  ...[
+    "text.big-title",
+    "text.kicker-title",
+    "text.highlight",
+    "text.caption",
+    "text.stroke-title",
+    "text.outline",
+    "text.boxed-label",
+    "text.quote",
+    "text.chapter",
+  ].map((module) => {
     const look = TEXT_STYLES[module]!;
     return { id: module.replace(/^text\./, ""), module, label: look.name, text: look.text };
   }),
 ] as const satisfies ReadonlyArray<{ id: string; module: string; label: string; text: string }>;
 /** A Text tab tile: a built-in look by module id, or a plugin's look (D103) carried whole, with its plugin's name. */
-export type TextPreset = { readonly id: string; readonly module: string; readonly label: string; readonly text: string; readonly look?: TextLook; readonly source?: string };
+export type TextPreset = {
+  readonly id: string;
+  readonly module: string;
+  readonly label: string;
+  readonly text: string;
+  readonly look?: TextLook;
+  readonly source?: string;
+};
 
 // ---- text moves (D81) ----
 
 export const WORD_BY_WORD = "move.word-by-word";
 export const ZOOM_MOVE = "move.zoom";
 export type WordStyle = "pop" | "fade" | "rise";
-export const WORD_STYLES: ReadonlyArray<WordStyle> = (wordByWordJson as { params: { properties: { style: { enum: Array<WordStyle> } } } }).params.properties.style.enum;
+export const WORD_STYLES: ReadonlyArray<WordStyle> = (wordByWordJson as { params: { properties: { style: { enum: Array<WordStyle> } } } }).params.properties
+  .style.enum;
 const zoomParams = (zoomJson as { params: { properties: { scale: { default: number }; ease: { default: string } } } }).params.properties;
 /** move.zoom's defaults (its manifest's): the scale it starts from (in) or ends at (out), and the ease. */
 export const ZOOM_DEFAULTS = { scale: zoomParams.scale.default, ease: zoomParams.ease.default as "linear" | "in" | "out" | "inOut" };

@@ -4,7 +4,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applyEdit, audibleAt, createSession, layout, loadModules, soundMedia, subtitleCues, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  audibleAt,
+  createSession,
+  layout,
+  loadModules,
+  soundMedia,
+  subtitleCues,
+  validateProject,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { planDetachAudio, planPlaceMedia, planSetSpeed, takenIds } from "../../packages/core/src/timeline/arrange.ts";
 import { sliceProject } from "../../packages/core/src/timeline/slice.ts";
 import { planGroupMove, planMove, planMoveToNewTrack, planRippleDelete, snapTargets } from "../../apps/web/src/timeline/edit.ts";
@@ -23,7 +34,16 @@ const base: Project = {
   ],
   tracks: [
     { id: "overlay", kind: "video", name: "Overlay", items: [{ id: "o1", type: "clip", media: "m", in: 0, start: 0, duration: 60 }] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "a", type: "clip", media: "m", in: 0, duration: 150, gainDb: -3, fadeOut: 10 }, { id: "b", type: "clip", media: "m", in: 200, duration: 150, transitionIn: { module: "transition.crossfade", duration: 10 } }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [
+        { id: "a", type: "clip", media: "m", in: 0, duration: 150, gainDb: -3, fadeOut: 10 },
+        { id: "b", type: "clip", media: "m", in: 200, duration: 150, transitionIn: { module: "transition.crossfade", duration: 10 } },
+      ],
+    },
     { id: "music", kind: "audio", name: "Music", items: [{ id: "s1", type: "audio", media: "song", in: 0, start: 0, duration: 300 }] },
   ],
 };
@@ -55,7 +75,10 @@ test("T1: a video dropped on an overlay lane lands there at the drop frame; on m
   const main = planDropMedia(base, "mute", { frame: 140, track: "main" });
   assert.ok(!("problem" in main));
   const pm = apply(base, main.ops);
-  assert.deepEqual(pm.tracks[1]!.items.map((i) => i.id), ["a", main.itemId, "b"]);
+  assert.deepEqual(
+    pm.tracks[1]!.items.map((i) => i.id),
+    ["a", main.itemId, "b"],
+  );
   assert.equal(main.start, 150);
   // A video on an audio lane: its sound; a silent one isn't taken there (it goes above main instead).
   const sound = planDropMedia(base, "m", { frame: 400, track: "music" });
@@ -74,11 +97,17 @@ test("T1: a clip moves from main to an overlay and back; off main it loses its t
   assert.equal(b.track, "overlay");
   assert.equal(b.start, 200);
   assert.equal(b.transitionIn, undefined);
-  assert.deepEqual(p.tracks[1]!.items.map((i) => i.id), ["a"]);
+  assert.deepEqual(
+    p.tracks[1]!.items.map((i) => i.id),
+    ["a"],
+  );
   const back = planMove(p, "b", "main", 0);
   assert.ok(!("problem" in back));
   const q = apply(p, back.ops);
-  assert.deepEqual(q.tracks[1]!.items.map((i) => i.id), ["b", "a"]);
+  assert.deepEqual(
+    q.tracks[1]!.items.map((i) => i.id),
+    ["b", "a"],
+  );
   assert.equal(find(q, "b")!.start, undefined);
   // Dragged above the top lane: a new video track on top.
   const fresh = planMoveToNewTrack(base, "a", "top", 30);
@@ -133,10 +162,15 @@ test("T3: detach audio makes an audio item from the clip's sound and mutes the c
   assert.notEqual(audio.track, "music", "Music is busy there");
   // The clip makes no sound now; its sound plays from the audio item.
   assert.equal(soundMedia(p, find(p, "a")!), undefined);
-  const heard = audibleAt(p, layout(p).starts, 50).map((x) => x.item.id).sort();
+  const heard = audibleAt(p, layout(p).starts, 50)
+    .map((x) => x.item.id)
+    .sort();
   assert.deepEqual(heard, [plan.itemId, "o1", "s1"].sort());
   // Independent: it can move and be trimmed on its own.
-  const moved = apply(p, [{ op: "update_item", item: plan.itemId, set: { start: 400 } }, { op: "trim_item", item: plan.itemId, edge: "end", frames: 50 }]);
+  const moved = apply(p, [
+    { op: "update_item", item: plan.itemId, set: { start: 400 } },
+    { op: "trim_item", item: plan.itemId, edge: "end", frames: 50 },
+  ]);
   assert.equal(find(moved, plan.itemId)!.start, 400);
   assert.equal(find(moved, "a")!.duration, 150);
   // Twice: refused.
@@ -145,7 +179,12 @@ test("T3: detach audio makes an audio item from the clip's sound and mutes the c
   const silent = apply(base, [{ op: "insert_item", track: "overlay", item: { id: "s", type: "clip", media: "mute", in: 0, start: 100, duration: 30 } }]);
   assert.ok("problem" in planDetachAudio(silent, "s", takenIds(silent)));
   // Old projects (no mute field) sound exactly as before.
-  assert.deepEqual(audibleAt(base, layout(base).starts, 50).map((x) => x.item.id).sort(), ["a", "o1", "s1"]);
+  assert.deepEqual(
+    audibleAt(base, layout(base).starts, 50)
+      .map((x) => x.item.id)
+      .sort(),
+    ["a", "o1", "s1"],
+  );
 });
 
 test("G9: speed keeps the media stretch, so the length changes; keepPitch round-trips; images refused", () => {
@@ -236,7 +275,13 @@ test("G7: a part of the timeline is a project of its own: cut exactly, shifted, 
   valid(part);
   assert.equal(layout(part).duration, 150);
   const main = part.tracks.find((t) => t.role === "main")!;
-  assert.deepEqual(main.items.map((i) => [i.id, i.in, i.duration]), [["a", 100, 50], ["b", 200, 100]]);
+  assert.deepEqual(
+    main.items.map((i) => [i.id, i.in, i.duration]),
+    [
+      ["a", 100, 50],
+      ["b", 200, 100],
+    ],
+  );
   assert.equal(main.items[1]!.transitionIn?.duration, 10, "the crossfade at 150 is inside the range: kept");
   const edge = sliceProject(base, { from: 148, to: 250 });
   assert.ok(!("problem" in edge));
@@ -263,9 +308,21 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
   ];
   const talk: Project = {
     ...base,
-    media: [{ id: "m-talk", kind: "video", name: "Talk.mp4", path: "/Talk.mp4", probe: { frames: 180, fps: 30, width: 320, height: 180, hasAudio: true } }, base.media[0]!],
+    media: [
+      { id: "m-talk", kind: "video", name: "Talk.mp4", path: "/Talk.mp4", probe: { frames: 180, fps: 30, width: 320, height: 180, hasAudio: true } },
+      base.media[0]!,
+    ],
     tracks: [
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "intro", type: "clip", media: "m", in: 0, duration: 30 }, { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 180 }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "intro", type: "clip", media: "m", in: 0, duration: 30 },
+          { id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 180 },
+        ],
+      },
       { id: "fx", kind: "audio", name: "FX", items: [] },
     ],
   };
@@ -279,7 +336,13 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
   assert.ok(!("problem" in cut));
   const q = edit(p, cut.ops);
   const sounds = q.tracks.flatMap((t) => t.items.filter((i) => i.type === "audio" && i.media === "m-talk"));
-  assert.deepEqual(sounds.map((i) => [i.start, i.in, i.duration]).sort((a, b) => a[0]! - b[0]!), [[30, 0, 36], [66, 45, 135]]);
+  assert.deepEqual(
+    sounds.map((i) => [i.start, i.in, i.duration]).sort((a, b) => a[0]! - b[0]!),
+    [
+      [30, 0, 36],
+      [66, 45, 135],
+    ],
+  );
   const starts = layout(q).starts;
   for (let f = 30; f < 30 + 171; f += 3) {
     const heard = audibleAt(q, starts, f).filter((a) => a.item.media === "m-talk");
@@ -289,7 +352,13 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
   }
   // A ripple on main (the intro deleted): the sounds move with their clips.
   const r = edit(q, [{ op: "delete_item", item: "intro" }]);
-  assert.deepEqual(r.tracks.flatMap((t) => t.items.filter((i) => i.type === "audio" && i.media === "m-talk")).map((i) => i.start).sort((a, b) => a! - b!), [0, 36]);
+  assert.deepEqual(
+    r.tracks
+      .flatMap((t) => t.items.filter((i) => i.type === "audio" && i.media === "m-talk"))
+      .map((i) => i.start)
+      .sort((a, b) => a! - b!),
+    [0, 36],
+  );
   // Speed on the clip: the sound keeps up.
   const sp = planSetSpeed(r, "clip-1", 2);
   assert.ok(!("problem" in sp));
@@ -307,7 +376,10 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
 
 test("G4: renaming media doesn't change what the checks think it is (music by its file, not its name)", async () => {
   const { projectChecks } = await import("../../packages/core/src/index.ts");
-  const song: Project = { ...base, tracks: [base.tracks[1]!, { id: "fx", kind: "audio", name: "FX", items: [{ id: "s1", type: "audio", media: "song", in: 0, start: 0, duration: 300 }] }] };
+  const song: Project = {
+    ...base,
+    tracks: [base.tracks[1]!, { id: "fx", kind: "audio", name: "FX", items: [{ id: "s1", type: "audio", media: "song", in: 0, start: 0, duration: 300 }] }],
+  };
   const fades = (p: Project) => projectChecks(p, { rules: [] }).filter((c) => c.id === "music-fades").length;
   assert.equal(fades(song), 1, "song.m4a is music");
   const renamed = { ...song, media: song.media.map((m) => (m.id === "song" ? { ...m, name: "Intro" } : m)) };

@@ -56,7 +56,11 @@ const SOON: Record<GenType, ReadonlyArray<Omit<Model, "soon">>> = {
 };
 
 /** A plugin generator's lab and mark, by whose key it uses. */
-const PROVIDER_LOOK: Record<string, { lab: string; brand: Brand }> = { openai: { lab: "OpenAI", brand: "openai" }, google: { lab: "Google", brand: "google" }, elevenlabs: { lab: "ElevenLabs", brand: "elevenlabs" } };
+const PROVIDER_LOOK: Record<string, { lab: string; brand: Brand }> = {
+  openai: { lab: "OpenAI", brand: "openai" },
+  google: { lab: "Google", brand: "google" },
+  elevenlabs: { lab: "ElevenLabs", brand: "elevenlabs" },
+};
 
 /** The models for a type: the ones that work (the key-free one first, then the keyed ones), then Coming soon. */
 export function modelsFor(generators: ReadonlyArray<GeneratorInfo>, type: GenType): Array<Model> {
@@ -67,7 +71,16 @@ export function modelsFor(generators: ReadonlyArray<GeneratorInfo>, type: GenTyp
       // D268 (#97): no separate title card row; titles are text items the agent makes.
       const look = WIRED[g.id];
       const byKey = g.provider ? PROVIDER_LOOK[g.provider] : undefined;
-      return { id: g.id, generator: g.id, name: look?.name[type] ?? g.name, lab: look?.lab ?? byKey?.lab ?? g.plugin?.name ?? "Plugin", ...(look?.credit ? { credit: look.credit } : {}), brand: look?.brand ?? byKey?.brand ?? "other", info: g, soon: false };
+      return {
+        id: g.id,
+        generator: g.id,
+        name: look?.name[type] ?? g.name,
+        lab: look?.lab ?? byKey?.lab ?? g.plugin?.name ?? "Plugin",
+        ...(look?.credit ? { credit: look.credit } : {}),
+        brand: look?.brand ?? byKey?.brand ?? "other",
+        info: g,
+        soon: false,
+      };
     });
   return [...wired, ...SOON[type].map((m) => ({ ...m, soon: true }))];
 }

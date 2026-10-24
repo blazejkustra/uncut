@@ -31,7 +31,17 @@ type ChildProps = {
 /** Keys a tooltip shows for an action: its first two. */
 export const TIP_KEYS = 2;
 
-export function Tooltip({ label, keys: literal = [], shortcut, children }: { label: string; keys?: ReadonlyArray<string>; shortcut?: ShortcutId; children: ReactElement<ChildProps> }) {
+export function Tooltip({
+  label,
+  keys: literal = [],
+  shortcut,
+  children,
+}: {
+  label: string;
+  keys?: ReadonlyArray<string>;
+  shortcut?: ShortcutId;
+  children: ReactElement<ChildProps>;
+}) {
   useBindings();
   const keys = shortcut ? keysOf(shortcut).slice(0, TIP_KEYS) : literal;
   const id = useId();

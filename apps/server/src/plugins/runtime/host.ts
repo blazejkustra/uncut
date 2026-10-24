@@ -60,7 +60,11 @@ export class PluginHost {
     const now = Date.now();
     slot.crashes = slot.crashes.filter((t) => now - t < CRASH_WINDOW_MS);
     if (slot.crashes.length >= MAX_CRASHES) {
-      return Promise.reject(new Error(`${slot.spec.name} stopped unexpectedly ${slot.crashes.length} times in the last minute, so Uncut isn't starting it again for now. Try again in a minute.`));
+      return Promise.reject(
+        new Error(
+          `${slot.spec.name} stopped unexpectedly ${slot.crashes.length} times in the last minute, so Uncut isn't starting it again for now. Try again in a minute.`,
+        ),
+      );
     }
     const wait = Math.max(0, backoffMs(slot.crashes.length) - (now - (slot.crashes.at(-1) ?? 0)));
     const spec = slot.spec;
@@ -98,7 +102,15 @@ export class PluginHost {
    * `allowed` is asked again once the process is up, right before the call (it may have been
    * revoked meanwhile); `signal` is the agent turn's.
    */
-  async call(spec: ProcessSpec, tool: string, args: unknown, signal?: AbortSignal, allowed?: () => Promise<string | undefined>, context?: PluginContext, extra: CallExtra = {}): Promise<PluginResult> {
+  async call(
+    spec: ProcessSpec,
+    tool: string,
+    args: unknown,
+    signal?: AbortSignal,
+    allowed?: () => Promise<string | undefined>,
+    context?: PluginContext,
+    extra: CallExtra = {},
+  ): Promise<PluginResult> {
     let slot = this.slots.get(spec.id);
     if (slot && !sameSpec(slot.spec, spec)) {
       await this.stop(spec.id);
@@ -120,7 +132,13 @@ export class PluginHost {
     if (refusal) return errorResult(refusal);
     try {
       const meta = { ...context, ...extra.meta };
-      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(Object.keys(meta).length ? { _meta: meta } : {}) }, extra.timeoutMs ?? spec.timeoutMs, signal, extra.onProgress);
+      const raw = await proc.request(
+        "tools/call",
+        { name: tool, arguments: args ?? {}, ...(Object.keys(meta).length ? { _meta: meta } : {}) },
+        extra.timeoutMs ?? spec.timeoutMs,
+        signal,
+        extra.onProgress,
+      );
       const declared = declaredOf(raw);
       const structured = (raw as { structuredContent?: unknown } | null)?.structuredContent;
       return { ...toMcpResult(raw), ...(declared ? { declared } : {}), ...(structured !== undefined ? { structured } : {}) };
@@ -140,7 +158,13 @@ export class PluginHost {
     if (!slot) return;
     this.slots.delete(id);
     const starting = slot.starting;
-    await Promise.all([slot.proc?.stop(), starting?.then((p) => p.stop(), () => {})]);
+    await Promise.all([
+      slot.proc?.stop(),
+      starting?.then(
+        (p) => p.stop(),
+        () => {},
+      ),
+    ]);
   }
 
   /** Stops every plugin except those in `keep` (ids with the same spec). */

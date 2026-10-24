@@ -26,7 +26,23 @@ before(() => {
   // 12 s of testsrc2 (a moving picture with a running clock), 16:9.
   ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "12", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "long.mp4"));
   // Like a D212 proxy: a keyframe every 10 frames, no B-frames.
-  ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "12", "-c:v", "libx264", "-g", "10", "-bf", "0", "-pix_fmt", "yuv420p", join(root, "proxy.mp4"));
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30",
+    "-t",
+    "12",
+    "-c:v",
+    "libx264",
+    "-g",
+    "10",
+    "-bf",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "proxy.mp4"),
+  );
 });
 after(() => {
   killAll();
@@ -88,7 +104,11 @@ test("cells: each shows the frame at its own time, following in, speed, loop, ho
   assert.equal(all.cells.length, Math.ceil(1000 / 57));
   const tiles = all.cells.map((c) => c.tile);
   assert.ok(new Set(tiles).size >= 15, `distinct tiles ${tiles}`);
-  assert.deepEqual([...tiles].sort((a, b) => a - b), tiles, "in time order");
+  assert.deepEqual(
+    [...tiles].sort((a, b) => a - b),
+    tiles,
+    "in time order",
+  );
   const some = visibleCells(plain, fps, layout, 1000, 32, 400, 520);
   assert.ok(some.cells.length <= 5 && some.cells[0]!.index === 6, JSON.stringify(some.cells));
   // Zoomed in 4x: the same time span takes four times the cells (more detail).
@@ -129,7 +149,8 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
     const out: Array<number> = [];
     const x0 = (n % 10) * 114;
     const y0 = Math.floor(n / 10) * 64;
-    for (let y = y0; y < y0 + 64; y++) for (let x = x0; x < x0 + 114; x++) out.push(rgba[(y * W + x) * 4]!, rgba[(y * W + x) * 4 + 1]!, rgba[(y * W + x) * 4 + 2]!);
+    for (let y = y0; y < y0 + 64; y++)
+      for (let x = x0; x < x0 + 114; x++) out.push(rgba[(y * W + x) * 4]!, rgba[(y * W + x) * 4 + 1]!, rgba[(y * W + x) * 4 + 2]!);
     return out;
   };
   const diff = (a: Array<number>, b: Array<number>) => a.reduce((s, v, i) => s + Math.abs(v - b[i]!), 0) / a.length;
@@ -151,7 +172,12 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
   // A new key (the file changed): made again, the old key's files go.
   const remade = await generate(folder, "m-long", { ...source, key: "ba9876543210", seconds: 12 }, { ffmpeg, ffprobe });
   assert.equal(remade.kind, "ok");
-  assert.deepEqual(readdirSync(folder).filter((f) => f.startsWith("m-long-")).sort(), ["m-long--ba9876543210.jpg", "m-long--ba9876543210.json"]);
+  assert.deepEqual(
+    readdirSync(folder)
+      .filter((f) => f.startsWith("m-long-"))
+      .sort(),
+    ["m-long--ba9876543210.jpg", "m-long--ba9876543210.json"],
+  );
 
   // From a proxy (keyframes only): the same layout, and still different pictures along it.
   const fromProxy = await generate(folder, "m-proxy", { ...source, input: join(root, "proxy.mp4"), proxy: true, seconds: 12 }, { ffmpeg, ffprobe });
@@ -161,7 +187,8 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
     const p = rgbaOf(join(folder, "m-proxy--0123456789ab.jpg"));
     const pTile = (n: number) => {
       const o: Array<number> = [];
-      for (let y = Math.floor(n / 10) * 64; y < Math.floor(n / 10) * 64 + 64; y++) for (let x = (n % 10) * 114; x < (n % 10) * 114 + 114; x++) o.push(p[(y * W + x) * 4]!, p[(y * W + x) * 4 + 1]!, p[(y * W + x) * 4 + 2]!);
+      for (let y = Math.floor(n / 10) * 64; y < Math.floor(n / 10) * 64 + 64; y++)
+        for (let x = (n % 10) * 114; x < (n % 10) * 114 + 114; x++) o.push(p[(y * W + x) * 4]!, p[(y * W + x) * 4 + 1]!, p[(y * W + x) * 4 + 2]!);
       return o;
     };
     assert.ok(diff(pTile(0), pTile(12)) > 2, "keyframe-only tiles differ");
@@ -190,60 +217,77 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
   assert.ok(!readdirSync(folder).some((f) => f.startsWith("m-bad")), "nothing left behind");
 });
 
-test("GET /media/filmstrip/<id>: token, videos of the open project only, made then cached, CORS with the layout header", { skip: serverSkip, timeout: 90000 }, async () => {
-  const server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
-  const client = await connect(server.ready.port, server.ready.token);
-  try {
-    const base = `http://127.0.0.1:${server.ready.port}`;
-    const get = (path: string, auth: string | null = server.ready.token) => fetch(`${base}${path}${auth === null ? "" : `?token=${encodeURIComponent(auth)}`}`);
-    assert.equal((await get("/media/filmstrip/m-long")).status, 404, "nothing open yet");
-    ff("-f", "lavfi", "-i", "color=blue:size=64x64", "-frames:v", "1", join(root, "still.png"));
-    const snapshot = await client.ok("project.create", { parentDir: root, name: "Film" });
-    const dir = (snapshot as { dir: string }).dir;
-    await client.ok("project.edit", {
-      ops: [
-        { op: "add_media", media: { id: "m-long", kind: "video", name: "long.mp4", path: join(root, "long.mp4"), probe: { frames: 360, fps: 30, width: 320, height: 180, hasAudio: false } } },
-        { op: "add_media", media: { id: "m-still", kind: "image", name: "still.png", path: join(root, "still.png"), probe: { width: 64, height: 64 } } },
-        { op: "add_media", media: { id: "m-gone", kind: "video", name: "gone.mp4", path: join(root, "gone.mp4"), probe: { frames: 30, fps: 30 } } },
-      ],
-    });
-    assert.equal((await get("/media/filmstrip/m-long", null)).status, 401, "no token");
-    assert.equal((await get("/media/filmstrip/m-long", "wrong")).status, 401, "bad token");
-    assert.equal((await get("/media/filmstrip/m-nope")).status, 404, "unknown id");
-    assert.equal((await get("/media/filmstrip/..%2Fsecret")).status, 404, "not an id");
-    assert.equal((await get("/media/filmstrip/m-still")).status, 404, "a still keeps its poster");
-    assert.equal((await get("/media/filmstrip/m-gone")).status, 404, "a file that isn't there");
+test(
+  "GET /media/filmstrip/<id>: token, videos of the open project only, made then cached, CORS with the layout header",
+  { skip: serverSkip, timeout: 90000 },
+  async () => {
+    const server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
+    const client = await connect(server.ready.port, server.ready.token);
+    try {
+      const base = `http://127.0.0.1:${server.ready.port}`;
+      const get = (path: string, auth: string | null = server.ready.token) =>
+        fetch(`${base}${path}${auth === null ? "" : `?token=${encodeURIComponent(auth)}`}`);
+      assert.equal((await get("/media/filmstrip/m-long")).status, 404, "nothing open yet");
+      ff("-f", "lavfi", "-i", "color=blue:size=64x64", "-frames:v", "1", join(root, "still.png"));
+      const snapshot = await client.ok("project.create", { parentDir: root, name: "Film" });
+      const dir = (snapshot as { dir: string }).dir;
+      await client.ok("project.edit", {
+        ops: [
+          {
+            op: "add_media",
+            media: {
+              id: "m-long",
+              kind: "video",
+              name: "long.mp4",
+              path: join(root, "long.mp4"),
+              probe: { frames: 360, fps: 30, width: 320, height: 180, hasAudio: false },
+            },
+          },
+          { op: "add_media", media: { id: "m-still", kind: "image", name: "still.png", path: join(root, "still.png"), probe: { width: 64, height: 64 } } },
+          { op: "add_media", media: { id: "m-gone", kind: "video", name: "gone.mp4", path: join(root, "gone.mp4"), probe: { frames: 30, fps: 30 } } },
+        ],
+      });
+      assert.equal((await get("/media/filmstrip/m-long", null)).status, 401, "no token");
+      assert.equal((await get("/media/filmstrip/m-long", "wrong")).status, 401, "bad token");
+      assert.equal((await get("/media/filmstrip/m-nope")).status, 404, "unknown id");
+      assert.equal((await get("/media/filmstrip/..%2Fsecret")).status, 404, "not an id");
+      assert.equal((await get("/media/filmstrip/m-still")).status, 404, "a still keeps its poster");
+      assert.equal((await get("/media/filmstrip/m-gone")).status, 404, "a file that isn't there");
 
-    const [first, again] = await Promise.all([get("/media/filmstrip/m-long"), get("/media/filmstrip/m-long")]);
-    assert.equal(first.status, 200);
-    assert.equal(again.status, 200);
-    assert.equal(first.headers.get("x-uncut-filmstrip"), "decode");
-    assert.equal(first.headers.get("content-type"), "image/jpeg");
-    assert.equal(first.headers.get("access-control-allow-origin"), "*");
-    assert.match(first.headers.get("access-control-expose-headers") ?? "", /x-uncut-filmstrip-layout/);
-    const layout = JSON.parse(first.headers.get("x-uncut-filmstrip-layout")!);
-    assert.deepEqual(layout, { version: 1, interval: 0.5, count: 24, cols: 10, rows: 3, tileWidth: 114, tileHeight: 64, seconds: 12 });
-    const bytes = Buffer.from(await first.arrayBuffer());
-    assert.ok(Buffer.from(await again.arrayBuffer()).equals(bytes), "two requests share one run");
-    const files = readdirSync(join(dir, ".cache", "filmstrips"));
-    assert.equal(files.length, 2);
-    assert.ok(files.every((f) => /^m-long--[0-9a-f]{12}\.(jpg|json)$/.test(f)), files.join());
+      const [first, again] = await Promise.all([get("/media/filmstrip/m-long"), get("/media/filmstrip/m-long")]);
+      assert.equal(first.status, 200);
+      assert.equal(again.status, 200);
+      assert.equal(first.headers.get("x-uncut-filmstrip"), "decode");
+      assert.equal(first.headers.get("content-type"), "image/jpeg");
+      assert.equal(first.headers.get("access-control-allow-origin"), "*");
+      assert.match(first.headers.get("access-control-expose-headers") ?? "", /x-uncut-filmstrip-layout/);
+      const layout = JSON.parse(first.headers.get("x-uncut-filmstrip-layout")!);
+      assert.deepEqual(layout, { version: 1, interval: 0.5, count: 24, cols: 10, rows: 3, tileWidth: 114, tileHeight: 64, seconds: 12 });
+      const bytes = Buffer.from(await first.arrayBuffer());
+      assert.ok(Buffer.from(await again.arrayBuffer()).equals(bytes), "two requests share one run");
+      const files = readdirSync(join(dir, ".cache", "filmstrips"));
+      assert.equal(files.length, 2);
+      assert.ok(
+        files.every((f) => /^m-long--[0-9a-f]{12}\.(jpg|json)$/.test(f)),
+        files.join(),
+      );
 
-    const cached = await get("/media/filmstrip/m-long");
-    assert.equal(cached.headers.get("x-uncut-filmstrip"), "cache");
-    assert.ok(Buffer.from(await cached.arrayBuffer()).equals(bytes));
+      const cached = await get("/media/filmstrip/m-long");
+      assert.equal(cached.headers.get("x-uncut-filmstrip"), "cache");
+      assert.ok(Buffer.from(await cached.arrayBuffer()).equals(bytes));
 
-    // The file changes: a new strip under a new key, the old files go.
-    ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "long.mp4"));
-    utimesSync(join(root, "long.mp4"), new Date(), new Date(Date.now() + 5000));
-    const changed = await get("/media/filmstrip/m-long");
-    assert.equal(changed.headers.get("x-uncut-filmstrip"), "decode");
-    await changed.arrayBuffer();
-    const after = readdirSync(join(dir, ".cache", "filmstrips"));
-    assert.equal(after.length, 2);
-    assert.notDeepEqual(after.sort(), files.sort());
-  } finally {
-    client.close();
-    await server.stop();
-  }
-});
+      // The file changes: a new strip under a new key, the old files go.
+      ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "long.mp4"));
+      utimesSync(join(root, "long.mp4"), new Date(), new Date(Date.now() + 5000));
+      const changed = await get("/media/filmstrip/m-long");
+      assert.equal(changed.headers.get("x-uncut-filmstrip"), "decode");
+      await changed.arrayBuffer();
+      const after = readdirSync(join(dir, ".cache", "filmstrips"));
+      assert.equal(after.length, 2);
+      assert.notDeepEqual(after.sort(), files.sort());
+    } finally {
+      client.close();
+      await server.stop();
+    }
+  },
+);

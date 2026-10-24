@@ -108,7 +108,9 @@ export function hevcCodec(hvcc: Uint8Array, prefix: string): string | undefined 
   const constraints = [...hvcc.subarray(6, 12)];
   while (constraints.length && constraints.at(-1) === 0) constraints.pop();
   const level = hvcc[12]!;
-  return [`${prefix}.${space}${profile}`, reversed.toString(16).toUpperCase(), `${tier}${level}`, ...constraints.map((c) => c.toString(16).toUpperCase())].join(".");
+  return [`${prefix}.${space}${profile}`, reversed.toString(16).toUpperCase(), `${tier}${level}`, ...constraints.map((c) => c.toString(16).toUpperCase())].join(
+    ".",
+  );
 }
 
 /** Reads `length` bytes at `offset` of the file (a Range fetch in the renderer, a file read in tests). */
@@ -213,7 +215,12 @@ function colrOf(d: Uint8Array, box: Box | undefined): StreamColour {
     return v === 2 ? undefined : v;
   };
   const full = kind === "nclx" && box.end - box.start >= 11 ? (d[box.start + 10]! & 0x80) !== 0 : undefined;
-  return { ...(code(4) !== undefined ? { primaries: code(4)! } : {}), ...(code(6) !== undefined ? { transfer: code(6)! } : {}), ...(code(8) !== undefined ? { matrix: code(8)! } : {}), ...(full !== undefined ? { fullRange: full } : {}) };
+  return {
+    ...(code(4) !== undefined ? { primaries: code(4)! } : {}),
+    ...(code(6) !== undefined ? { transfer: code(6)! } : {}),
+    ...(code(8) !== undefined ? { matrix: code(8)! } : {}),
+    ...(full !== undefined ? { fullRange: full } : {}),
+  };
 }
 
 /** The container's description over the stream's, field by field (unspecified fields left out). */
@@ -261,7 +268,13 @@ function videoEntry(d: Uint8Array, trak: Box): Candidate | undefined {
     const description = d.slice(avcc.start, avcc.end);
     const codec = avcCodec(description);
     const sps = avccSps(description)[0];
-    const colour = mergeColour(colrOf(d, boxes.find((b) => b.type === "colr")), sps ? h264Colour(sps) : undefined);
+    const colour = mergeColour(
+      colrOf(
+        d,
+        boxes.find((b) => b.type === "colr"),
+      ),
+      sps ? h264Colour(sps) : undefined,
+    );
     return codec ? { trak, codec, description, width, height, colour } : undefined;
   }
   if (type === "hvc1" || type === "hev1") {
@@ -270,7 +283,13 @@ function videoEntry(d: Uint8Array, trak: Box): Candidate | undefined {
     const description = d.slice(hvcc.start, hvcc.end);
     const codec = hevcCodec(description, type);
     const sps = hvccSps(description)[0];
-    const colour = mergeColour(colrOf(d, boxes.find((b) => b.type === "colr")), sps ? hevcColour(sps) : undefined);
+    const colour = mergeColour(
+      colrOf(
+        d,
+        boxes.find((b) => b.type === "colr"),
+      ),
+      sps ? hevcColour(sps) : undefined,
+    );
     return codec ? { trak, codec, description, width, height, colour } : undefined;
   }
   return undefined;
@@ -295,7 +314,10 @@ export function parseMoov(moov: Uint8Array): Mp4Index | undefined {
   if (top.some((b) => b.type === "mvex")) return undefined;
   const mvhd = top.find((b) => b.type === "mvhd");
   const movieScale = mvhd && mvhd.end - mvhd.start >= 24 ? u32(view, mvhd.start + (d[mvhd.start] === 1 ? 20 : 12)) : 0;
-  const candidates = top.filter((b) => b.type === "trak").map((t) => videoEntry(d, t)).filter((c): c is Candidate => !!c);
+  const candidates = top
+    .filter((b) => b.type === "trak")
+    .map((t) => videoEntry(d, t))
+    .filter((c): c is Candidate => !!c);
   // The largest video track, as ffmpeg's (and Chromium's) default stream choice.
   const best = candidates.sort((a, b) => b.width * b.height - a.width * a.height)[0];
   if (!best) return undefined;
@@ -409,7 +431,21 @@ export function parseMoov(moov: Uint8Array): Mp4Index | undefined {
   const order = Uint32Array.from({ length: count }, (_, i) => i).sort((a, b) => pts[a]! - pts[b]! || a - b);
   const rank = new Uint32Array(count);
   for (let i = 0; i < count; i++) rank[order[i]!] = i;
-  return { codec: best.codec, description: best.description, codedWidth: best.width, codedHeight: best.height, offsets, sizes, pts, durations, key, order, rank, rotation, colour: best.colour };
+  return {
+    codec: best.codec,
+    description: best.description,
+    codedWidth: best.width,
+    codedHeight: best.height,
+    offsets,
+    sizes,
+    pts,
+    durations,
+    key,
+    order,
+    rank,
+    rotation,
+    colour: best.colour,
+  };
 }
 
 /**

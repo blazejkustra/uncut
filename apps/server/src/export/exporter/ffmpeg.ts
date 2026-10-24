@@ -16,7 +16,11 @@ const capsCache = new Map<string, Promise<Caps>>();
 export const capsOf = (bin: string) => {
   let caps = capsCache.get(bin);
   if (!caps) {
-    const list = (args: Array<string>) => run(bin, args, undefined).then((r) => r.stdout, () => "");
+    const list = (args: Array<string>) =>
+      run(bin, args, undefined).then(
+        (r) => r.stdout,
+        () => "",
+      );
     caps = Promise.all([list(["-hide_banner", "-encoders"]), list(["-hide_banner", "-hwaccels"]), list(["-version"])]).then(([encoders, hwaccels, version]) => {
       const major = /^ffmpeg version n?(\d+)\./m.exec(version)?.[1];
       return {
@@ -77,10 +81,14 @@ export async function withPictureSizes(ffmpeg: string, project: Project, mediaPa
   const media = await Promise.all(
     project.media.map(async (m) => {
       if (m.kind === "audio" || (m.probe?.width && m.probe?.height)) return m;
-      const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", mediaPath(m)], signal ?? new AbortController().signal).catch(() => undefined);
+      const r = await run(
+        ffprobe,
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", mediaPath(m)],
+        signal ?? new AbortController().signal,
+      ).catch(() => undefined);
       try {
         const stream = r?.code === 0 ? (JSON.parse(r.stdout) as { streams?: Array<{ width?: number; height?: number }> }).streams?.[0] : undefined;
-        return stream?.width && stream.height ? { ...m, probe: { ...(m.probe ?? {}), width: stream.width, height: stream.height } } : m;
+        return stream?.width && stream.height ? { ...m, probe: { ...m.probe, width: stream.width, height: stream.height } } : m;
       } catch {
         return m;
       }
@@ -99,10 +107,12 @@ export async function untaggedFiles(ffmpeg: string, plan: ExportPlan, signal: Ab
   const out = new Map<string, number>();
   const videos = new Set(plan.visuals.flatMap((l) => (l.kind === "video" ? [l.file] : [])));
   for (const file of videos) {
-    const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,height", "-of", "json", file], signal).catch((error: Error) => {
-      if (error instanceof Cancelled) throw error;
-      return undefined;
-    });
+    const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,height", "-of", "json", file], signal).catch(
+      (error: Error) => {
+        if (error instanceof Cancelled) throw error;
+        return undefined;
+      },
+    );
     let stream: { color_space?: string; height?: number } | undefined;
     try {
       stream = r?.code === 0 ? (JSON.parse(r.stdout) as { streams?: Array<{ color_space?: string; height?: number }> }).streams?.[0] : undefined;

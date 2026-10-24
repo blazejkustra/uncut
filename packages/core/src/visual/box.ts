@@ -139,7 +139,12 @@ export function fitRect(box: Rect, fit: Fit, media?: MediaSize): Rect {
 const clampOpacity = (o: number) => Math.min(1, Math.max(0, o));
 
 /** A clip's box at `local` frames from its start, keys applied. */
-export function clipBox(item: Pick<Item, "transform" | "keys">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number }, media: MediaSize, local: number): ClipBox {
+export function clipBox(
+  item: Pick<Item, "transform" | "keys">,
+  canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number },
+  media: MediaSize,
+  local: number,
+): ClipBox {
   const base = baseBox(item, canvas, media);
   const t = item.transform ?? {};
   const fps = canvas.fps ?? DEFAULT_KEY_FPS;
@@ -164,7 +169,8 @@ export const isPlainBox = (box: ClipBox, canvas: Pick<Canvas, "width" | "height"
   box.x === 0 && box.y === 0 && box.w === canvas.width && box.h === canvas.height && box.fit === "contain" && box.scale === 1 && box.radius === 0;
 
 /** Whether an item has anything the box model draws differently from a plain clip at some frame. */
-export const hasKeys = (item: Pick<Item, "keys">, prop?: KeyProp) => (prop ? keysOf(item.keys, prop).length > 0 : KEY_PROPS.some((p) => keysOf(item.keys, p).length > 0));
+export const hasKeys = (item: Pick<Item, "keys">, prop?: KeyProp) =>
+  prop ? keysOf(item.keys, prop).length > 0 : KEY_PROPS.some((p) => keysOf(item.keys, p).length > 0);
 
 /** The whole canvas as a box (fill, scale 1): what a transition moves for an item without a box of its own (text, backgrounds, graphics). */
 export const canvasBox = (canvas: Pick<Canvas, "width" | "height">): ClipBox => {
@@ -182,5 +188,11 @@ export function moveBox(box: ClipBox, shift = 0, zoom = 1, shiftY = 0): ClipBox 
   const cx = box.x + box.w / 2;
   const cy = box.y + box.h / 2;
   const c = box.content;
-  return { ...box, x: box.x + shift, y: box.y + shiftY, scale: box.scale * zoom, content: { x: cx + (c.x - cx) * zoom + shift, y: cy + (c.y - cy) * zoom + shiftY, w: c.w * zoom, h: c.h * zoom } };
+  return {
+    ...box,
+    x: box.x + shift,
+    y: box.y + shiftY,
+    scale: box.scale * zoom,
+    content: { x: cx + (c.x - cx) * zoom + shift, y: cy + (c.y - cy) * zoom + shiftY, w: c.w * zoom, h: c.h * zoom },
+  };
 }

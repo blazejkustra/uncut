@@ -67,14 +67,14 @@ export function onKeyDown(event: KeyboardEvent) {
         : key === ","
           ? { type: "open-settings" }
           : key === "n"
-          ? { type: "new-project" }
-          : key === "e" && state.snapshot
-          ? { type: "export" }
-          : key === "o"
-            ? { type: "open-project" }
-            : key === "w" && state.snapshot
-              ? { type: "close-project" }
-              : undefined;
+            ? { type: "new-project" }
+            : key === "e" && state.snapshot
+              ? { type: "export" }
+              : key === "o"
+                ? { type: "open-project" }
+                : key === "w" && state.snapshot
+                  ? { type: "close-project" }
+                  : undefined;
   if (!command) return;
   event.preventDefault();
   runCommand(command);

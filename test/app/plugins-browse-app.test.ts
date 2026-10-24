@@ -34,7 +34,11 @@ after(async () => {
 });
 
 test("Browse the catalog, enable and allow the example plugin, then its look, component and check show up", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, firstLaunch: true, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) } });
+  app = await launchApp({
+    command: APP,
+    firstLaunch: true,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) },
+  });
   const { page } = app;
   try {
     await waitFor(page, "[data-testid=onboarding]");
@@ -42,7 +46,10 @@ test("Browse the catalog, enable and allow the example plugin, then its look, co
     await waitFor(page, "[data-testid=plugin-browse]");
     await page.click("[data-testid=plugin-browse]");
     await waitFor(page, "[data-testid=plugin-catalog-entry][data-id='taste.extra'][data-enabled=false]");
-    assert.match(await text(page, "[data-testid=plugin-catalog-entry][data-id='taste.extra']"), /Taste extra[\s\S]*Text looks: Soft card\. Components: Corner sticker\. Checks: Ends on an end card, No hype words\. Runs no program/);
+    assert.match(
+      await text(page, "[data-testid=plugin-catalog-entry][data-id='taste.extra']"),
+      /Taste extra[\s\S]*Text looks: Soft card\. Components: Corner sticker\. Checks: Ends on an end card, No hype words\. Runs no program/,
+    );
     assert.equal(await page.$("[data-testid='plugin-taste.extra']"), null, "not loaded until enabled");
     // Search narrows the list.
     await page.type("[data-testid=plugin-catalog-search]", "no such plugin");
@@ -82,10 +89,24 @@ test("Browse the catalog, enable and allow the example plugin, then its look, co
     const tile = "[data-testid=text-preset][data-module='taste.extra.soft-card']";
     await waitFor(page, tile);
     assert.equal(await text(page, `${tile} [data-testid=text-preset-source]`), "Taste extra");
-    await page.waitForFunction((sel) => !(document.querySelector(`${sel} .text-thumb-inner`) as HTMLElement | null)?.style.transform.includes("scale(0)"), {}, tile);
+    await page.waitForFunction(
+      (sel) => !(document.querySelector(`${sel} .text-thumb-inner`) as HTMLElement | null)?.style.transform.includes("scale(0)"),
+      {},
+      tile,
+    );
     await page.click(tile);
     await page.waitForFunction(() => [...document.querySelectorAll(".pv-text")].some((el) => el.textContent === "Soft card"), { timeout: 10000 });
-    const project = JSON.parse(readFileSync(join(root, "projects", readdirSync(join(root, "projects")).find((n) => n.endsWith(".uncut"))!, "project.json"), "utf8")) as { tracks: Array<{ items: Array<{ text?: string; style?: Record<string, unknown> }> }> };
+    const project = JSON.parse(
+      readFileSync(
+        join(
+          root,
+          "projects",
+          readdirSync(join(root, "projects")).find((n) => n.endsWith(".uncut"))!,
+          "project.json",
+        ),
+        "utf8",
+      ),
+    ) as { tracks: Array<{ items: Array<{ text?: string; style?: Record<string, unknown> }> }> };
     const added = project.tracks.flatMap((t) => t.items).find((i) => i.text === "Soft card");
     assert.ok(added, "the text is in project.json");
     assert.equal(added!.style?.preset, undefined);

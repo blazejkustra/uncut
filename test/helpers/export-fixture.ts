@@ -23,8 +23,48 @@ export function makeExportFixture(root: string): Project {
   const tone = (hz: number) => `aevalsrc=0.5*sin(2*PI*${hz}*t):s=48000`;
   // Tagged BT.709 like a camera's or phone's footage, so the preview and ffmpeg read the colours alike.
   const bt709 = ["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"];
-  ff("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f", "lavfi", "-i", tone(660), "-t", "10", ...bt709, "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "-shortest", join(root, "A.mp4"));
-  ff("-f", "lavfi", "-i", "mandelbrot=size=640x360:rate=30", "-f", "lavfi", "-i", tone(880), "-t", "6", ...bt709, "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "-shortest", join(root, "B.mp4"));
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=640x360:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    tone(660),
+    "-t",
+    "10",
+    ...bt709,
+    "-c:v",
+    "libx264",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-shortest",
+    join(root, "A.mp4"),
+  );
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "mandelbrot=size=640x360:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    tone(880),
+    "-t",
+    "6",
+    ...bt709,
+    "-c:v",
+    "libx264",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-shortest",
+    join(root, "B.mp4"),
+  );
   ff("-f", "lavfi", "-i", "testsrc=size=480x360:rate=30", "-t", "4", ...bt709, "-c:v", "libx264", join(root, "C.mp4"));
   ff("-f", "lavfi", "-i", "testsrc=size=640x360", "-frames:v", "1", join(root, "Still.png"));
   ff("-f", "lavfi", "-i", `${tone(440)}:d=10`, "-c:a", "aac", "-b:a", "192k", join(root, "Music.m4a"));
@@ -50,11 +90,31 @@ export function exportProject(root: string): Project {
         kind: "text",
         name: "Text",
         items: [
-          { id: "title", type: "text", start: 0, duration: 45, text: "Export [[test]]", style: { preset: "text.title" }, animation: { in: { module: "move.fade", duration: 10 } } },
-          { id: "lower", type: "text", start: 150, duration: 60, text: "A lower third", style: { preset: "text.lower-third" }, animation: { in: { module: "move.rise", duration: 12 } } },
+          {
+            id: "title",
+            type: "text",
+            start: 0,
+            duration: 45,
+            text: "Export [[test]]",
+            style: { preset: "text.title" },
+            animation: { in: { module: "move.fade", duration: 10 } },
+          },
+          {
+            id: "lower",
+            type: "text",
+            start: 150,
+            duration: 60,
+            text: "A lower third",
+            style: { preset: "text.lower-third" },
+            animation: { in: { module: "move.rise", duration: 12 } },
+          },
         ],
       },
-      { id: "overlay", kind: "video", name: "Overlay", items: [
+      {
+        id: "overlay",
+        kind: "video",
+        name: "Overlay",
+        items: [
           { id: "bars", type: "clip", media: "m-c", in: 0, start: 100, duration: 40, animation: { in: { module: "move.fade", duration: 10 } } },
           { id: "still", type: "clip", media: "m-still", start: 215, duration: 25, animation: { in: { module: "move.fade", duration: 20 } } },
         ],
@@ -71,7 +131,12 @@ export function exportProject(root: string): Project {
           { id: "b", type: "clip", media: "m-b", in: 15, duration: 90, transitionIn: { module: "transition.crossfade", duration: 20 } },
         ],
       },
-      { id: "audio", kind: "audio", name: "Audio", items: [{ id: "music", type: "audio", media: "m-music", in: 0, start: 0, duration: 240, gainDb: -6, fadeIn: 30, fadeOut: 30 }] },
+      {
+        id: "audio",
+        kind: "audio",
+        name: "Audio",
+        items: [{ id: "music", type: "audio", media: "m-music", in: 0, start: 0, duration: 240, gainDb: -6, fadeIn: 30, fadeOut: 30 }],
+      },
     ],
   };
 }

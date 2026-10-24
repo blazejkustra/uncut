@@ -30,7 +30,8 @@ export function soundParts(project: Pick<Project, "tracks">, item: Pick<Item, "i
   const { byLink, byGroup } = partsIndex(project.tracks);
   const linked: Array<{ item: Item; rank: number }> = [];
   const add = (list: ReadonlyArray<{ item: Item; named: boolean }> | undefined, tie: number) => {
-    for (const { item: i, named } of list ?? []) if (i.id !== item.id && !linked.some((x) => x.item.id === i.id)) linked.push({ item: i, rank: tie + (named ? 0 : i.type === "audio" ? 1 : 2) });
+    for (const { item: i, named } of list ?? [])
+      if (i.id !== item.id && !linked.some((x) => x.item.id === i.id)) linked.push({ item: i, rank: tie + (named ? 0 : i.type === "audio" ? 1 : 2) });
   };
   add(byLink.get(item.id), 0);
   if (item.group) add(byGroup.get(item.group), 4);
@@ -38,7 +39,10 @@ export function soundParts(project: Pick<Project, "tracks">, item: Pick<Item, "i
 }
 
 /** Off-main clips and sounds by what they're linked to and by group (one pass per tracks array). */
-const partsIndexes = new WeakMap<ReadonlyArray<Track>, { byLink: Map<string, Array<{ item: Item; named: boolean }>>; byGroup: Map<string, Array<{ item: Item; named: boolean }>> }>();
+const partsIndexes = new WeakMap<
+  ReadonlyArray<Track>,
+  { byLink: Map<string, Array<{ item: Item; named: boolean }>>; byGroup: Map<string, Array<{ item: Item; named: boolean }>> }
+>();
 function partsIndex(tracks: ReadonlyArray<Track>) {
   let index = partsIndexes.get(tracks);
   if (index) return index;
@@ -100,7 +104,9 @@ export function transcriptScope(project: Pick<Project, "tracks" | "media">, item
   const plays = (i: Item) => (i.type === "clip" || i.type === "audio") && i.media === sound.media;
   const own = new Set(track.items.filter(plays).map((i) => i.id));
   const groups = new Set(project.tracks.flatMap((t) => t.items.filter((i) => own.has(i.id) && i.group).map((i) => i.group!)));
-  const items = project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => plays(i) && (own.has(i.id) || (i.group !== undefined && groups.has(i.group))))));
+  const items = project.tracks.flatMap((t) =>
+    t.role === "main" ? [] : t.items.filter((i) => plays(i) && (own.has(i.id) || (i.group !== undefined && groups.has(i.group)))),
+  );
   items.sort((a, b) => (starts.get(a.id) ?? 0) - (starts.get(b.id) ?? 0));
   return { media: sound.media, items: items.map((i) => i.id), anchor: sound.id };
 }
@@ -114,7 +120,11 @@ export function transcriptScope(project: Pick<Project, "tracks" | "media">, item
  * on any track, each at its own start, in timeline order (a word two of them play at once is listed
  * once).
  */
-export function editWords(project: Pick<Project, "tracks" | "canvas">, transcripts: ReadonlyMap<string, ReadonlyArray<CutWord>>, scope?: ReadonlySet<string>): Array<EditWord> {
+export function editWords(
+  project: Pick<Project, "tracks" | "canvas">,
+  transcripts: ReadonlyMap<string, ReadonlyArray<CutWord>>,
+  scope?: ReadonlySet<string>,
+): Array<EditWord> {
   const fps = project.canvas.fps;
   const main = project.tracks.find((t) => t.role === "main");
   const out: Array<EditWord> = [];

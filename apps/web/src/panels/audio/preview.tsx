@@ -91,7 +91,14 @@ export function usePreview() {
 export function TogetherButton({ preview, soundKey, url, wave }: { preview: Preview; soundKey: string; url: string | undefined; wave: boolean }) {
   const on = preview.playing === soundKey && preview.mode === "timeline";
   return (
-    <button className={`icon-btn${on ? " playing" : ""}`} data-testid="sound-with-timeline" data-playing={on} disabled={!url} title={on ? "Stop" : "Play with the timeline from the playhead"} onClick={() => preview.withTimeline(soundKey, url, wave)}>
+    <button
+      className={`icon-btn${on ? " playing" : ""}`}
+      data-testid="sound-with-timeline"
+      data-playing={on}
+      disabled={!url}
+      title={on ? "Stop" : "Play with the timeline from the playhead"}
+      onClick={() => preview.withTimeline(soundKey, url, wave)}
+    >
       {on ? <Square /> : <Clapperboard />}
     </button>
   );

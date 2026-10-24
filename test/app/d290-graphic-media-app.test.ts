@@ -46,7 +46,13 @@ function project(media: string): Project {
     name: "Graphic media",
     canvas: { width: 1280, height: 720, fps: 30 },
     media: [
-      { id: "m-clip", kind: "video", name: "Clip.mp4", path: join(media, "Clip.mp4"), probe: { frames: 150, fps: 30, width: 1280, height: 720, hasAudio: false } },
+      {
+        id: "m-clip",
+        kind: "video",
+        name: "Clip.mp4",
+        path: join(media, "Clip.mp4"),
+        probe: { frames: 150, fps: 30, width: 1280, height: 720, hasAudio: false },
+      },
       { id: "m-still", kind: "image", name: "Still.png", path: join(media, "Still.png"), probe: { width: 320, height: 180 } },
     ],
     tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/footage.html", duration: 90 }] }],
@@ -71,7 +77,11 @@ async function goTo(frame: number) {
   await sleep(1500);
 }
 const ssim = (a: string, b: string) => {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 
@@ -82,7 +92,30 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-d290-app-")));
   const media = join(root, "media");
   mkdirSync(media);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30", "-t", "5", "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:v", "libx264", "-crf", "16", join(media, "Clip.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=s=1280x720:r=30",
+    "-t",
+    "5",
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-c:v",
+    "libx264",
+    "-crf",
+    "16",
+    join(media, "Clip.mp4"),
+  ]);
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "smptebars=s=320x180", "-frames:v", "1", join(media, "Still.png")]);
   dir = writeProject(root, "GraphicMedia", project(media));
   mkdirSync(join(dir, "graphics"));
@@ -97,7 +130,10 @@ after(async () => {
 
 test("a graphic drawing the project's video and a still: the editor's preview is the export", { skip, timeout: 300000 }, async () => {
   const saveAs = join(root, "out", "GraphicMedia.mp4");
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") },
+  });
   page = app.page;
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");

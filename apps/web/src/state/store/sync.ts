@@ -22,7 +22,21 @@ export function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentChange: undefined, agentDraft: "", agentMentions: [], agentImages: [], agentQueued: undefined } : {}),
+    ...(switched
+      ? {
+          changedOnDisk: false,
+          reloadProblem: undefined,
+          notice: undefined,
+          importReport: undefined,
+          exportOpen: false,
+          panelRequest: undefined,
+          agentChange: undefined,
+          agentDraft: "",
+          agentMentions: [],
+          agentImages: [],
+          agentQueued: undefined,
+        }
+      : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -38,7 +52,12 @@ export function applyFromServer(snapshot: ProjectSnapshot | null) {
 }
 
 // Paths too: a relinked file (same id, new path) has another poster.
-const mediaKey = (s: ProjectSnapshot | null) => (s ? `${s.dir}|${projectOf(s).media.map((m) => `${m.id}=${m.path}`).join(",")}` : "");
+const mediaKey = (s: ProjectSnapshot | null) =>
+  s
+    ? `${s.dir}|${projectOf(s)
+        .media.map((m) => `${m.id}=${m.path}`)
+        .join(",")}`
+    : "";
 async function refreshThumbs() {
   const ids = await call((c) => c["media.thumbnails"]({}));
   if (ids.ok) set({ thumbIds: new Set(ids.value) });
@@ -76,9 +95,13 @@ export function onJobs(jobs: ReadonlyArray<ImportJob>) {
       posters = true;
       // The agent's imports (D65) are reported in its turn, not as the Library's import report.
       if (job.projectDir === state.snapshot?.dir && !job.agent) {
-        const failed = job.phase === "failed" ? job.result?.failed ?? [{ path: `${job.total} file${job.total === 1 ? "" : "s"}`, message: job.error ?? "The import stopped." }] : job.result?.failed ?? [];
+        const failed =
+          job.phase === "failed"
+            ? (job.result?.failed ?? [{ path: `${job.total} file${job.total === 1 ? "" : "s"}`, message: job.error ?? "The import stopped." }])
+            : (job.result?.failed ?? []);
         const skipped = job.result?.skipped ?? [];
-        report = failed.length || skipped.length ? { failed: [...(report?.failed ?? []), ...failed], skipped: [...(report?.skipped ?? []), ...skipped] } : report;
+        report =
+          failed.length || skipped.length ? { failed: [...(report?.failed ?? []), ...failed], skipped: [...(report?.skipped ?? []), ...skipped] } : report;
       }
     }
   }
@@ -110,7 +133,9 @@ export function onExportJobs(jobs: ReadonlyArray<ExportJob>) {
 
 /** The open project's analysis jobs for a media item (also joined ones, same content) that are waiting or running. */
 export const activeAnalyses = (s: AppStateShape, mediaId: string) =>
-  s.analysisJobs.filter((j) => j.projectDir === s.snapshot?.dir && (j.mediaId === mediaId || j.mediaIds.includes(mediaId)) && (j.phase === "queued" || j.phase === "running"));
+  s.analysisJobs.filter(
+    (j) => j.projectDir === s.snapshot?.dir && (j.mediaId === mediaId || j.mediaIds.includes(mediaId)) && (j.phase === "queued" || j.phase === "running"),
+  );
 
 // Analysis jobs this window saw waiting or running: if one of them fails, the Library says why
 // (a cancel, by the user or a project closing, says nothing).

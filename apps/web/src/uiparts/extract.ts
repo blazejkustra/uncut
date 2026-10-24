@@ -16,7 +16,7 @@ export function extract(scene: string): unknown {
     { name: "agent", scene: "done", selector: ".side" },
     { name: "message", scene: "done", selector: ".msg-user" },
     { name: "turn", scene: "done", selector: ".turn" },
-    { name: "review", scene: "done", selector: ".card-item[data-type=\"review\"]" },
+    { name: "review", scene: "done", selector: '.card-item[data-type="review"]' },
     { name: "timeline", scene: "done", selector: ".bottom" },
     { name: "preview", scene: "done", selector: ".stage" },
     { name: "composer", scene: "compose", selector: ".composer" },
@@ -29,7 +29,9 @@ export function extract(scene: string): unknown {
   ];
   // Elements no part shows as captured but the runtime draws (the composer's and a message's chips):
   // only their CSS is kept, from the scene that shows them.
-  const STYLED: ReadonlyArray<{ readonly scene: string; readonly selector: string }> = [{ scene: "menu", selector: ".composer-hl mark.chip, .msg-user mark.chip" }];
+  const STYLED: ReadonlyArray<{ readonly scene: string; readonly selector: string }> = [
+    { scene: "menu", selector: ".composer-hl mark.chip, .msg-user mark.chip" },
+  ];
   const DROP_ATTRS = /^(aria-.*|title|tabindex|role|spellcheck|focusable|accept|multiple|draggable|autocomplete|data-held-by|data-gpu.*)$/;
   const HOVERISH = /:(hover|focus|focus-visible|focus-within|active)\b/;
 
@@ -83,12 +85,13 @@ export function extract(scene: string): unknown {
       if (cls !== null) cls.trim() ? c.setAttribute("class", cls.trim().replace(/\s+/g, " ")) : c.removeAttribute("class");
     }
     // The Effects tab keeps its filters (the looks); its effect and shader grids would only weigh.
-    if (spec.name === "effects") for (const g of clone.querySelectorAll('[data-testid="effects-grid"], [data-testid="shaders-grid"]')) {
-      if (g.previousElementSibling?.classList.contains("lib-label")) g.previousElementSibling.remove();
-      g.remove();
-    }
+    if (spec.name === "effects")
+      for (const g of clone.querySelectorAll('[data-testid="effects-grid"], [data-testid="shaders-grid"]')) {
+        if (g.previousElementSibling?.classList.contains("lib-label")) g.previousElementSibling.remove();
+        g.remove();
+      }
     // The menu is placed at the pointer (position: fixed, left/top): a part sits where it's mounted.
-    if (spec.name === "menu") (clone as HTMLElement).style.removeProperty("left"), (clone as HTMLElement).style.removeProperty("top");
+    if (spec.name === "menu") ((clone as HTMLElement).style.removeProperty("left"), (clone as HTMLElement).style.removeProperty("top"));
     // The preview's picture is the author's: the frame keeps its size and background, empty.
     for (const f of clone.querySelectorAll(".frame")) f.replaceChildren();
     const ancestors: Array<{ tag: string; cls: string; attrs: Record<string, string>; vars: string }> = [];
@@ -96,7 +99,11 @@ export function extract(scene: string): unknown {
       const attrs: Record<string, string> = {};
       for (const a of p.attributes) if (a.name.startsWith("data-") && a.name !== "data-testid") attrs[a.name] = a.value;
       const style = (p as HTMLElement).style;
-      const vars = [...Array(style.length).keys()].map((i) => style.item(i)).filter((n) => n.startsWith("--")).map((n) => `${n}:${style.getPropertyValue(n)}`).join(";");
+      const vars = [...Array(style.length).keys()]
+        .map((i) => style.item(i))
+        .filter((n) => n.startsWith("--"))
+        .map((n) => `${n}:${style.getPropertyValue(n)}`)
+        .join(";");
       ancestors.unshift({ tag: p.tagName.toLowerCase(), cls: (p.getAttribute("class") ?? "").trim().replace(/\s+/g, " "), attrs, vars });
     }
     const extra: Record<string, unknown> = {};

@@ -56,7 +56,12 @@ async function goTo(page: Page, frame: number, fps = 30) {
   for (let i = 0; i < frame % fps; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
 }
-const streams = (file: string) => (JSON.parse(execFileSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", file], { encoding: "utf8" })) as { streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number }> }).streams;
+const streams = (file: string) =>
+  (
+    JSON.parse(execFileSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", file], { encoding: "utf8" })) as {
+      streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number }>;
+    }
+  ).streams;
 
 function writeProject(dir: string) {
   mkdirSync(dir, { recursive: true });
@@ -66,7 +71,15 @@ function writeProject(dir: string) {
       format: "uncut/0",
       name: "Takes",
       canvas: { width: 1920, height: 1080, fps: 30 },
-      media: [{ id: "m-talk", kind: "video", name: "Talk.mp4", path: join(root, "Talk.mp4"), probe: { frames: 180, fps: 30, width: 320, height: 240, hasAudio: true } }],
+      media: [
+        {
+          id: "m-talk",
+          kind: "video",
+          name: "Talk.mp4",
+          path: join(root, "Talk.mp4"),
+          probe: { frames: 180, fps: 30, width: 320, height: 240, hasAudio: true },
+        },
+      ],
       tracks: [
         { id: "text", kind: "text", name: "Text", items: [] },
         { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 180 }] },
@@ -80,7 +93,29 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-this-mac-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-f", "lavfi", "-i", "aevalsrc=0.3*sin(2*PI*660*t):s=48000", "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "Talk.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc=0.3*sin(2*PI*660*t):s=48000",
+    "-t",
+    "6",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "Talk.mp4"),
+  ]);
   writeProject(join(root, "Takes.uncut"));
   writeProject(join(root, "Denied.uncut"));
   writeProject(join(root, "Agent.uncut"));
@@ -92,190 +127,240 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo), short takes and Cancel keep nothing, camera and screen takes go into Media", { skip, timeout: 240000 }, async () => {
-  const dir = join(root, "Takes.uncut");
-  const app = await launchApp({ command: APP, env: { ...argentEnv(), UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
-  apps.add(app);
-  const { page } = app;
-  const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-  try {
-    await waitForWelcome(page);
-    await page.click("[data-testid=open-project]");
-    await waitFor(page, "[data-testid=editor]");
-    await page.click("[data-testid=timeline]");
-    await goTo(page, 30);
-
-    await page.click("[data-testid=rail-capture]");
-    // Screen is the first source and on (D144, D238); the picker groups screens and windows; "Record screen".
-    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-screen]");
-    assert.deepEqual(await page.$$eval(".capture-toggles button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera", "Mac sound"]);
-    await waitFor(page, '[data-testid=capture-pick-source][data-id="standin:screen:1"]');
-    await page.click("[data-testid=capture-pick-source]");
-    await waitFor(page, '[data-testid=capture-source-picker] [data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]');
-    await page.keyboard.press("Escape");
-    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
-    assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record screen");
-    await page.click("[data-testid=capture-src-screen]");
-    await page.click("[data-testid=capture-src-voiceover]");
-    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-voiceover]");
-    // Chromium's fake microphones are listed and the meter moves (the fake input beeps).
-    await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, { timeout: 15000 });
-    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.level ?? 0) > 0.05, { timeout: 15000 });
-    assert.match(await text(page, "[data-testid=capture-where]"), /Voiceover track at the playhead \(0:01\)/);
-    assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-library]")), "no dots or stars between words");
-    await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
-    await page.screenshot({ path: "test-output/capture-mic.png" });
-
-    // Record: the timer straight away (no 3-2-1, D267); the timeline plays from the playhead meanwhile.
-    const clicked = Date.now();
-    await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    assert.ok(Date.now() - clicked < 2500, `recording started without a countdown (${Date.now() - clicked} ms)`);
-    assert.equal(await page.$("[data-testid=capture-countdown]"), null);
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true", { timeout: 10000 }).catch(() => {});
-    assert.equal(await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.playing), "true", "the timeline plays while recording");
-    await page.screenshot({ path: "test-output/capture-recording-mic.png" });
-    // The take's length (the timer is up; recordedMs is checked against 2–4 s below).
-    await sleep(2500);
-    const stopAt = Date.now();
-    await page.click("[data-testid=capture-take-stop]");
-    await waitFor(page, "[data-testid=capture-take-saved]", 30000);
-    assert.match(await text(page, "[data-testid=capture-take-saved]"), /^Voiceover \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:01\.$/);
-    const recordedMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
-    // At least the 2.5 s waited, at most the time from Record to Stop and a second (the screenshot
-    // and the clicks take a while on a slow runner, #89).
-    assert.ok(recordedMs > 2000 && recordedMs < Math.max(4000, stopAt - clicked + 1000), `${recordedMs} ms (Record to Stop ${stopAt - clicked} ms)`);
-    let project = onDisk();
-    const voice = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.microphone");
-    assert.ok(voice, JSON.stringify(project.media));
-    assert.match(voice.path, /^media\/captures\/Voiceover \d{8}-\d{6}\.m4a$/);
-    assert.equal(voice.kind, "audio");
-    const track = project.tracks.find((t: { name: string }) => t.name === "Voiceover");
-    assert.equal(track.kind, "audio");
-    assert.equal(track.items.length, 1);
-    const item = track.items[0];
-    assert.equal(item.start, 30, "at the playhead");
-    assert.equal(item.media, voice.id);
-    assert.ok(Math.abs(item.duration / 30 - recordedMs / 1000) <= 0.2, `${item.duration / 30} s on the timeline vs ${recordedMs / 1000} s recorded`);
-    assert.deepEqual(streams(join(dir, voice.path)).map((s) => s.codec_type), ["audio"]);
-    assert.deepEqual(readdirSync(join(dir, "media", "uploads")), [], "the upload is gone");
-
-    // One ⌘Z takes the media, the item and the track out; ⌘⇧Z puts them back.
-    await page.click("[data-testid=timeline]");
-    await keys(page, "z");
-    await sleep(500);
-    project = onDisk();
-    assert.equal(project.media.length, 1);
-    assert.ok(!project.tracks.some((t: { name: string }) => t.name === "Voiceover"));
-    await keys(page, "z", true);
-    await sleep(500);
-    project = onDisk();
-    assert.equal(project.media.length, 2);
-    assert.equal(project.tracks.find((t: { name: string }) => t.name === "Voiceover").items[0].id, item.id);
-
-    // A take under a second is discarded; Cancel keeps nothing.
-    await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-take-stop]", 10000);
-    await page.click("[data-testid=capture-take-stop]");
-    await waitFor(page, "[data-testid=capture-take-discarded]", 10000);
-    assert.match(await text(page, "[data-testid=capture-take-discarded]"), /under a second, so it was discarded/);
-    await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    await sleep(1200);
-    await page.click("[data-testid=capture-take-cancel]");
-    await page.waitForFunction(() => /Cancelled/.test(document.querySelector("[data-testid=capture-take-discarded]")?.textContent ?? ""), { timeout: 5000 });
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle");
-    await sleep(1500);
-    assert.equal(onDisk().media.length, 2, "nothing new");
-
-    // Record, Cancel and Record again in one go: the first take's late end never touches the second.
-    // (In the page, as fast as React renders, so the first take's devices are usually still opening.)
-    await page.evaluate(async () => {
-      const ready = async (id: string) => {
-        for (let i = 0; i < 500; i++) {
-          const el = document.querySelector<HTMLButtonElement>(`[data-testid=${id}]`);
-          if (el && !el.disabled) return el;
-          await new Promise((r) => setTimeout(r, 0));
-        }
-        throw new Error(`no ${id}`);
-      };
-      (await ready("capture-take-record")).click();
-      (await ready("capture-take-cancel")).click();
-      (await ready("capture-take-record")).click();
+test(
+  "This Mac: a voiceover lands on a Voiceover track at the playhead (one undo), short takes and Cancel keep nothing, camera and screen takes go into Media",
+  { skip, timeout: 240000 },
+  async () => {
+    const dir = join(root, "Takes.uncut");
+    const app = await launchApp({
+      command: APP,
+      env: { ...argentEnv(), UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) },
     });
-    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    await sleep(800);
-    assert.equal(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.phase), "recording", "the second take kept going");
-    await page.click("[data-testid=capture-take-cancel]");
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle", { timeout: 5000 });
-    assert.equal(onDisk().media.length, 2, "nothing new");
+    apps.add(app);
+    const { page } = app;
+    const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
+    try {
+      await waitForWelcome(page);
+      await page.click("[data-testid=open-project]");
+      await waitFor(page, "[data-testid=editor]");
+      await page.click("[data-testid=timeline]");
+      await goTo(page, 30);
 
-    // Camera: preview, 720p, picture only (the microphone is its own source), also on the timeline at the playhead.
-    await page.click("[data-testid=capture-src-voiceover]");
-    await page.click("[data-testid=capture-src-camera]");
-    await waitFor(page, "[data-testid=capture-card-camera]");
-    await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoWidth ?? 0) > 0, { timeout: 15000 });
-    await page.click('[data-testid=capture-camera-resolution] [data-value="720p"]');
-    await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoHeight ?? 0) === 720, { timeout: 15000 });
-    await page.click("[data-testid=capture-place]");
-    await page.screenshot({ path: "test-output/capture-camera.png" });
-    await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    await sleep(1000);
-    // Leaving the tab mid-take closes the preview but never the take's own stream; back on the
-    // tab, the camera take (with Stop) shows again.
-    await page.click("[data-testid=rail-media]");
-    await sleep(500);
-    await page.click("[data-testid=rail-capture]");
-    await waitFor(page, "[data-testid=capture-this-mac][data-parts=camera] [data-testid=capture-take-stop]");
-    await sleep(1000);
-    await page.click("[data-testid=capture-take-stop]");
-    await page.waitForFunction(() => /^Camera \d{8}-\d{6}\.mp4 .* and on the timeline at 0:01\.$/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
-    project = onDisk();
-    const camera = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.camera");
-    assert.ok(camera, JSON.stringify(project.media));
-    assert.equal(camera.kind, "video");
-    const camStreams = streams(join(dir, camera.path));
-    assert.deepEqual(camStreams.map((s) => `${s.codec_type}:${s.codec_name}`).sort(), ["video:h264"]);
-    assert.equal(camStreams.find((s) => s.codec_type === "video")!.height, 720);
-    const camMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
-    assert.ok(camMs > 2300, `${camMs} ms`);
-    const camSeconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, camera.path)], { encoding: "utf8" }));
-    assert.ok(Math.abs(camSeconds - camMs / 1000) <= 0.3, `the take wasn't cut short: ${camSeconds} s in the file, ${camMs} ms recorded`);
-    const placed = project.tracks.flatMap((t: { name: string; items: Array<{ media?: string; start?: number }> }) => t.items.map((i) => ({ ...i, track: t.name }))).find((i: { media?: string }) => i.media === camera.id);
-    assert.equal(placed.track, "Recordings");
-    assert.equal(placed.start, 30);
+      await page.click("[data-testid=rail-capture]");
+      // Screen is the first source and on (D144, D238); the picker groups screens and windows; "Record screen".
+      await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-screen]");
+      assert.deepEqual(await page.$$eval(".capture-toggles button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), [
+        "Screen",
+        "Microphone",
+        "Camera",
+        "Mac sound",
+      ]);
+      await waitFor(page, '[data-testid=capture-pick-source][data-id="standin:screen:1"]');
+      await page.click("[data-testid=capture-pick-source]");
+      await waitFor(
+        page,
+        '[data-testid=capture-source-picker] [data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]',
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
+      assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record screen");
+      await page.click("[data-testid=capture-src-screen]");
+      await page.click("[data-testid=capture-src-voiceover]");
+      await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-voiceover]");
+      // Chromium's fake microphones are listed and the meter moves (the fake input beeps).
+      await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, {
+        timeout: 15000,
+      });
+      await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.level ?? 0) > 0.05, {
+        timeout: 15000,
+      });
+      assert.match(await text(page, "[data-testid=capture-where]"), /Voiceover track at the playhead \(0:01\)/);
+      assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-library]")), "no dots or stars between words");
+      await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
+      await page.screenshot({ path: "test-output/capture-mic.png" });
 
-    // Screen: the stand-in source (tests never list the real screens), picture only, into Media.
-    await page.click("[data-testid=capture-src-camera]");
-    await page.click("[data-testid=capture-src-screen]");
-    await page.click("[data-testid=capture-pick-source]");
-    await waitFor(page, '[data-testid=capture-source-picker] [data-testid=capture-source][data-id="standin:screen:1"]');
-    await page.click('[data-testid=capture-source][data-id="standin:screen:1"]');
-    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
-    // "On the timeline" is one option for a screen or camera take, remembered: off for this one.
-    assert.equal(await page.$eval("[data-testid=capture-place]", (el) => (el as HTMLInputElement).checked), true);
-    await page.click("[data-testid=capture-place]");
-    assert.match(await text(page, "[data-testid=capture-where]"), /^Goes into Media\.$/);
-    await page.screenshot({ path: "test-output/capture-screen.png" });
-    await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    await sleep(1800);
-    await page.click("[data-testid=capture-take-stop]");
-    await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
-    project = onDisk();
-    const screen = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.screen");
-    assert.ok(screen);
-    assert.deepEqual(streams(join(dir, screen.path)).map((s) => s.codec_type), ["video"]);
-    assert.equal(project.tracks.flatMap((t: { items: Array<{ media?: string }> }) => t.items).some((i: { media?: string }) => i.media === screen.id), false, "Media only");
-    const log = readFileSync(join(root, "argent.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-    assert.ok(!log.some((e) => e.forbidden), "the fake Argent saw no server stop, stop-all or boot");
-    assert.deepEqual(app.errors, []);
-  } catch (error) {
-    await page.screenshot({ path: "test-output/capture-this-mac-failure.png" }).catch(() => {});
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
-  }
-});
+      // Record: the timer straight away (no 3-2-1, D267); the timeline plays from the playhead meanwhile.
+      const clicked = Date.now();
+      await page.click("[data-testid=capture-take-record]");
+      await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+      assert.ok(Date.now() - clicked < 2500, `recording started without a countdown (${Date.now() - clicked} ms)`);
+      assert.equal(await page.$("[data-testid=capture-countdown]"), null);
+      await page
+        .waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true", { timeout: 10000 })
+        .catch(() => {});
+      assert.equal(await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.playing), "true", "the timeline plays while recording");
+      await page.screenshot({ path: "test-output/capture-recording-mic.png" });
+      // The take's length (the timer is up; recordedMs is checked against 2–4 s below).
+      await sleep(2500);
+      const stopAt = Date.now();
+      await page.click("[data-testid=capture-take-stop]");
+      await waitFor(page, "[data-testid=capture-take-saved]", 30000);
+      assert.match(
+        await text(page, "[data-testid=capture-take-saved]"),
+        /^Voiceover \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:01\.$/,
+      );
+      const recordedMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
+      // At least the 2.5 s waited, at most the time from Record to Stop and a second (the screenshot
+      // and the clicks take a while on a slow runner, #89).
+      assert.ok(recordedMs > 2000 && recordedMs < Math.max(4000, stopAt - clicked + 1000), `${recordedMs} ms (Record to Stop ${stopAt - clicked} ms)`);
+      let project = onDisk();
+      const voice = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.microphone");
+      assert.ok(voice, JSON.stringify(project.media));
+      assert.match(voice.path, /^media\/captures\/Voiceover \d{8}-\d{6}\.m4a$/);
+      assert.equal(voice.kind, "audio");
+      const track = project.tracks.find((t: { name: string }) => t.name === "Voiceover");
+      assert.equal(track.kind, "audio");
+      assert.equal(track.items.length, 1);
+      const item = track.items[0];
+      assert.equal(item.start, 30, "at the playhead");
+      assert.equal(item.media, voice.id);
+      assert.ok(Math.abs(item.duration / 30 - recordedMs / 1000) <= 0.2, `${item.duration / 30} s on the timeline vs ${recordedMs / 1000} s recorded`);
+      assert.deepEqual(
+        streams(join(dir, voice.path)).map((s) => s.codec_type),
+        ["audio"],
+      );
+      assert.deepEqual(readdirSync(join(dir, "media", "uploads")), [], "the upload is gone");
+
+      // One ⌘Z takes the media, the item and the track out; ⌘⇧Z puts them back.
+      await page.click("[data-testid=timeline]");
+      await keys(page, "z");
+      await sleep(500);
+      project = onDisk();
+      assert.equal(project.media.length, 1);
+      assert.ok(!project.tracks.some((t: { name: string }) => t.name === "Voiceover"));
+      await keys(page, "z", true);
+      await sleep(500);
+      project = onDisk();
+      assert.equal(project.media.length, 2);
+      assert.equal(project.tracks.find((t: { name: string }) => t.name === "Voiceover").items[0].id, item.id);
+
+      // A take under a second is discarded; Cancel keeps nothing.
+      await page.click("[data-testid=capture-take-record]");
+      await waitFor(page, "[data-testid=capture-take-stop]", 10000);
+      await page.click("[data-testid=capture-take-stop]");
+      await waitFor(page, "[data-testid=capture-take-discarded]", 10000);
+      assert.match(await text(page, "[data-testid=capture-take-discarded]"), /under a second, so it was discarded/);
+      await page.click("[data-testid=capture-take-record]");
+      await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+      await sleep(1200);
+      await page.click("[data-testid=capture-take-cancel]");
+      await page.waitForFunction(() => /Cancelled/.test(document.querySelector("[data-testid=capture-take-discarded]")?.textContent ?? ""), { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle");
+      await sleep(1500);
+      assert.equal(onDisk().media.length, 2, "nothing new");
+
+      // Record, Cancel and Record again in one go: the first take's late end never touches the second.
+      // (In the page, as fast as React renders, so the first take's devices are usually still opening.)
+      await page.evaluate(async () => {
+        const ready = async (id: string) => {
+          for (let i = 0; i < 500; i++) {
+            const el = document.querySelector<HTMLButtonElement>(`[data-testid=${id}]`);
+            if (el && !el.disabled) return el;
+            await new Promise((r) => setTimeout(r, 0));
+          }
+          throw new Error(`no ${id}`);
+        };
+        (await ready("capture-take-record")).click();
+        (await ready("capture-take-cancel")).click();
+        (await ready("capture-take-record")).click();
+      });
+      await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+      await sleep(800);
+      assert.equal(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.phase), "recording", "the second take kept going");
+      await page.click("[data-testid=capture-take-cancel]");
+      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle", { timeout: 5000 });
+      assert.equal(onDisk().media.length, 2, "nothing new");
+
+      // Camera: preview, 720p, picture only (the microphone is its own source), also on the timeline at the playhead.
+      await page.click("[data-testid=capture-src-voiceover]");
+      await page.click("[data-testid=capture-src-camera]");
+      await waitFor(page, "[data-testid=capture-card-camera]");
+      await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoWidth ?? 0) > 0, {
+        timeout: 15000,
+      });
+      await page.click('[data-testid=capture-camera-resolution] [data-value="720p"]');
+      await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoHeight ?? 0) === 720, {
+        timeout: 15000,
+      });
+      await page.click("[data-testid=capture-place]");
+      await page.screenshot({ path: "test-output/capture-camera.png" });
+      await page.click("[data-testid=capture-take-record]");
+      await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+      await sleep(1000);
+      // Leaving the tab mid-take closes the preview but never the take's own stream; back on the
+      // tab, the camera take (with Stop) shows again.
+      await page.click("[data-testid=rail-media]");
+      await sleep(500);
+      await page.click("[data-testid=rail-capture]");
+      await waitFor(page, "[data-testid=capture-this-mac][data-parts=camera] [data-testid=capture-take-stop]");
+      await sleep(1000);
+      await page.click("[data-testid=capture-take-stop]");
+      await page.waitForFunction(
+        () => /^Camera \d{8}-\d{6}\.mp4 .* and on the timeline at 0:01\.$/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""),
+        { timeout: 60000 },
+      );
+      project = onDisk();
+      const camera = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.camera");
+      assert.ok(camera, JSON.stringify(project.media));
+      assert.equal(camera.kind, "video");
+      const camStreams = streams(join(dir, camera.path));
+      assert.deepEqual(camStreams.map((s) => `${s.codec_type}:${s.codec_name}`).sort(), ["video:h264"]);
+      assert.equal(camStreams.find((s) => s.codec_type === "video")!.height, 720);
+      const camMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
+      assert.ok(camMs > 2300, `${camMs} ms`);
+      const camSeconds = Number(
+        execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, camera.path)], { encoding: "utf8" }),
+      );
+      assert.ok(Math.abs(camSeconds - camMs / 1000) <= 0.3, `the take wasn't cut short: ${camSeconds} s in the file, ${camMs} ms recorded`);
+      const placed = project.tracks
+        .flatMap((t: { name: string; items: Array<{ media?: string; start?: number }> }) => t.items.map((i) => ({ ...i, track: t.name })))
+        .find((i: { media?: string }) => i.media === camera.id);
+      assert.equal(placed.track, "Recordings");
+      assert.equal(placed.start, 30);
+
+      // Screen: the stand-in source (tests never list the real screens), picture only, into Media.
+      await page.click("[data-testid=capture-src-camera]");
+      await page.click("[data-testid=capture-src-screen]");
+      await page.click("[data-testid=capture-pick-source]");
+      await waitFor(page, '[data-testid=capture-source-picker] [data-testid=capture-source][data-id="standin:screen:1"]');
+      await page.click('[data-testid=capture-source][data-id="standin:screen:1"]');
+      await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
+      // "On the timeline" is one option for a screen or camera take, remembered: off for this one.
+      assert.equal(await page.$eval("[data-testid=capture-place]", (el) => (el as HTMLInputElement).checked), true);
+      await page.click("[data-testid=capture-place]");
+      assert.match(await text(page, "[data-testid=capture-where]"), /^Goes into Media\.$/);
+      await page.screenshot({ path: "test-output/capture-screen.png" });
+      await page.click("[data-testid=capture-take-record]");
+      await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+      await sleep(1800);
+      await page.click("[data-testid=capture-take-stop]");
+      await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), {
+        timeout: 60000,
+      });
+      project = onDisk();
+      const screen = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.screen");
+      assert.ok(screen);
+      assert.deepEqual(
+        streams(join(dir, screen.path)).map((s) => s.codec_type),
+        ["video"],
+      );
+      assert.equal(
+        project.tracks.flatMap((t: { items: Array<{ media?: string }> }) => t.items).some((i: { media?: string }) => i.media === screen.id),
+        false,
+        "Media only",
+      );
+      const log = readFileSync(join(root, "argent.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      assert.ok(!log.some((e) => e.forbidden), "the fake Argent saw no server stop, stop-all or boot");
+      assert.deepEqual(app.errors, []);
+    } catch (error) {
+      await page.screenshot({ path: "test-output/capture-this-mac-failure.png" }).catch(() => {});
+      throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
+    }
+  },
+);
 
 test("This Mac: permissions macOS refused say how to fix them and open System Settings; not asked yet offers to ask", { skip, timeout: 120000 }, async () => {
   const dir = join(root, "Denied.uncut");
@@ -299,7 +384,10 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     await page.click("[data-testid=capture-src-screen]");
     await page.click("[data-testid=capture-src-voiceover]");
     await waitFor(page, '[data-testid=capture-access][data-kind="microphone"][data-state="denied"]');
-    assert.match(await text(page, "[data-testid=capture-card-voiceover]"), /isn't allowed to use the microphone\. Turn Uncut on in System Settings, Privacy & Security, Microphone/);
+    assert.match(
+      await text(page, "[data-testid=capture-card-voiceover]"),
+      /isn't allowed to use the microphone\. Turn Uncut on in System Settings, Privacy & Security, Microphone/,
+    );
     assert.equal(await page.$eval("[data-testid=capture-take-record]", (el) => (el as HTMLButtonElement).disabled), true, "no Record while it's off");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/capture-denied.png" });
@@ -339,7 +427,15 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
   );
   const app = await launchApp({
     command: APP,
-    env: { ...argentEnv(), UNCUT_DATA_DIR: join(root, "data-agent"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE_CLAUDE, FAKE_PLAN: plan, ANTHROPIC_API_KEY: "sk-ant-test-not-a-key" },
+    env: {
+      ...argentEnv(),
+      UNCUT_DATA_DIR: join(root, "data-agent"),
+      UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir]),
+      UNCUT_CLAUDE: FAKE_CLAUDE,
+      FAKE_PLAN: plan,
+      ANTHROPIC_API_KEY: "sk-ant-test-not-a-key",
+    },
   });
   apps.add(app);
   const { page } = app;
@@ -355,7 +451,9 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     await page.keyboard.press("Enter");
     // The card: what the agent asked for, the window it named preselected, Don't and Record.
     await waitFor(page, '[data-testid=agent-approval][data-kind="screen"]', 30000);
-    await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", {
+      timeout: 10000,
+    });
     assert.match(await text(page, "[data-testid=agent-approval]"), /^Record "test window" for 1\.5 s\?/);
     assert.ok(!/[·•∙⋅*$]/.test(await text(page, "[data-testid=agent-approval]")), "no price, no dots between words");
     assert.match(await text(page, "[data-testid=agent-approval]"), /Records 1\.5 s from the moment you click Record/, "no 3-2-1 on the card (D273)");
@@ -365,8 +463,10 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     await waitFor(page, "[data-testid=agent-screen-take]", 10000);
     // D273: the agent's take starts at once too: recording, never a 3-2-1.
     const counted: Array<string> = [];
-    for (const end = Date.now() + 10000; ; ) {
-      const take = await page.$eval("[data-testid=agent-screen-take]", (el) => ({ phase: (el as HTMLElement).dataset.phase, text: el.textContent ?? "" })).catch(() => undefined);
+    for (const end = Date.now() + 10000; ;) {
+      const take = await page
+        .$eval("[data-testid=agent-screen-take]", (el) => ({ phase: (el as HTMLElement).dataset.phase, text: el.textContent ?? "" }))
+        .catch(() => undefined);
       if (!take || take.phase === "recording" || take.phase === "saving") break;
       if (take && /Recording in/.test(take.text)) counted.push(take.text);
       assert.ok(Date.now() < end, `the agent's take started recording (last: ${JSON.stringify(take)})`);
@@ -381,13 +481,16 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     assert.ok(screen, JSON.stringify(project.media));
     assert.deepEqual(screen.source, { module: "capture.screen", device: "Test window" });
     assert.match(screen.path, /^media\/captures\/Test window \d{8}-\d{6}\.mp4$/);
-    const secs = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, screen.path)], { encoding: "utf8" }));
+    const secs = Number(
+      execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, screen.path)], { encoding: "utf8" }),
+    );
     check(NO_REAL_GPU, secs > 1.1 && secs < 2.4, `the agent's 1.5 s take is about 1.5 s long: ${secs}`);
     assert.match(await text(page, "[data-testid=agent-turn]"), /Recorded/);
     assert.equal(await page.$("[data-testid=agent-screen-take]"), null);
 
     // Stop during the agent's take: the take is cancelled (streams stopped, nothing kept).
-    const takesOnDisk = () => [...readdirSync(join(dir, "media", "captures")), ...(existsSync(join(dir, "media", "uploads")) ? readdirSync(join(dir, "media", "uploads")) : [])].sort();
+    const takesOnDisk = () =>
+      [...readdirSync(join(dir, "media", "captures")), ...(existsSync(join(dir, "media", "uploads")) ? readdirSync(join(dir, "media", "uploads")) : [])].sort();
     const before = takesOnDisk();
     const mediaBefore = onDisk().media.length;
     const ask = async (prompt: string) => {
@@ -396,15 +499,21 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
       await page.type("[data-testid=agent-input]", prompt);
       await page.keyboard.press("Enter");
       await waitFor(page, '[data-testid=agent-approval][data-kind="screen"]', 30000);
-      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", { timeout: 10000 });
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", {
+        timeout: 10000,
+      });
       await page.click("[data-testid=agent-allow]");
-      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", { timeout: 10000 });
+      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", {
+        timeout: 10000,
+      });
     };
     await ask("record the window for half a minute");
     assert.ok(await page.$("[data-testid=agent-screen-cancel]"), "Cancel shows while the agent's take runs");
     await page.click("[data-testid=agent-stop]");
     await page.waitForFunction(() => !document.querySelector("[data-testid=agent-screen-take]"), { timeout: 10000 });
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")].every((t) => t.dataset.status !== "running"), { timeout: 15000 });
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")].every((t) => t.dataset.status !== "running"), {
+      timeout: 15000,
+    });
     await sleep(1500);
     assert.equal(onDisk().media.length, mediaBefore, "nothing imported");
     assert.deepEqual(takesOnDisk(), before, "no take kept or left in uploads");

@@ -41,7 +41,24 @@ export const CAPTION_LINE_BOUNDS = {
 /** A card stays on screen at least this long (seconds), while the next card doesn't need the room. */
 export const CAPTION_MIN_S = 0.7;
 /** Words ending in a full stop that don't end a sentence. */
-export const ABBREVIATIONS = new Set(["mr.", "mrs.", "ms.", "dr.", "prof.", "st.", "vs.", "e.g.", "i.e.", "etc.", "jr.", "sr.", "inc.", "approx.", "no.", "fig."]);
+export const ABBREVIATIONS = new Set([
+  "mr.",
+  "mrs.",
+  "ms.",
+  "dr.",
+  "prof.",
+  "st.",
+  "vs.",
+  "e.g.",
+  "i.e.",
+  "etc.",
+  "jr.",
+  "sr.",
+  "inc.",
+  "approx.",
+  "no.",
+  "fig.",
+]);
 /** A card stays this long (seconds) after its last word ends... */
 export const CAPTION_HOLD_S = 0.3;
 /** ...and a gap shorter than this (seconds) to the next card is closed, so close cards don't flicker. */
@@ -70,7 +87,7 @@ const num = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v 
  * lines and a card never wraps past its lines.
  */
 export function autoMaxChars(item: Pick<Item, "style" | "transform">, target: Pick<RenderTarget, "canvas" | "theme">): number {
-  const style = { preset: CAPTION_DEFAULTS.look, ...(item.style ?? {}) } as NonNullable<Item["style"]>;
+  const style = { preset: CAPTION_DEFAULTS.look, ...item.style } as NonNullable<Item["style"]>;
   const shell = { transform: item.transform, style };
   const place = textPlacement(shell, target);
   const look = textLook(style.preset);
@@ -79,7 +96,11 @@ export function autoMaxChars(item: Pick<Item, "style" | "transform">, target: Pi
   const inner = width - 2 * Math.max(0, decor.background?.padding ?? 0) - 2 * (decor.stroke?.width ?? 0);
   const font = String(style.font ?? look.font);
   const weight = Number(style.weight ?? look.weight);
-  const glyph = (/mono/i.test(font) ? 0.62 : 0.58) + ((style.uppercase ?? look.uppercase) ? 0.1 : 0) + (weight >= 700 ? 0.03 : 0) + Math.max(0, Number(style.tracking ?? look.tracking) || 0);
+  const glyph =
+    (/mono/i.test(font) ? 0.62 : 0.58) +
+    ((style.uppercase ?? look.uppercase) ? 0.1 : 0) +
+    (weight >= 700 ? 0.03 : 0) +
+    Math.max(0, Number(style.tracking ?? look.tracking) || 0);
   return Math.max(4, Math.min(CAPTION_DEFAULTS.maxChars, Math.floor(inner / (place.size * glyph))));
 }
 

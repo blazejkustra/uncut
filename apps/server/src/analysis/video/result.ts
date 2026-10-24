@@ -57,11 +57,24 @@ export function isVideoResult(value: unknown): value is VideoResult {
   const r = value as Record<string, unknown>;
   if (typeof r.hasVideo !== "boolean") return false;
   if (!r.hasVideo) return true;
-  if (!finite(r.seconds) || !finite(r.frames) || !Array.isArray(r.cuts) || !Array.isArray(r.drops) || !Array.isArray(r.frozen) || !Array.isArray(r.windows)) return false;
+  if (!finite(r.seconds) || !finite(r.frames) || !Array.isArray(r.cuts) || !Array.isArray(r.drops) || !Array.isArray(r.frozen) || !Array.isArray(r.windows))
+    return false;
   if (!r.drops.every((d) => d && finite(d.time) && finite(d.missing))) return false;
   if (!r.cuts.every((c) => c && finite(c.time) && finite(c.score))) return false;
   if (!r.frozen.every((f) => f && finite(f.start) && finite(f.end))) return false;
   return r.windows.every(
-    (w) => w && finite(w.start) && finite(w.end) && finite(w.frames) && finiteOrNull(w.jitter) && finiteOrNull(w.motion) && finite(w.tracked) && finiteOrNull(w.blur) && finite(w.brightness) && finite(w.dark) && finite(w.bright) && finite(w.frozen),
+    (w) =>
+      w &&
+      finite(w.start) &&
+      finite(w.end) &&
+      finite(w.frames) &&
+      finiteOrNull(w.jitter) &&
+      finiteOrNull(w.motion) &&
+      finite(w.tracked) &&
+      finiteOrNull(w.blur) &&
+      finite(w.brightness) &&
+      finite(w.dark) &&
+      finite(w.bright) &&
+      finite(w.frozen),
   );
 }

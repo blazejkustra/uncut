@@ -50,7 +50,12 @@ export function mediaHeardOnMain(project: Project): Array<string> {
  * speech is (its own sound, or its take's microphone) and how transcript_edit cuts it: that main
  * clip (on Main, or the main clip a sound is linked to), else its transcript scope's items.
  */
-export function speechOfItem(project: Project, itemId: unknown): { readonly media: string; readonly itemId: string; readonly request: { readonly items?: ReadonlyArray<string>; readonly clips?: ReadonlyArray<string> } } | { readonly problem: string } {
+export function speechOfItem(
+  project: Project,
+  itemId: unknown,
+):
+  | { readonly media: string; readonly itemId: string; readonly request: { readonly items?: ReadonlyArray<string>; readonly clips?: ReadonlyArray<string> } }
+  | { readonly problem: string } {
   if (typeof itemId !== "string") return { problem: "item must be an item id from project_read." };
   const at = project.tracks.flatMap((t) => t.items.map((i) => ({ item: i, track: t }))).find((x) => x.item.id === itemId);
   if (!at) return { problem: `There's no item "${itemId}". project_read lists the items on each track.` };
@@ -66,14 +71,20 @@ export function speechOfItem(project: Project, itemId: unknown): { readonly medi
 
 const dryRuns = new WeakMap<Session, Map<string, UndoState>>();
 
-export function undoState(turn: StoredTurn, view: ProjectView | undefined, openId: number, validate: (project: Project) => ReadonlyArray<{ readonly message: string }>): UndoState {
+export function undoState(
+  turn: StoredTurn,
+  view: ProjectView | undefined,
+  openId: number,
+  validate: (project: Project) => ReadonlyArray<{ readonly message: string }>,
+): UndoState {
   if (turn.status === "running" || turn.edits.length === 0) return { state: "none" };
   const logged = new Set(view && view.openId === openId ? view.session.log.filter((e) => e.turnId === turn.id).map((e) => e.revision) : []);
   if (!view || !logged.size) {
     if (turn.undoneAt) return { state: "undone" };
     return {
       state: "unavailable",
-      reason: "Its edits aren't in the project's history any more: project.json was changed outside Uncut after it, an earlier version was restored from History, or they were undone with ⌘Z.",
+      reason:
+        "Its edits aren't in the project's history any more: project.json was changed outside Uncut after it, an earlier version was restored from History, or they were undone with ⌘Z.",
     };
   }
   // history.db keeps the last revisions only: a turn whose first edits are gone can't be taken back whole.

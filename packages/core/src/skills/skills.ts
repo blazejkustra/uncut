@@ -57,7 +57,8 @@ export interface BriefLike {
   readonly notes?: string;
 }
 
-const has = (re: RegExp, ...xs: ReadonlyArray<string | ReadonlyArray<string> | undefined>) => xs.some((x) => (Array.isArray(x) ? x.some((y) => re.test(y)) : typeof x === "string" && re.test(x)));
+const has = (re: RegExp, ...xs: ReadonlyArray<string | ReadonlyArray<string> | undefined>) =>
+  xs.some((x) => (Array.isArray(x) ? x.some((y) => re.test(y)) : typeof x === "string" && re.test(x)));
 /** Seconds in a duration like "20 s", "0:45", "1 min", "30-45s" (the largest number). */
 export function durationSeconds(d: string | undefined): number | undefined {
   if (!d) return undefined;
@@ -115,10 +116,17 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const own = type ? TYPE_SKILL[type] : undefined;
   if (own) picked.add(own);
   const talking = has(/talking|to camera|interview|founder|speaker|podcast|webcam|selfie|vlog|presenter|keynote clip/i, ...words, brief.assets);
-  const demo = has(/\bdemo|walk ?-?through|tutorial|how to use|screen ?(record|cap)|recording|capture|\bui\b|app flow|onboarding|feature tour/i, ...words, brief.assets);
+  const demo = has(
+    /\bdemo|walk ?-?through|tutorial|how to use|screen ?(record|cap)|recording|capture|\bui\b|app flow|onboarding|feature tour/i,
+    ...words,
+    brief.assets,
+  );
   const explainer = has(/explain|how it works|under the hood|architecture|concept|diagram|why it|deep dive/i, ...words);
   const titles = has(/title sequence|titles|kinetic|typograph|lyric|type-?only|text-?only|manifesto|opener|intro sequence/i, ...words);
-  const oneTake = has(/one[- ]take|never cut|no cuts|one continuous (shot|take)|motion film|motion study|one shape|morph(s|ing)?\b|keynote[- ]style|seamless loop/i, ...words);
+  const oneTake = has(
+    /one[- ]take|never cut|no cuts|one continuous (shot|take)|motion film|motion study|one shape|morph(s|ing)?\b|keynote[- ]style|seamless loop/i,
+    ...words,
+  );
   const launch = has(/launch|announc|release|teaser|promo|introduc|coming soon|is here|now available|\bship|\bv\d|version \d/i, ...words);
   const formats = (brief.formats ?? []).map(ratio).filter((x): x is number => x !== undefined);
   const kinds = new Set(formats.map((r) => (r < 0.7 ? "tall" : r < 0.9 ? "4:5" : r < 1.1 ? "square" : "wide")));
@@ -135,10 +143,34 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const motion = type ? MOTION_TYPES.has(type) || kindsPicked.some((k) => k === BUILTIN_IDS.launch || k === BUILTIN_IDS.titles) : true;
   const sound = type ? SOUND_TYPES.has(type) || kindsPicked.includes(BUILTIN_IDS.launch) : true;
   const brand = !!o.hasKit && (!type || BRAND_TYPES.has(type));
-  const out = [...kindsPicked, ...(oneTake ? [BUILTIN_IDS.film] : []), ...(motion && !oneTake ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
+  const out = [
+    ...kindsPicked,
+    ...(oneTake ? [BUILTIN_IDS.film] : []),
+    ...(motion && !oneTake ? [BUILTIN_IDS.motion] : []),
+    ...(sound ? [BUILTIN_IDS.sound] : []),
+    ...(brand ? [BUILTIN_IDS.brand] : []),
+  ];
   if (multi && !out.includes(BUILTIN_IDS.social)) out.splice(kindsPicked.length, 0, BUILTIN_IDS.social);
   return out;
 }
 
-export { findingKind, guessVideoType, skillIdOf, skillIdsOf, intendedOf, isIntended, isVideoType, OPTIONAL_BAR, REQUIRED_BAR, reviewRubric, RUBRIC_CATEGORIES, rubricBar, scoredCategories, soundProfileFor, VIDEO_TYPE_NAMES, VIDEO_TYPES, DEFECT_KINDS } from "./rubric.ts";
+export {
+  findingKind,
+  guessVideoType,
+  skillIdOf,
+  skillIdsOf,
+  intendedOf,
+  isIntended,
+  isVideoType,
+  OPTIONAL_BAR,
+  REQUIRED_BAR,
+  reviewRubric,
+  RUBRIC_CATEGORIES,
+  rubricBar,
+  scoredCategories,
+  soundProfileFor,
+  VIDEO_TYPE_NAMES,
+  VIDEO_TYPES,
+  DEFECT_KINDS,
+} from "./rubric.ts";
 export type { FindingRef, IntendedRef, Rubric, RubricBrief, RubricCategory, RubricLevel, VideoType } from "./rubric.ts";

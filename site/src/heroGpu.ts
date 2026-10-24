@@ -15,7 +15,10 @@ const RENDER_SCALE = 0.75;
 const FPS_ACTIVE = 60;
 const FPS_IDLE = 30;
 // GPUBufferUsage / GPUTextureUsage flags (the DOM lib types the interfaces but not these globals).
-const UNIFORM = 0x40, COPY_DST = 0x08, TEXTURE_BINDING = 0x04, RENDER_ATTACHMENT = 0x10;
+const UNIFORM = 0x40,
+  COPY_DST = 0x08,
+  TEXTURE_BINDING = 0x04,
+  RENDER_ATTACHMENT = 0x10;
 
 export type HeroHandle = { readonly stop: () => void };
 
@@ -25,8 +28,13 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
   if (!adapter) return false;
   const device = await adapter.requestDevice();
   let failed = false;
-  device.lost.then(() => { failed = true; });
-  device.addEventListener("uncapturederror", (e) => { failed = true; console.warn("hero gpu: " + (e as GPUUncapturedErrorEvent).error.message); });
+  device.lost.then(() => {
+    failed = true;
+  });
+  device.addEventListener("uncapturederror", (e) => {
+    failed = true;
+    console.warn("hero gpu: " + (e as GPUUncapturedErrorEvent).error.message);
+  });
   const format = navigator.gpu.getPreferredCanvasFormat();
   const context = canvas.getContext("webgpu") as GPUCanvasContext | null;
   if (!context) return false;
@@ -42,7 +50,11 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
   device.pushErrorScope("validation");
   const pipeline = async (code: string, target: GPUTextureFormat) => {
     const module = device.createShaderModule({ code });
-    return device.createRenderPipelineAsync({ layout: "auto", vertex: { module, entryPoint: "vs" }, fragment: { module, entryPoint: "fs", targets: [{ format: target }] } });
+    return device.createRenderPipelineAsync({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: { module, entryPoint: "fs", targets: [{ format: target }] },
+    });
   };
   let trailPipe: GPURenderPipeline, compositePipe: GPURenderPipeline;
   try {
@@ -53,7 +65,15 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
   }
   if (await device.popErrorScope()) return false;
   // trailGroups[i] reads trail i (and writes trail 1 - i); compositeGroups[i] shows trail i.
-  const group = (pipe: GPURenderPipeline, view: GPUTextureView) => device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: paramsBuf } }, { binding: 1, resource: view }, { binding: 2, resource: samp }] });
+  const group = (pipe: GPURenderPipeline, view: GPUTextureView) =>
+    device.createBindGroup({
+      layout: pipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: view },
+        { binding: 2, resource: samp },
+      ],
+    });
   const trailGroups = views.map((v) => group(trailPipe, v));
   const compositeGroups = views.map((v) => group(compositePipe, v));
   const pass = (enc: GPUCommandEncoder, view: GPUTextureView, pipe: GPURenderPipeline, bind: GPUBindGroup) => {
@@ -65,30 +85,59 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
   };
 
   // Pointer: the last segment it moved along, in canvas uv; strength from its speed.
-  let ax = 0.5, ay = 0.4, bx = 0.5, by = 0.4, moved = 0, lastMove = -1e9, hasPointer = false;
+  let ax = 0.5,
+    ay = 0.4,
+    bx = 0.5,
+    by = 0.4,
+    moved = 0,
+    lastMove = -1e9,
+    hasPointer = false;
   const onMove = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    const x = (e.clientX - r.left) / r.width,
+      y = (e.clientY - r.top) / r.height;
     // First contact (or re-entry): start the segment here, so no streak is drawn from elsewhere.
-    if (!hasPointer) { ax = bx = x; ay = by = y; hasPointer = true; }
+    if (!hasPointer) {
+      ax = bx = x;
+      ay = by = y;
+      hasPointer = true;
+    }
     const step = Math.hypot(x - bx, (y - by) * (r.height / r.width));
     // A jump of over a third of the width in one event is a teleport (touch, a scrolled page): no streak.
-    if (step > 0.35) { ax = x; ay = y; } else moved += step;
-    bx = x; by = y;
+    if (step > 0.35) {
+      ax = x;
+      ay = y;
+    } else moved += step;
+    bx = x;
+    by = y;
     lastMove = performance.now();
   };
   if (!reducedMotion) {
     hero.addEventListener("pointermove", onMove, { passive: true });
-    hero.addEventListener("pointerleave", () => { hasPointer = false; moved = 0; });
+    hero.addEventListener("pointerleave", () => {
+      hasPointer = false;
+      moved = 0;
+    });
   }
 
-  let cur = 0, w = 0, h = 0, started = performance.now(), last = started, raf = 0, visible = true, first = true;
+  let cur = 0,
+    w = 0,
+    h = 0,
+    started = performance.now(),
+    last = started,
+    raf = 0,
+    visible = true,
+    first = true;
   const resize = () => {
     const r = canvas.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR) * RENDER_SCALE;
-    const nw = Math.max(1, Math.round(r.width * dpr)), nh = Math.max(1, Math.round(r.height * dpr));
-    if (nw !== w || nh !== h) { w = canvas.width = nw; h = canvas.height = nh; }
+    const nw = Math.max(1, Math.round(r.width * dpr)),
+      nh = Math.max(1, Math.round(r.height * dpr));
+    if (nw !== w || nh !== h) {
+      w = canvas.width = nw;
+      h = canvas.height = nh;
+    }
   };
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
@@ -96,39 +145,65 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
 
   const frame = (now: number) => {
     raf = 0;
-    if (failed) { stop(); hero.classList.remove("fx-live"); return; }
+    if (failed) {
+      stop();
+      hero.classList.remove("fx-live");
+      return;
+    }
     const active = now - lastMove < 1500;
-    if (now - last < 1000 / (active ? FPS_ACTIVE : FPS_IDLE) - 2) { schedule(); return; }
+    if (now - last < 1000 / (active ? FPS_ACTIVE : FPS_IDLE) - 2) {
+      schedule();
+      return;
+    }
     const dt = Math.min((now - last) / 1000, 1 / 20);
     last = now;
     const t = reducedMotion ? 12 : (now - started) / 1000 + 12;
     const splat = Math.min(moved * 24, 0.9);
     moved = 0;
     floats.set([w, h, t, dt, ax, ay, bx, by, splat, 0.5 + 0.5 * Math.sin(t * 0.21), 0.85, (t * 7.31) % 1]);
-    ax = bx; ay = by;
+    ax = bx;
+    ay = by;
     device.queue.writeBuffer(paramsBuf, 0, floats);
     const enc = device.createCommandEncoder();
     pass(enc, views[1 - cur]!, trailPipe, trailGroups[cur]!);
     cur = 1 - cur;
     pass(enc, context.getCurrentTexture().createView(), compositePipe, compositeGroups[cur]!);
     device.queue.submit([enc.finish()]);
-    if (first) { first = false; onFirstFrame(); }
+    if (first) {
+      first = false;
+      onFirstFrame();
+    }
     if (!reducedMotion) schedule();
   };
-  const schedule = () => { if (!raf && visible && !document.hidden && !reducedMotion) raf = requestAnimationFrame(frame); };
-  const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; };
+  const schedule = () => {
+    if (!raf && visible && !document.hidden && !reducedMotion) raf = requestAnimationFrame(frame);
+  };
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  };
 
   const io = new IntersectionObserver((entries) => {
     visible = entries.some((e) => e.isIntersecting);
-    if (visible) { last = performance.now(); schedule(); } else stop();
+    if (visible) {
+      last = performance.now();
+      schedule();
+    } else stop();
   });
   io.observe(canvas);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) stop(); else { last = performance.now(); schedule(); }
+    if (document.hidden) stop();
+    else {
+      last = performance.now();
+      schedule();
+    }
   });
   if (reducedMotion) {
     // One still frame: the glows where they rest, no trail, no loop.
-    requestAnimationFrame((now) => { last = now - 1000; frame(now); });
+    requestAnimationFrame((now) => {
+      last = now - 1000;
+      frame(now);
+    });
   } else {
     schedule();
   }

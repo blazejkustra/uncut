@@ -21,7 +21,7 @@ export function notEncrypted(raw: string): boolean {
   }
   if (url.protocol !== "http:" && url.protocol !== "ws:") return false;
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host === "::1" || /^127\./.test(host)) return false;
+  if (host === "localhost" || host === "::1" || host.startsWith("127.")) return false;
   if (host.endsWith(".ts.net")) return false;
   const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host);
   if (v4 && Number(v4[1]) === 100 && Number(v4[2]) >= 64 && Number(v4[2]) <= 127) return false;

@@ -1,7 +1,18 @@
-import { type ExportQuality, type Item, type Track, type MaskShape, type ClipFx, type ColourLut, type ShaderUse, type DuckKey, type Stage, type Media, RENDER_CSS } from "@uncut/core";
+import {
+  type ExportQuality,
+  type Item,
+  type Track,
+  type MaskShape,
+  type ClipFx,
+  type ColourLut,
+  type ShaderUse,
+  type DuckKey,
+  type Stage,
+  type Media,
+  RENDER_CSS,
+} from "@uncut/core";
 
 export type Quality = ExportQuality;
-
 
 /** A linear opacity ramp on a layer, in project frames: fade in from 0 at `st` to 1 at st + d, or out. */
 export interface Ramp {
@@ -173,7 +184,11 @@ export interface ExportPlan {
    * Tracks with effects (D84): their items are summed first, run through `stages` in order, then
    * panned (`pan`, as each item would have been). Other tracks' items go straight into the mix.
    */
-  readonly buses: ReadonlyArray<{ readonly track: string; readonly stages: ReadonlyArray<Stage>; readonly pan: { readonly left: number; readonly right: number } }>;
+  readonly buses: ReadonlyArray<{
+    readonly track: string;
+    readonly stages: ReadonlyArray<Stage>;
+    readonly pan: { readonly left: number; readonly right: number };
+  }>;
   /** The master limiter (D86), last in the chain; absent when bypassed. */
   readonly limiter?: { readonly ceilingDb: number } | undefined;
   /** Every media file the export reads. */

@@ -4,7 +4,9 @@
 // colour profile the app tests pin (D216): the <video>'s level at evenly spaced canvas levels 0, 15, ..., 255.
 // D222: the preview shows a clip's values as the export holds them (as canvases, effects, stills,
 // text and the GPU compositor do), so a <video> that macOS lifts gets the inverse of this table.
-export const VIDEO_TONE: ReadonlyArray<number> = [0, 0.049, 0.1309, 0.2009, 0.2688, 0.333, 0.3961, 0.4549, 0.5137, 0.5698, 0.631, 0.686, 0.7392, 0.7922, 0.8456, 0.8986, 0.949, 1];
+export const VIDEO_TONE: ReadonlyArray<number> = [
+  0, 0.049, 0.1309, 0.2009, 0.2688, 0.333, 0.3961, 0.4549, 0.5137, 0.5698, 0.631, 0.686, 0.7392, 0.7922, 0.8456, 0.8986, 0.949, 1,
+];
 
 /** The lift at v (0–1): the table with linear interpolation, as an SVG table function reads it. */
 export function videoTone(v: number): number {

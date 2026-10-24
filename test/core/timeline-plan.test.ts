@@ -4,7 +4,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyEdit, createSession, validateProject, loadModules, resolveStarts, type Project } from "../../packages/core/src/index.ts";
-import { draftOf, nearestFreeSpot, planDelete, planMove, planSplit, planTrackFlag, planTrim, snapTargets, trimSnapTargets } from "../../apps/web/src/timeline/edit.ts";
+import {
+  draftOf,
+  nearestFreeSpot,
+  planDelete,
+  planMove,
+  planSplit,
+  planTrackFlag,
+  planTrim,
+  snapTargets,
+  trimSnapTargets,
+} from "../../apps/web/src/timeline/edit.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const project: Project = {
@@ -73,25 +83,47 @@ test("moves on a free track land on the nearest free spot; snapping sticks eithe
 test("main-track moves (D224): the slot under the item's middle (index after removal), landing at the drop frame; the others stay", () => {
   // a (0–90) dragged to 200: past b (90–150) and c (150–180), which stay; gaps before b and a.
   let plan = ok(planMove(project, "a", "main", 200));
-  assert.deepEqual(plan.ops, [{ op: "move_item", item: "a", index: 2 }, { op: "update_item", item: "b", set: { gap: 90 } }, { op: "update_item", item: "a", set: { gap: 20 } }]);
+  assert.deepEqual(plan.ops, [
+    { op: "move_item", item: "a", index: 2 },
+    { op: "update_item", item: "b", set: { gap: 90 } },
+    { op: "update_item", item: "a", set: { gap: 20 } },
+  ]);
   assert.equal(plan.start, 200);
   let p = apply(project, plan);
-  assert.deepEqual(p.tracks[2]!.items.map((i) => i.id), ["b", "c", "a"]);
-  assert.deepEqual(["b", "c", "a"].map((id) => resolveStarts(p).get(id)), [90, 150, 200]);
+  assert.deepEqual(
+    p.tracks[2]!.items.map((i) => i.id),
+    ["b", "c", "a"],
+  );
+  assert.deepEqual(
+    ["b", "c", "a"].map((id) => resolveStarts(p).get(id)),
+    [90, 150, 200],
+  );
   // c dragged to 0: first; it lands on a, which is pushed later, and a on b.
   plan = ok(planMove(project, "c", "main", 0));
   p = apply(project, plan);
-  assert.deepEqual(p.tracks[2]!.items.map((i) => i.id), ["c", "a", "b"]);
-  assert.deepEqual(["c", "a", "b"].map((id) => resolveStarts(p).get(id)), [0, 30, 120]);
+  assert.deepEqual(
+    p.tracks[2]!.items.map((i) => i.id),
+    ["c", "a", "b"],
+  );
+  assert.deepEqual(
+    ["c", "a", "b"].map((id) => resolveStarts(p).get(id)),
+    [0, 30, 120],
+  );
   assert.deepEqual(ok(planMove(project, "b", "main", 50)).ops, [], "still in its own slot, and it can't go before a's end");
   // Same slot, later: only its gap changes (no move_item); c, landed on, is pushed.
   plan = ok(planMove(project, "b", "main", 100));
   assert.deepEqual(plan.ops, [{ op: "update_item", item: "b", set: { gap: 10 } }]);
   p = apply(project, plan);
-  assert.deepEqual(["a", "b", "c"].map((id) => resolveStarts(p).get(id)), [0, 100, 160]);
+  assert.deepEqual(
+    ["a", "b", "c"].map((id) => resolveStarts(p).get(id)),
+    [0, 100, 160],
+  );
   // And back: the gap goes (null), c stays at 160.
   plan = ok(planMove(p, "b", "main", 90));
-  assert.deepEqual(plan.ops, [{ op: "update_item", item: "b", set: { gap: null } }, { op: "update_item", item: "c", set: { gap: 10 } }]);
+  assert.deepEqual(plan.ops, [
+    { op: "update_item", item: "b", set: { gap: null } },
+    { op: "update_item", item: "c", set: { gap: 10 } },
+  ]);
 });
 
 test("trims clamp to one frame, the media and the neighbours; main ripples, free tracks move the start", () => {
@@ -129,10 +161,18 @@ test("split: the selected item under the playhead, else the main clip there; del
   assert.ok("problem" in planSplit(project, "title", 90), "selected but not under the playhead");
   assert.ok("problem" in planSplit(project, undefined, 90), "on a cut, nothing to split");
   // D224: a delete on main leaves its space (b keeps its frame 90).
-  assert.deepEqual(ok(planDelete(project, "a")).ops, [{ op: "delete_item", item: "a" }, { op: "update_item", item: "b", set: { gap: 90 } }]);
+  assert.deepEqual(ok(planDelete(project, "a")).ops, [
+    { op: "delete_item", item: "a" },
+    { op: "update_item", item: "b", set: { gap: 90 } },
+  ]);
   const locked = apply(project, planTrackFlag(project, "text", "locked"));
   assert.equal(locked.tracks[0]!.locked, true);
-  for (const plan of [planMove(locked, "title", "text", 70), planTrim(locked, "title", "end", 5), planSplit(locked, "title", 10), planDelete(locked, "title")]) {
+  for (const plan of [
+    planMove(locked, "title", "text", 70),
+    planTrim(locked, "title", "end", 5),
+    planSplit(locked, "title", 10),
+    planDelete(locked, "title"),
+  ]) {
     assert.match((plan as { problem: string }).problem, /locked/);
   }
   assert.ok("problem" in planMove(project, "title", "text-2", 0) === false);
@@ -186,12 +226,28 @@ test("transitions on main: trims clamp to handles and twice the transition, spli
   applyValid(withTransition, planSplit(withTransition, undefined, 130));
   // Delete a: b would be first, so its transition goes too (one edit).
   let p = applyValid(withTransition, planDelete(withTransition, "a"));
-  assert.deepEqual(p.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]), [["b", false], ["c", false]]);
+  assert.deepEqual(
+    p.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]),
+    [
+      ["b", false],
+      ["c", false],
+    ],
+  );
   // Move b first, or a last: the transitions at the cuts that change go.
   p = applyValid(withTransition, planMove(withTransition, "b", "main", 0));
-  assert.deepEqual(p.tracks[1]!.items.map((i) => i.id), ["b", "a", "c"]);
+  assert.deepEqual(
+    p.tracks[1]!.items.map((i) => i.id),
+    ["b", "a", "c"],
+  );
   p = applyValid(withTransition, planMove(withTransition, "a", "main", 300));
-  assert.deepEqual(p.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]), [["b", false], ["c", false], ["a", false]]);
+  assert.deepEqual(
+    p.tracks[1]!.items.map((i) => [i.id, !!i.transitionIn]),
+    [
+      ["b", false],
+      ["c", false],
+      ["a", false],
+    ],
+  );
   // draftOf refuses what the server would, with a sentence (here: a 10-frame transition into an 8-frame clip).
   const bad = draftOf(withTransition, [{ op: "trim_item", item: "a", edge: "end", frames: 82 }]);
   assert.match((bad as { problem: string }).problem, /^Can't do that: .*transition/);
@@ -205,7 +261,9 @@ test("snapping on main: a small trim isn't pulled back to the clip's own edge or
   assert.deepEqual(plan.ops, [{ op: "trim_item", item: "b", edge: "end", frames: 3 }]);
   // b's start (90) is a's end: not a target either, so a 2-frame left trim happens.
   assert.ok(!trimSnapTargets(project, 0, "b", "start").includes(90));
-  assert.deepEqual(ok(planTrim(project, "b", "start", 2, { targets: trimSnapTargets(project, 0, "b", "start"), threshold: 6 })).ops, [{ op: "trim_item", item: "b", edge: "start", frames: 2 }]);
+  assert.deepEqual(ok(planTrim(project, "b", "start", 2, { targets: trimSnapTargets(project, 0, "b", "start"), threshold: 6 })).ops, [
+    { op: "trim_item", item: "b", edge: "start", frames: 2 },
+  ]);
   // The playhead still is.
   assert.equal(ok(planTrim(project, "b", "end", -3, { targets: trimSnapTargets(project, 145, "b", "end"), threshold: 6 })).duration, 55);
 });
@@ -216,7 +274,16 @@ test("images extend to the left freely; speed scales the source in trims and spl
     media: [...project.media, { id: "img", kind: "image", name: "a.png", path: "/a.png", probe: { width: 100, height: 100 } }],
     tracks: [
       project.tracks[0]!,
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "i", type: "clip", media: "img", in: 0, duration: 30 }, { id: "f", type: "clip", media: "m", in: 0, duration: 40, speed: 2 }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "i", type: "clip", media: "img", in: 0, duration: 30 },
+          { id: "f", type: "clip", media: "m", in: 0, duration: 40, speed: 2 },
+        ],
+      },
     ],
   };
   let plan = ok(planTrim(p, "i", "start", -20));
@@ -247,12 +314,21 @@ test("split keeps the in-animation and fade-in on the first half, the out ones o
             duration: 90,
             text: "Hi",
             animation: { in: { module: "move.fade", duration: 15 }, out: { module: "move.fade", duration: 20 } },
-            keys: [{ frame: 0, opacity: 0 }, { frame: 30, opacity: 1 }, { frame: 80, opacity: 0.5 }],
+            keys: [
+              { frame: 0, opacity: 0 },
+              { frame: 30, opacity: 1 },
+              { frame: 80, opacity: 0.5 },
+            ],
           },
         ],
       },
       { id: "main", kind: "video", role: "main", name: "Main", items: [] },
-      { id: "audio", kind: "audio", name: "Audio", items: [{ id: "s", type: "audio", media: "snd", start: 0, duration: 60, fadeIn: 10, fadeOut: 10, gainKeys: [{ frame: 50, db: -6 }] }] },
+      {
+        id: "audio",
+        kind: "audio",
+        name: "Audio",
+        items: [{ id: "s", type: "audio", media: "snd", start: 0, duration: 60, fadeIn: 10, fadeOut: 10, gainKeys: [{ frame: 50, db: -6 }] }],
+      },
     ],
     media: [{ id: "snd", kind: "audio", name: "s.wav", path: "/s.wav", probe: { frames: 600 } }],
   };
@@ -260,12 +336,28 @@ test("split keeps the in-animation and fade-in on the first half, the out ones o
   let p = applyValid(anim, planSplit(anim, "t", 30));
   assert.deepEqual(item(p, "t").animation, { in: { module: "move.fade", duration: 15 } });
   assert.deepEqual(item(p, "t-1").animation, { out: { module: "move.fade", duration: 20 } });
-  assert.deepEqual(item(p, "t").keys!.map((k) => k.frame), [0, 30]);
-  assert.deepEqual(item(p, "t-1").keys!.map((k) => k.frame), [0, 50]);
+  assert.deepEqual(
+    item(p, "t").keys!.map((k) => k.frame),
+    [0, 30],
+  );
+  assert.deepEqual(
+    item(p, "t-1").keys!.map((k) => k.frame),
+    [0, 50],
+  );
   p = applyValid(anim, planSplit(anim, "s", 20));
   // A key at the cut on both halves keeps the envelope's value there (−6 dB: held before the first key).
   assert.deepEqual([item(p, "s").fadeIn, item(p, "s").fadeOut, item(p, "s").gainKeys], [10, undefined, [{ frame: 20, db: -6 }]]);
-  assert.deepEqual([item(p, "s-1").fadeIn, item(p, "s-1").fadeOut, item(p, "s-1").gainKeys], [undefined, 10, [{ frame: 0, db: -6 }, { frame: 30, db: -6 }]]);
+  assert.deepEqual(
+    [item(p, "s-1").fadeIn, item(p, "s-1").fadeOut, item(p, "s-1").gainKeys],
+    [
+      undefined,
+      10,
+      [
+        { frame: 0, db: -6 },
+        { frame: 30, db: -6 },
+      ],
+    ],
+  );
   // The end can't cut below the last key (80); the start trim moves keys with it.
   assert.equal(ok(planTrim(anim, "t", "end", -500)).duration, 80);
   p = applyValid(anim, planTrim(anim, "t", "start", 60));
@@ -275,7 +367,10 @@ test("split keeps the in-animation and fade-in on the first half, the out ones o
 });
 
 test("a locked item on an unlocked track can't be edited, and the ops around it are refused", () => {
-  const p: Project = { ...project, tracks: project.tracks.map((t) => (t.id === "text" ? { ...t, items: t.items.map((i) => (i.id === "title" ? { ...i, locked: true } : i)) } : t)) };
+  const p: Project = {
+    ...project,
+    tracks: project.tracks.map((t) => (t.id === "text" ? { ...t, items: t.items.map((i) => (i.id === "title" ? { ...i, locked: true } : i)) } : t)),
+  };
   for (const plan of [planMove(p, "title", "text", 70), planTrim(p, "title", "end", 5), planSplit(p, "title", 10), planDelete(p, "title")]) {
     assert.match((plan as { problem: string }).problem, /locked/);
   }
@@ -312,7 +407,13 @@ test("the playhead can rest at the end (D56): End, seeking and stepping reach it
   assert.equal(text.start, 120);
   const bg = planAddBackground(clip, { color: "#000000" }, 120, undefined);
   assert.ok("ops" in bg);
-  assert.deepEqual(bg.ops, [{ op: "insert_item", track: "main", item: { id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#000000" } } }]);
+  assert.deepEqual(bg.ops, [
+    {
+      op: "insert_item",
+      track: "main",
+      item: { id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#000000" } },
+    },
+  ]);
   // The project grows: the playhead stays; it shrinks past the playhead: the new last frame.
   playback.toEnd();
   playback.setProject(210, 30, 210);

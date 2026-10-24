@@ -34,8 +34,13 @@ export function recordSteps(voice: string, awaitPath: string, { keyed = true } =
   return [
     { tool: "argent_list_devices", args: {} },
     { tool: "argent_record", args: { device: DEVICE, flow: FLOW, name: "demo take" } },
-    { tool: "generate_media", args: { generator: "generate.svg", prompt: "A title card: Recorded with Argent", kind: "image", content: TITLE_SVG, name: "title card" } },
-    ...(keyed ? [{ tool: "generate_media", args: { generator: "generate.gpt-image", prompt: PICTURE_PROMPT, kind: "image", size: "1536x1024", name: "desk" } }] : []),
+    {
+      tool: "generate_media",
+      args: { generator: "generate.svg", prompt: "A title card: Recorded with Argent", kind: "image", content: TITLE_SVG, name: "title card" },
+    },
+    ...(keyed
+      ? [{ tool: "generate_media", args: { generator: "generate.gpt-image", prompt: PICTURE_PROMPT, kind: "image", size: "1536x1024", name: "desk" } }]
+      : []),
     { tool: "media_import", args: { path: voice } },
     { await: awaitPath },
   ];
@@ -55,10 +60,16 @@ export interface Placed {
 export function placeSteps(m: Placed): Array<Step> {
   const take = (frames: number, max: number) => Math.max(15, Math.min(max, frames - 2));
   const ops = [
-    { op: "insert_item", track: "main", item: { id: "card", type: "clip", media: m.card, in: 0, duration: 75, animation: { out: { module: "move.fade", duration: 10 } } } },
+    {
+      op: "insert_item",
+      track: "main",
+      item: { id: "card", type: "clip", media: m.card, in: 0, duration: 75, animation: { out: { module: "move.fade", duration: 10 } } },
+    },
     { op: "insert_item", track: "main", item: { id: "take-tab", type: "clip", media: m.capture, in: 0, duration: take(m.captureFrames, 45) } },
     { op: "insert_item", track: "main", item: { id: "take-flow", type: "clip", media: m.demo, in: 0, duration: take(m.demoFrames, 60) } },
-    ...(m.picture ? [{ op: "insert_item", track: "main", item: { id: "desk", type: "clip", media: m.picture, in: 0, duration: 45, transform: { fit: "cover" } } }] : []),
+    ...(m.picture
+      ? [{ op: "insert_item", track: "main", item: { id: "desk", type: "clip", media: m.picture, in: 0, duration: 45, transform: { fit: "cover" } } }]
+      : []),
     { op: "add_track", track: { id: "t-voice", kind: "audio", name: "Voice" } },
     { op: "insert_item", track: "t-voice", item: { id: "voice", type: "audio", media: m.voice, in: 0, start: 0, duration: 150, fadeIn: 6, fadeOut: 15 } },
   ];

@@ -72,7 +72,12 @@ export interface CheckRule {
 export const secs = (frames: number, fps: number) => `${(Math.round((frames / fps) * 10) / 10).toFixed(1)} s`;
 /** A text's words for messages: markup stripped, one line, at most 32 characters. */
 export const textLabel = (text: string | undefined) => {
-  const plain = (text ?? "").replace(/\[\[(.*?)\]\]/gs, "$1").replace(/\*\*(.+?)\*\*/gs, "$1").replace(/`([^`]+)`/g, "$1").replace(/\s+/g, " ").trim();
+  const plain = (text ?? "")
+    .replace(/\[\[(.*?)\]\]/gs, "$1")
+    .replace(/\*\*(.+?)\*\*/gs, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
   return plain.length > 32 ? `${plain.slice(0, 31).trimEnd()}…` : plain;
 };
 export const locked = (p: Placed) => p.track.locked === true || p.item.locked === true;
@@ -234,7 +239,8 @@ export function familyOf(project: Project, item: Item) {
 /** The look whose texts don't count as crowding (D96). */
 export const FOOTNOTE_LOOK = "text.footnote";
 /** A footnote for the crowding rule (D96): in the Footnote look and no bigger than the look's own size. */
-export const isFootnote = (ctx: CheckContext, item: Item) => item.style?.preset === FOOTNOTE_LOOK && textPlacement(item, ctx.project).size <= textLook(FOOTNOTE_LOOK).size * ctx.project.canvas.height + 0.5;
+export const isFootnote = (ctx: CheckContext, item: Item) =>
+  item.style?.preset === FOOTNOTE_LOOK && textPlacement(item, ctx.project).size <= textLook(FOOTNOTE_LOOK).size * ctx.project.canvas.height + 0.5;
 
 /** What every rule gets (projectChecks, soundSheet). */
 export function checkContext(project: Project, options: { readonly speechMedia?: Iterable<Id>; readonly sound?: SoundProfile } = {}): CheckContext {
@@ -248,5 +254,16 @@ export function checkContext(project: Project, options: { readonly speechMedia?:
     for (const item of track.items) if (item.type === "text") texts.push({ item, track, start: starts.get(item.id) ?? 0 });
   }
   texts.sort((a, b) => a.start - b.start);
-  return { project, fps: project.canvas.fps, starts, end, texts, scale: Math.min(project.canvas.width, project.canvas.height) / 1080, media: new Map(project.media.map((m) => [m.id, m])), speech, audible: new Map(), sound: options.sound ?? "strict" };
+  return {
+    project,
+    fps: project.canvas.fps,
+    starts,
+    end,
+    texts,
+    scale: Math.min(project.canvas.width, project.canvas.height) / 1080,
+    media: new Map(project.media.map((m) => [m.id, m])),
+    speech,
+    audible: new Map(),
+    sound: options.sound ?? "strict",
+  };
 }

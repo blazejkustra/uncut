@@ -10,7 +10,15 @@ export function BeatRow({ beat, i, edit, onChange }: { beat: StoryboardBeat; i: 
   if (!edit || !onChange) {
     return (
       <div className={`beat ${beat.still ? "with-still" : ""}`} data-testid="agent-storyboard-beat">
-        {beat.still && <img className="beat-still" data-testid="agent-storyboard-still" src={agentImageUrl(beat.still)} alt={`Beat ${i + 1} still`} title={`Beat ${i + 1}`} />}
+        {beat.still && (
+          <img
+            className="beat-still"
+            data-testid="agent-storyboard-still"
+            src={agentImageUrl(beat.still)}
+            alt={`Beat ${i + 1} still`}
+            title={`Beat ${i + 1}`}
+          />
+        )}
         <div className="beat-head">
           <span className="beat-time">
             {i + 1}. {seconds(beat.start)} to {seconds(beat.end)}
@@ -35,14 +43,47 @@ export function BeatRow({ beat, i, edit, onChange }: { beat: StoryboardBeat; i: 
   return (
     <div className="beat editing" data-testid="agent-storyboard-beat">
       <div className="beat-fields">
-        <input className="field input beat-num" type="number" step="0.1" value={beat.start} title="Start, seconds" onChange={(e) => onChange({ ...beat, start: num(e.target.value, beat.start) })} />
-        <input className="field input beat-num" type="number" step="0.1" value={beat.end} title="End, seconds" onChange={(e) => onChange({ ...beat, end: num(e.target.value, beat.end) })} />
-        <input className="field input grow" data-testid="agent-storyboard-beat-title" value={beat.title} placeholder="Title" onChange={(e) => onChange({ ...beat, title: e.target.value })} />
+        <input
+          className="field input beat-num"
+          type="number"
+          step="0.1"
+          value={beat.start}
+          title="Start, seconds"
+          onChange={(e) => onChange({ ...beat, start: num(e.target.value, beat.start) })}
+        />
+        <input
+          className="field input beat-num"
+          type="number"
+          step="0.1"
+          value={beat.end}
+          title="End, seconds"
+          onChange={(e) => onChange({ ...beat, end: num(e.target.value, beat.end) })}
+        />
+        <input
+          className="field input grow"
+          data-testid="agent-storyboard-beat-title"
+          value={beat.title}
+          placeholder="Title"
+          onChange={(e) => onChange({ ...beat, title: e.target.value })}
+        />
       </div>
       <input className="field input" value={beat.entry} placeholder="Starts on" onChange={(e) => onChange({ ...beat, entry: e.target.value })} />
       <input className="field input" value={beat.exit} placeholder="Ends on" onChange={(e) => onChange({ ...beat, exit: e.target.value })} />
       <input className="field input" value={beat.purpose} placeholder="Purpose" onChange={(e) => onChange({ ...beat, purpose: e.target.value })} />
-      <input className="field input" value={beat.assets.join(", ")} placeholder="Assets" onChange={(e) => onChange({ ...beat, assets: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
+      <input
+        className="field input"
+        value={beat.assets.join(", ")}
+        placeholder="Assets"
+        onChange={(e) =>
+          onChange({
+            ...beat,
+            assets: e.target.value
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean),
+          })
+        }
+      />
     </div>
   );
 }
@@ -75,7 +116,17 @@ export function StoryboardApproval({ approval, storyboard, online }: { approval:
           <BeatRow key={i} beat={b} i={i} edit={edit} onChange={(next) => setBeats(beats.map((x, j) => (j === i ? next : x)))} />
         ))}
       </div>
-      {changing && <textarea className="field input" data-testid="agent-storyboard-note" rows={2} placeholder="What to change" value={note} autoFocus onChange={(e) => setNote(e.target.value)} />}
+      {changing && (
+        <textarea
+          className="field input"
+          data-testid="agent-storyboard-note"
+          rows={2}
+          placeholder="What to change"
+          value={note}
+          autoFocus
+          onChange={(e) => setNote(e.target.value)}
+        />
+      )}
       <div className="approval-sub">The build waits for your approval.</div>
       <div className="approval-btns">
         {!changing && (

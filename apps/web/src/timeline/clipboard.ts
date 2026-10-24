@@ -42,7 +42,8 @@ export function planDeleteMany(project: ProjectModel, ids: ReadonlyArray<string>
     if (p.track.role !== "main") continue;
     // The next clip that stays now follows a gap (or another clip): its transition goes.
     const next = p.track.items.slice(p.index + 1).find((i) => !gone.has(i.id));
-    if (next?.transitionIn && !ops.some((o) => o.op === "set_transition" && o.item === next.id)) ops.push({ op: "set_transition", item: next.id, transition: null });
+    if (next?.transitionIn && !ops.some((o) => o.op === "set_transition" && o.item === next.id))
+      ops.push({ op: "set_transition", item: next.id, transition: null });
   }
   for (const p of placed) ops.push({ op: "delete_item", item: p.item.id });
   const main = project.tracks.find((t) => t.role === "main");
@@ -65,7 +66,13 @@ export function copyItems(project: ProjectModel, ids: ReadonlyArray<string>): Ar
   const first = Math.min(...placed.map((p) => p!.start));
   return placed
     .sort((a, b) => a!.start - b!.start)
-    .map((p) => ({ item: structuredClone(p!.item) as Item, track: p!.track.id, kind: p!.track.role === "main" ? homeKind(p!.item) : p!.track.kind, main: p!.track.role === "main", offset: p!.start - first }));
+    .map((p) => ({
+      item: structuredClone(p!.item) as Item,
+      track: p!.track.id,
+      kind: p!.track.role === "main" ? homeKind(p!.item) : p!.track.kind,
+      main: p!.track.role === "main",
+      offset: p!.start - first,
+    }));
 }
 
 const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video", text: "Text", audio: "Audio" };
@@ -77,7 +84,11 @@ const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video
  * inserted on the main track after the clip under the playhead (the rest moves along). New ids;
  * transitions aren't copied (the cut they sat on isn't there).
  */
-export function planPaste(project: ProjectModel, clips: ReadonlyArray<Clip>, frame: number): (Plan & { readonly ids: ReadonlyArray<string> }) | { readonly problem: string } {
+export function planPaste(
+  project: ProjectModel,
+  clips: ReadonlyArray<Clip>,
+  frame: number,
+): (Plan & { readonly ids: ReadonlyArray<string> }) | { readonly problem: string } {
   if (!clips.length) return { problem: "Copy an item first (⌘C)." };
   const { starts } = layoutOf(project);
   const at = Math.max(0, Math.round(frame));
@@ -87,7 +98,8 @@ export function planPaste(project: ProjectModel, clips: ReadonlyArray<Clip>, fra
   // Spans claimed on each track by this paste, so two pasted items don't land on each other.
   const claimed = new Map<string, Array<readonly [number, number]>>();
   const free = (t: Track, from: number, to: number) =>
-    t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= from || to <= (starts.get(i.id) ?? 0)) && (claimed.get(t.id) ?? []).every(([a, b]) => b <= from || to <= a);
+    t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= from || to <= (starts.get(i.id) ?? 0)) &&
+    (claimed.get(t.id) ?? []).every(([a, b]) => b <= from || to <= a);
   const tracks: Array<Track> = [...project.tracks];
   const main = project.tracks.find((t) => t.role === "main");
   let mainIndex = main ? main.items.filter((i) => (starts.get(i.id) ?? 0) < at).length : 0;

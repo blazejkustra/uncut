@@ -46,15 +46,25 @@ export function bezelSvg(device: Device, w: number, h: number, fill: string, url
   const hole = roundRect(scr.x + inset, scr.y + inset, scr.w - 2 * inset, scr.h - 2 * inset, Math.max(0, scr.radius - inset));
   const outerR = device === "phone" ? 66 * s : device === "android" ? 46 * s : 16 * s;
   const outer = roundRect(0, 0, w, h, outerR);
-  const parts = [`<path d="${outer} ${hole}" fill="${fill}" fill-rule="evenodd"/>`, `<path d="${roundRect(0.75 * s, 0.75 * s, w - 1.5 * s, h - 1.5 * s, outerR - 0.75 * s)}" fill="none" stroke="rgb(255 255 255 / 14%)" stroke-width="${num(1.5 * s)}"/>`];
-  if (device === "phone") parts.push(`<rect x="${num(w / 2 - 60 * s)}" y="${num(scr.y + 18 * s)}" width="${num(120 * s)}" height="${num(34 * s)}" rx="${num(17 * s)}" fill="#000"/>`);
+  const parts = [
+    `<path d="${outer} ${hole}" fill="${fill}" fill-rule="evenodd"/>`,
+    `<path d="${roundRect(0.75 * s, 0.75 * s, w - 1.5 * s, h - 1.5 * s, outerR - 0.75 * s)}" fill="none" stroke="rgb(255 255 255 / 14%)" stroke-width="${num(1.5 * s)}"/>`,
+  ];
+  if (device === "phone")
+    parts.push(`<rect x="${num(w / 2 - 60 * s)}" y="${num(scr.y + 18 * s)}" width="${num(120 * s)}" height="${num(34 * s)}" rx="${num(17 * s)}" fill="#000"/>`);
   else if (device === "android") parts.push(`<circle cx="${num(w / 2)}" cy="${num(scr.y + 28 * s)}" r="${num(13 * s)}" fill="#000"/>`);
   else {
     // The browser's top bar: three neutral dots and an address field.
-    for (const [i, x] of [24, 46, 68].entries()) parts.push(`<circle cx="${num(x * s)}" cy="${num(22 * s)}" r="${num(6.5 * s)}" fill="rgb(255 255 255 / ${[22, 16, 12][i]}%)"/>`);
+    for (const [i, x] of [24, 46, 68].entries())
+      parts.push(`<circle cx="${num(x * s)}" cy="${num(22 * s)}" r="${num(6.5 * s)}" fill="rgb(255 255 255 / ${[22, 16, 12][i]}%)"/>`);
     const fw = Math.min(w * 0.5, 640 * s);
-    parts.push(`<rect x="${num(w / 2 - fw / 2)}" y="${num(9 * s)}" width="${num(fw)}" height="${num(26 * s)}" rx="${num(13 * s)}" fill="rgb(255 255 255 / 8%)"/>`);
-    if (url) parts.push(`<text x="${num(w / 2)}" y="${num(27 * s)}" text-anchor="middle" font-family="${DM_SANS.replace(/'/g, "")}" font-size="${num(14 * s)}" fill="rgb(255 255 255 / 60%)">${esc(url)}</text>`);
+    parts.push(
+      `<rect x="${num(w / 2 - fw / 2)}" y="${num(9 * s)}" width="${num(fw)}" height="${num(26 * s)}" rx="${num(13 * s)}" fill="rgb(255 255 255 / 8%)"/>`,
+    );
+    if (url)
+      parts.push(
+        `<text x="${num(w / 2)}" y="${num(27 * s)}" text-anchor="middle" font-family="${DM_SANS.replace(/'/g, "")}" font-size="${num(14 * s)}" fill="rgb(255 255 255 / 60%)">${esc(url)}</text>`,
+      );
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${num(w)}" height="${num(h)}" viewBox="0 0 ${num(w)} ${num(h)}" style="position:absolute;left:0;top:0;display:block;overflow:visible">${parts.join("")}</svg>`;
 }

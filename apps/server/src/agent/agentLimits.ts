@@ -58,7 +58,9 @@ const usedKey = (auth: AuthInfo | undefined) => !!auth?.keySource && !SUBSCRIPTI
 const keyWords = (auth: AuthInfo): string => {
   switch (auth.keySource) {
     case "ANTHROPIC_API_KEY":
-      return auth.keyWhere === "settings" ? "ANTHROPIC_API_KEY from Claude Code's settings (the env block of settings.json)" : "ANTHROPIC_API_KEY from the environment";
+      return auth.keyWhere === "settings"
+        ? "ANTHROPIC_API_KEY from Claude Code's settings (the env block of settings.json)"
+        : "ANTHROPIC_API_KEY from the environment";
     case "apiKeyHelper":
       return "the key from its apiKeyHelper setting";
     case "/login managed key":
@@ -72,7 +74,9 @@ const keyWords = (auth: AuthInfo): string => {
 const keyWayOut = (auth: AuthInfo, fix: string): string => {
   switch (auth.keySource) {
     case "ANTHROPIC_API_KEY":
-      return auth.keyWhere === "settings" ? `Remove it from settings.json to use your Claude subscription, or ${fix} that key.` : `Unset it to use your Claude subscription, or ${fix} that key.`;
+      return auth.keyWhere === "settings"
+        ? `Remove it from settings.json to use your Claude subscription, or ${fix} that key.`
+        : `Unset it to use your Claude subscription, or ${fix} that key.`;
     case "apiKeyHelper":
       return `Remove apiKeyHelper from Claude Code's settings to use your Claude subscription, or ${fix} that key.`;
     case "/login managed key":
@@ -90,7 +94,9 @@ export const authNote = (kind: "credit" | "rejected", auth: AuthInfo | undefined
       ? "Claude Code used your Claude account sign-in (no API key), so your plan's usage or extra-usage credit ran out: check Settings, Usage on claude.ai, or wait for the limit to reset."
       : "";
   }
-  return kind === "credit" ? `Claude Code used ${keyWords(auth)}, which has no credit. ${keyWayOut(auth, "top up")}` : `Claude Code used ${keyWords(auth)}, which was rejected. ${keyWayOut(auth, "replace")}`;
+  return kind === "credit"
+    ? `Claude Code used ${keyWords(auth)}, which has no credit. ${keyWayOut(auth, "top up")}`
+    : `Claude Code used ${keyWords(auth)}, which was rejected. ${keyWayOut(auth, "replace")}`;
 };
 
 const BILLING = /credit balance is too low|insufficient credit|billing|spend limit reached|out of credits?/i;
@@ -128,7 +134,9 @@ export const onRateLimit = (limits: TurnLimits, info: RateLimitInfo, nowMs: numb
     limits.announced.add(key);
     const label = Object.hasOwn(WINDOWS, type) ? WINDOWS[type] : undefined;
     const wait = waitFor(resetsAt, nowMs);
-    return { notice: `Claude usage limit reached. This turn is paused until the ${label ? `${label} ` : ""}limit resets${wait ? ` in ${wait}` : ""}. Wait, or press Stop and send it again later.` };
+    return {
+      notice: `Claude usage limit reached. This turn is paused until the ${label ? `${label} ` : ""}limit resets${wait ? ` in ${wait}` : ""}. Wait, or press Stop and send it again later.`,
+    };
   }
   if (info.status === "allowed" || info.status === "allowed_warning" || overage) {
     const had = limits.rejected.delete(type);
@@ -165,7 +173,10 @@ const SIGNED_OUT = /not logged in|please run \/login|run \/login|invalid api key
  * 429, then the terminal reason.
  */
 export const resultError = (msg: Record<string, any>, limits: TurnLimits, nowMs: number, configDir?: string, auth?: AuthInfo): string | undefined => {
-  const said = [typeof msg.result === "string" ? msg.result : "", ...(Array.isArray(msg.errors) ? msg.errors.filter((e: unknown) => typeof e === "string") : [])].join(" ");
+  const said = [
+    typeof msg.result === "string" ? msg.result : "",
+    ...(Array.isArray(msg.errors) ? msg.errors.filter((e: unknown) => typeof e === "string") : []),
+  ].join(" ");
   if (limits.authFailed || SIGNED_OUT.test(said)) {
     // An API key that was rejected isn't a sign-out: say which key it was.
     if (usedKey(auth)) return `Claude Code's API key was rejected${said.trim() ? ` ("${said.trim().slice(0, 200)}")` : ""}. ${authNote("rejected", auth)}`;
@@ -181,7 +192,9 @@ export const resultError = (msg: Record<string, any>, limits: TurnLimits, nowMs:
   const status = typeof msg.api_error_status === "number" ? msg.api_error_status : undefined;
   const reason = typeof msg.terminal_reason === "string" ? msg.terminal_reason : undefined;
   const limited =
-    ((limits.rejected.size > 0 || limits.rateLimited) && (status === undefined || status === 429) && (reason === undefined || reason === "api_error" || reason === "blocking_limit")) ||
+    ((limits.rejected.size > 0 || limits.rateLimited) &&
+      (status === undefined || status === 429) &&
+      (reason === undefined || reason === "api_error" || reason === "blocking_limit")) ||
     reason === "blocking_limit";
   if (limited) {
     const resets = [...limits.rejected.values()];
@@ -217,7 +230,11 @@ const CODEX_ERRORS: Record<string, string> = {
  * Why a Codex turn failed, from its TurnError (message, codexErrorInfo) and the limits it reported
  * on the way (account/rateLimits/updated, codexLimitNotice), or undefined for Codex's own words.
  */
-export const codexTurnError = (error: { readonly message?: unknown; readonly codexErrorInfo?: unknown } | null | undefined, resetsAt: number | undefined, nowMs: number): string | undefined => {
+export const codexTurnError = (
+  error: { readonly message?: unknown; readonly codexErrorInfo?: unknown } | null | undefined,
+  resetsAt: number | undefined,
+  nowMs: number,
+): string | undefined => {
   const info = error?.codexErrorInfo;
   const kind = typeof info === "string" ? info : info && typeof info === "object" ? Object.keys(info)[0] : undefined;
   const said = typeof error?.message === "string" ? error.message : "";
@@ -242,7 +259,13 @@ export const codexLimitNotice = (snapshot: Record<string, any> | null | undefine
   const windows = [snapshot.primary, snapshot.secondary].filter((w): w is Record<string, any> => !!w && typeof w === "object");
   const full = windows.filter((w) => typeof w.usedPercent === "number" && w.usedPercent >= 100);
   if (!snapshot.rateLimitReachedType && !full.length) return {};
-  const resetsAt = (full.length ? full : windows).map((w) => seconds(w.resetsAt)).filter((x): x is number => x !== undefined).sort((a, b) => b - a)[0];
+  const resetsAt = (full.length ? full : windows)
+    .map((w) => seconds(w.resetsAt))
+    .filter((x): x is number => x !== undefined)
+    .sort((a, b) => b - a)[0];
   const wait = waitFor(resetsAt, nowMs);
-  return { notice: `Codex usage limit reached${wait ? `; it resets in ${wait}` : ""}. Wait, or press Stop and send it again later.`, ...(resetsAt ? { resetsAt } : {}) };
+  return {
+    notice: `Codex usage limit reached${wait ? `; it resets in ${wait}` : ""}. Wait, or press Stop and send it again later.`,
+    ...(resetsAt ? { resetsAt } : {}),
+  };
 };

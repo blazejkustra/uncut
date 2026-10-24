@@ -48,7 +48,7 @@ export function TrackVolume({ project, track, online }: { project: ProjectModel;
           data-testid="track-volume"
           aria-expanded={open}
           disabled={!online}
-         
+
           onClick={() => setOpen(!open)}
         >
           <SlidersHorizontal />
@@ -75,7 +75,16 @@ export function TrackVolume({ project, track, online }: { project: ProjectModel;
               }}
               onCommit={send}
             />
-            <NumberField label="dB" testId="track-volume-num" value={db} step={0.5} min={SILENCE_DB} max={MAX_DB} disabled={!online} onCommit={(v) => send(v ?? 0)} />
+            <NumberField
+              label="dB"
+              testId="track-volume-num"
+              value={db}
+              step={0.5}
+              min={SILENCE_DB}
+              max={MAX_DB}
+              disabled={!online}
+              onCommit={(v) => send(v ?? 0)}
+            />
           </div>
           <div className="hint-line muted small">{db <= SILENCE_DB ? "Silent" : `${dbLabel(db)} dB on every item of the track`}</div>
         </div>

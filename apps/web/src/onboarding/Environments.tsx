@@ -51,10 +51,19 @@ export function Environments() {
           </Tooltip>
         </div>
         <div className="wiz-panel">
-          <p className="wiz-lead">Where Uncut's server runs: this Mac, or another machine with uncut-server. Projects, footage, exports, the agent and plugins stay on that machine; this window edits them there.</p>
+          <p className="wiz-lead">
+            Where Uncut's server runs: this Mac, or another machine with uncut-server. Projects, footage, exports, the agent and plugins stay on that machine;
+            this window edits them there.
+          </p>
           <div className="wiz-list">
             {list.map((env) => (
-              <EnvironmentRow key={env.id} env={env} active={env.id === environment.id} state={env.id === environment.id ? connection : undefined} problem={env.id === environment.id ? environmentProblem : undefined} />
+              <EnvironmentRow
+                key={env.id}
+                env={env}
+                active={env.id === environment.id}
+                state={env.id === environment.id ? connection : undefined}
+                problem={env.id === environment.id ? environmentProblem : undefined}
+              />
             ))}
           </div>
           {adding ? (
@@ -79,7 +88,13 @@ export function Environments() {
                 <Plus />
                 Add environment…
               </button>
-              <button className="btn ghost" data-testid="env-ssh" disabled={!flag} title={flag ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => setSsh(true)}>
+              <button
+                className="btn ghost"
+                data-testid="env-ssh"
+                disabled={!flag}
+                title={flag ? undefined : ENVIRONMENTS_LABS_HINT}
+                onClick={() => setSsh(true)}
+              >
                 <SquareTerminal />
                 Connect over SSH…
               </button>
@@ -154,7 +169,12 @@ function EnvironmentRow({ env, active, state, problem }: { env: EnvironmentInfo;
         {env.kind === "remote" && !renaming && (
           <>
             <Tooltip label="Test the connection">
-              <button className="icon-btn" data-testid="env-test" disabled={test === "testing"} onClick={() => (setTest("testing"), void actions.testEnvironment({ id: env.id }).then(setTest))}>
+              <button
+                className="icon-btn"
+                data-testid="env-test"
+                disabled={test === "testing"}
+                onClick={() => (setTest("testing"), void actions.testEnvironment({ id: env.id }).then(setTest))}
+              >
                 <RefreshCw className={test === "testing" ? "spin" : ""} />
               </button>
             </Tooltip>
@@ -163,7 +183,12 @@ function EnvironmentRow({ env, active, state, problem }: { env: EnvironmentInfo;
                 <Pencil />
               </button>
             </Tooltip>
-            <button className="icon-btn" title="Remove from this Mac (the server and its projects stay as they are)" data-testid="env-remove" onClick={() => void actions.removeEnvironment(env.id)}>
+            <button
+              className="icon-btn"
+              title="Remove from this Mac (the server and its projects stay as they are)"
+              data-testid="env-remove"
+              onClick={() => void actions.removeEnvironment(env.id)}
+            >
               <Trash2 />
             </button>
           </>
@@ -220,7 +245,14 @@ function AddEnvironment({ prefillUrl, onDone }: { prefillUrl: string | undefined
       </label>
       <label className="wiz-field">
         <span>Address</span>
-        <input data-testid="env-add-url" placeholder="http://studio.local:8790, or the uncut://pair line" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} autoFocus />
+        <input
+          data-testid="env-add-url"
+          placeholder="http://studio.local:8790, or the uncut://pair line"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          spellCheck={false}
+          autoFocus
+        />
       </label>
       {!pairing && (
         <label className="wiz-field">
@@ -244,7 +276,13 @@ function AddEnvironment({ prefillUrl, onDone }: { prefillUrl: string | undefined
         <button type="button" className="btn ghost" onClick={onDone}>
           Cancel
         </button>
-        <button type="button" className="btn" data-testid="env-add-test" disabled={busy || !url.trim() || (!pairing && !token.trim())} onClick={() => void test()}>
+        <button
+          type="button"
+          className="btn"
+          data-testid="env-add-test"
+          disabled={busy || !url.trim() || (!pairing && !token.trim())}
+          onClick={() => void test()}
+        >
           Test connection
         </button>
         <button type="submit" className="btn primary" data-testid="env-add-save" disabled={busy || !url.trim() || (!pairing && !token.trim())}>
@@ -266,10 +304,19 @@ function SshHelper({ onClose, onUse }: { onClose: () => void; onUse: (url: strin
   return (
     <div className="wiz-list env-add" data-testid="env-ssh-panel">
       <div className="wiz-section">Connect over SSH</div>
-      <div className="wiz-sub">For a Mac you can ssh into that has Uncut installed. Its server listens only on that Mac; the tunnel brings it here. Uncut doesn't run these for you.</div>
+      <div className="wiz-sub">
+        For a Mac you can ssh into that has Uncut installed. Its server listens only on that Mac; the tunnel brings it here. Uncut doesn't run these for you.
+      </div>
       <label className="wiz-field">
         <span>Host</span>
-        <input data-testid="ssh-target" placeholder="you@studio.local" value={target} onChange={(e) => setTarget(e.target.value)} spellCheck={false} autoFocus />
+        <input
+          data-testid="ssh-target"
+          placeholder="you@studio.local"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          spellCheck={false}
+          autoFocus
+        />
       </label>
       <div className="env-ports">
         <label className="wiz-field">
@@ -320,7 +367,8 @@ function Command({ id, text }: { id: string; text: string }) {
 /** The environment's name and state, for the title bar and the welcome card; opens Environments. */
 export function EnvironmentChip() {
   const { environment, connection, environmentProblem } = useApp();
-  const state = connection === "connected" ? "connected" : connection === "failed" || connection === "server-exited" || environmentProblem ? "error" : "connecting";
+  const state =
+    connection === "connected" ? "connected" : connection === "failed" || connection === "server-exited" || environmentProblem ? "error" : "connecting";
   const usable = useEnvironmentsUsable();
   const chip = (
     <button
@@ -329,7 +377,11 @@ export function EnvironmentChip() {
       data-kind={environment.kind}
       data-state={state}
       disabled={!usable}
-      title={usable ? (environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments")) : undefined}
+      title={
+        usable
+          ? (environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments"))
+          : undefined
+      }
       onClick={() => void actions.openEnvironments()}
     >
       <span className="dot" />

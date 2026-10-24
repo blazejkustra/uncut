@@ -12,7 +12,6 @@ import { actions, endPreview, getState, previewEdits } from "../state/store.ts";
 import { swatches } from "../preview/text.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 
-
 /** How long typing has to pause before it's saved (it's also saved on blur and ⌘Enter). */
 export const TYPING_PAUSE_MS = 800;
 
@@ -57,7 +56,27 @@ const roundTo = (v: number, step: number) => {
  * release commits once, one ⌘Z. A press that doesn't move is a click: it focuses for typing.
  * ↑ and ↓ step (⇧ ten) and preview; Enter or blur commits, Esc drops it.
  */
-export function NumberField({ label, value, onCommit, testId, placeholder, step = 1, min, max, disabled }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; testId: string; placeholder?: string; step?: number; min?: number; max?: number; disabled?: boolean }) {
+export function NumberField({
+  label,
+  value,
+  onCommit,
+  testId,
+  placeholder,
+  step = 1,
+  min,
+  max,
+  disabled,
+}: {
+  label: string;
+  value: number | undefined;
+  onCommit: (v: number | undefined) => void;
+  testId: string;
+  placeholder?: string;
+  step?: number;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+}) {
   const shown = value === undefined ? "" : String(value);
   const [text, setText] = useState(shown);
   const [scrubbing, setScrubbing] = useState(false);
@@ -160,7 +179,9 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
   };
 
   return (
-    <label className={`field num-field ${scrubbing ? "scrubbing" : ""}`} data-scrub={testId}
+    <label
+      className={`field num-field ${scrubbing ? "scrubbing" : ""}`}
+      data-scrub={testId}
       onPointerDown={onPointerDown}
       onClick={(e) => {
         if (dragged.current) e.preventDefault();
@@ -190,7 +211,10 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
             e.preventDefault();
             const base = parse(text);
             const by = (e.shiftKey ? 10 : 1) * step;
-            const next = roundTo(clampTo((base !== undefined && Number.isFinite(base) ? base : (value ?? 0)) + (e.key === "ArrowUp" ? by : -by), min, max), step);
+            const next = roundTo(
+              clampTo((base !== undefined && Number.isFinite(base) ? base : (value ?? 0)) + (e.key === "ArrowUp" ? by : -by), min, max),
+              step,
+            );
             editing.current = true;
             preview(next);
           }
@@ -208,7 +232,19 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
 }
 
 /** Colour swatches (theme tokens first) plus a custom colour. */
-export function ColorPicker({ project, value, onPick, testId, disabled }: { project: ProjectModel; value: string | undefined; onPick: (color: string, final: boolean) => void; testId: string; disabled?: boolean }) {
+export function ColorPicker({
+  project,
+  value,
+  onPick,
+  testId,
+  disabled,
+}: {
+  project: ProjectModel;
+  value: string | undefined;
+  onPick: (color: string, final: boolean) => void;
+  testId: string;
+  disabled?: boolean;
+}) {
   const css = resolveColor(project, value, "#ffffff");
   const hex = /^#[0-9a-f]{6}$/i.test(css) ? css : "#ffffff";
   return (
@@ -256,7 +292,27 @@ export function useSettle(delay: number) {
 }
 
 /** A range slider that previews locally while it moves and commits once when released. */
-export function Slider({ value, min, max, step, onPreview, onCommit, testId, disabled, title }: { value: number; min: number; max: number; step?: number; onPreview: (v: number) => void; onCommit: (v: number) => void; testId: string; disabled?: boolean; title?: string }) {
+export function Slider({
+  value,
+  min,
+  max,
+  step,
+  onPreview,
+  onCommit,
+  testId,
+  disabled,
+  title,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onPreview: (v: number) => void;
+  onCommit: (v: number) => void;
+  testId: string;
+  disabled?: boolean;
+  title?: string;
+}) {
   const [local, setLocal] = useState<number | undefined>(undefined);
   const commit = (el: HTMLInputElement) => {
     if (local === undefined) return;

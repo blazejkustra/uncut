@@ -19,13 +19,19 @@ const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to
 const T = { skip, timeout: 120000 };
 const TOKEN = "app-test-token-0123456789";
 
-let root: string, collector: Server | undefined, endpoint = "";
+let root: string,
+  collector: Server | undefined,
+  endpoint = "";
 const bodies: Array<string> = [];
 const apps = new Set<LaunchedApp>();
 const launch = async (data: string, firstLaunch = false, token = TOKEN) => {
   // UNCUT_TELEMETRY "on" on purpose: the environment can't say yes for the user. The endpoint is
   // always the local collector; without a token it can send nothing (never the real endpoint).
-  const app = await launchApp({ command: APP, firstLaunch, env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: token, DO_NOT_TRACK: "" } });
+  const app = await launchApp({
+    command: APP,
+    firstLaunch,
+    env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: token, DO_NOT_TRACK: "" },
+  });
   apps.add(app);
   return app;
 };
@@ -35,15 +41,24 @@ const close = async (app: LaunchedApp) => {
 };
 const events = () =>
   bodies.flatMap((body) => {
-    const json = JSON.parse(body) as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<{ key: string; value: Record<string, unknown> }> }> }> }> };
-    return json.resourceLogs.flatMap((rl) => rl.scopeLogs.flatMap((sl) => sl.logRecords.map((r) => ({ name: r.body.stringValue, attrs: Object.fromEntries(r.attributes.map((a) => [a.key, Object.values(a.value)[0]])) }))));
+    const json = JSON.parse(body) as {
+      resourceLogs: Array<{
+        scopeLogs: Array<{ logRecords: Array<{ body: { stringValue: string }; attributes: Array<{ key: string; value: Record<string, unknown> }> }> }>;
+      }>;
+    };
+    return json.resourceLogs.flatMap((rl) =>
+      rl.scopeLogs.flatMap((sl) =>
+        sl.logRecords.map((r) => ({ name: r.body.stringValue, attrs: Object.fromEntries(r.attributes.map((a) => [a.key, Object.values(a.value)[0]])) })),
+      ),
+    );
   });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const until = async (check: () => boolean, ms: number, what: string) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(200)) if (check()) return;
   assert.fail(`timed out: ${what}`);
 };
-const settings = (data: string) => (existsSync(join(data, "settings.json")) ? (JSON.parse(readFileSync(join(data, "settings.json"), "utf8")) as { telemetry?: { enabled?: boolean } }) : {});
+const settings = (data: string) =>
+  existsSync(join(data, "settings.json")) ? (JSON.parse(readFileSync(join(data, "settings.json"), "utf8")) as { telemetry?: { enabled?: boolean } }) : {};
 const dataDir = (name: string) => {
   const d = join(root, name);
   mkdirSync(d, { recursive: true });

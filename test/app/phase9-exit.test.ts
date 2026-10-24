@@ -65,14 +65,21 @@ const remoteHome = () => join(root, "remote-home");
 const plan = () => join(root, "plan.json");
 const resultLog = () => join(root, "results.jsonl");
 const results = (): Array<{ tool: string; result: { isError?: boolean; content: Array<{ text?: string }> } }> =>
-  existsSync(resultLog()) ? readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+  existsSync(resultLog())
+    ? readFileSync(resultLog(), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 
 before(async () => {
   if (skip) return;
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-phase9-exit-")));
-  for (const d of ["local-data", "local-projects", "downloads", "remote-data", "remote-home/projects", "remote-home/Movies", "files", "bin", "no-plugins"]) mkdirSync(join(root, d), { recursive: true });
+  for (const d of ["local-data", "local-projects", "downloads", "remote-data", "remote-home/projects", "remote-home/Movies", "files", "bin", "no-plugins"])
+    mkdirSync(join(root, d), { recursive: true });
   shimDir = join(root, "bin");
   symlinkSync(FFMPEG!, join(shimDir, "ffmpeg"));
   symlinkSync(FFPROBE!, join(shimDir, "ffprobe"));
@@ -81,7 +88,27 @@ before(async () => {
   writeFileSync(join(root, "remote-data", "settings.json"), JSON.stringify({ onboarded: true }));
   for (const f of [resultLog(), join(root, "prompts.jsonl"), join(root, "tools.jsonl")]) writeFileSync(f, "");
   clip = join(root, "files", "drone take.mp4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:d=2", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=640x360:rate=30:d=2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:sample_rate=48000:duration=2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    clip,
+  ]);
   remotePort = await freePort();
 });
 after(async () => {
@@ -163,16 +190,22 @@ async function openEnvironments() {
   await waitFor("[data-testid=environments]");
 }
 
-test("phase 9 exit: a second server as a remote environment; pair, browse, upload, edit, agent turn, export and download there; reconnect; Local untouched; nothing leaves the machine", { skip, timeout: 600000 }, async () => {
-  const started = Date.now();
-  try {
-    await exitCheck();
-  } catch (error) {
-    await page?.screenshot({ path: "test-output/phase9-exit-failure.png" }).catch(() => {});
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app?.output().slice(-4000)}\n--- remote stderr ---\n${remote?.stderr().slice(-3000)}` });
-  }
-  console.log(`phase 9 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
-});
+test(
+  "phase 9 exit: a second server as a remote environment; pair, browse, upload, edit, agent turn, export and download there; reconnect; Local untouched; nothing leaves the machine",
+  { skip, timeout: 600000 },
+  async () => {
+    const started = Date.now();
+    try {
+      await exitCheck();
+    } catch (error) {
+      await page?.screenshot({ path: "test-output/phase9-exit-failure.png" }).catch(() => {});
+      throw Object.assign(error as Error, {
+        message: `${(error as Error).message}\n--- app output ---\n${app?.output().slice(-4000)}\n--- remote stderr ---\n${remote?.stderr().slice(-3000)}`,
+      });
+    }
+    console.log(`phase 9 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  },
+);
 
 async function exitCheck() {
   t0 = Date.now();
@@ -228,7 +261,12 @@ async function exitCheck() {
   await page.screenshot({ path: "test-output/phase9-exit-environments.png" });
   await page.click("[data-testid=env-row][data-kind=remote] [data-testid=env-switch]");
   // The window reloads into the remote: its own (empty) Recents.
-  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=env-chip]")?.dataset.kind === "remote" && document.querySelector<HTMLElement>("[data-testid=env-chip]")?.dataset.state === "connected", { timeout: 30000 });
+  await page.waitForFunction(
+    () =>
+      document.querySelector<HTMLElement>("[data-testid=env-chip]")?.dataset.kind === "remote" &&
+      document.querySelector<HTMLElement>("[data-testid=env-chip]")?.dataset.state === "connected",
+    { timeout: 30000 },
+  );
   await waitFor("[data-testid=no-recents]");
   assert.match(await text("[data-testid=welcome-lead]"), /Studio/);
   step("paired and switched");
@@ -236,7 +274,11 @@ async function exitCheck() {
   // 3. A project on the remote, through its file browser; closed, then opened with Open….
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");
-  assert.equal(await page.$eval("[data-testid=parent-dir]", (el) => (el as HTMLElement).title), join(remoteHome(), "Movies"), "the remote's own default folder");
+  assert.equal(
+    await page.$eval("[data-testid=parent-dir]", (el) => (el as HTMLElement).title),
+    join(remoteHome(), "Movies"),
+    "the remote's own default folder",
+  );
   await page.click("[data-testid=choose-folder]");
   await waitFor("[data-testid=remote-browser][data-purpose=parent]");
   await waitFor("[data-testid=remote-entry][data-name=projects]");
@@ -292,7 +334,14 @@ async function exitCheck() {
     JSON.stringify([
       [
         { tool: "project_read", args: {} },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A title", ops: [{ op: "insert_text", look: "text.big-title", text: "Made on the studio Mac", start: 0, duration: 45, id: "title" }] } },
+        {
+          tool: "timeline_edit",
+          args: {
+            baseRevision: "$rev",
+            summary: "A title",
+            ops: [{ op: "insert_text", look: "text.big-title", text: "Made on the studio Mac", start: 0, duration: 45, id: "title" }],
+          },
+        },
         { text: "Added a title over the start." },
       ],
     ]),
@@ -303,11 +352,22 @@ async function exitCheck() {
   await page.click("[data-testid=agent-input]");
   await page.keyboard.type("Put a title over the start");
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => ["done", "failed", "cancelled"].includes(document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status ?? ""), { timeout: 120000 });
+  await page.waitForFunction(
+    () => ["done", "failed", "cancelled"].includes(document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status ?? ""),
+    { timeout: 120000 },
+  );
   assert.equal(await page.$eval("[data-testid=agent-turn]", (el) => (el as HTMLElement).dataset.status), "done", await text("[data-testid=agent-turn]"));
   for (const r of results()) assert.ok(!r.result.isError, `${r.tool}: ${JSON.stringify(r.result)}`);
-  assert.ok(onDisk().tracks.flatMap((t: { items: Array<{ id: string }> }) => t.items).some((i: { id: string }) => i.id === "title"), "the agent's title is in the remote project");
-  const prompts = readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.ok(
+    onDisk()
+      .tracks.flatMap((t: { items: Array<{ id: string }> }) => t.items)
+      .some((i: { id: string }) => i.id === "title"),
+    "the agent's title is in the remote project",
+  );
+  const prompts = readFileSync(join(root, "prompts.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
   assert.equal(prompts.length, 1, "one claude run, by the remote");
   step("agent turn on the remote");
 
@@ -315,7 +375,9 @@ async function exitCheck() {
   await page.click("[data-testid=to-start]");
   for (let i = 0; i < 20; i++) await page.click("[data-testid=step-forward]");
   // The preview's footage comes through the relay from the remote (never a file:// path here).
-  await page.waitForFunction(() => [...document.querySelectorAll("video")].some((v) => v.src.startsWith("http://127.0.0.1:") && v.readyState >= 2), { timeout: 20000 });
+  await page.waitForFunction(() => [...document.querySelectorAll("video")].some((v) => v.src.startsWith("http://127.0.0.1:") && v.readyState >= 2), {
+    timeout: 20000,
+  });
   await sleep(800);
   await page.screenshot({ path: "test-output/phase9-exit-editor.png" });
   await page.click("[data-testid=export-button]");
@@ -328,7 +390,9 @@ async function exitCheck() {
   await page.click("[data-testid=remote-browser-choose]");
   await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "Remote cut.mp4");
   await page.click("[data-testid=export-start]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), { timeout: 300000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), {
+    timeout: 300000,
+  });
   const status = await text("[data-testid=export-status]");
   assert.match(status, /Saved on Studio/, status);
   const output = join(remoteHome(), "Movies", "Remote cut.mp4");
@@ -365,12 +429,19 @@ async function exitCheck() {
   assert.equal(readFileSync(join(root, "local-data", "recents.json"), "utf8"), localRecents, "the local Recents are untouched");
   assert.ok(!readFileSync(join(root, "remote-data", "recents.json"), "utf8").includes("Home.uncut"), "the remote's Recents never list the local project");
   // While the remote was down, Chromium logged the refused socket and loads; nothing else.
-  assert.deepEqual(app!.errors.filter((e) => !/WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/ws|Failed to load resource/.test(e)), []);
+  assert.deepEqual(
+    app!.errors.filter((e) => !/WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/ws|Failed to load resource/.test(e)),
+    [],
+  );
   sockets?.stop();
   await app!.close();
   app = undefined;
   step("back on This Mac, untouched");
 
-  assert.deepEqual(rendererRequests.filter((u) => !isLocalUrl(u)), [], "the renderer only talked to this machine");
+  assert.deepEqual(
+    rendererRequests.filter((u) => !isLocalUrl(u)),
+    [],
+    "the renderer only talked to this machine",
+  );
   assert.deepEqual(remoteSockets, [], "no process of the app had a connection off this machine");
 }

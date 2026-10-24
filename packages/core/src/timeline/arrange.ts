@@ -9,7 +9,19 @@
 // order is the stacking order); clips there never ripple and carry no transitions. D215: Main takes
 // any picture (text too), a take goes on it with its parts linked (planPutOnMain), and transcripts
 // and captions work on any item (transcript.ts, captions.ts).
-export { IMAGE_SECONDS, takenIds, busySpans, isFree, nearestFreeSpot, mainSlot, itemTypeFor, placedLength, freeAudioTrack, planPlaceMedia, tryOps } from "./arrange/place.ts";
+export {
+  IMAGE_SECONDS,
+  takenIds,
+  busySpans,
+  isFree,
+  nearestFreeSpot,
+  mainSlot,
+  itemTypeFor,
+  placedLength,
+  freeAudioTrack,
+  planPlaceMedia,
+  tryOps,
+} from "./arrange/place.ts";
 export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts";
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, withLinkedAudio } from "./arrange/retime.ts";
 export type { DetachAudioPlan } from "./arrange/retime.ts";

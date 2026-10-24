@@ -5,7 +5,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { familiesOf, fontRule, graphicAskedFamilies, graphicDocument, graphicFontFamilies, graphicLogosUsed, projectChecks, resolveGraphicBrand, resolveGraphicFonts, textFamily, type FontSource, type Project } from "../../packages/core/src/index.ts";
+import {
+  familiesOf,
+  fontRule,
+  graphicAskedFamilies,
+  graphicDocument,
+  graphicFontFamilies,
+  graphicLogosUsed,
+  projectChecks,
+  resolveGraphicBrand,
+  resolveGraphicFonts,
+  textFamily,
+  type FontSource,
+  type Project,
+} from "../../packages/core/src/index.ts";
 
 const face = (family: string, bytes = 40): FontSource => ({ family, format: "woff2", url: `data:font/woff2;base64,${"A".repeat(bytes)}` });
 
@@ -29,7 +42,10 @@ ctx.font = \`\${w} 40px \${family}\`;
 test("resolveGraphicFonts declares the faces of the families a graphic names, before it, and nothing else; a face over the budget is a comment", () => {
   const html = `<canvas></canvas><script>ctx.font = "40px 'Kit Mono'";</script>`;
   const out = resolveGraphicFonts(html, [face("DM Sans"), face("Kit Mono"), face("Other")]);
-  assert.match(out, /^<style data-uncut-fonts>@font-face\{font-family:"Kit Mono";font-style:normal;font-weight:100 1000;src:url\(data:font\/woff2;base64,A+\) format\("woff2"\)\}<\/style>\n/);
+  assert.match(
+    out,
+    /^<style data-uncut-fonts>@font-face\{font-family:"Kit Mono";font-style:normal;font-weight:100 1000;src:url\(data:font\/woff2;base64,A+\) format\("woff2"\)\}<\/style>\n/,
+  );
   assert.ok(!out.includes('"DM Sans"') && !out.includes('"Other"'), "only the families it names");
   assert.ok(out.endsWith(html), "the author's HTML is unchanged after it");
   assert.equal(resolveGraphicFonts("<div>no fonts</div>", [face("Kit Mono")]), "<div>no fonts</div>");
@@ -42,7 +58,7 @@ test("resolveGraphicFonts declares the faces of the families a graphic names, be
 test("the graphic's bootstrap loads every declared face before calling render (canvas text doesn't wait for a font)", () => {
   const doc = graphicDocument("<p>x</p>", { width: 100, height: 100 });
   const at = doc.indexOf("await fontsReady();");
-  assert.ok(at > 0 && at < doc.indexOf('await window.render(t, info)'), "fonts first, then render");
+  assert.ok(at > 0 && at < doc.indexOf("await window.render(t, info)"), "fonts first, then render");
   assert.match(doc, /\[\.\.\.document\.fonts\]\.map\(\(f\) => f\.load\(\)/);
 });
 
@@ -102,8 +118,13 @@ test("readGraphics gives the fonts only what's left under the document cap after
     mkdirSync(join(dir, "graphics"));
     const html = `<script src="uncut:lib/three.js"></script><style>p{font-family:"Big Kit"}</style><!--${"x".repeat(250_000)}-->`;
     writeFileSync(join(dir, "graphics", "g.html"), html);
-    const project = { canvas: { width: 100, height: 100, fps: 30 }, tracks: [{ items: [{ type: "graphic", src: "graphics/g.html", duration: 30 }] }] } as unknown as Project;
-    const doc = (await readGraphics(dir, project, await loadGraphicLibs(resolve("assets/graphic-libs")), { fonts: [face("Big Kit", 590_000)] })).get("graphics/g.html")!;
+    const project = {
+      canvas: { width: 100, height: 100, fps: 30 },
+      tracks: [{ items: [{ type: "graphic", src: "graphics/g.html", duration: 30 }] }],
+    } as unknown as Project;
+    const doc = (await readGraphics(dir, project, await loadGraphicLibs(resolve("assets/graphic-libs")), { fonts: [face("Big Kit", 590_000)] })).get(
+      "graphics/g.html",
+    )!;
     assert.ok(Buffer.byteLength(graphicDocument(doc, project.canvas)) < MAX_GRAPHIC_DOC_BYTES, `${Buffer.byteLength(doc)} bytes`);
     assert.match(doc, /<!-- uncut: the font Big Kit left out/);
   } finally {
@@ -124,19 +145,47 @@ function font(w, s, fam) { ctx.font = \`\${w} \${s}px \${fam || SANS}\`; }
   assert.ok(!out.includes('font-family:"Kit Sans"'), "a family it never names isn't added");
   assert.ok(out.endsWith(html));
   // Named outright goes in first when the budget is tight.
-  const tight = resolveGraphicFonts(`<script>const F = "Kit Sans";</script><style>p{font-family:"DM Mono"}</style>`, [face("Kit Sans", 100), face("DM Mono", 100)], 160);
+  const tight = resolveGraphicFonts(
+    `<script>const F = "Kit Sans";</script><style>p{font-family:"DM Mono"}</style>`,
+    [face("Kit Sans", 100), face("DM Mono", 100)],
+    160,
+  );
   assert.match(tight, /font-family:"DM Mono";font-style/);
   assert.match(tight, /the font Kit Sans left out/);
 });
 
 test("a family the graphic declares itself (@font-face with a data: URL) isn't missing; one with an outside URL still is", () => {
-  const project = { format: "uncut/0", name: "P", canvas: { width: 100, height: 100, fps: 30 }, media: [], tracks: [{ id: "v", kind: "video", items: [{ id: "g", type: "graphic", src: "graphics/g.html", start: 0, duration: 30 }, { id: "h", type: "graphic", src: "graphics/h.html", start: 0, duration: 30 }] }] } as unknown as Project;
+  const project = {
+    format: "uncut/0",
+    name: "P",
+    canvas: { width: 100, height: 100, fps: 30 },
+    media: [],
+    tracks: [
+      {
+        id: "v",
+        kind: "video",
+        items: [
+          { id: "g", type: "graphic", src: "graphics/g.html", start: 0, duration: 30 },
+          { id: "h", type: "graphic", src: "graphics/h.html", start: 0, duration: 30 },
+        ],
+      },
+    ],
+  } as unknown as Project;
   const graphics = new Map([
-    ["graphics/g.html", `<style>@font-face{font-family:"Geist";font-weight:100 900;src:url(data:font/woff2;base64,AAAA) format("woff2")}</style><script>ctx.font = "600 40px 'Geist', sans-serif";</script>`],
-    ["graphics/h.html", `<style>@font-face { font-family: 'Archivo'; src: url("https://fonts.example/archivo.woff2") }</style><script>ctx.font = "40px Archivo";</script>`],
+    [
+      "graphics/g.html",
+      `<style>@font-face{font-family:"Geist";font-weight:100 900;src:url(data:font/woff2;base64,AAAA) format("woff2")}</style><script>ctx.font = "600 40px 'Geist', sans-serif";</script>`,
+    ],
+    [
+      "graphics/h.html",
+      `<style>@font-face { font-family: 'Archivo'; src: url("https://fonts.example/archivo.woff2") }</style><script>ctx.font = "40px Archivo";</script>`,
+    ],
   ]);
   const found = projectChecks(project, { rules: [fontRule(() => false, graphics)] }).filter((c) => c.id === "font-missing");
-  assert.deepEqual(found.map((c) => c.key), ["font-missing:graphics/h.html"]);
+  assert.deepEqual(
+    found.map((c) => c.key),
+    ["font-missing:graphics/h.html"],
+  );
 });
 
 test("a project's fonts folder: faces by the file's name before its first dash, with a weight word or the whole range", async () => {
@@ -151,7 +200,13 @@ test("a project's fonts folder: faces by the file's name before its first dash, 
     writeFileSync(join(dir, "fonts", "Archivo-Bold.woff2"), Buffer.from("wOF2fake"));
     writeFileSync(join(dir, "fonts", "notes.txt"), "x");
     const faces = await projectFontSources(dir);
-    assert.deepEqual(faces.map((f) => [f.family, f.weight]), [["Archivo", "700"], ["Geist", undefined]]);
+    assert.deepEqual(
+      faces.map((f) => [f.family, f.weight]),
+      [
+        ["Archivo", "700"],
+        ["Geist", undefined],
+      ],
+    );
     const fonts = await projectFonts("assets/fonts", { dataDir: join(dir, "data"), projectDir: dir });
     assert.ok(fonts.available("Geist") && fonts.available("archivo"));
     assert.match(fonts.kitCss, /font-family:"Geist"/, "text items get them in the rasteriser's CSS too");

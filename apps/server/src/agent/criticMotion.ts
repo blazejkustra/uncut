@@ -200,7 +200,10 @@ export function motionAnchors(beats: ReadonlyArray<StoryBeat> | undefined, fps: 
   // The drop always gets its strip (rehearsal 3: 6 of 12 beats picked evenly skipped it): it takes
   // the place of the nearest picked beat that isn't frame 0 or the last.
   if (dropFrame !== undefined && !picked.some((a) => a.frame === dropFrame)) {
-    const inner = picked.map((a, i) => ({ i, d: Math.abs(a.frame - dropFrame) })).filter((x) => x.i > 0 && x.i < picked.length - 1).sort((a, b) => a.d - b.d)[0];
+    const inner = picked
+      .map((a, i) => ({ i, d: Math.abs(a.frame - dropFrame) }))
+      .filter((x) => x.i > 0 && x.i < picked.length - 1)
+      .sort((a, b) => a.d - b.d)[0];
     if (inner) picked[inner.i] = all.find((a) => a.frame === dropFrame)!;
     picked.sort((a, b) => a.frame - b.frame);
   }
@@ -229,10 +232,20 @@ export function dropBeat(beats: ReadonlyArray<StoryBeat> | undefined): number | 
  */
 export function dropLine(frames: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>, drop: number, fps: number): string | undefined {
   const at = new Map(frames.map((x) => [x.frame, x.gray]));
-  const a = at.get(drop - SCAN_WINDOW), b = at.get(drop - 1), c = at.get(drop + SCAN_WINDOW);
+  const a = at.get(drop - SCAN_WINDOW),
+    b = at.get(drop - 1),
+    c = at.get(drop + SCAN_WINDOW);
   if (!a || !b || !c) return undefined;
-  const before = frameDiff(a, b), from = frameDiff(b, c);
-  const verdict = from >= 2 * before && from >= POP_MIN ? "the big change lands on it" : before >= 2 * from && before >= POP_MIN ? "the big change came before it, the drop itself changes little" : from < POP_MIN && before < POP_MIN ? "little changes on either side of it" : "the change is spread across it";
+  const before = frameDiff(a, b),
+    from = frameDiff(b, c);
+  const verdict =
+    from >= 2 * before && from >= POP_MIN
+      ? "the big change lands on it"
+      : before >= 2 * from && before >= POP_MIN
+        ? "the big change came before it, the drop itself changes little"
+        : from < POP_MIN && before < POP_MIN
+          ? "little changes on either side of it"
+          : "the change is spread across it";
   return `Around the drop (f ${drop}, ${secs(drop, fps)}): the picture changes ${(before * 100).toFixed(1)} % over the ${SCAN_WINDOW} frames before it and ${(from * 100).toFixed(1)} % over the ${SCAN_WINDOW} frames from it: ${verdict}. Look at its strip: the preview should sit inset until the drop and flood past the corners on it.`;
 }
 
@@ -272,7 +285,12 @@ export function scanPlan(anchors: ReadonlyArray<MotionAnchor>, fps: number, dura
  * scan's frames around each scene change (SCAN_WINDOW each side) and the first and last two
  * frames; then the rest of the scan. Each part sorted.
  */
-export function motionRenderOrder(strips: ReadonlyArray<MotionStrip>, scanList: ReadonlyArray<number>, anchors: ReadonlyArray<MotionAnchor>, duration: number): Array<number> {
+export function motionRenderOrder(
+  strips: ReadonlyArray<MotionStrip>,
+  scanList: ReadonlyArray<number>,
+  anchors: ReadonlyArray<MotionAnchor>,
+  duration: number,
+): Array<number> {
   const first = new Set<number>(strips.flatMap((s) => s.frames));
   for (const f of scanList) if (f <= 1 || f >= duration - 2 || anchors.some((a) => Math.abs(f - a.frame) <= SCAN_WINDOW)) first.add(f);
   const rest = new Set(scanList.filter((f) => !first.has(f)));
@@ -339,7 +357,8 @@ export async function refineJumps(o: {
   const gapMax = Math.max(2, Math.round(0.5 * o.fps));
   const steps: Array<{ lo: number; hi: number; d: number }> = [];
   for (let i = 1; i < sorted.length; i++) {
-    const lo = sorted[i - 1]!, hi = sorted[i]!;
+    const lo = sorted[i - 1]!,
+      hi = sorted[i]!;
     if (hi - lo < 2 || hi - lo > gapMax) continue;
     const d = frameDiff(at.get(lo)!, at.get(hi)!);
     if (d >= POP_MIN) steps.push({ lo, hi, d });
@@ -397,7 +416,9 @@ export interface ScanFrame {
 export function chromaOf(rgb: Uint8Array): Uint8Array {
   const out = new Uint8Array(Math.floor(rgb.length / 3));
   for (let i = 0; i < out.length; i++) {
-    const r = rgb[3 * i]!, g = rgb[3 * i + 1]!, b = rgb[3 * i + 2]!;
+    const r = rgb[3 * i]!,
+      g = rgb[3 * i + 1]!,
+      b = rgb[3 * i + 2]!;
     out[i] = Math.max(r, g, b) - Math.min(r, g, b);
   }
   return out;
@@ -410,7 +431,9 @@ export function chromaOf(rgb: Uint8Array): Uint8Array {
  */
 export function footageCut(a: Uint8Array, b: Uint8Array, ca: Uint8Array, cb: Uint8Array): { readonly footage: boolean; readonly photo: number } | undefined {
   const n = Math.min(a.length, b.length, ca.length, cb.length);
-  let changed = 0, pa = 0, pb = 0;
+  let changed = 0,
+    pa = 0,
+    pb = 0;
   for (let i = 0; i < n; i++) {
     if (Math.abs(a[i]! - b[i]!) < CUT_CHANGED) continue;
     changed++;
@@ -427,11 +450,15 @@ function inkChange(a: Uint8Array, b: Uint8Array, w: number): { readonly at: Arra
   const n = Math.min(a.length, b.length);
   const h = Math.floor(n / w);
   const at: Array<number> = [];
-  let x0 = w, x1 = -1, y0 = h, y1 = -1;
+  let x0 = w,
+    x1 = -1,
+    y0 = h,
+    y1 = -1;
   for (let i = 0; i < n; i++) {
     if (Math.abs(a[i]! - b[i]!) < THIN_CONTRAST) continue;
     at.push(i);
-    const x = i % w, y = (i / w) | 0;
+    const x = i % w,
+      y = (i / w) | 0;
     if (x < x0) x0 = x;
     if (x > x1) x1 = x;
     if (y < y0) y0 = y;
@@ -488,7 +515,8 @@ export async function refineEmpty(o: {
     const sorted = sortedNow();
     const fill: Array<number> = [];
     for (let i = 1; i < sorted.length; i++) {
-      const lo = sorted[i - 1]!, hi = sorted[i]!;
+      const lo = sorted[i - 1]!,
+        hi = sorted[i]!;
       if (hi - lo <= step || hi - lo > 4 * gapMax) continue;
       const suspect = (f: number) => isBlank(f) || bareOf(f).content <= EMPTY_SUSPECT;
       if (!suspect(lo) && !suspect(hi)) continue;
@@ -501,7 +529,8 @@ export async function refineEmpty(o: {
   const sorted = sortedNow();
   let live: Array<{ lo: number; hi: number }> = [];
   for (let i = 1; i < sorted.length; i++) {
-    const lo = sorted[i - 1]!, hi = sorted[i]!;
+    const lo = sorted[i - 1]!,
+      hi = sorted[i]!;
     if (hi - lo >= 2 && hi - lo <= gapMax && isBlank(lo) !== isBlank(hi)) live.push({ lo, hi });
   }
   live = live.slice(0, o.max ?? 64);
@@ -580,7 +609,16 @@ export interface MotionScan {
  * Pops, jumps, holds and the seam in a set of grey frames (any frames; consecutive ones are what
  * pops and jumps are judged on). Deterministic and pure.
  */
-export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { readonly ratio?: number; readonly min?: number; readonly size?: { readonly w: number; readonly h: number }; readonly fine?: { readonly w: number; readonly h: number } } = {}): MotionScan {
+export function motionScan(
+  input: ReadonlyArray<ScanFrame>,
+  fps: number,
+  o: {
+    readonly ratio?: number;
+    readonly min?: number;
+    readonly size?: { readonly w: number; readonly h: number };
+    readonly fine?: { readonly w: number; readonly h: number };
+  } = {},
+): MotionScan {
   const ratio = o.ratio ?? POP_RATIO;
   const min = o.min ?? POP_MIN;
   const fr = [...input].sort((a, b) => a.frame - b.frame);
@@ -589,7 +627,8 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   // D306: whether a cut from frame x to frame y is between footage shots (both carry colour).
   const chromaAt = new Map(fr.flatMap((x) => (x.chroma ? [[x.frame, x.chroma] as const] : [])));
   const footageOf = (x: number, y: number): { footage?: boolean; photo?: number } => {
-    const ca = chromaAt.get(x), cb = chromaAt.get(y);
+    const ca = chromaAt.get(x),
+      cb = chromaAt.get(y);
     const cut = ca && cb ? footageCut(at.get(x)!, at.get(y)!, ca, cb) : undefined;
     return cut ? { footage: cut.footage, photo: cut.photo } : {};
   };
@@ -663,7 +702,8 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   for (const [f, peak] of step) {
     if (peak < Math.max(min, BURST_PEAK) || !((step.get(f - 1) ?? -1) <= peak && (step.get(f + 1) ?? Infinity) < peak)) continue;
     const q = peak / 4;
-    let a = f, b = f;
+    let a = f,
+      b = f;
     while ((step.get(a - 1) ?? -1) >= q && f - a < burstMax) a--;
     while ((step.get(b + 1) ?? -1) >= q && b - f < burstMax) b++;
     const len = b - a + 1;
@@ -716,7 +756,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     const runs: Array<{ start: number; end: number; first: number; last: number }> = [];
     let run: { start: number; end: number; first: number; last: number } | undefined;
     of.forEach((x, i) => {
-      if (pick[i] && run && x.frame - run.end <= gapMax) (run.end = x.frame), (run.last = i);
+      if (pick[i] && run && x.frame - run.end <= gapMax) ((run.end = x.frame), (run.last = i));
       else {
         if (run) runs.push(run);
         run = pick[i] ? { start: x.frame, end: x.frame, first: i, last: i } : undefined;
@@ -724,18 +764,30 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     });
     if (run) runs.push(run);
     for (const r of runs) {
-      const before = of[r.first - 1]?.frame, after = of[r.last + 1]?.frame;
-      const lo = before === undefined ? r.start : before + 1, hi = after === undefined ? r.end : after - 1;
+      const before = of[r.first - 1]?.frame,
+        after = of[r.last + 1]?.frame;
+      const lo = before === undefined ? r.start : before + 1,
+        hi = after === undefined ? r.end : after - 1;
       out.push(lo < r.start || hi > r.end ? { start: r.start, end: r.end, upto: { start: lo, end: hi } } : { start: r.start, end: r.end });
     }
     return out;
   };
   const emptyMeasured = !!o.size || fr.some((x) => x.bare);
-  const empty = emptyMeasured ? runsOf(fr.map((x) => x.bare?.empty ?? (o.size ? emptyMeasure(x.gray, o.size.w, o.size.h).empty : false)), fr) : [];
+  const empty = emptyMeasured
+    ? runsOf(
+        fr.map((x) => x.bare?.empty ?? (o.size ? emptyMeasure(x.gray, o.size.w, o.size.h).empty : false)),
+        fr,
+      )
+    : [];
   // Low-information runs, over the frames that carry the measure (the scan's grey is too small for it).
   const informed = fr.filter((x) => x.info);
   const thinMeasured = informed.length > 0;
-  const thin = thinMeasured ? runsOf(informed.map((x) => x.info!.thin), informed) : [];
+  const thin = thinMeasured
+    ? runsOf(
+        informed.map((x) => x.info!.thin),
+        informed,
+      )
+    : [];
   // Fast moves: FAST_RUN or more consecutive steps of FAST_STEP or more, none of them a jump or a pop.
   const fast: Array<{ start: number; end: number; peak: number }> = [];
   const skip = new Set([...jumps.map((j) => j.frame - 1), ...burstSteps, ...popFrames, ...[...popFrames].map((f) => f - 1)]);
@@ -757,7 +809,20 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   const first = fr[0];
   const last = fr.at(-1);
   const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
-  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, thin, thinMeasured, fast, ...(open ? { open } : {}), ...(seam ? { seam } : {}), typical: round(typical) };
+  return {
+    frames: fr.length,
+    pops,
+    jumps,
+    holds,
+    empty,
+    emptyMeasured,
+    thin,
+    thinMeasured,
+    fast,
+    ...(open ? { open } : {}),
+    ...(seam ? { seam } : {}),
+    typical: round(typical),
+  };
 }
 
 /**
@@ -806,7 +871,10 @@ function typingStart(head: ReadonlyArray<ScanFrame>, win: number, w: number, unt
 }
 
 /** Whether the open is static: its first real change comes after OPEN_MAX_S (or not in the first 2 s). */
-export const openLate = (scan: MotionScan, fps: number) => !!scan.open && (scan.open.frame === undefined || scan.open.frame > OPEN_MAX_S * fps) && !(scan.open.typing !== undefined && scan.open.typing <= OPEN_TYPE_S * fps);
+export const openLate = (scan: MotionScan, fps: number) =>
+  !!scan.open &&
+  (scan.open.frame === undefined || scan.open.frame > OPEN_MAX_S * fps) &&
+  !(scan.open.typing !== undefined && scan.open.typing <= OPEN_TYPE_S * fps);
 
 const round = (v: number, digits = 4) => Math.round(v * 10 ** digits) / 10 ** digits;
 const secs = (f: number, fps: number) => `${(f / fps).toFixed(2)} s`;
@@ -823,37 +891,105 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
  * from one clip to the next) is never one, one take or not; `cutsHard` (default `hard`) says whether
  * the other cuts block.
  */
-export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean; readonly still?: number; readonly clipCuts?: ReadonlyArray<number>; readonly cutsHard?: boolean } = {}): Array<CriticFinding> {
+export function motionFindings(
+  scan: MotionScan,
+  fps: number,
+  o: {
+    readonly oneTake?: boolean;
+    readonly loop?: boolean;
+    readonly hard?: boolean;
+    readonly still?: number;
+    readonly clipCuts?: ReadonlyArray<number>;
+    readonly cutsHard?: boolean;
+  } = {},
+): Array<CriticFinding> {
   // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
   const hard = !!o.hard;
   const out: Array<CriticFinding> = [];
   for (const p of [...scan.pops].sort((a, b) => b.ratio - a.ratio).slice(0, 4)) {
-    out.push(p.span
-      ? { rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, range: { start: p.frame, end: p.frame + p.span - 1 }, hard, message: `A ${p.span}-frame flash at f ${p.frame} to f ${p.frame + p.span - 1} (${secs(p.frame, fps)}): those frames differ from the frames on both sides ${p.ratio}× as much as those differ from each other (mean change ${(p.diff * 100).toFixed(1)} %): something shows for ${p.span} frames and the picture goes back, like the next shot drawn whole before its transition starts. Check the frames' branches: the state the transition starts from must be drawn from its first frame on.` }
-      : { rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
+    out.push(
+      p.span
+        ? {
+            rule: "motion",
+            key: `motion:pop:${p.frame}`,
+            frame: p.frame,
+            range: { start: p.frame, end: p.frame + p.span - 1 },
+            hard,
+            message: `A ${p.span}-frame flash at f ${p.frame} to f ${p.frame + p.span - 1} (${secs(p.frame, fps)}): those frames differ from the frames on both sides ${p.ratio}× as much as those differ from each other (mean change ${(p.diff * 100).toFixed(1)} %): something shows for ${p.span} frames and the picture goes back, like the next shot drawn whole before its transition starts. Check the frames' branches: the state the transition starts from must be drawn from its first frame on.`,
+          }
+        : {
+            rule: "motion",
+            key: `motion:pop:${p.frame}`,
+            frame: p.frame,
+            hard,
+            message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.`,
+          },
+    );
   }
   if (o.oneTake) {
     const cutsHard = o.cutsHard ?? hard;
-    for (const j of scan.jumps.filter((x) => !footageJump(x, o.clipCuts)).slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard: cutsHard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
+    for (const j of scan.jumps.filter((x) => !footageJump(x, o.clipCuts)).slice(0, 4))
+      out.push({
+        rule: "motion",
+        key: `motion:jump:${j.frame}`,
+        frame: j.frame,
+        hard: cutsHard,
+        message: j.span
+          ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.`
+          : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.`,
+      });
     // The longest holds (an end card held 5 s came third in time order and wasn't listed).
     const still = o.still;
     for (const h of [...scan.holds].sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 2)) {
       const len = (h.end - h.start) / fps;
-      out.push(still !== undefined && len >= still
-        ? { rule: "motion", key: `motion:still:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.` }
-        : { rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${len.toFixed(1)} s): a hold over 1 s.` });
+      out.push(
+        still !== undefined && len >= still
+          ? {
+              rule: "motion",
+              key: `motion:still:${h.start}`,
+              frame: h.start,
+              range: { start: h.start, end: h.end },
+              hard: false,
+              message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.`,
+            }
+          : {
+              rule: "motion",
+              key: `motion:hold:${h.start}`,
+              frame: h.start,
+              range: { start: h.start, end: h.end },
+              hard: false,
+              message: `Nothing changes from f ${h.start} to f ${h.end} (${len.toFixed(1)} s): a hold over 1 s.`,
+            },
+      );
     }
   }
   // A motion film that isn't one take (cuts are fine) still shouldn't park on one frame.
   if (!o.oneTake && o.still !== undefined)
-    for (const h of [...scan.holds].filter((x) => (x.end - x.start) / fps >= o.still!).sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 2)) {
+    for (const h of [...scan.holds]
+      .filter((x) => (x.end - x.start) / fps >= o.still!)
+      .sort((a, b) => b.end - b.start - (a.end - a.start))
+      .slice(0, 2)) {
       const len = (h.end - h.start) / fps;
-      out.push({ rule: "motion", key: `motion:still:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${o.still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.` });
+      out.push({
+        rule: "motion",
+        key: `motion:still:${h.start}`,
+        frame: h.start,
+        range: { start: h.start, end: h.end },
+        hard: false,
+        message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${o.still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.`,
+      });
     }
   // Blind round 3: a motionless first 1.5 to 2 s under a hook headline (drift only) read as a soft hook.
   if (o.oneTake && openLate(scan, fps)) {
     const at = scan.open!.frame;
-    out.push({ rule: "motion", key: "motion:open:0", frame: 0, range: { start: 0, end: at ?? Math.round(2 * fps) }, hard: false, message: `A static open: ${at === undefined ? "nothing really changes in the first 2 s" : `the first real change lands at f ${at} (${secs(at, fps)})`}; until ${OPEN_MAX_S} s at most ${(scan.open!.peak * 100).toFixed(1)} % of the picture changes in ${OPEN_WINDOW_S} s (a drift is not a change). Make frame 0 move: the headline folding into the hero, the cursor's first click or keystroke landing by about 0.5 s.` });
+    out.push({
+      rule: "motion",
+      key: "motion:open:0",
+      frame: 0,
+      range: { start: 0, end: at ?? Math.round(2 * fps) },
+      hard: false,
+      message: `A static open: ${at === undefined ? "nothing really changes in the first 2 s" : `the first real change lands at f ${at} (${secs(at, fps)})`}; until ${OPEN_MAX_S} s at most ${(scan.open!.peak * 100).toFixed(1)} % of the picture changes in ${OPEN_WINDOW_S} s (a drift is not a change). Make frame 0 move: the headline folding into the hero, the cursor's first click or keystroke landing by about 0.5 s.`,
+    });
   }
   // Rehearsal 4: nearly empty frames (A1 22.1 s, A2 4.2 s and 24 s) survived three rounds as a critic opinion.
   for (const e of o.oneTake ? emptyRuns(scan, fps).slice(0, 2) : []) {
@@ -862,9 +998,25 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
     const sure = len >= EMPTY_MIN_S - 1e-9;
     const fix = "Every frame should show the hero: morph the outgoing shape straight into the next one instead of clearing the frame between them.";
     const what = `at most a cursor or a speck (${+(EMPTY_CONTENT * 100).toFixed(1)} % or less of it isn't bare canvas, in ${EMPTY_PARTS} marks or fewer)`;
-    out.push(sure
-      ? { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard: hard && len >= EMPTY_HARD_S - 1e-9, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}` }
-      : { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}` });
+    out.push(
+      sure
+        ? {
+            rule: "motion",
+            key: `motion:empty:${e.start}`,
+            frame: e.start,
+            range: { start: e.start, end: e.end },
+            hard: hard && len >= EMPTY_HARD_S - 1e-9,
+            message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}`,
+          }
+        : {
+            rule: "motion",
+            key: `motion:empty:${e.start}`,
+            frame: e.start,
+            range: { start: e.upto!.start, end: e.upto!.end },
+            hard: false,
+            message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}`,
+          },
+    );
   }
   // T1, T1b: the agent panel after Send, one bubble and desktop-size steps in a big dark field, passed
   // the empty rule (the panel counts as content) and every round.
@@ -872,15 +1024,46 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
     const len = runSeconds(e, fps);
     const sure = len >= EMPTY_MIN_S - 1e-9;
     const what = `low-information: ${Math.round(THIN_FLAT * 100)} % or more of it one flat colour (a dark panel on the dark canvas counts as one), and nothing in it taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height (a line or two of desktop-size text, a cursor)`;
-    const fix = "Give the moment one big element: the line it is about set large (an uncutUI piece over the blurred stage, or the camera framing that line with uncutUI.frameText until its words reach 3.5 % or more), never a near-empty panel waiting for its content.";
-    out.push(sure
-      ? { rule: "motion", key: `motion:thin:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard: hard && len >= THIN_HARD_S - 1e-9, message: `A low-information frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${len.toFixed(2)} s): ${what}. ${fix}` }
-      : { rule: "motion", key: `motion:thin:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a low-information frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). ${fix}` });
+    const fix =
+      "Give the moment one big element: the line it is about set large (an uncutUI piece over the blurred stage, or the camera framing that line with uncutUI.frameText until its words reach 3.5 % or more), never a near-empty panel waiting for its content.";
+    out.push(
+      sure
+        ? {
+            rule: "motion",
+            key: `motion:thin:${e.start}`,
+            frame: e.start,
+            range: { start: e.start, end: e.end },
+            hard: hard && len >= THIN_HARD_S - 1e-9,
+            message: `A low-information frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${len.toFixed(2)} s): ${what}. ${fix}`,
+          }
+        : {
+            rule: "motion",
+            key: `motion:thin:${e.start}`,
+            frame: e.start,
+            range: { start: e.upto!.start, end: e.upto!.end },
+            hard: false,
+            message: `Maybe a low-information frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). ${fix}`,
+          },
+    );
   }
   for (const m of o.oneTake ? scan.fast.slice(0, 3) : []) {
-    out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame (listed from ${Math.round(FAST_STEP * 100)} %). The export's motion blur smears each frame over how far things move during its shutter; sub-frames only decide whether that shows as stacked copies (few) or one smooth smear (many), so more sub-frames only smooth the copies into a smear (render_frames draws no blur; the critic sees it drawn with the project's blur). If text smears or doubles there, slow the move's fastest frames (the ease's peak speed counts, not its length: a gentler curve or a shorter travel), keep the words still while it moves, or shorten the shutter. A smooth blur that keeps the words readable is fine as it is.` });
+    out.push({
+      rule: "motion",
+      key: `motion:fast:${m.start}`,
+      frame: m.start,
+      range: { start: m.start, end: m.end },
+      hard: false,
+      message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame (listed from ${Math.round(FAST_STEP * 100)} %). The export's motion blur smears each frame over how far things move during its shutter; sub-frames only decide whether that shows as stacked copies (few) or one smooth smear (many), so more sub-frames only smooth the copies into a smear (render_frames draws no blur; the critic sees it drawn with the project's blur). If text smears or doubles there, slow the move's fastest frames (the ease's peak speed counts, not its length: a gentler curve or a shorter travel), keep the words still while it moves, or shorten the shutter. A smooth blur that keeps the words readable is fine as it is.`,
+    });
   }
-  if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
+  if (o.loop && seamBroken(scan))
+    out.push({
+      rule: "motion",
+      key: "motion:seam:0",
+      frame: 0,
+      hard,
+      message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.`,
+    });
   // The blockers first, so the cap never drops one (the seam came last) for a soft finding.
   return [...out.filter((f) => f.hard), ...out.filter((f) => !f.hard)].slice(0, 12);
 }
@@ -900,10 +1083,18 @@ export function footageJump(j: MotionEvent, clipCuts: ReadonlyArray<number> = []
  * ends and another begins, with no graphic starting or ending within a frame of it (a graphic cutting
  * there is the graphic's cut). `starts` maps an item to its start frame.
  */
-export function clipCutFrames(tracks: ReadonlyArray<{ readonly hidden?: boolean; readonly items: ReadonlyArray<{ readonly id: string; readonly type: string; readonly duration: number }> }>, starts: ReadonlyMap<string, number>): Array<number> {
+export function clipCutFrames(
+  tracks: ReadonlyArray<{
+    readonly hidden?: boolean;
+    readonly items: ReadonlyArray<{ readonly id: string; readonly type: string; readonly duration: number }>;
+  }>,
+  starts: ReadonlyMap<string, number>,
+): Array<number> {
   const items = tracks.filter((t) => !t.hidden).flatMap((t) => t.items);
-  const edges = (type: string, at: "start" | "end") => new Set(items.filter((i) => i.type === type && starts.has(i.id)).map((i) => starts.get(i.id)! + (at === "end" ? i.duration : 0)));
-  const ends = edges("clip", "end"), begins = edges("clip", "start");
+  const edges = (type: string, at: "start" | "end") =>
+    new Set(items.filter((i) => i.type === type && starts.has(i.id)).map((i) => starts.get(i.id)! + (at === "end" ? i.duration : 0)));
+  const ends = edges("clip", "end"),
+    begins = edges("clip", "start");
   const graphic = [...edges("graphic", "start"), ...edges("graphic", "end")];
   return [...begins].filter((f) => f > 0 && ends.has(f) && !graphic.some((g) => Math.abs(g - f) <= 1)).sort((a, b) => a - b);
 }
@@ -917,35 +1108,78 @@ export interface EmptyRun {
 const runSeconds = (r: { readonly start: number; readonly end: number }, fps: number) => (r.end + 1 - r.start) / fps;
 
 /** The scan's nearly empty runs of EMPTY_MIN_S or more (a run counts its last frame), or that may reach it (upto). */
-export const emptyRuns = (scan: MotionScan, fps: number) => scan.empty.filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9);
+export const emptyRuns = (scan: MotionScan, fps: number) =>
+  scan.empty.filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9);
 /** The scan's low-information runs of EMPTY_MIN_S or more (or that may reach it), the longest first. */
 export const thinRuns = (scan: MotionScan, fps: number) =>
-  (scan.thin ?? []).filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9).sort((a, b) => runSeconds(b, fps) - runSeconds(a, fps));
+  (scan.thin ?? [])
+    .filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9)
+    .sort((a, b) => runSeconds(b, fps) - runSeconds(a, fps));
 
 /** What a scan cut short by the time budget says (in the facts and the tool's result). */
-export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
+export const budgetLine = (covered: number, planned: number) =>
+  `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
 
 /** The scan for the critic, as facts (in <motion>). */
-export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number; readonly clipCuts?: ReadonlyArray<number> }): Array<string> {
+export function motionLines(
+  scan: MotionScan,
+  fps: number,
+  scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number; readonly clipCuts?: ReadonlyArray<number> },
+): Array<string> {
   const covered = scanned.covered ?? scan.frames;
   const lines = [
     ...(scanned.planned !== undefined && covered < scanned.planned ? [budgetLine(covered, scanned.planned)] : []),
-    `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
-  lines.push(scan.pops.length ? `Single-frame pops and flashes (a few frames unlike the frames on both sides, the picture going back): ${scan.pops.map((p) => `f ${p.frame}${p.span ? ` to f ${p.frame + p.span - 1}` : ""} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops or flashes found.");
+    `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`,
+  ];
+  lines.push(
+    scan.pops.length
+      ? `Single-frame pops and flashes (a few frames unlike the frames on both sides, the picture going back): ${scan.pops.map((p) => `f ${p.frame}${p.span ? ` to f ${p.frame + p.span - 1}` : ""} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.`
+      : "No single-frame pops or flashes found.",
+  );
   const cutLabel = (j: MotionEvent) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %${j.span ? `, over ${j.span} frames` : ""})`;
   const footageCuts = scan.jumps.filter((j) => footageJump(j, scanned.clipCuts));
   const otherCuts = scan.jumps.filter((j) => !footageJump(j, scanned.clipCuts));
-  if (otherCuts.length) lines.push(`One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${otherCuts.slice(0, 8).map(cutLabel).join(", ")}.`);
+  if (otherCuts.length)
+    lines.push(
+      `One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${otherCuts.slice(0, 8).map(cutLabel).join(", ")}.`,
+    );
   // D306: the user's call: straight cuts between drone shots read cleaner than shape transitions.
-  if (footageCuts.length) lines.push(`Cuts between two footage shots (the changed picture is photographic on both sides, or the timeline cuts from one clip to the next there): ${footageCuts.slice(0, 8).map(cutLabel).join(", ")}. A straight cut between footage shots is fine even in a one-take film: never a motion defect or a blocker; judge only whether it lands on the beat.`);
-  lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
+  if (footageCuts.length)
+    lines.push(
+      `Cuts between two footage shots (the changed picture is photographic on both sides, or the timeline cuts from one clip to the next there): ${footageCuts.slice(0, 8).map(cutLabel).join(", ")}. A straight cut between footage shots is fine even in a one-take film: never a motion defect or a blocker; judge only whether it lands on the beat.`,
+    );
+  lines.push(
+    scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.",
+  );
   const empties = emptyRuns(scan, fps);
-  if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
+  if (scan.emptyMeasured)
+    lines.push(
+      empties.length
+        ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.`
+        : "No nearly empty stretch.",
+    );
   const thins = thinRuns(scan, fps);
-  if (scan.thinMeasured) lines.push(thins.length ? `Low-information frames (${Math.round(THIN_FLAT * 100)} % or more one flat colour, nothing taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height: a near-empty panel with a line of small text) for ${EMPTY_MIN_S} s or more: ${thins.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end}, maybe f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No low-information stretch.");
-  if (scan.fast.length) lines.push(`Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies; the other frames here are sharp, so judge that on the strips drawn with the project's motion blur when they are among the images): ${scan.fast.slice(0, 6).map((m) => `f ${m.start} to f ${m.end}`).join(", ")}.`);
-  if (scan.open) lines.push(`The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${scan.open.typing !== undefined ? `; typing shows from f ${scan.open.typing} (${secs(scan.open.typing, fps)})` : ""}${openLate(scan, fps) ? ", a static open" : ""}.`);
-  if (scan.seam) lines.push(`Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`);
+  if (scan.thinMeasured)
+    lines.push(
+      thins.length
+        ? `Low-information frames (${Math.round(THIN_FLAT * 100)} % or more one flat colour, nothing taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height: a near-empty panel with a line of small text) for ${EMPTY_MIN_S} s or more: ${thins.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end}, maybe f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.`
+        : "No low-information stretch.",
+    );
+  if (scan.fast.length)
+    lines.push(
+      `Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies; the other frames here are sharp, so judge that on the strips drawn with the project's motion blur when they are among the images): ${scan.fast
+        .slice(0, 6)
+        .map((m) => `f ${m.start} to f ${m.end}`)
+        .join(", ")}.`,
+    );
+  if (scan.open)
+    lines.push(
+      `The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${scan.open.typing !== undefined ? `; typing shows from f ${scan.open.typing} (${secs(scan.open.typing, fps)})` : ""}${openLate(scan, fps) ? ", a static open" : ""}.`,
+    );
+  if (scan.seam)
+    lines.push(
+      `Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`,
+    );
   return lines;
 }
 
@@ -962,11 +1196,38 @@ export async function chromaFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>,
   return (await rawFrames(ffmpeg, jpegs, w, h, "rgb24", signal)).map(chromaOf);
 }
 
-function rawFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: number, pix: "gray" | "rgb24", signal?: AbortSignal): Promise<Array<Uint8Array>> {
+function rawFrames(
+  ffmpeg: string,
+  jpegs: ReadonlyArray<Buffer>,
+  w: number,
+  h: number,
+  pix: "gray" | "rgb24",
+  signal?: AbortSignal,
+): Promise<Array<Uint8Array>> {
   if (!jpegs.length) return Promise.resolve([]);
   const bytes = pix === "gray" ? 1 : 3;
   return new Promise((done, fail) => {
-    const child = spawn(ffmpeg, ["-v", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-i", "-", "-vf", `scale=${w}:${h}:flags=area,format=${pix}`, "-f", "rawvideo", "-pix_fmt", pix, "-"], { stdio: ["pipe", "pipe", "pipe"], ...(signal ? { signal } : {}) });
+    const child = spawn(
+      ffmpeg,
+      [
+        "-v",
+        "error",
+        "-f",
+        "image2pipe",
+        "-c:v",
+        "mjpeg",
+        "-i",
+        "-",
+        "-vf",
+        `scale=${w}:${h}:flags=area,format=${pix}`,
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        pix,
+        "-",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"], ...(signal ? { signal } : {}) },
+    );
     const out: Array<Buffer> = [];
     let err = "";
     child.stdout.on("data", (d: Buffer) => out.push(d));
@@ -976,7 +1237,8 @@ function rawFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: n
     child.on("close", (code) => {
       const all = Buffer.concat(out);
       const size = w * h * bytes;
-      if (code !== 0 || all.length !== size * jpegs.length) return fail(new Error(`ffmpeg couldn't decode the frames (${code}): ${err.trim().slice(-300) || `${all.length} bytes for ${jpegs.length} frames`}`));
+      if (code !== 0 || all.length !== size * jpegs.length)
+        return fail(new Error(`ffmpeg couldn't decode the frames (${code}): ${err.trim().slice(-300) || `${all.length} bytes for ${jpegs.length} frames`}`));
       done(Array.from({ length: jpegs.length }, (_, i) => new Uint8Array(all.buffer, all.byteOffset + i * size, size)));
     });
     for (const j of jpegs) child.stdin.write(j);
@@ -985,7 +1247,10 @@ function rawFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: n
 }
 
 /** The scan's grey size for a canvas: SCAN_WIDTH wide, even height. */
-export const scanSize = (canvas: { readonly width: number; readonly height: number }) => ({ w: SCAN_WIDTH, h: Math.max(2, Math.round((SCAN_WIDTH * canvas.height) / canvas.width / 2) * 2) });
+export const scanSize = (canvas: { readonly width: number; readonly height: number }) => ({
+  w: SCAN_WIDTH,
+  h: Math.max(2, Math.round((SCAN_WIDTH * canvas.height) / canvas.width / 2) * 2),
+});
 
 /** A strip's sheet: one row of `count` cells `cell` px wide (STRIP_CELL) with their captions (a downscaled image per strip). */
 export function stripLayout(count: number, aspect: number, cell = STRIP_CELL): SheetLayout {
@@ -1002,7 +1267,10 @@ export function stripLayout(count: number, aspect: number, cell = STRIP_CELL): S
  */
 export const BLUR_RUNS = 3;
 export const BLUR_CELL = 360;
-export function blurPicks(fast: MotionScan["fast"], max = BLUR_RUNS): Array<{ readonly start: number; readonly end: number; readonly frames: ReadonlyArray<number> }> {
+export function blurPicks(
+  fast: MotionScan["fast"],
+  max = BLUR_RUNS,
+): Array<{ readonly start: number; readonly end: number; readonly frames: ReadonlyArray<number> }> {
   return fast.slice(0, max).map((m) => ({ start: m.start, end: m.end, frames: [...new Set([m.start, Math.round((m.start + m.end) / 2), m.end])] }));
 }
 
@@ -1019,11 +1287,14 @@ const UI_WORDS = /\b(app|UI|interface|screens?|composer|timeline|cursor|software
  * "uncut" is the app's name; "one-shot" usually means one prompt. English only: other languages aren't detected (the skill or the brief
  * still make the film one take, with findings rather than blockers).
  */
-const ONE_TAKE = /\b(?:one|single)[- ]take\b|\boner\b|\b(?:one|single) (?:continuous|unbroken) (?:shot|take|move|camera move)\b|\bcontinuous (?:shot|take)\b|\b(?:never|don'?t|do not) cut\b(?! ?(?:off|out|into|down|back|short))|\b(?:no|zero|without(?: any)?) (?:hard )?cuts?\b|\bwith no (?:hard )?cuts?\b/gi;
+const ONE_TAKE =
+  /\b(?:one|single)[- ]take\b|\boner\b|\b(?:one|single) (?:continuous|unbroken) (?:shot|take|move|camera move)\b|\bcontinuous (?:shot|take)\b|\b(?:never|don'?t|do not) cut\b(?! ?(?:off|out|into|down|back|short))|\b(?:no|zero|without(?: any)?) (?:hard )?cuts?\b|\bwith no (?:hard )?cuts?\b/gi;
 /** Before a phrase in its clause: it is negated ("not one take", "doesn't need to be one take"). */
-export const NEGATED = /\b(?:not|no need|needn'?t|isn'?t|aren'?t|don'?t|doesn'?t|do not|does not|won'?t|instead of|rather than|forget|skip|drop|avoid|nor)\b[^.;!?\n]{0,30}$/i;
+export const NEGATED =
+  /\b(?:not|no need|needn'?t|isn'?t|aren'?t|don'?t|doesn'?t|do not|does not|won'?t|instead of|rather than|forget|skip|drop|avoid|nor)\b[^.;!?\n]{0,30}$/i;
 /** An alternative or a release: "one take or cuts, your call", "cuts are fine", "up to you". */
-const OPTIONAL = /\bor (?:hard )?cuts?\b|\bcuts? or\b|\bcuts? (?:are|is) (?:fine|ok(?:ay)?|allowed|welcome)\b|\byour call\b|\bup to you\b|\beither way\b|\bif you (?:want|like|prefer)\b|\boptional(?:ly)?\b/i;
+const OPTIONAL =
+  /\bor (?:hard )?cuts?\b|\bcuts? or\b|\bcuts? (?:are|is) (?:fine|ok(?:ay)?|allowed|welcome)\b|\byour call\b|\bup to you\b|\beither way\b|\bif you (?:want|like|prefer)\b|\boptional(?:ly)?\b/i;
 
 /** A request's clauses: sentences, and the turns "but", "actually", "however" start. */
 export const clauses = (text: string): Array<string> => text.split(/(?<=[.;!?\n])\s*|\s+(?:but|actually|however)\s+/i);
@@ -1075,7 +1346,13 @@ export function asksFootageCuts(text: string): boolean {
  * take on the beat" with the motion-film skill off, and its four hard cuts were findings only: the
  * request decides that cuts fail the round, whatever skills are on (hard in motionFindings).
  */
-export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): { oneTake: boolean; loop: boolean; footage: boolean; asked: boolean; footageCuts: boolean } {
+export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): {
+  oneTake: boolean;
+  loop: boolean;
+  footage: boolean;
+  asked: boolean;
+  footageCuts: boolean;
+} {
   const film = o.skills.includes("motion-film");
   const asked = asksOneTake(o.request ?? "");
   return {
@@ -1181,7 +1458,7 @@ function canvasFill(gray: Uint8Array, w: number, h: number): { seen: Uint8Array;
   level = peak;
   const seen = new Uint8Array(n);
   const queue: Array<number> = [];
-  for (const i of edge) if (!seen[i] && Math.abs(gray[i]! - level) <= FLAT_LEVELS) (seen[i] = 1), queue.push(i);
+  for (const i of edge) if (!seen[i] && Math.abs(gray[i]! - level) <= FLAT_LEVELS) ((seen[i] = 1), queue.push(i));
   let count = 0;
   while (queue.length) {
     const i = queue.pop()!;
@@ -1189,7 +1466,7 @@ function canvasFill(gray: Uint8Array, w: number, h: number): { seen: Uint8Array;
     const x = i % w;
     for (const j of [x + 1 < w ? i + 1 : -1, x > 0 ? i - 1 : -1, i + w < n ? i + w : -1, i - w >= 0 ? i - w : -1]) {
       if (j < 0 || seen[j]) continue;
-      if (Math.abs(gray[j]! - level) <= FLAT_LEVELS && Math.abs(gray[j]! - gray[i]!) <= FLAT_GRADIENT) (seen[j] = 1), queue.push(j);
+      if (Math.abs(gray[j]! - level) <= FLAT_LEVELS && Math.abs(gray[j]! - gray[i]!) <= FLAT_GRADIENT) ((seen[j] = 1), queue.push(j));
     }
   }
   return { seen, count, level };
@@ -1223,13 +1500,15 @@ export function emptyMeasure(gray: Uint8Array, w: number, h: number): EmptyMeasu
     stack.push(s);
     while (stack.length) {
       const i = stack.pop()!;
-      const x = i % w, y = (i - x) / w;
+      const x = i % w,
+        y = (i - x) / w;
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
-          const xx = x + dx, yy = y + dy;
+          const xx = x + dx,
+            yy = y + dy;
           if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
           const j = yy * w + xx;
-          if (!seen[j]) (seen[j] = 1), stack.push(j);
+          if (!seen[j]) ((seen[j] = 1), stack.push(j));
         }
     }
   }
@@ -1260,7 +1539,7 @@ export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure
   for (let v = 0; v < 256; v++) {
     let c = 0;
     for (let u = Math.max(0, v - THIN_LEVELS); u <= Math.min(255, v + THIN_LEVELS); u++) c += hist[u]!;
-    if (c > best) (best = c), (level = v);
+    if (c > best) ((best = c), (level = v));
   }
   const flat = best / n;
   if (flat < THIN_FLAT) return { flat: round(flat), tall: 1, thin: false };
@@ -1281,22 +1560,27 @@ export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure
   const stack: Array<number> = [];
   for (let s = 0; s < n; s++) {
     if (mark[s] !== 1) continue;
-    let x0 = w, x1 = -1, y0 = h, y1 = -1;
+    let x0 = w,
+      x1 = -1,
+      y0 = h,
+      y1 = -1;
     mark[s] = 2;
     stack.push(s);
     while (stack.length) {
       const i = stack.pop()!;
-      const x = i % w, y = (i - x) / w;
+      const x = i % w,
+        y = (i - x) / w;
       if (x < x0) x0 = x;
       if (x > x1) x1 = x;
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
-          const xx = x + dx, yy = y + dy;
+          const xx = x + dx,
+            yy = y + dy;
           if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
           const j = yy * w + xx;
-          if (mark[j] === 1) (mark[j] = 2), stack.push(j);
+          if (mark[j] === 1) ((mark[j] = 2), stack.push(j));
         }
     }
     if (x1 - x0 + 1 < minW) continue;
@@ -1313,13 +1597,18 @@ export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure
  */
 export const thinSize = (canvas: { readonly width: number; readonly height: number }) => {
   const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
-  return canvas.width > canvas.height ? { w: even((THIN_WIDTH * canvas.width) / canvas.height), h: THIN_WIDTH } : { w: THIN_WIDTH, h: even((THIN_WIDTH * canvas.height) / canvas.width) };
+  return canvas.width > canvas.height
+    ? { w: even((THIN_WIDTH * canvas.width) / canvas.height), h: THIN_WIDTH }
+    : { w: THIN_WIDTH, h: even((THIN_WIDTH * canvas.height) / canvas.width) };
 };
 /** The width the strips' and scan's frames are rendered at: STRIP_CELL, or wider for a landscape canvas (thinSize). */
 export const scanRenderWidth = (canvas: { readonly width: number; readonly height: number }) => Math.max(STRIP_CELL, thinSize(canvas).w);
 
 /** The emptiness grey size for a canvas: EMPTY_WIDTH wide, even height. */
-export const emptySize = (canvas: { readonly width: number; readonly height: number }) => ({ w: EMPTY_WIDTH, h: Math.max(2, Math.round((EMPTY_WIDTH * canvas.height) / canvas.width / 2) * 2) });
+export const emptySize = (canvas: { readonly width: number; readonly height: number }) => ({
+  w: EMPTY_WIDTH,
+  h: Math.max(2, Math.round((EMPTY_WIDTH * canvas.height) / canvas.width / 2) * 2),
+});
 
 /** The scale facts for the critic: each strip's flat share, and whether most are over FLAT_MAX. */
 export function flatLines(strips: ReadonlyArray<FlatStrip>, fps: number, footage: boolean): Array<string> {
@@ -1343,7 +1632,15 @@ export function flatFindings(strips: ReadonlyArray<FlatStrip>, fps: number, foot
   const over = strips.filter((x) => x.flat > FLAT_MAX);
   if (!footage || over.length * 2 <= strips.length) return [];
   const worst = [...over].sort((a, b) => b.flat - a.flat)[0]!;
-  return [{ rule: "scale", key: "scale:flat", frame: worst.at, hard: false, message: `The footage sits small on flat background: over ${Math.round(FLAT_MAX * 100)} % of the frame is one flat colour at ${over.length} of ${strips.length} scene changes (worst ${Math.round(worst.flat * 100)} % at ${secs(worst.at, fps)}). At rest the hero shape should fill most of the frame (70 % or more, margins of about 6 %), flood past the corners on the big beats, and the type sit large inside or over it.` }];
+  return [
+    {
+      rule: "scale",
+      key: "scale:flat",
+      frame: worst.at,
+      hard: false,
+      message: `The footage sits small on flat background: over ${Math.round(FLAT_MAX * 100)} % of the frame is one flat colour at ${over.length} of ${strips.length} scene changes (worst ${Math.round(worst.flat * 100)} % at ${secs(worst.at, fps)}). At rest the hero shape should fill most of the frame (70 % or more, margins of about 6 %), flood past the corners on the big beats, and the type sit large inside or over it.`,
+    },
+  ];
 }
 
 /** The words a beat says it shows: text in quotes in its title, entry and exit ("…", '…', “…”, ‘…’), at most 4. */
@@ -1358,10 +1655,17 @@ export function beatWords(beat: { readonly title?: string; readonly entry?: stri
 }
 
 /** The storyboard's words per beat for the critic to read in that beat's frames (D296), or none. */
-export function beatWordLines(beats: ReadonlyArray<{ readonly start: number; readonly end: number; readonly title?: string; readonly entry?: string; readonly exit?: string }> | undefined): Array<string> {
+export function beatWordLines(
+  beats: ReadonlyArray<{ readonly start: number; readonly end: number; readonly title?: string; readonly entry?: string; readonly exit?: string }> | undefined,
+): Array<string> {
   const lines = (beats ?? []).flatMap((b, i) => {
     const words = beatWords(b);
     return words.length ? [`beat ${i + 1} (${b.start} s to ${b.end} s): ${words.map((w) => `"${w}"`).join(", ")}`] : [];
   });
-  return lines.length ? ["The storyboard's words, each beat's text as approved; read them in that beat's frames (its strip and its last frame): missing, cut or different words are a defect.", ...lines] : [];
+  return lines.length
+    ? [
+        "The storyboard's words, each beat's text as approved; read them in that beat's frames (its strip and its last frame): missing, cut or different words are a defect.",
+        ...lines,
+      ]
+    : [];
 }

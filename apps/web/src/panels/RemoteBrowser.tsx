@@ -18,7 +18,14 @@ const TITLES: Record<RemotePickerRequest["purpose"], string> = {
   save: "Where to save the export",
 };
 
-const sizeText = (n: number | undefined) => (n === undefined ? "" : n < 1024 ** 2 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`);
+const sizeText = (n: number | undefined) =>
+  n === undefined
+    ? ""
+    : n < 1024 ** 2
+      ? `${Math.max(1, Math.round(n / 1024))} KB`
+      : n < 1024 ** 3
+        ? `${(n / 1024 ** 2).toFixed(1)} MB`
+        : `${(n / 1024 ** 3).toFixed(2)} GB`;
 const join = (dir: string, name: string) => `${dir.replace(/\/$/, "")}/${name}`;
 
 export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
@@ -73,21 +80,31 @@ export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
   };
 
   const name = fileName.trim();
-  const choice: string | ReadonlyArray<string> | undefined =
-    !dir
-      ? undefined
-      : purpose === "media"
-        ? selected.length
-          ? selected
-          : undefined
-        : purpose === "project"
-          ? selected[0]
+  const choice: string | ReadonlyArray<string> | undefined = !dir
+    ? undefined
+    : purpose === "media"
+      ? selected.length
+        ? selected
+        : undefined
+      : purpose === "project"
+        ? selected[0]
+        : purpose === "save"
+          ? name && !name.includes("/")
+            ? join(dir, /\.mp4$/i.test(name) ? name : `${name}.mp4`)
+            : undefined
+          : dir;
+  const confirmLabel =
+    purpose === "media"
+      ? selected.length > 1
+        ? `Import ${selected.length} files`
+        : "Import"
+      : purpose === "project"
+        ? "Open"
+        : purpose === "plugin"
+          ? "Add this folder"
           : purpose === "save"
-            ? name && !name.includes("/")
-              ? join(dir, /\.mp4$/i.test(name) ? name : `${name}.mp4`)
-              : undefined
-            : dir;
-  const confirmLabel = purpose === "media" ? (selected.length > 1 ? `Import ${selected.length} files` : "Import") : purpose === "project" ? "Open" : purpose === "plugin" ? "Add this folder" : purpose === "save" ? "Choose" : "Choose this folder";
+            ? "Choose"
+            : "Choose this folder";
   const shown = (listing?.entries ?? []).filter((e) => purpose === "media" || purpose === "save" || e.kind === "dir");
 
   return (
@@ -107,7 +124,12 @@ export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
         <div className="wiz-panel">
           <div className="remote-path">
             <Tooltip label="Up one folder">
-              <button className="icon-btn" data-testid="remote-browser-up" disabled={!listing?.parent || loading} onClick={() => listing?.parent && void go(listing.parent)}>
+              <button
+                className="icon-btn"
+                data-testid="remote-browser-up"
+                disabled={!listing?.parent || loading}
+                onClick={() => listing?.parent && void go(listing.parent)}
+              >
                 <ArrowUp />
               </button>
             </Tooltip>
@@ -140,7 +162,9 @@ export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
                 </button>
               );
             })}
-            {listing && !shown.length && <div className="wiz-sub remote-empty">{purpose === "media" || purpose === "save" ? "This folder is empty." : "No folders in here."}</div>}
+            {listing && !shown.length && (
+              <div className="wiz-sub remote-empty">{purpose === "media" || purpose === "save" ? "This folder is empty." : "No folders in here."}</div>
+            )}
           </div>
           {problem && (
             <div className="inline-error" role="alert" data-testid="remote-browser-error">
@@ -168,19 +192,37 @@ export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
                     if (files.length) void actions.uploadAndImport(files);
                   }}
                 />
-                <button className="btn ghost" data-testid="remote-browser-upload" onClick={() => upload.current?.click()} title="Copies files from this Mac into the project's media/uploads folder on the server">
+                <button
+                  className="btn ghost"
+                  data-testid="remote-browser-upload"
+                  onClick={() => upload.current?.click()}
+                  title="Copies files from this Mac into the project's media/uploads folder on the server"
+                >
                   <Upload />
                   Upload from this Mac…
                 </button>
               </>
             ) : (
-              <p>{purpose === "parent" ? "The project folder (Name.uncut) is made inside this folder." : purpose === "project" ? "Pick a .uncut project folder." : purpose === "plugin" ? "A folder with an uncut.module.json in it." : "The video stays on the server; Download brings it to this Mac."}</p>
+              <p>
+                {purpose === "parent"
+                  ? "The project folder (Name.uncut) is made inside this folder."
+                  : purpose === "project"
+                    ? "Pick a .uncut project folder."
+                    : purpose === "plugin"
+                      ? "A folder with an uncut.module.json in it."
+                      : "The video stays on the server; Download brings it to this Mac."}
+              </p>
             )}
             <div className="wiz-btns">
               <button className="btn ghost" onClick={() => actions.answerPicker(null)}>
                 Cancel
               </button>
-              <button className="btn primary" data-testid="remote-browser-choose" disabled={choice === undefined || loading} onClick={() => choice !== undefined && actions.answerPicker(choice)}>
+              <button
+                className="btn primary"
+                data-testid="remote-browser-choose"
+                disabled={choice === undefined || loading}
+                onClick={() => choice !== undefined && actions.answerPicker(choice)}
+              >
                 {confirmLabel}
               </button>
             </div>

@@ -31,7 +31,11 @@ const size = (raw: unknown, mode: WindowMode): WindowSize | undefined => {
   if (width === undefined || height === undefined) return undefined;
   const x = n(r.x);
   const y = n(r.y);
-  return { width: Math.max(minWidth, Math.min(width, 10000)), height: Math.max(minHeight, Math.min(height, 10000)), ...(x !== undefined && y !== undefined ? { x, y } : {}) };
+  return {
+    width: Math.max(minWidth, Math.min(width, 10000)),
+    height: Math.max(minHeight, Math.min(height, 10000)),
+    ...(x !== undefined && y !== undefined ? { x, y } : {}),
+  };
 };
 
 /** The remembered sizes (each falls back to its default). */

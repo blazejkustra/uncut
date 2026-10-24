@@ -8,7 +8,8 @@ import { componentHtml, type Item } from "../../packages/core/src/index.ts";
 import { BRAND_ICONS } from "../../packages/core/src/visual/brandIcons.ts";
 
 const target = { canvas: { width: 1920, height: 1080 } };
-const draw = (props: Record<string, unknown>) => componentHtml({ id: "e1", type: "component", component: "component.follow", duration: 300, props } as Item, target, 60, { fps: 30 });
+const draw = (props: Record<string, unknown>) =>
+  componentHtml({ id: "e1", type: "component", component: "component.follow", duration: 300, props } as Item, target, 60, { fps: 30 });
 
 test("brand marks keep their own colour, or white / black, whatever colour is asked for", () => {
   for (const [id, b] of Object.entries(BRAND_ICONS)) {

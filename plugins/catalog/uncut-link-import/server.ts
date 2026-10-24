@@ -39,7 +39,14 @@ async function downloadTool(args: Json, { signal, progress }: ToolContext) {
   if (!url || !folder || !stem) return failure("Pass url, folder and stem.");
   let last = -1;
   const result = await download(
-    { url, kind: args.kind as LinkKind, quality: (str(args.quality) ?? "1080") as LinkQuality, folder, stem, searchPath: str(args.searchPath) ?? process.env.PATH ?? "" },
+    {
+      url,
+      kind: args.kind as LinkKind,
+      quality: (str(args.quality) ?? "1080") as LinkQuality,
+      folder,
+      stem,
+      searchPath: str(args.searchPath) ?? process.env.PATH ?? "",
+    },
     signal,
     (fraction, status) => {
       const p = Math.round(fraction * 1000) / 1000;

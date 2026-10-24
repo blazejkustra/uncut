@@ -53,7 +53,10 @@ test("⌫ on several items deletes them in one edit; a transition into a clip th
   assert.equal(plan.summary, "Delete 2 items");
   const next = apply(plan.ops);
   const main = next.tracks.find((t) => t.id === "main")!;
-  assert.deepEqual(main.items.map((i) => i.id), ["b", "c"]);
+  assert.deepEqual(
+    main.items.map((i) => i.id),
+    ["b", "c"],
+  );
   assert.equal(main.items[0]!.transitionIn, undefined, "b is first now: no transition into it");
   assert.ok(main.items[1]!.transitionIn, "c still follows b");
   assert.equal(next.tracks.find((t) => t.id === "text")!.items.length, 0);
@@ -86,12 +89,18 @@ test("⌘V of a main clip inserts it on main after the clip under the playhead, 
   assert.ok("ops" in plan);
   const next = apply(plan.ops);
   const main = next.tracks.find((t) => t.id === "main")!;
-  assert.deepEqual(main.items.map((i) => i.id), ["a", "b", plan.ids[0], "c"]);
+  assert.deepEqual(
+    main.items.map((i) => i.id),
+    ["a", "b", plan.ids[0], "c"],
+  );
   assert.equal(main.items[2]!.transitionIn, undefined);
   assert.equal(main.items[2]!.in, 100);
   // Several items keep their relative timing.
   const both = copyItems(project, ["title-1", "a"]);
-  assert.deepEqual(both.map((c) => c.offset), [0, 10]);
+  assert.deepEqual(
+    both.map((c) => c.offset),
+    [0, 10],
+  );
   assert.ok("problem" in planPaste(project, [], 0));
 });
 

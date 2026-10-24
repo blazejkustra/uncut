@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { absolute, inside, owned } from "./paths.ts";
 
-
 /** The commands of a shell line: split on ;, &&, ||, |, & and newlines (quotes kept together). */
 export function shellSegments(command: string): Array<string> {
   const out: Array<string> = [];
@@ -89,7 +88,8 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
       const inner = destructive(args.join(" "), project, roots, home);
       if (inner) return inner;
     }
-    if (name === "xargs" && args.some((a) => ["rm", "rmdir", "shred", "sudo", "mv", "chmod", "chown"].includes(basename(a)))) return "runs a command on files it can't see in advance";
+    if (name === "xargs" && args.some((a) => ["rm", "rmdir", "shred", "sudo", "mv", "chmod", "chown"].includes(basename(a))))
+      return "runs a command on files it can't see in advance";
     if (name === "rm" || name === "rmdir" || name === "shred" || name === "srm") {
       const targets = args.filter((a) => !a.startsWith("-"));
       const outside = targets.filter((t) => !ok(t));
@@ -104,7 +104,26 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
     if (name === "wget" && args.some((a) => /^--(post|put|body|method)/.test(a))) return "wget uploads data";
     if (["scp", "sftp", "ftp", "nc", "ncat", "netcat", "telnet", "ssh"].includes(name)) return `${name} talks to another machine`;
     if (name === "rsync" && args.some((a) => /^[^/\s]+:/.test(a) || a.startsWith("rsync://"))) return "rsync to another machine";
-    if (["mkfs", "diskutil", "dd", "fdisk", "shutdown", "reboot", "halt", "launchctl", "csrutil", "spctl", "systemsetup", "defaults", "crontab", "chown"].includes(name) || name.startsWith("mkfs.")) return `${name} changes the system`;
+    if (
+      [
+        "mkfs",
+        "diskutil",
+        "dd",
+        "fdisk",
+        "shutdown",
+        "reboot",
+        "halt",
+        "launchctl",
+        "csrutil",
+        "spctl",
+        "systemsetup",
+        "defaults",
+        "crontab",
+        "chown",
+      ].includes(name) ||
+      name.startsWith("mkfs.")
+    )
+      return `${name} changes the system`;
     if ((name === "chmod" || name === "chflags") && args.some((a) => !a.startsWith("-") && /^[/~]/.test(a) && !ok(a))) return `${name} outside the project`;
     if (name === "mv" || name === "cp" || name === "ln" || name === "tee" || name === "install") {
       const t = args.findIndex((a) => a === "-t" || a === "--target-directory" || a.startsWith("--target-directory="));
@@ -114,7 +133,15 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
       if (name === "mv" && paths.slice(0, -1).some((p) => !ok(p))) return "moves files from outside the project";
       if (dest.some((p) => !ok(p))) return `writes ${dest.find((p) => !ok(p))} outside the project`;
     }
-    if (name === "find" && args.includes("-delete") && args.filter((a) => !a.startsWith("-")).slice(0, 1).some((p) => !ok(p))) return "deletes files outside the project";
+    if (
+      name === "find" &&
+      args.includes("-delete") &&
+      args
+        .filter((a) => !a.startsWith("-"))
+        .slice(0, 1)
+        .some((p) => !ok(p))
+    )
+      return "deletes files outside the project";
     for (const m of segment.matchAll(/(?:^|[^<>&\d])>>?\s*("[^"]+"|'[^']+'|[^\s;&|]+)/g)) {
       const target = m[1]!.replace(/^["']|["']$/g, "");
       if (target === "/dev/null" || target.startsWith("&")) continue;
@@ -260,11 +287,14 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
     return files.length > 0 && files.every((a) => !a.startsWith("-") && readable(a));
   }
   if (name === "mkdir") {
-    return paths.length > 0 && paths.every((a) => {
-      if (!plain(a)) return false;
-      const r = real(a);
-      return inside(r, project) && r !== project && !owned(r, project);
-    });
+    return (
+      paths.length > 0 &&
+      paths.every((a) => {
+        if (!plain(a)) return false;
+        const r = real(a);
+        return inside(r, project) && r !== project && !owned(r, project);
+      })
+    );
   }
   return paths.every(readable);
 }
@@ -308,7 +338,13 @@ export function copyIntoProject(args: ReadonlyArray<string>, real: (p: string) =
       const dir = real(folder);
       // A ? judged like a * (review of 6dc1722): the shell's ? is one character (an emoji, or one
       // byte of it in the C locale), not one UTF-16 unit, so every name it could match is judged.
-      const re = new RegExp(`^${name.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".*")}$`, "s");
+      const re = new RegExp(
+        `^${name
+          .replace(/[.+^$()|\\]/g, "\\$&")
+          .replaceAll("*", ".*")
+          .replaceAll("?", ".*")}$`,
+        "s",
+      );
       let entries: ReadonlyArray<string>;
       try {
         entries = list(dir);
@@ -391,7 +427,11 @@ const FILTER_FLAGS: Record<string, { readonly flags: ReadonlySet<string>; readon
   wc: { flags: new Set(["-l", "-w", "-c", "-m"]), valued: {}, positional: 0 },
   sort: { flags: new Set(["-n", "-r", "-u", "-f", "-h", "-V", "-nr", "-rn"]), valued: { "-k": /^\d{1,3}(,\d{1,3})?$/ }, positional: 0 },
   uniq: { flags: new Set(["-c", "-d", "-u", "-i"]), valued: {}, positional: 0 },
-  grep: { flags: new Set(["-i", "-v", "-n", "-c", "-w", "-x", "-E", "-F", "-o", "-in", "-ni", "-iv", "-vi", "-io", "-oi"]), valued: { "-m": /^\d{1,9}$/, "-A": /^\d{1,4}$/, "-B": /^\d{1,4}$/, "-C": /^\d{1,4}$/ }, positional: 1 },
+  grep: {
+    flags: new Set(["-i", "-v", "-n", "-c", "-w", "-x", "-E", "-F", "-o", "-in", "-ni", "-iv", "-vi", "-io", "-oi"]),
+    valued: { "-m": /^\d{1,9}$/, "-A": /^\d{1,4}$/, "-B": /^\d{1,4}$/, "-C": /^\d{1,4}$/ },
+    positional: 1,
+  },
   // A jq path only (.a.b[0], .media[].id): no pipes, objects, $variables or functions in the filter.
   jq: { flags: new Set(["-r", "-c", "-S", "--raw-output", "--compact-output", "--sort-keys"]), valued: {}, positional: 1 },
 };

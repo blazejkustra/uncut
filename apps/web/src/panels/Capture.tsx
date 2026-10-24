@@ -6,20 +6,8 @@
 // next take: a saved flow to replay (the take ends with it), an app to open first, the orientation,
 // a maximum length, touches drawn in, still parts cut. Devices Argent can't record say why; without
 // Argent the section shows the command that installs it and "Check again".
-import type {
-  CaptureDevice,
-  CaptureOptions,
-  CaptureOrientation,
-} from "@uncut/contracts";
-import {
-  Check,
-  CircleDot,
-  Copy,
-  LoaderCircle,
-  Power,
-  RefreshCw,
-  Square,
-} from "lucide-react";
+import type { CaptureDevice, CaptureOptions, CaptureOrientation } from "@uncut/contracts";
+import { Check, CircleDot, Copy, LoaderCircle, Power, RefreshCw, Square } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { actions, useApp } from "../state/store.ts";
@@ -82,9 +70,7 @@ const ORIENTATIONS: ReadonlyArray<["" | CaptureOrientation, string]> = [
 
 function loadOptions(): ArgentOptions {
   try {
-    const raw = JSON.parse(
-      localStorage.getItem(OPTIONS_KEY) ?? "{}",
-    ) as Partial<ArgentOptions>;
+    const raw = JSON.parse(localStorage.getItem(OPTIONS_KEY) ?? "{}") as Partial<ArgentOptions>;
     return { ...DEFAULT_OPTIONS, ...raw };
   } catch {
     return DEFAULT_OPTIONS;
@@ -119,19 +105,14 @@ export function CaptureLibrary() {
   // A remembered flow the open project doesn't have isn't offered.
   const flow = options.flow && flows.includes(options.flow) ? options.flow : "";
   const effective = { ...options, flow };
-  const recording = new Map(
-    (capture?.recording ?? []).map((r) => [r.device, r]),
-  );
+  const recording = new Map((capture?.recording ?? []).map((r) => [r.device, r]));
   const now = useNow(recording.size > 0);
   const busy = new Set(app.captureBusy ?? []);
   const booting = new Set(app.captureBooting ?? []);
   const rank = (d: CaptureDevice) => (d.recordable ? 0 : d.bootable ? 1 : 2);
-  const devices = [...(capture?.devices ?? [])].sort(
-    (a, b) => rank(a) - rank(b),
-  );
+  const devices = [...(capture?.devices ?? [])].sort((a, b) => rank(a) - rank(b));
   // D238: the remembered device if it's still there, else the first that records (the list's order).
-  const selected =
-    devices.find((d) => d.id === options.device) ?? devices[0];
+  const selected = devices.find((d) => d.id === options.device) ?? devices[0];
   const ready = !!capture && capture.installed && !capture.problem;
   return (
     <aside className="library" data-testid="capture-library">
@@ -148,7 +129,7 @@ export function CaptureLibrary() {
               className="icon-btn"
               data-testid="capture-refresh"
               disabled={!online || app.captureChecking}
-             
+
               onClick={() => void actions.checkCapture()}
             >
               <RefreshCw className={app.captureChecking ? "spin" : ""} />
@@ -156,34 +137,20 @@ export function CaptureLibrary() {
           </Tooltip>
         </div>
         {!capture ? (
-          <div className="muted small">
-            {app.captureError ?? "Looking for devices…"}
-          </div>
+          <div className="muted small">{app.captureError ?? "Looking for devices…"}</div>
         ) : !ready ? (
           <div className="capture-missing" data-testid="capture-missing">
             <div className="small muted">
-              {capture.installed
-                ? capture.problem
-                : "Argent records iOS simulators and Android emulators. It isn't installed yet; install it with:"}
+              {capture.installed ? capture.problem : "Argent records iOS simulators and Android emulators. It isn't installed yet; install it with:"}
             </div>
             <div className="wiz-cmd">
               <code>{capture.install}</code>
-              <button
-                className="link-btn"
-                data-testid="capture-copy-install"
-                onClick={() => void actions.copy(capture.install)}
-                title="Copy the command"
-              >
+              <button className="link-btn" data-testid="capture-copy-install" onClick={() => void actions.copy(capture.install)} title="Copy the command">
                 <Copy />
                 Copy
               </button>
             </div>
-            <button
-              className="btn"
-              data-testid="capture-check-again"
-              disabled={!online || app.captureChecking}
-              onClick={() => void actions.checkCapture()}
-            >
+            <button className="btn" data-testid="capture-check-again" disabled={!online || app.captureChecking} onClick={() => void actions.checkCapture()}>
               <RefreshCw className={app.captureChecking ? "spin" : ""} />
               Check again
             </button>
@@ -222,11 +189,7 @@ export function CaptureLibrary() {
                   ),
               )}
             </div>
-            <ArgentOptionsForm
-              options={effective}
-              flows={flows}
-              setOptions={setOptions}
-            />
+            <ArgentOptionsForm options={effective} flows={flows} setOptions={setOptions} />
           </>
         )}
         {app.captureError && capture && (
@@ -238,13 +201,9 @@ export function CaptureLibrary() {
           <div className="capture-saved small" data-testid="capture-saved">
             <Check />
             <span>
-              {app.captureSaved.name} ({app.captureSaved.seconds.toFixed(1)} s)
-              is in Media.
+              {app.captureSaved.name} ({app.captureSaved.seconds.toFixed(1)} s) is in Media.
             </span>
-            <button
-              className="link-btn"
-              onClick={() => actions.openPanel("media")}
-            >
+            <button className="link-btn" onClick={() => actions.openPanel("media")}>
               Show
             </button>
           </div>
@@ -269,11 +228,7 @@ function ArgentOptionsForm({
       <div className="capture-options-grid">
         <label className="capture-opt">
           <span>Flow</span>
-          <select
-            data-testid="capture-opt-flow"
-            value={options.flow}
-            onChange={(e) => setOptions({ flow: e.target.value })}
-          >
+          <select data-testid="capture-opt-flow" value={options.flow} onChange={(e) => setOptions({ flow: e.target.value })}>
             <option value="">None, until Stop</option>
             {flows.map((f) => (
               <option key={f} value={f}>
@@ -288,11 +243,7 @@ function ArgentOptionsForm({
             data-testid="capture-opt-max"
             value={options.maxSeconds}
             disabled={!timed}
-            title={
-              timed
-                ? "The take stops by itself after this long"
-                : "A flow's take lasts as long as the flow"
-            }
+            title={timed ? "The take stops by itself after this long" : "A flow's take lasts as long as the flow"}
             onChange={(e) => setOptions({ maxSeconds: Number(e.target.value) })}
           >
             {MAX_LENGTHS.map(([v, label]) => (
@@ -333,12 +284,7 @@ function ArgentOptionsForm({
         </label>
       </div>
       <div className="opt-row">
-        <Option
-          testId="capture-opt-touches"
-          checked={options.showTouches}
-          onChange={(v) => setOptions({ showTouches: v })}
-          title="Draw touches into the take"
-        >
+        <Option testId="capture-opt-touches" checked={options.showTouches} onChange={(v) => setOptions({ showTouches: v })} title="Draw touches into the take">
           Show touches
         </Option>
         <Option
@@ -380,9 +326,7 @@ function DeviceRow({
   const Icon = deviceIcon(device);
   const recording = running !== undefined;
   const record = () =>
-    options.flow
-      ? actions.recordFlow(device.id, options.flow, takeOptions(options))
-      : actions.startCapture(device.id, takeOptions(options));
+    options.flow ? actions.recordFlow(device.id, options.flow, takeOptions(options)) : actions.startCapture(device.id, takeOptions(options));
   return (
     <div
       className={`capture-row${device.recordable || device.bootable ? "" : " later"}${recording ? " recording" : ""}${picker ? " chosen" : ""}`}
@@ -390,28 +334,18 @@ function DeviceRow({
       data-id={device.id}
       data-recordable={device.recordable}
       data-bootable={device.bootable === true}
-      title={
-        picker
-          ? undefined
-          : device.recordable
-            ? device.id
-            : `${device.id}: ${device.reason ?? "not recordable yet"}`
-      }
+      title={picker ? undefined : device.recordable ? device.id : `${device.id}: ${device.reason ?? "not recordable yet"}`}
     >
       {picker ?? (
         <>
           <Icon />
           <span className="capture-name">
             {device.name}
-            <span className="capture-sub">
-              {recording && running.flow ? `Playing ${running.flow}` : deviceSub(device)}
-            </span>
+            <span className="capture-sub">{recording && running.flow ? `Playing ${running.flow}` : deviceSub(device)}</span>
           </span>
         </>
       )}
-      {picker && recording && running.flow && (
-        <span className="capture-note">Playing {running.flow}</span>
-      )}
+      {picker && recording && running.flow && <span className="capture-note">Playing {running.flow}</span>}
       {recording ? (
         <>
           <span className="capture-timer" data-testid="capture-timer">
@@ -441,11 +375,7 @@ function DeviceRow({
           className="btn small-btn"
           data-testid="capture-record"
           disabled={!online || busy || !anyOpen}
-          title={
-            options.flow
-              ? `Replay ${options.flow} while recording`
-              : "Record this device's screen"
-          }
+          title={options.flow ? `Replay ${options.flow} while recording` : "Record this device's screen"}
           onClick={() => void record()}
         >
           <CircleDot />
@@ -457,13 +387,7 @@ function DeviceRow({
           data-testid="capture-boot-record"
           disabled={!online || busy || !anyOpen}
           title="Boot it with Argent, then record"
-          onClick={() =>
-            void actions.bootAndRecord(
-              device.id,
-              takeOptions(options),
-              options.flow || undefined,
-            )
-          }
+          onClick={() => void actions.bootAndRecord(device.id, takeOptions(options), options.flow || undefined)}
         >
           <Power />
           Boot and record

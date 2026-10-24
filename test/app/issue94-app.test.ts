@@ -44,7 +44,11 @@ const meta = async (page: Page, key: KeyInput) => {
   await page.keyboard.press(key);
   await page.keyboard.up("Meta");
 };
-const project = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as { media: Array<{ id: string; name: string; path: string; kind: string; source?: Record<string, unknown> }>; tracks: Array<{ id: string; items: Array<{ media?: string; mediaId?: string; [k: string]: unknown }> }> };
+const project = () =>
+  JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as {
+    media: Array<{ id: string; name: string; path: string; kind: string; source?: Record<string, unknown> }>;
+    tracks: Array<{ id: string; items: Array<{ media?: string; mediaId?: string; [k: string]: unknown }> }>;
+  };
 const links = () => (existsSync(join(dir, "media/links")) ? readdirSync(join(dir, "media/links")) : []);
 const alive = (pid: number) => {
   try {
@@ -103,7 +107,8 @@ const dropLink = (page: Page, selector: string, url: string, at?: { x: number; y
       const data = new DataTransfer();
       data.setData("text/uri-list", url);
       data.setData("text/plain", url);
-      for (const type of ["dragenter", "dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data, ...point }));
+      for (const type of ["dragenter", "dragover", "drop"])
+        el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data, ...point }));
     },
     url,
     at,
@@ -114,7 +119,29 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue94-")));
-  execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=640x360:r=30", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "clip.mp4")]);
+  execFileSync(FFMPEG!, [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=orange:s=640x360:r=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:sample_rate=48000",
+    "-t",
+    "3",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "clip.mp4"),
+  ]);
   execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=550:sample_rate=48000", "-t", "3", "-c:a", "aac", join(root, "sound.m4a")]);
   // PATH for the app: ffmpeg and ffprobe, and (in shim) the fake yt-dlp.
   shim = join(root, "shim");
@@ -128,7 +155,19 @@ before(async () => {
   chmodSync(join(shim, "yt-dlp"), 0o755);
   dir = join(root, "Links.uncut");
   mkdirSync(dir);
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Links", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "text", kind: "text", name: "Text", items: [] }, { id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Links",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      media: [],
+      tracks: [
+        { id: "text", kind: "text", name: "Text", items: [] },
+        { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+      ],
+    }),
+  );
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -175,7 +214,10 @@ test("#94, D280: Import from link through the user's own yt-dlp (a catalog plugi
   // + is a menu now; the rights notice first.
   await openFromMenu(page);
   await waitFor(page, "[data-testid=link-notice]");
-  assert.match(await page.$eval("[data-testid=link-notice]", (el) => (el as HTMLElement).innerText), /You need the rights to what you import\. Uncut doesn't check\./);
+  assert.match(
+    await page.$eval("[data-testid=link-notice]", (el) => (el as HTMLElement).innerText),
+    /You need the rights to what you import\. Uncut doesn't check\./,
+  );
   await shot(page, "notice");
   await ackNotice(page);
   await waitFor(page, "[data-testid=link-form]");
@@ -191,21 +233,38 @@ test("#94, D280: Import from link through the user's own yt-dlp (a catalog plugi
   await page.waitForFunction(() => /Downloading… \d+%/.test(document.querySelector("[data-testid=link-status]")?.textContent ?? ""), { timeout: 15000 });
   await page.waitForFunction(() => Number(/(\d+)%/.exec(document.querySelector("[data-testid=link-status]")?.textContent ?? "")?.[1] ?? 0) > 0);
   await shot(page, "progress");
-  await page.waitForFunction(() => !document.querySelector("[data-testid=link-import]") || document.querySelector("[data-testid=link-job][data-phase=failed]"), { timeout: 30000 });
+  await page.waitForFunction(
+    () => !document.querySelector("[data-testid=link-import]") || document.querySelector("[data-testid=link-job][data-phase=failed]"),
+    { timeout: 30000 },
+  );
   if (await page.$("[data-testid=link-error]")) {
     await shot(page, "first-failed");
     assert.fail(`the import failed: ${await page.$eval("[data-testid=link-error]", (el) => el.textContent)}`);
   }
-  await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=media-tile]")].some((t) => (t as HTMLElement).innerText.includes("Sunset over the sea")), { timeout: 20000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("[data-testid=media-tile]")].some((t) => (t as HTMLElement).innerText.includes("Sunset over the sea")),
+    { timeout: 20000 },
+  );
   await shot(page, "in-media");
   let media = project().media;
   assert.equal(media.length, 1);
   assert.equal(media[0]!.name, "Sunset over the sea: 4K/HDR");
   assert.equal(media[0]!.kind, "video");
   assert.equal(media[0]!.path, "media/links/Sunset over the sea 4K HDR.mp4", "a sanitised name in the project's media/links/");
-  assert.deepEqual(media[0]!.source, { module: "import.link", url: "https://example.com/watch?v=sunset&list=PL1", title: "Sunset over the sea: 4K/HDR", kind: "video", quality: "1080", tool: "yt-dlp" });
+  assert.deepEqual(media[0]!.source, {
+    module: "import.link",
+    url: "https://example.com/watch?v=sunset&list=PL1",
+    title: "Sunset over the sea: 4K/HDR",
+    kind: "video",
+    quality: "1080",
+    tool: "yt-dlp",
+  });
   assert.deepEqual(links(), ["Sunset over the sea 4K HDR.mp4"]);
-  const runs = () => readFileSync(join(root, "ytdlp.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { argv: Array<string>; uncutEnv: number });
+  const runs = () =>
+    readFileSync(join(root, "ytdlp.log"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { argv: Array<string>; uncutEnv: number });
   const first = runs()[0]!;
   assert.ok(first.argv.includes("--ignore-config") && first.argv.includes("--no-playlist"), "no config files, no playlist");
   assert.ok(first.argv.includes("--no-cookies") && first.argv.includes("--no-cookies-from-browser"), "nothing signed in");
@@ -286,7 +345,9 @@ test("#94, D280: Import from link through the user's own yt-dlp (a catalog plugi
   const dropped = media.find((m) => (m.source as { url?: string } | undefined)?.url === "https://example.com/watch?v=drop");
   assert.ok(dropped, "the dropped link's media is in Media");
   assert.equal(dropped.name, "Sunset over the sea: 4K/HDR 2", "a unique name");
-  const placed = project().tracks.flatMap((t) => t.items).filter((i) => Object.values(i).includes(dropped.id));
+  const placed = project()
+    .tracks.flatMap((t) => t.items)
+    .filter((i) => Object.values(i).includes(dropped.id));
   assert.equal(placed.length, 1, "and on the timeline");
   await shot(page, "dropped");
   await app.close();

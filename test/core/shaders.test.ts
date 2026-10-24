@@ -7,7 +7,32 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as d from "typegpu/data";
 
-import { clipFx, expandShaderEffects, fxWords, loadModules, needsPicturePass, planShader, planShaderValues, readContributions, shaderDefProblems, shaderEntry, shaderParamBytes, shaderParamLayout, shaderParamProblems, shaderUseOf, shaderValues, shaderWgslProblems, stripWgslComments, validateModule, validateProject, clipShader, type ModuleManifest, type Project, type ShaderDef, type ShaderParam } from "../../packages/core/src/index.ts";
+import {
+  clipFx,
+  expandShaderEffects,
+  fxWords,
+  loadModules,
+  needsPicturePass,
+  planShader,
+  planShaderValues,
+  readContributions,
+  shaderDefProblems,
+  shaderEntry,
+  shaderParamBytes,
+  shaderParamLayout,
+  shaderParamProblems,
+  shaderUseOf,
+  shaderValues,
+  shaderWgslProblems,
+  stripWgslComments,
+  validateModule,
+  validateProject,
+  clipShader,
+  type ModuleManifest,
+  type Project,
+  type ShaderDef,
+  type ShaderParam,
+} from "../../packages/core/src/index.ts";
 import { buildShader, resolveShaderFn } from "../../apps/server/src/plugins/shaderBuild.ts";
 
 const modules = await loadModules("spec/modules/builtin");
@@ -34,7 +59,11 @@ const body = (inner: string) => WGSL.replace(/fn effect[\s\S]*$/, `fn effect(uv:
 
 test("D213: a well-formed effect passes; each rule refuses with a sentence", () => {
   assert.deepEqual(shaderDefProblems(DEF), []);
-  const refused = (wgsl: string, re: RegExp) => assert.ok(shaderWgslProblems(wgsl, PARAMS).some((p) => re.test(p)), `${re}: ${shaderWgslProblems(wgsl, PARAMS).join(" | ")}`);
+  const refused = (wgsl: string, re: RegExp) =>
+    assert.ok(
+      shaderWgslProblems(wgsl, PARAMS).some((p) => re.test(p)),
+      `${re}: ${shaderWgslProblems(wgsl, PARAMS).join(" | ")}`,
+    );
   refused(body("loop { break; } return frame(uv);"), /can't use loop/);
   refused(body("var i = 0; while (i < 3) { i++; } return frame(uv);"), /can't use while/);
   refused(body("for (var i = 0; i < 65; i++) { } return frame(uv);"), /runs 65 times; at most 64/);
@@ -66,14 +95,34 @@ test("D213: params are checked, values clamped and typed, and the uniform layout
     { key: "e", label: "e", type: "bool", default: 1 as never },
     { key: "e", label: "e", type: "bool", default: true },
   ]);
-  for (const re of [/"A" needs a name/, /"b" needs a label/, /"b" needs a min below its max/, /"c"'s default must be a number from 0 to 1/, /"d"'s default must be a colour/, /"e"'s default must be true or false/, /"e" is there twice/]) assert.ok(bad.some((p) => re.test(p)), `${re}`);
+  for (const re of [
+    /"A" needs a name/,
+    /"b" needs a label/,
+    /"b" needs a min below its max/,
+    /"c"'s default must be a number from 0 to 1/,
+    /"d"'s default must be a colour/,
+    /"e"'s default must be true or false/,
+    /"e" is there twice/,
+  ])
+    assert.ok(
+      bad.some((p) => re.test(p)),
+      `${re}`,
+    );
   assert.deepEqual(shaderValues(PARAMS, { amount: 7, tint: "#ABCDEF", on: "yes", other: 1 }), { amount: 1, tint: "#abcdef", on: true });
   // The layout matches TypeGPU's for the same struct.
   const struct = d.struct({ amount: d.f32, tint: d.vec3f, on: d.f32 });
   const layout = shaderParamLayout(PARAMS);
-  assert.deepEqual(layout.offsets, [d.memoryLayoutOf(struct, (s) => s.amount).offset, d.memoryLayoutOf(struct, (s) => s.tint).offset, d.memoryLayoutOf(struct, (s) => s.on).offset]);
+  assert.deepEqual(layout.offsets, [
+    d.memoryLayoutOf(struct, (s) => s.amount).offset,
+    d.memoryLayoutOf(struct, (s) => s.tint).offset,
+    d.memoryLayoutOf(struct, (s) => s.on).offset,
+  ]);
   assert.equal(layout.size, d.sizeOf(struct));
-  const other: ReadonlyArray<ShaderParam> = [{ key: "a", label: "a", type: "color", default: "#000000" }, { key: "b", label: "b", type: "color", default: "#000000" }, { key: "c", label: "c", type: "number", min: 0, max: 1, default: 0 }];
+  const other: ReadonlyArray<ShaderParam> = [
+    { key: "a", label: "a", type: "color", default: "#000000" },
+    { key: "b", label: "b", type: "color", default: "#000000" },
+    { key: "c", label: "c", type: "number", min: 0, max: 1, default: 0 },
+  ];
   const s2 = d.struct({ a: d.vec3f, b: d.vec3f, c: d.f32 });
   assert.deepEqual(shaderParamLayout(other).offsets, [0, d.memoryLayoutOf(s2, (s) => s.b).offset, d.memoryLayoutOf(s2, (s) => s.c).offset]);
   assert.equal(shaderParamLayout(other).size, d.sizeOf(s2));
@@ -87,7 +136,15 @@ const clip = (effects: Project["tracks"][number]["items"][number]["effects"]): P
   name: "S",
   canvas: { width: 640, height: 360, fps: 30, background: "#000000" },
   media: [{ id: "m", kind: "video", name: "a.mp4", path: "a.mp4", probe: { frames: 60, fps: 30, width: 640, height: 360, hasAudio: false } }],
-  tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c1", type: "clip", media: "m", in: 0, duration: 30, ...(effects ? { effects } : {}) }] }],
+  tracks: [
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "c1", type: "clip", media: "m", in: 0, duration: 30, ...(effects ? { effects } : {}) }],
+    },
+  ],
 });
 
 test("D213: effect.shader in a project: the schema and the checks, drawn as a picture pass, undone and named", () => {
@@ -133,15 +190,41 @@ test("D213: planShader and planShaderValues", () => {
 
 test("D213: the agent's ops get the definition from the id; unknown ids and bad values are refused", () => {
   const defs = new Map([[DEF.id, DEF]]);
-  const ops = [{ op: "update_item", item: "c1", set: { effects: [{ module: "effect.look", params: { look: "warm" } }, { module: "effect.shader", params: { shader: DEF.id, values: { amount: 0.9 }, wgsl: "fn effect() {}" } }] } }];
+  const ops = [
+    {
+      op: "update_item",
+      item: "c1",
+      set: {
+        effects: [
+          { module: "effect.look", params: { look: "warm" } },
+          { module: "effect.shader", params: { shader: DEF.id, values: { amount: 0.9 }, wgsl: "fn effect() {}" } },
+        ],
+      },
+    },
+  ];
   const out = expandShaderEffects(ops, defs);
   assert.ok("ops" in out);
   const set = (out.ops[0] as { set: { effects: Array<{ module: string; params: Record<string, unknown> }> } }).set.effects;
   assert.equal(set[0]!.module, "effect.look", "other effects as they were");
   assert.equal(set[1]!.params.wgsl, WGSL, "the agent's wgsl replaced by the known definition's");
   assert.deepEqual(set[1]!.params.values, { amount: 0.9, tint: "#ff8800", on: true });
-  assert.match((expandShaderEffects([{ op: "insert_item", track: "main", item: { effects: [{ module: "effect.shader", params: { shader: "nope.x" } }] } }], defs) as { problem: string }).problem, /no shader effect "nope\.x"\. Known: acme\.fx\.smear/);
-  assert.match((expandShaderEffects([{ op: "update_item", item: "c1", set: { effects: [{ module: "effect.shader", params: { shader: DEF.id, values: { tint: "red" } } }] } }], defs) as { problem: string }).problem, /Smear: "tint" takes a colour/);
+  assert.match(
+    (
+      expandShaderEffects([{ op: "insert_item", track: "main", item: { effects: [{ module: "effect.shader", params: { shader: "nope.x" } }] } }], defs) as {
+        problem: string;
+      }
+    ).problem,
+    /no shader effect "nope\.x"\. Known: acme\.fx\.smear/,
+  );
+  assert.match(
+    (
+      expandShaderEffects(
+        [{ op: "update_item", item: "c1", set: { effects: [{ module: "effect.shader", params: { shader: DEF.id, values: { tint: "red" } } }] } }],
+        defs,
+      ) as { problem: string }
+    ).problem,
+    /Smear: "tint" takes a colour/,
+  );
   // Ops without shader effects pass through untouched.
   const plain = [{ op: "delete_item", item: "c1" }];
   assert.deepEqual(expandShaderEffects(plain, defs), { ops: plain });
@@ -152,17 +235,30 @@ test("D213: contributes.shaders in a manifest: the schema, and entries that fail
   assert.deepEqual(validateModule(catalog), []);
   const read = readContributions(catalog, { reserved: new Set(modules.keys()), moves: new Set() });
   assert.deepEqual(read.warnings, []);
-  assert.deepEqual(read.contributions.shaders?.map((s) => s.id), ["typegpu.effects.ripple", "typegpu.effects.rgb-shift", "typegpu.effects.halftone", "typegpu.effects.crt"]);
+  assert.deepEqual(
+    read.contributions.shaders?.map((s) => s.id),
+    ["typegpu.effects.ripple", "typegpu.effects.rgb-shift", "typegpu.effects.halftone", "typegpu.effects.crt"],
+  );
   assert.equal(read.contributions.shaders?.[0]?.pluginName, "TypeGPU effects");
   const shaders = (catalog.contributes as { shaders: Array<Record<string, unknown>> }).shaders;
-  const broken = { ...catalog, contributes: { shaders: [{ ...shaders[0], wgsl: body("loop { } return frame(uv);") }, { ...shaders[1], id: "other.plugin.x" }] } } as ModuleManifest;
+  const broken = {
+    ...catalog,
+    contributes: {
+      shaders: [
+        { ...shaders[0], wgsl: body("loop { } return frame(uv);") },
+        { ...shaders[1], id: "other.plugin.x" },
+      ],
+    },
+  } as ModuleManifest;
   const r2 = readContributions(broken, { reserved: new Set(), moves: new Set() });
   assert.deepEqual(r2.contributions.shaders, []);
   assert.match(r2.warnings[0]!, /shader effect typegpu\.effects\.ripple is left out: .*(loop|struct Params)/);
   assert.match(r2.warnings[1]!, /other\.plugin\.x is left out: its id must be the plugin's id/);
   // The schema: params typed, a source .ts at the top level, an export name.
   assert.ok(validateModule({ ...catalog, contributes: { shaders: [{ ...shaders[0], source: "../x.ts" }] } }).length > 0);
-  assert.ok(validateModule({ ...catalog, contributes: { shaders: [{ ...shaders[0], params: [{ key: "a", label: "A", type: "vec4", default: 0 }] }] } }).length > 0);
+  assert.ok(
+    validateModule({ ...catalog, contributes: { shaders: [{ ...shaders[0], params: [{ key: "a", label: "A", type: "vec4", default: 0 }] }] } }).length > 0,
+  );
 });
 
 const problemsOf = (r: { readonly wgsl: string } | { readonly problems: ReadonlyArray<string> }) => ("problems" in r ? r.problems : []);
@@ -170,7 +266,10 @@ const problemsOf = (r: { readonly wgsl: string } | { readonly problems: Readonly
 test("D213: TypeGPU builds the agent's body and resolves a plugin's function; wrong shapes are refused", async () => {
   const built = buildShader(PARAMS, "(uv, t, size, p) { return vec4f(frame(uv).rgb * p.tint * p.amount, 1.0); }");
   assert.ok("wgsl" in built, JSON.stringify(built));
-  assert.match(built.wgsl, /^struct Params \{\n  amount: f32,\n  tint: vec3f,\n  on: f32,\n\}\n\nfn effect\(uv: vec2f, t: f32, size: vec2f, p: Params\) -> vec4f \{/);
+  assert.match(
+    built.wgsl,
+    /^struct Params \{\n  amount: f32,\n  tint: vec3f,\n  on: f32,\n\}\n\nfn effect\(uv: vec2f, t: f32, size: vec2f, p: Params\) -> vec4f \{/,
+  );
   assert.ok("wgsl" in buildShader([], "(uv, t, size) { return frame(uv); }"));
   assert.match(problemsOf(buildShader(PARAMS, "return 1;"))[0]!, /arguments and its block/);
   assert.match(problemsOf(buildShader(PARAMS, "(uv, t, size, p) { loop { } }")).join(" "), /can't use loop/);

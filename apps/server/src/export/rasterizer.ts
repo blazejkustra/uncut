@@ -21,12 +21,18 @@ export interface RasterizerCommand {
 /** How to start the rasteriser here, or a sentence saying why it can't be. */
 export function rasterizerCommand(
   env: NodeJS.ProcessEnv = process.env,
-  runtime: { readonly electron?: string | undefined; readonly execPath: string; readonly platform?: NodeJS.Platform } = { electron: process.versions.electron, execPath: process.execPath },
+  runtime: { readonly electron?: string | undefined; readonly execPath: string; readonly platform?: NodeJS.Platform } = {
+    electron: process.versions.electron,
+    execPath: process.execPath,
+  },
 ): RasterizerCommand | { readonly problem: string } {
   // A headless Linux server (D106): Chromium keeps captured frames in /dev/shm, which Docker caps at
   // 64 MB, and a 1080p export's captures then fail ("UnknownVizError", the GPU process gone). The
   // switch puts them in the temp folder instead.
-  const render = [...((runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"]), ...(env.UNCUT_TEST_NO_GPU === "1" ? ["--uncut-no-gpu"] : [])];
+  const render = [
+    ...((runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"]),
+    ...(env.UNCUT_TEST_NO_GPU === "1" ? ["--uncut-no-gpu"] : []),
+  ];
   if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), ...render] };
   const entry = env.UNCUT_RENDER_ENTRY || besideServer("../../desktop/dist/main.cjs");
   if (!existsSync(entry)) return { problem: `Can't draw text for the export: ${entry} isn't built (pnpm build).` };
@@ -49,18 +55,56 @@ export function rasterizerCommand(
  * size before it's encoded (D292: review_submit's small frames).
  */
 export type RasterJob =
-  | ({ readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string } & RasterOutSize)
+  | ({
+      readonly kind?: undefined;
+      readonly width: number;
+      readonly height: number;
+      readonly css: string;
+      readonly html: string;
+      readonly out: string;
+    } & RasterOutSize)
   /** `ts`: motion blur's sub-frames (over the shutter from t), their pictures averaged as the export's seq-graphic (refined the same way on a fast move, D309). */
   /** `census`: also measure the frame's words (packages/core census.ts), those under that share of the height coming back. */
-  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly ts?: ReadonlyArray<number>; readonly info: unknown; readonly out: string; readonly name?: string; readonly census?: number } & RasterOutSize)
+  | ({
+      readonly kind: "graphic";
+      readonly width: number;
+      readonly height: number;
+      readonly doc: string;
+      readonly t: number;
+      readonly ts?: ReadonlyArray<number>;
+      readonly info: unknown;
+      readonly out: string;
+      readonly name?: string;
+      readonly census?: number;
+    } & RasterOutSize)
   /**
    * A rehearsal: render(t, info) at each of the graphic's own `frames` (and each frame's `ts`, motion
    * blur's sub-frames) in order, in the graphic window as the export calls it, nothing captured;
    * `fresh` loads the document anew first. Fails with "at its frame <n>: <why>". At most 2000 frames.
    */
-  | { readonly kind: "graphic-run"; readonly width: number; readonly height: number; readonly doc: string; readonly info: Record<string, unknown>; readonly frames: ReadonlyArray<number>; readonly ts?: ReadonlyArray<ReadonlyArray<number>>; readonly name?: string; readonly fresh?: boolean }
+  | {
+      readonly kind: "graphic-run";
+      readonly width: number;
+      readonly height: number;
+      readonly doc: string;
+      readonly info: Record<string, unknown>;
+      readonly frames: ReadonlyArray<number>;
+      readonly ts?: ReadonlyArray<ReadonlyArray<number>>;
+      readonly name?: string;
+      readonly fresh?: boolean;
+    }
   /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
-  | { readonly kind: "shader"; readonly width: number; readonly height: number; readonly code: string; readonly frame: ReadonlyArray<number>; readonly params?: ReadonlyArray<number>; readonly input: string; readonly out: string; readonly name?: string }
+  | {
+      readonly kind: "shader";
+      readonly width: number;
+      readonly height: number;
+      readonly code: string;
+      readonly frame: ReadonlyArray<number>;
+      readonly params?: ReadonlyArray<number>;
+      readonly input: string;
+      readonly out: string;
+      readonly name?: string;
+    }
   /** Whether WebGPU works there: fails with "no-webgpu: <why>" when it doesn't. */
   | { readonly kind: "shader-probe" }
   /**
@@ -115,10 +159,19 @@ const rasterizerEnv = (env: NodeJS.ProcessEnv) => {
 };
 
 /** D290: a graphic's media picture as a file the rasteriser reads (export/graphicMedia.ts GraphicMediaSource.file). */
-export type RasterMedia = (req: { readonly id: string; readonly t: number; readonly w?: number; readonly h?: number }) => Promise<{ readonly file: string; readonly type: string }>;
+export type RasterMedia = (req: {
+  readonly id: string;
+  readonly t: number;
+  readonly w?: number;
+  readonly h?: number;
+}) => Promise<{ readonly file: string; readonly type: string }>;
 
 /** Start a rasteriser and wait until its page is ready. `media` answers the pictures its graphics ask for (D290); without it they fail. */
-export async function startRasterizer(command: RasterizerCommand, env: NodeJS.ProcessEnv = process.env, options: { readonly media?: RasterMedia } = {}): Promise<Rasterizer> {
+export async function startRasterizer(
+  command: RasterizerCommand,
+  env: NodeJS.ProcessEnv = process.env,
+  options: { readonly media?: RasterMedia } = {},
+): Promise<Rasterizer> {
   // Its Chromium profile: ours to remove once it's gone, however it ends.
   const profile = mkdtempSync(join(tmpdir(), `uncut-render-profile-${process.pid}-`));
   let child: ChildProcess;
@@ -162,7 +215,9 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     onReady = resolve;
     readyTimer = setTimeout(() => reject(new Error("The text renderer didn't start in time.")), READY_TIMEOUT_MS);
     child.once("error", (e) => reject(new Error(`Can't start the text renderer: ${e.message}`)));
-    child.once("exit", (code, signal) => reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())));
+    child.once("exit", (code, signal) =>
+      reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())),
+    );
   });
   readline.createInterface({ input: child.stdout! }).on("line", (line) => {
     let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown; census?: unknown; samples?: unknown };
@@ -186,7 +241,12 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     if (!p) return;
     pending.delete(Number(msg.id));
     clearTimeout(p.timer);
-    if (msg.ok === true) p.resolve(msg.census !== undefined || typeof msg.samples === "number" ? { ...(msg.census !== undefined ? { census: msg.census } : {}), ...(typeof msg.samples === "number" ? { samples: msg.samples } : {}) } : undefined);
+    if (msg.ok === true)
+      p.resolve(
+        msg.census !== undefined || typeof msg.samples === "number"
+          ? { ...(msg.census !== undefined ? { census: msg.census } : {}), ...(typeof msg.samples === "number" ? { samples: msg.samples } : {}) }
+          : undefined,
+      );
     else p.reject(new Error(`The text renderer failed: ${typeof msg.error === "string" && msg.error ? msg.error : "it gave no reason"}`));
   });
   child.once("exit", (code, signal) => failAll(new Error(`The text renderer stopped (${signal ?? `code ${code}`}).`)));

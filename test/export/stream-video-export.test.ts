@@ -81,7 +81,17 @@ test("a streamed layer is one lossless video: every frame, each the PNG path's f
   const plan = planOf();
   const dir = fresh("one-video");
   const heard: Array<[number, number]> = [];
-  const { rasters } = await rasterise(raster!, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG }, (done, total) => heard.push([done, total]));
+  const { rasters } = await rasterise(
+    raster!,
+    plan,
+    project,
+    () => "",
+    dir,
+    new AbortController().signal,
+    undefined,
+    { bin: FFMPEG },
+    (done, total) => heard.push([done, total]),
+  );
   // Each streamed frame heard as done of total (the export dialog's "frame 312 of 1680").
   assert.equal(heard.length, FRAMES);
   assert.deepEqual(heard.at(-1), [FRAMES, FRAMES]);
@@ -99,7 +109,15 @@ test("a streamed layer is one lossless video: every frame, each the PNG path's f
   assert.equal(frames.length, FRAMES * W * H * 4, "every frame there");
   for (const i of [0, 5, 199, 399]) {
     const png = join(root, `png-${i}.png`);
-    await raster!.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(MOVER, { width: W, height: H }), t: i / FPS, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out: png });
+    await raster!.render({
+      kind: "graphic",
+      width: W,
+      height: H,
+      doc: graphicDocument(MOVER, { width: W, height: H }),
+      t: i / FPS,
+      info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i),
+      out: png,
+    });
     const want = rgbaOf(png);
     const got = frames.subarray(i * W * H * 4, (i + 1) * W * H * 4);
     let alpha = 0;
@@ -127,7 +145,26 @@ test("the stream's encoder settings are lossless: raw straight BGRA back byte fo
     const input = join(dir, "in.raw");
     writeFileSync(input, raw);
     const file = join(dir, "out.mkv");
-    execFileSync(FFMPEG, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", `${w}x${h}`, "-framerate", String(FPS), "-i", input, ...ffv1Args(w, h), "-pix_fmt", "bgra", "-f", "matroska", file]);
+    execFileSync(FFMPEG, [
+      "-v",
+      "error",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "bgra",
+      "-s",
+      `${w}x${h}`,
+      "-framerate",
+      String(FPS),
+      "-i",
+      input,
+      ...ffv1Args(w, h),
+      "-pix_fmt",
+      "bgra",
+      "-f",
+      "matroska",
+      file,
+    ]);
     const back = execFileSync(FFMPEG, ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "bgra", "-"], { maxBuffer: 64 * 1024 * 1024 });
     assert.ok(back.equals(raw), `${w}×${h}: byte for byte`);
   }
@@ -144,13 +181,22 @@ test("too little free space refuses before anything is drawn, in a plain sentenc
     close: async () => {},
   } as unknown as Rasterizer;
   const dir = fresh("no-space");
-  await assert.rejects(rasterise(stub, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG, freeBytes: async () => 5_000_000 }), (e: Error) => {
-    assert.match(e.message, new RegExp(`^This export needs about \\d+\\.\\d+ GB free in ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} for its graphics; there's 0\\.01 GB\\.$`));
-    return true;
-  });
+  await assert.rejects(
+    rasterise(stub, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG, freeBytes: async () => 5_000_000 }),
+    (e: Error) => {
+      assert.match(
+        e.message,
+        new RegExp(`^This export needs about \\d+\\.\\d+ GB free in ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} for its graphics; there's 0\\.01 GB\\.$`),
+      );
+      return true;
+    },
+  );
   assert.equal(drawn, 0, "nothing drawn");
   // Enough space: past the check (to the stub's first drawing).
-  await assert.rejects(rasterise(stub, plan, project, () => "", fresh("space"), new AbortController().signal, undefined, { bin: FFMPEG, freeBytes: async () => 1e12 }), /drawn/);
+  await assert.rejects(
+    rasterise(stub, plan, project, () => "", fresh("space"), new AbortController().signal, undefined, { bin: FFMPEG, freeBytes: async () => 1e12 }),
+    /drawn/,
+  );
 });
 
 test("an ffmpeg that stops on a full disk is said as a full disk", { skip, timeout: 60000 }, async () => {
@@ -158,8 +204,11 @@ test("an ffmpeg that stops on a full disk is said as a full disk", { skip, timeo
   writeFileSync(fake, `#!/bin/sh\necho "Error writing trailer: No space left on device" >&2\nexit 1\n`);
   chmodSync(fake, 0o755);
   const dir = fresh("full-disk");
-  await assert.rejects(rasterise(raster!, planOf(), project, () => "", dir, new AbortController().signal, undefined, { bin: fake }), (e: Error) => {
-    assert.equal(e.message, `The disk filled up in ${root} while the export drew its graphics. Free some space, then export again.`);
-    return true;
-  });
+  await assert.rejects(
+    rasterise(raster!, planOf(), project, () => "", dir, new AbortController().signal, undefined, { bin: fake }),
+    (e: Error) => {
+      assert.equal(e.message, `The disk filled up in ${root} while the export drew its graphics. Free some space, then export again.`);
+      return true;
+    },
+  );
 });

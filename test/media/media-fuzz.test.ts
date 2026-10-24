@@ -16,7 +16,10 @@ const MUTATIONS = 20000;
 const BATCH = 250;
 
 // The 64-byte file that once overflowed the box walker.
-const OVERFLOW = Buffer.from("000000106674797069736f6d00000000000000306d6f6f760000000866726565000000017472616bfffffffffffffff800000000000000000000000000000000", "hex");
+const OVERFLOW = Buffer.from(
+  "000000106674797069736f6d00000000000000306d6f6f760000000866726565000000017472616bfffffffffffffff800000000000000000000000000000000",
+  "hex",
+);
 
 let dir: string;
 const seeds: Array<Buffer> = [];
@@ -28,7 +31,24 @@ before(() => {
     ff(...args, join(dir, name));
     seeds.push(readFileSync(join(dir, name)));
   };
-  make("v.mp4", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30", "-f", "lavfi", "-i", "sine=duration=0.5", "-t", "0.5", "-c:v", "libx264", "-c:a", "aac", "-shortest");
+  make(
+    "v.mp4",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=160x120:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=0.5",
+    "-t",
+    "0.5",
+    "-c:v",
+    "libx264",
+    "-c:a",
+    "aac",
+    "-shortest",
+  );
   make("v.mov", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25", "-t", "0.4", "-c:v", "libx264");
   make("frag.mp4", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30", "-t", "0.5", "-c:v", "libx264", "-movflags", "frag_keyframe+empty_moov");
   make("a.m4a", "-f", "lavfi", "-i", "sine=duration=0.5", "-c:a", "aac");
@@ -53,11 +73,20 @@ function* mutations(seed: number) {
     for (let k = 0, n = 1 + (rnd() % 4); k < n; k++) {
       const at = rnd() % out.length;
       switch (rnd() % 5) {
-        case 0: out[at] = rnd() & 0xff; break;
-        case 1: if (at + 4 <= out.length) out.writeUInt32BE(extremes[rnd() % extremes.length]!, at); break;
-        case 2: out = out.subarray(0, Math.max(1, at)); break;
-        case 3: out = Buffer.concat([out.subarray(0, at), out.subarray(at, at + 64), out.subarray(at)]); break;
-        default: out.fill(0xff, at, Math.min(out.length, at + 8));
+        case 0:
+          out[at] = rnd() & 0xff;
+          break;
+        case 1:
+          if (at + 4 <= out.length) out.writeUInt32BE(extremes[rnd() % extremes.length]!, at);
+          break;
+        case 2:
+          out = out.subarray(0, Math.max(1, at));
+          break;
+        case 3:
+          out = Buffer.concat([out.subarray(0, at), out.subarray(at, at + 64), out.subarray(at)]);
+          break;
+        default:
+          out.fill(0xff, at, Math.min(out.length, at + 8));
       }
     }
     yield out;
@@ -109,7 +138,10 @@ test(`${MUTATIONS} seeded mutations: every request answered, no crash, no hang, 
     assert.equal(signal, null, `helper killed by ${signal} in batch at ${done}`);
     assert.equal(code, 0, `helper exited ${code} in batch at ${done}`);
     assert.equal(replies.length, BATCH, `batch at ${done}: ${replies.length} replies`);
-    assert.deepEqual(replies.map((r: any) => r.id), paths.map((_, i) => i));
+    assert.deepEqual(
+      replies.map((r: any) => r.id),
+      paths.map((_, i) => i),
+    );
     for (const r of replies) {
       const key = r.result ? `ok:${r.result.kind}` : `error:${r.error.code}`;
       outcomes[key] = (outcomes[key] ?? 0) + 1;

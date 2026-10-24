@@ -43,7 +43,17 @@ export interface Ready {
 export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap, command, captureStderr = false }: StartOptions = {}) {
   const proc = spawn(command ?? process.execPath, command ? args : [entry, ...args], {
     // UNCUT_SHELL_ENV=off: keep the PATH the test gives (the login-shell probe has its own tests).
-    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, UNCUT_SHELL_ENV: "off", UNCUT_PROXIES: "off", UNCUT_TELEMETRY: "off", ...env },
+    env: {
+      ...process.env,
+      UNCUT_TOKEN: "",
+      UNCUT_PORT: "",
+      UNCUT_MEDIA_BIN: MEDIA,
+      UNCUT_MODULES_DIR: MODULES,
+      UNCUT_SHELL_ENV: "off",
+      UNCUT_PROXIES: "off",
+      UNCUT_TELEMETRY: "off",
+      ...env,
+    },
     // fd 4: the keys pipe the desktop gives the server (--keys-fd 4, D99); unused unless asked for.
     stdio: ["pipe", "pipe", captureStderr ? "pipe" : "inherit", "pipe", "pipe"],
   });
@@ -132,7 +142,10 @@ export async function connect(port: number, token: string) {
       values.some(predicate)
         ? Promise.resolve()
         : new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(`${tag}: no matching value within ${timeout / 1000}s; got ${JSON.stringify(values).slice(-300)}`)), timeout);
+            const timer = setTimeout(
+              () => reject(new Error(`${tag}: no matching value within ${timeout / 1000}s; got ${JSON.stringify(values).slice(-300)}`)),
+              timeout,
+            );
             waiters.push({ predicate, resolve: () => (clearTimeout(timer), resolve()) });
           });
     return { values, until };

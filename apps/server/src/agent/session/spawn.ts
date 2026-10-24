@@ -39,7 +39,24 @@ const thinkingDisplay = () => {
 let promptSnapshotRefused = false;
 
 export const makeSpawn = (ctx: StreamCtx) => {
-  const { persist, closeSession, canUseTool, st, publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext, turnCleanup, publish, config, bridgeUrl, sessions } = ctx;
+  const {
+    persist,
+    closeSession,
+    canUseTool,
+    st,
+    publishNow,
+    watchData,
+    delivered,
+    onStream,
+    onAssistant,
+    finish,
+    noteContext,
+    turnCleanup,
+    publish,
+    config,
+    bridgeUrl,
+    sessions,
+  } = ctx;
 
   /** Which sign-in claude used (its init's apiKeySource) and where Uncut sees ANTHROPIC_API_KEY come from: presence only. */
   const authOf = (s: ClaudeSession) => ({ keySource: s.apiKeySource, keyWhere: apiKeySource(process.env) });
@@ -100,7 +117,10 @@ export const makeSpawn = (ctx: StreamCtx) => {
       // A billing error (no credit on the key, a spend limit): its words, e.g. "Credit balance is too low".
       if (msg.error === "billing_error") {
         r.limits.billingFailed = true;
-        const said = (Array.isArray(msg.message?.content) ? (msg.message.content as Array<Record<string, unknown>>) : []).flatMap((c) => (c?.type === "text" && isString(c.text) ? [c.text] : [])).join(" ").trim();
+        const said = (Array.isArray(msg.message?.content) ? (msg.message.content as Array<Record<string, unknown>>) : [])
+          .flatMap((c) => (c?.type === "text" && isString(c.text) ? [c.text] : []))
+          .join(" ")
+          .trim();
         if (said) r.limits.billingText = said.slice(0, 300);
       }
     }
@@ -143,11 +163,24 @@ export const makeSpawn = (ctx: StreamCtx) => {
       if (!msg.is_error && !resultFailed(msg)) {
         // Round 2's A2: a turn that built a video and never asked the critic is reminded once and goes on.
         const brief = r.owner.plan.brief;
-        const nudge = reviewNudge({ access: r.access, unattended: asksNoQuestions(r.turn.prompt, brief?.film, brief?.visual, brief?.notes, ...(brief?.hardLines ?? [])), reviewRounds: r.reviewRounds, graphicWrites: r.graphicWrites, edits: r.turn.edits.length, planned: r.planned, proposing: r.proposing, nudged: r.nudged, cancelled: r.cancelled, storyboard: r.owner.plan.storyboard?.status });
+        const nudge = reviewNudge({
+          access: r.access,
+          unattended: asksNoQuestions(r.turn.prompt, brief?.film, brief?.visual, brief?.notes, ...(brief?.hardLines ?? [])),
+          reviewRounds: r.reviewRounds,
+          graphicWrites: r.graphicWrites,
+          edits: r.turn.edits.length,
+          planned: r.planned,
+          proposing: r.proposing,
+          nudged: r.nudged,
+          cancelled: r.cancelled,
+          storyboard: r.owner.plan.storyboard?.status,
+        });
         if (nudge && s.child?.stdin && !s.closed && s.turn === r) {
           r.nudged = true;
           try {
-            s.child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: nudge }] }, parent_tool_use_id: null })}\n`);
+            s.child.stdin.write(
+              `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: nudge }] }, parent_tool_use_id: null })}\n`,
+            );
             return;
           } catch (error) {
             console.error(`[uncut] couldn't remind the agent to review: ${(error as Error).message}`);
@@ -159,9 +192,16 @@ export const makeSpawn = (ctx: StreamCtx) => {
           .catch((error) => console.error(`[uncut] turn clean-up failed: ${(error as Error).message}`))
           .finally(() => finish(r, patch));
       }
-      const why = (isString(msg.result) && msg.result.trim()) || (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) || msg.subtype || "it reported an error";
+      const why =
+        (isString(msg.result) && msg.result.trim()) ||
+        (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) ||
+        msg.subtype ||
+        "it reported an error";
       // D218: a usage limit, rate limit, overload or sign-in problem in words (like t3code), else claude's own.
-      return finish(r, { status: "error", error: resultError(msg, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}` });
+      return finish(r, {
+        status: "error",
+        error: resultError(msg, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}`,
+      });
     }
   };
 
@@ -180,7 +220,9 @@ export const makeSpawn = (ctx: StreamCtx) => {
       try {
         // Attached images (D184) go first, as image content blocks, then the text.
         const images = r.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.data } }));
-        s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [...images, { type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
+        s.child!.stdin!.write(
+          `${JSON.stringify({ type: "user", message: { role: "user", content: [...images, { type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`,
+        );
       } catch (error) {
         closeSession(s, "kill");
         finish(r, { status: "error", error: `Couldn't reach Claude Code: ${(error as Error).message}` });
@@ -199,7 +241,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
     if (!answered) {
       console.error(`[uncut] claude didn't answer initialize in ${initMs() / 1000} s; the message goes, and every call that needs an approval is refused`);
       s.initFailed = true;
-      st.initWarning = "Claude Code didn't answer Uncut's setup, so approvals can't be asked: commands, file writes and anything else that needs your OK are refused in this session. Update Claude Code, or start a new message to try again.";
+      st.initWarning =
+        "Claude Code didn't answer Uncut's setup, so approvals can't be asked: commands, file writes and anything else that needs your OK are refused in this session. Update Claude Code, or start a new message to try again.";
       publish();
     } else if (st.initWarning) {
       st.initWarning = undefined;
@@ -215,7 +258,13 @@ export const makeSpawn = (ctx: StreamCtx) => {
    * development, the Electron binary in Node mode in the packaged app (bin.ts took
    * ELECTRON_RUN_AS_NODE out of our environment, so it is set again for this one child).
    */
-  const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access }): ClaudeSession | string => {
+  const spawnSession = (
+    owner: Loaded,
+    bin: string,
+    toolsKey: string,
+    resume: boolean,
+    choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access },
+  ): ClaudeSession | string => {
     let dir: string;
     try {
       dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
@@ -239,14 +288,62 @@ export const makeSpawn = (ctx: StreamCtx) => {
     // D277 review: the user's sign-in commands go in a 0600 file in the session's folder, not on argv.
     let settings: string;
     try {
-      settings = settingsArg(dir, JSON.parse(sessionSettings({ access, projects, dataDir: config.dataDir, claudeConfig: claudeConfigDirs() })), userAuthSettings(process.env).settings);
+      settings = settingsArg(
+        dir,
+        JSON.parse(sessionSettings({ access, projects, dataDir: config.dataDir, claudeConfig: claudeConfigDirs() })),
+        userAuthSettings(process.env).settings,
+      );
     } catch (error) {
       rmSync(dir, { recursive: true, force: true });
       return `Can't prepare the agent's settings: ${(error as Error).message}`;
     }
-    const args = sessionArgs({ cfg, settings, model: choice.model, effort: choice.effort, resume: resumed, thinking, promptSnapshot: snapshotOff ? "off" : undefined, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
+    const args = sessionArgs({
+      cfg,
+      settings,
+      model: choice.model,
+      effort: choice.effort,
+      resume: resumed,
+      thinking,
+      promptSnapshot: snapshotOff ? "off" : undefined,
+      addDirs,
+      access,
+      projects,
+      dataDir: config.dataDir,
+      skills: ctx.plugins.skillsNow(),
+    });
     const initId = `init-${randomBytes(4).toString("hex")}`;
-    const s: ClaudeSession = { provider: "claude", owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, snapshotOff, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
+    const s: ClaudeSession = {
+      provider: "claude",
+      owner,
+      openId: owner.openId,
+      dir,
+      token,
+      toolsKey,
+      model: choice.model,
+      effort: choice.effort,
+      thinking,
+      snapshotOff,
+      resumed,
+      dirsKey: addDirs.join("\n"),
+      prompts: new Map(),
+      access,
+      initId,
+      initialized: false,
+      initFailed: false,
+      initTimer: undefined,
+      waiting: undefined,
+      child: undefined,
+      turn: undefined,
+      gotInit: false,
+      closed: false,
+      stderr: "",
+      idleTimer: undefined,
+      killTimer: undefined,
+      gens: 0,
+      initModel: undefined,
+      systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0,
+      toolsChars: undefined,
+    };
     try {
       writeFileSync(
         cfg,
@@ -325,7 +422,9 @@ export const makeSpawn = (ctx: StreamCtx) => {
       // D260 amended: a claude that doesn't take --system-prompt-snapshot: again without it (never again here).
       if (s.snapshotOff && !s.gotInit && /--system-prompt-snapshot/i.test(s.stderr)) {
         promptSnapshotRefused = true;
-        console.error(`[uncut] claude refused --system-prompt-snapshot; a resumed conversation keeps the system prompt it started with: ${s.stderr.trim().split("\n")[0]}`);
+        console.error(
+          `[uncut] claude refused --system-prompt-snapshot; a resumed conversation keeps the system prompt it started with: ${s.stderr.trim().split("\n")[0]}`,
+        );
         const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
         st.session = again;
@@ -344,7 +443,10 @@ export const makeSpawn = (ctx: StreamCtx) => {
       }
       // It died mid-turn (a crash, a kill): the next message starts another with --resume.
       const why = s.stderr.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
-      return finish(r, { status: "error", error: resultError({ result: why }, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}` });
+      return finish(r, {
+        status: "error",
+        error: resultError({ result: why }, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}`,
+      });
     };
     child.once("error", (error) => settle(null, error));
     child.once("close", (code) => settle(code));

@@ -7,7 +7,11 @@ import { EXAMPLE, PLUGIN_GUIDE, type GuideBlock } from "./guide.ts";
 
 /** Prose with `code` spans. */
 function inline(text: string): ReactNode {
-  return text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith("`") && part.endsWith("`") && part.length > 1 ? <code key={i}>{part.slice(1, -1)}</code> : <Fragment key={i}>{part}</Fragment>));
+  return text
+    .split(/(`[^`]+`)/)
+    .map((part, i) =>
+      part.startsWith("`") && part.endsWith("`") && part.length > 1 ? <code key={i}>{part.slice(1, -1)}</code> : <Fragment key={i}>{part}</Fragment>,
+    );
 }
 
 function CodeBlock({ code }: { code: string }) {
@@ -61,7 +65,8 @@ export function MakePlugin({ onShowExample }: { onShowExample: (id: string, name
         <div className="pg-hero-text">
           <div className="pg-hero-title">Start from the {EXAMPLE.name}</div>
           <div className="pg-hero-sub">
-            A complete plugin with a text look, a component, a skill and a shader effect, in <code>{EXAMPLE.folder}</code>. Install it to see each part in Uncut, then copy it with <code>pnpm plugin:new your.id --from {EXAMPLE.id}</code>.
+            A complete plugin with a text look, a component, a skill and a shader effect, in <code>{EXAMPLE.folder}</code>. Install it to see each part in
+            Uncut, then copy it with <code>pnpm plugin:new your.id --from {EXAMPLE.id}</code>.
           </div>
         </div>
         <div className="pg-hero-btns">
@@ -78,7 +83,11 @@ export function MakePlugin({ onShowExample }: { onShowExample: (id: string, name
       {/* The guide's contents as a plain list of links, not chips (D263). */}
       <nav className="pg-toc" aria-label="On this page">
         {PLUGIN_GUIDE.map((s) => (
-          <button key={s.id} className="link-btn" onClick={() => document.getElementById(`plugin-guide-${s.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}>
+          <button
+            key={s.id}
+            className="link-btn"
+            onClick={() => document.getElementById(`plugin-guide-${s.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}
+          >
             {s.title}
           </button>
         ))}

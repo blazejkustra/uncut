@@ -30,7 +30,8 @@ const readJson = (key: string): unknown => {
 
 const clean = (raw: unknown): AgentPrefs => {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const provider: AgentProvider = typeof p.provider === "string" && (AGENT_PROVIDERS as ReadonlyArray<string>).includes(p.provider) ? (p.provider as AgentProvider) : "claude";
+  const provider: AgentProvider =
+    typeof p.provider === "string" && (AGENT_PROVIDERS as ReadonlyArray<string>).includes(p.provider) ? (p.provider as AgentProvider) : "claude";
   return {
     provider,
     // A model of another provider (the provider was switched) is that CLI's default.

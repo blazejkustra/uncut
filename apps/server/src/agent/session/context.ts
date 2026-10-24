@@ -40,6 +40,9 @@ export interface AgentServices {
   readonly sessions: Set<ClaudeSession>;
   readonly testRun: boolean;
   readonly approvalMs: () => number;
-  readonly screenWaits: Map<string, { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }>;
+  readonly screenWaits: Map<
+    string,
+    { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }
+  >;
   readonly view: () => ProjectView | undefined;
 }

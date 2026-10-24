@@ -15,7 +15,16 @@ export const generateActions = {
   },
   async startGenerate(draft: GenerateDraft) {
     set({ generateError: undefined });
-    const result = await call((c) => c["generate.start"]({ generator: draft.generator, prompt: draft.prompt, ...(draft.kind ? { kind: draft.kind } : {}), ...(draft.size ? { size: draft.size } : {}), ...(draft.seconds !== undefined ? { seconds: draft.seconds } : {}), ...(draft.options && Object.keys(draft.options).length ? { options: draft.options } : {}) }));
+    const result = await call((c) =>
+      c["generate.start"]({
+        generator: draft.generator,
+        prompt: draft.prompt,
+        ...(draft.kind ? { kind: draft.kind } : {}),
+        ...(draft.size ? { size: draft.size } : {}),
+        ...(draft.seconds !== undefined ? { seconds: draft.seconds } : {}),
+        ...(draft.options && Object.keys(draft.options).length ? { options: draft.options } : {}),
+      }),
+    );
     if (!result.ok) {
       set({ generateError: plainError(result.error) });
       void actions.listGenerators();

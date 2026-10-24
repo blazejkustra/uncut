@@ -7,10 +7,41 @@
 // reduction. Every change is one edit (a handle drag or a field scrub is previewed while it moves).
 import { useState, useEffect, useRef } from "react";
 import { duckSettings, duckNote, DUCK_DEFAULTS } from "@uncut/core/ducking";
-import { EQ, COMPRESSOR, VOICE, DENOISE, eqParams, compressorParams, amountOf, DUCK, effectName, effectSummary, effectStages, voiceStages, masterLimiter, projectTargetLufs, LOUDNESS_PRESETS, LIMITER_CEILING_DB, trackNoiseFloorDb, type Stage } from "@uncut/core/effects";
+import {
+  EQ,
+  COMPRESSOR,
+  VOICE,
+  DENOISE,
+  eqParams,
+  compressorParams,
+  amountOf,
+  DUCK,
+  effectName,
+  effectSummary,
+  effectStages,
+  voiceStages,
+  masterLimiter,
+  projectTargetLufs,
+  LOUDNESS_PRESETS,
+  LIMITER_CEILING_DB,
+  trackNoiseFloorDb,
+  type Stage,
+} from "@uncut/core/effects";
 import { denoiseReductionDb } from "@uncut/core/denoise";
 import type { ModuleUse } from "@uncut/core/types";
-import { planAddEffect, planVoicePreset, planMoveEffect, planBypassEffect, planRemoveEffect, planEffectParams, soundTrack, dbLabel, planDuck, planMasterLimiter, planLoudnessTarget } from "../sound.ts";
+import {
+  planAddEffect,
+  planVoicePreset,
+  planMoveEffect,
+  planBypassEffect,
+  planRemoveEffect,
+  planEffectParams,
+  soundTrack,
+  dbLabel,
+  planDuck,
+  planMasterLimiter,
+  planLoudnessTarget,
+} from "../sound.ts";
 import type { ProjectModel, Track } from "../../state/project.ts";
 import { useDuckCurves, useDuckState } from "../ducking.ts";
 import { NumberField } from "../../inspector/fields.tsx";
@@ -22,9 +53,32 @@ import { useLoudnessPreview, setPreviewAtTarget } from "../loudnessPreview.ts";
 import "./effects.css";
 
 /** One On switch for every effect (track effects, ducking, the limiter). */
-function OnSwitch({ on, onChange, disabled, testId, label }: { on: boolean; onChange: (on: boolean) => void; disabled: boolean; testId: string; label: string }) {
+function OnSwitch({
+  on,
+  onChange,
+  disabled,
+  testId,
+  label,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  disabled: boolean;
+  testId: string;
+  label: string;
+}) {
   return (
-    <button type="button" role="switch" className={`fxp-switch ${on ? "on" : ""}`} data-testid={testId} aria-checked={on} aria-pressed={!on} aria-label={label} title={on ? `${label}: on (click to bypass)` : `${label}: bypassed (click to turn on)`} disabled={disabled} onClick={() => onChange(!on)}>
+    <button
+      type="button"
+      role="switch"
+      className={`fxp-switch ${on ? "on" : ""}`}
+      data-testid={testId}
+      aria-checked={on}
+      aria-pressed={!on}
+      aria-label={label}
+      title={on ? `${label}: on (click to bypass)` : `${label}: bypassed (click to turn on)`}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+    >
       <span className="fxp-switch-knob" />
       <span className="fxp-switch-text">{on ? "On" : "Off"}</span>
     </button>
@@ -64,7 +118,23 @@ const EQ_HANDLES: ReadonlyArray<{ id: string; label: string; freq: string; gain?
 ];
 
 /** The settings of one track effect: header with its On switch, graph, grouped fields, order and remove. */
-function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }: { project: ProjectModel; track: Track; index: number; fx: ModuleUse; online: boolean; onMoved: (to: number) => void; onRemoved: () => void }) {
+function EffectEditor({
+  project,
+  track,
+  index,
+  fx,
+  online,
+  onMoved,
+  onRemoved,
+}: {
+  project: ProjectModel;
+  track: Track;
+  index: number;
+  fx: ModuleUse;
+  online: boolean;
+  onMoved: (to: number) => void;
+  onRemoved: () => void;
+}) {
   const [drag, setDrag] = useState<Patch | undefined>(undefined);
   const dragRef = useRef<Patch | undefined>(undefined);
   const paramsKey = JSON.stringify(fx.params ?? {});
@@ -75,13 +145,33 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
   const bypassed = fx.bypass === true;
   const count = (track.mixer?.effects ?? []).length;
   const field = (key: string, label: string, unit: string, step: number, min: number, max: number, value: number | undefined, optional = false) => (
-    <Field key={key} unit={unit} label={label} testId={`fx-param-${key}`} value={optional && shown.params?.[key] === undefined ? undefined : value} placeholder={optional ? "off" : undefined} step={step} min={min} max={max} disabled={!online} onCommit={(v) => set({ [key]: v ?? null })} />
+    <Field
+      key={key}
+      unit={unit}
+      label={label}
+      testId={`fx-param-${key}`}
+      value={optional && shown.params?.[key] === undefined ? undefined : value}
+      placeholder={optional ? "off" : undefined}
+      step={step}
+      min={min}
+      max={max}
+      disabled={!online}
+      onCommit={(v) => set({ [key]: v ?? null })}
+    />
   );
   let body: React.ReactNode = null;
   if (fx.module === EQ) {
     const p = eqParams(shown.params);
     const stages = effectStages({ ...shown, bypass: false });
-    const handles: Array<EqHandle> = EQ_HANDLES.filter((h) => h.gain || shown.params?.[h.freq] !== undefined).map((h) => ({ id: h.id, label: h.label, freq: p[h.freq as keyof typeof p] as number, gainDb: h.gain ? (p[h.gain as keyof typeof p] as number) : 0, vertical: h.gain !== undefined, min: h.min, max: h.max }));
+    const handles: Array<EqHandle> = EQ_HANDLES.filter((h) => h.gain || shown.params?.[h.freq] !== undefined).map((h) => ({
+      id: h.id,
+      label: h.label,
+      freq: p[h.freq as keyof typeof p] as number,
+      gainDb: h.gain ? (p[h.gain as keyof typeof p] as number) : 0,
+      vertical: h.gain !== undefined,
+      min: h.min,
+      max: h.max,
+    }));
     body = (
       <>
         <EqGraph
@@ -155,7 +245,19 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
     );
   } else if (fx.module === VOICE || fx.module === DENOISE) {
     const amount = amountOf(shown.params);
-    const pct = <Field unit="%" label="Amount" testId="fx-param-amount" value={Math.round(amount * 100)} step={5} min={0} max={100} disabled={!online} onCommit={(v) => set({ amount: v === undefined ? null : Math.round(v) / 100 })} />;
+    const pct = (
+      <Field
+        unit="%"
+        label="Amount"
+        testId="fx-param-amount"
+        value={Math.round(amount * 100)}
+        step={5}
+        min={0}
+        max={100}
+        disabled={!online}
+        onCommit={(v) => set({ amount: v === undefined ? null : Math.round(v) / 100 })}
+      />
+    );
     if (fx.module === VOICE) {
       const stages = voiceStages(amount);
       const comp = stages.find((s): s is Extract<Stage, { kind: "compressor" }> => s.kind === "compressor")!;
@@ -165,7 +267,8 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
           <EqGraph stages={stages} handles={[]} bypassed={bypassed} testId="fx-voice-graph" />
           {pct}
           <div className="muted small" data-testid="fx-voice-summary">
-            Low cut 80 Hz, presence {dbText(peak.gainDb)} at 3.5 kHz, compression {comp.ratio}:1 from {dbText(comp.thresholdDb)} with {dbText(comp.makeupDb)} make-up.
+            Low cut 80 Hz, presence {dbText(peak.gainDb)} at 3.5 kHz, compression {comp.ratio}:1 from {dbText(comp.thresholdDb)} with {dbText(comp.makeupDb)}{" "}
+            make-up.
           </div>
         </>
       );
@@ -176,17 +279,43 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
   return (
     <>
       <Head title={effectName(fx.module)} sub={`on ${track.name}, slot ${index + 1} of ${count}`}>
-        <OnSwitch on={!bypassed} label={effectName(fx.module)} testId="fx-bypass" disabled={!online} onChange={(on) => commit((now) => planBypassEffect(now, track.id, index, !on, fx.module))} />
+        <OnSwitch
+          on={!bypassed}
+          label={effectName(fx.module)}
+          testId="fx-bypass"
+          disabled={!online}
+          onChange={(on) => commit((now) => planBypassEffect(now, track.id, index, !on, fx.module))}
+        />
       </Head>
       {body}
       <div className="fxp-foot">
-        <button type="button" className="btn ghost" data-testid="fx-up" disabled={!online || index === 0} title="Earlier in the chain" onClick={() => (commit((now) => planMoveEffect(now, track.id, index, -1, fx.module)), onMoved(index - 1))}>
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="fx-up"
+          disabled={!online || index === 0}
+          title="Earlier in the chain"
+          onClick={() => (commit((now) => planMoveEffect(now, track.id, index, -1, fx.module)), onMoved(index - 1))}
+        >
           ↑ Earlier
         </button>
-        <button type="button" className="btn ghost" data-testid="fx-down" disabled={!online || index >= count - 1} title="Later in the chain" onClick={() => (commit((now) => planMoveEffect(now, track.id, index, 1, fx.module)), onMoved(index + 1))}>
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="fx-down"
+          disabled={!online || index >= count - 1}
+          title="Later in the chain"
+          onClick={() => (commit((now) => planMoveEffect(now, track.id, index, 1, fx.module)), onMoved(index + 1))}
+        >
           ↓ Later
         </button>
-        <button type="button" className="btn ghost danger" data-testid="fx-remove" disabled={!online} onClick={() => (commit((now) => planRemoveEffect(now, track.id, index, fx.module)), onRemoved())}>
+        <button
+          type="button"
+          className="btn ghost danger"
+          data-testid="fx-remove"
+          disabled={!online}
+          onClick={() => (commit((now) => planRemoveEffect(now, track.id, index, fx.module)), onRemoved())}
+        >
           Remove
         </button>
       </div>
@@ -195,7 +324,19 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
 }
 
 /** Noise removal: the floor it works from (measured or assumed) and how far it goes down. */
-function DenoiseInfo({ project, track, amount, bypassed, amountField }: { project: ProjectModel; track: Track; amount: number; bypassed: boolean; amountField: React.ReactNode }) {
+function DenoiseInfo({
+  project,
+  track,
+  amount,
+  bypassed,
+  amountField,
+}: {
+  project: ProjectModel;
+  track: Track;
+  amount: number;
+  bypassed: boolean;
+  amountField: React.ReactNode;
+}) {
   const envelopes = useDuckState((s) => s.envelopes);
   const measured = track.items.some((i) => i.media && envelopes.get(i.media));
   const floor = trackNoiseFloorDb(project, track, envelopes);
@@ -204,7 +345,14 @@ function DenoiseInfo({ project, track, amount, bypassed, amountField }: { projec
   const X = (db: number) => ((Math.max(LO, Math.min(0, db)) - LO) / -LO) * 268 + 4;
   return (
     <>
-      <svg className={`fxg denoise ${bypassed ? "bypassed" : ""}`} viewBox="0 0 276 46" data-testid="fx-denoise-graph" data-floor={floor} role="img" aria-label="Noise floor and reduction">
+      <svg
+        className={`fxg denoise ${bypassed ? "bypassed" : ""}`}
+        viewBox="0 0 276 46"
+        data-testid="fx-denoise-graph"
+        data-floor={floor}
+        role="img"
+        aria-label="Noise floor and reduction"
+      >
         <rect className="fxg-meter" x={4} y={8} width={268} height={10} rx={2} />
         <rect className="fxg-noise" x={4} y={8} width={X(floor) - 4} height={10} rx={2} />
         <rect className="fxg-gr" x={Math.max(4, X(floor - reduction))} y={8} width={X(floor) - Math.max(4, X(floor - reduction))} height={10} />
@@ -218,7 +366,10 @@ function DenoiseInfo({ project, track, amount, bypassed, amountField }: { projec
       </svg>
       {amountField}
       <div className="muted small" data-testid="fx-denoise-floor" data-measured={measured}>
-        {measured ? "The noise floor is measured from this track's sound (its quiet stretches)." : "The noise floor isn't measured yet: −40 dBFS until the track's loudness analysis is done."} Heard in the preview as in the export.
+        {measured
+          ? "The noise floor is measured from this track's sound (its quiet stretches)."
+          : "The noise floor isn't measured yet: −40 dBFS until the track's loudness analysis is done."}{" "}
+        Heard in the preview as in the export.
       </div>
     </>
   );
@@ -262,7 +413,14 @@ export function EffectSlots({ project, track, online }: { project: ProjectModel;
         )}
       </div>
       <div className="fx-foot">
-        <button type="button" className="fx-add" data-testid="fx-add" disabled={!online} title="Add an effect" onClick={(e) => setMenu(menu ? undefined : e.currentTarget)}>
+        <button
+          type="button"
+          className="fx-add"
+          data-testid="fx-add"
+          disabled={!online}
+          title="Add an effect"
+          onClick={(e) => setMenu(menu ? undefined : e.currentTarget)}
+        >
           + FX
         </button>
         {hasCompressor && (
@@ -335,7 +493,19 @@ export function DuckRow({ project, track, online }: { project: ProjectModel; tra
   const curve = curves.get(track.id);
   return (
     <div className="duck-row">
-      <button type="button" className={`duck-btn ${settings && !bypassed ? "on" : ""}`} data-testid="duck-btn" data-under={settings?.under.join(",") ?? ""} data-bypass={bypassed} disabled={!online || (!keys.length && !settings)} title={note ?? (settings ? `Ducks under ${settings.under.map(name).join(", ")} by ${dbLabel(settings.amountDb)} dB` : "Duck this track while another has speech")} onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+      <button
+        type="button"
+        className={`duck-btn ${settings && !bypassed ? "on" : ""}`}
+        data-testid="duck-btn"
+        data-under={settings?.under.join(",") ?? ""}
+        data-bypass={bypassed}
+        disabled={!online || (!keys.length && !settings)}
+        title={
+          note ??
+          (settings ? `Ducks under ${settings.under.map(name).join(", ")} by ${dbLabel(settings.amountDb)} dB` : "Duck this track while another has speech")
+        }
+        onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}
+      >
         <span className="ellipsis">{label}</span>
         {note && !bypassed && (
           <span className="duck-wait" data-testid="duck-note" title={note}>
@@ -346,7 +516,15 @@ export function DuckRow({ project, track, online }: { project: ProjectModel; tra
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(undefined)} testId="duck-popover" wide>
           <Head title="Ducking" sub={`${track.name} goes down while the key track has speech`}>
-            {settings && <OnSwitch on={!bypassed} label="Ducking" testId="duck-on" disabled={!online} onChange={(on) => commit((now) => planBypassEffect(now, track.id, fxIndex, !on, DUCK))} />}
+            {settings && (
+              <OnSwitch
+                on={!bypassed}
+                label="Ducking"
+                testId="duck-on"
+                disabled={!online}
+                onChange={(on) => commit((now) => planBypassEffect(now, track.id, fxIndex, !on, DUCK))}
+              />
+            )}
           </Head>
           <label className="field">
             <span className="k">Under</span>
@@ -371,10 +549,51 @@ export function DuckRow({ project, track, online }: { project: ProjectModel; tra
           {settings && <DuckGraph keys={bypassed ? [] : (curve?.keys ?? [])} frames={getPlayback().frames} amountDb={settings.amountDb} bypassed={bypassed} />}
           {settings && (
             <div className="fxp-grid">
-              <Field unit="dB" label="Amount" testId="duck-amountDb" value={settings.amountDb} step={1} min={-40} max={0} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, amountDb: v ?? DUCK_DEFAULTS.amountDb }))} />
-              <Field unit="dB" label="Threshold" testId="duck-thresholdDb" value={settings.thresholdDb} placeholder="auto" step={1} min={-80} max={0} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, thresholdDb: v ?? null }))} />
-              <Field unit="ms" label="Attack" testId="duck-attackMs" value={settings.attackMs} step={50} min={0} max={2000} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, attackMs: v ?? DUCK_DEFAULTS.attackMs }))} />
-              <Field unit="ms" label="Release" testId="duck-releaseMs" value={settings.releaseMs} step={50} min={0} max={5000} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, releaseMs: v ?? DUCK_DEFAULTS.releaseMs }))} />
+              <Field
+                unit="dB"
+                label="Amount"
+                testId="duck-amountDb"
+                value={settings.amountDb}
+                step={1}
+                min={-40}
+                max={0}
+                disabled={!online}
+                onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, amountDb: v ?? DUCK_DEFAULTS.amountDb }))}
+              />
+              <Field
+                unit="dB"
+                label="Threshold"
+                testId="duck-thresholdDb"
+                value={settings.thresholdDb}
+                placeholder="auto"
+                step={1}
+                min={-80}
+                max={0}
+                disabled={!online}
+                onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, thresholdDb: v ?? null }))}
+              />
+              <Field
+                unit="ms"
+                label="Attack"
+                testId="duck-attackMs"
+                value={settings.attackMs}
+                step={50}
+                min={0}
+                max={2000}
+                disabled={!online}
+                onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, attackMs: v ?? DUCK_DEFAULTS.attackMs }))}
+              />
+              <Field
+                unit="ms"
+                label="Release"
+                testId="duck-releaseMs"
+                value={settings.releaseMs}
+                step={50}
+                min={0}
+                max={5000}
+                disabled={!online}
+                onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, releaseMs: v ?? DUCK_DEFAULTS.releaseMs }))}
+              />
             </div>
           )}
           {note ? (
@@ -382,7 +601,11 @@ export function DuckRow({ project, track, online }: { project: ProjectModel; tra
               {note}
             </div>
           ) : (
-            settings && <div className="muted small">Down by the attack before the speech starts, back up over the release after it; the same in the preview and the export.</div>
+            settings && (
+              <div className="muted small">
+                Down by the attack before the speech starts, back up over the release after it; the same in the preview and the export.
+              </div>
+            )
           )}
         </Popover>
       )}
@@ -410,7 +633,15 @@ export function MasterControls({ project, online }: { project: ProjectModel; onl
   return (
     <div className="fx-list master-fx">
       <div className="fx-foot">
-        <button type="button" className={`fx-slot ${limiter ? "" : "bypassed"}`} data-testid="limiter-btn" data-on={limiter !== undefined} data-ceiling={limiter?.ceilingDb ?? ""} title={limiter ? `Limiter on: peaks stay under ${dbLabel(limiter.ceilingDb)} dBTP` : "Limiter off: loud peaks can clip"} onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+        <button
+          type="button"
+          className={`fx-slot ${limiter ? "" : "bypassed"}`}
+          data-testid="limiter-btn"
+          data-on={limiter !== undefined}
+          data-ceiling={limiter?.ceilingDb ?? ""}
+          title={limiter ? `Limiter on: peaks stay under ${dbLabel(limiter.ceilingDb)} dBTP` : "Limiter off: loud peaks can clip"}
+          onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}
+        >
           <span className="fx-dot" />
           <span className="ellipsis">Limiter</span>
         </button>
@@ -420,22 +651,55 @@ export function MasterControls({ project, online }: { project: ProjectModel; onl
           </div>
         )}
       </div>
-      <button type="button" className={`fx-slot target ${loud.atTarget ? "heard" : ""}`} data-testid="target-btn" data-lufs={target} title={loud.atTarget ? "Loudness target, heard in the preview" : "Loudness target: the export dialog starts from it"} onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+      <button
+        type="button"
+        className={`fx-slot target ${loud.atTarget ? "heard" : ""}`}
+        data-testid="target-btn"
+        data-lufs={target}
+        title={loud.atTarget ? "Loudness target, heard in the preview" : "Loudness target: the export dialog starts from it"}
+        onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}
+      >
         <span className="ellipsis">{preset ? preset.name : `${dbLabel(target)} LUFS`}</span>
       </button>
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(undefined)} testId="master-popover" wide>
           <Head title="Limiter" sub="The last stage, after the master volume">
-            <OnSwitch on={limiter !== undefined} label="Limiter" testId="limiter-toggle" disabled={!online} onChange={(on) => commit((now) => planMasterLimiter(now, on, masterLimiter(now)?.ceilingDb ?? LIMITER_CEILING_DB))} />
+            <OnSwitch
+              on={limiter !== undefined}
+              label="Limiter"
+              testId="limiter-toggle"
+              disabled={!online}
+              onChange={(on) => commit((now) => planMasterLimiter(now, on, masterLimiter(now)?.ceilingDb ?? LIMITER_CEILING_DB))}
+            />
           </Head>
           <LimiterGraph ceilingDb={limiter?.ceilingDb ?? LIMITER_CEILING_DB} on={limiter !== undefined} />
-          {limiter && <Field unit="dBTP" label="Ceiling" testId="limiter-ceiling" value={limiter.ceilingDb} step={0.5} min={-12} max={0} disabled={!online} onCommit={(v) => commit((now) => planMasterLimiter(now, true, v ?? LIMITER_CEILING_DB))} />}
-          <div className="muted small">{limiter ? "Peaks never go over the ceiling, in the preview and the export (As mixed too)." : "Off: loud peaks can clip in the export."}</div>
+          {limiter && (
+            <Field
+              unit="dBTP"
+              label="Ceiling"
+              testId="limiter-ceiling"
+              value={limiter.ceilingDb}
+              step={0.5}
+              min={-12}
+              max={0}
+              disabled={!online}
+              onCommit={(v) => commit((now) => planMasterLimiter(now, true, v ?? LIMITER_CEILING_DB))}
+            />
+          )}
+          <div className="muted small">
+            {limiter ? "Peaks never go over the ceiling, in the preview and the export (As mixed too)." : "Off: loud peaks can clip in the export."}
+          </div>
           <div className="fxp-sep" />
           <Head title="Loudness target" sub="Where the export dialog starts" />
           <div className="fxp-grid">
             <label className="field">
-              <select className="v" data-testid="target-select" value={preset ? String(target) : "custom"} disabled={!online} onChange={(e) => e.target.value !== "custom" && commit((now) => planLoudnessTarget(now, Number(e.target.value)))}>
+              <select
+                className="v"
+                data-testid="target-select"
+                value={preset ? String(target) : "custom"}
+                disabled={!online}
+                onChange={(e) => e.target.value !== "custom" && commit((now) => planLoudnessTarget(now, Number(e.target.value)))}
+              >
                 {LOUDNESS_PRESETS.map((p) => (
                   <option key={p.id} value={String(p.lufs)}>
                     {p.name} ({dbLabel(p.lufs)} LUFS)
@@ -444,18 +708,49 @@ export function MasterControls({ project, online }: { project: ProjectModel; onl
                 <option value="custom">Custom…</option>
               </select>
             </label>
-            <Field unit="LUFS" label="Target" testId="target-lufs" value={target} step={1} min={-30} max={-5} disabled={!online} onCommit={(v) => commit((now) => planLoudnessTarget(now, v ?? -14))} />
+            <Field
+              unit="LUFS"
+              label="Target"
+              testId="target-lufs"
+              value={target}
+              step={1}
+              min={-30}
+              max={-5}
+              disabled={!online}
+              onCommit={(v) => commit((now) => planLoudnessTarget(now, v ?? -14))}
+            />
           </div>
           <div className="fxp-seg" role="radiogroup" aria-label="The preview plays">
             <span className="muted small">Preview</span>
-            <button type="button" role="radio" aria-checked={!loud.atTarget} className={!loud.atTarget ? "on" : ""} data-testid="preview-loudness-mixed" onClick={() => setPreviewAtTarget(false)}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!loud.atTarget}
+              className={!loud.atTarget ? "on" : ""}
+              data-testid="preview-loudness-mixed"
+              onClick={() => setPreviewAtTarget(false)}
+            >
               As mixed
             </button>
-            <button type="button" role="radio" aria-checked={loud.atTarget} className={loud.atTarget ? "on" : ""} data-testid="preview-loudness-target" disabled={!online} onClick={() => setPreviewAtTarget(true)}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={loud.atTarget}
+              className={loud.atTarget ? "on" : ""}
+              data-testid="preview-loudness-target"
+              disabled={!online}
+              onClick={() => setPreviewAtTarget(true)}
+            >
               At target
             </button>
           </div>
-          <div className="muted small" data-testid="preview-loudness-status" data-measuring={loud.atTarget && (loud.measuring || !fresh)} data-gain={loud.atTarget && fresh && loud.gainDb !== undefined ? loud.gainDb : ""} data-lufs={loud.lufs ?? ""}>
+          <div
+            className="muted small"
+            data-testid="preview-loudness-status"
+            data-measuring={loud.atTarget && (loud.measuring || !fresh)}
+            data-gain={loud.atTarget && fresh && loud.gainDb !== undefined ? loud.gainDb : ""}
+            data-lufs={loud.lufs ?? ""}
+          >
             {status}
           </div>
         </Popover>
@@ -463,4 +758,3 @@ export function MasterControls({ project, online }: { project: ProjectModel; onl
     </div>
   );
 }
-

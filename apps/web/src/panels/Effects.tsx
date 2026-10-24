@@ -3,7 +3,19 @@
 // the selected clip's picture at the playhead, or from a built-in sample picture when no clip is
 // selected. Click a tile to put it on the selected clip, or drag it onto a clip in the timeline or
 // on the canvas. Fine-tuning (intensity, Adjust, effect settings) is in the Inspector.
-import { clipFx, EFFECTS, effectParams, fxOverlayInner, hasOverlay, LOOK, LOOKS, needsPicturePass, type ClipFx, type EffectInfo, type LookDef } from "@uncut/core/fx";
+import {
+  clipFx,
+  EFFECTS,
+  effectParams,
+  fxOverlayInner,
+  hasOverlay,
+  LOOK,
+  LOOKS,
+  needsPicturePass,
+  type ClipFx,
+  type EffectInfo,
+  type LookDef,
+} from "@uncut/core/fx";
 import type { ModuleUse } from "@uncut/core/types";
 import { Ban, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -83,7 +95,9 @@ const renderer = () => {
 /** The selected clip's picture element in the preview, when it has a frame to read. */
 function clipPicture(id: string | undefined): HTMLVideoElement | HTMLImageElement | undefined {
   if (!id) return undefined;
-  const el = document.querySelector<HTMLVideoElement | HTMLImageElement>(`.pv-box[data-item="${CSS.escape(id)}"] > video, .pv-box[data-item="${CSS.escape(id)}"] > img`);
+  const el = document.querySelector<HTMLVideoElement | HTMLImageElement>(
+    `.pv-box[data-item="${CSS.escape(id)}"] > video, .pv-box[data-item="${CSS.escape(id)}"] > img`,
+  );
   if (el instanceof HTMLVideoElement) return el.readyState >= 2 && el.videoWidth > 0 ? el : undefined;
   if (el instanceof HTMLImageElement) return el.complete && el.naturalWidth > 0 ? el : undefined;
   return undefined;
@@ -156,7 +170,13 @@ function ShaderThumb({ def, source }: { def: ShaderDef; source: Source }) {
       .then(() =>
         runner.drawToPixels(
           { kind: "external", source: source.el as GPUCopyExternalImageSource, width: source.w, height: source.h },
-          { code: shaderModuleCode(def), frame: shaderFrameBytes(w, h, 0.4, false), params: shaderParamBytes(def.params, shaderValues(def.params, {})), width: w, height: h },
+          {
+            code: shaderModuleCode(def),
+            frame: shaderFrameBytes(w, h, 0.4, false),
+            params: shaderParamBytes(def.params, shaderValues(def.params, {})),
+            width: w,
+            height: h,
+          },
         ),
       )
       .then((px) => {
@@ -172,13 +192,18 @@ function ShaderThumb({ def, source }: { def: ShaderDef; source: Source }) {
   return (
     <div className="thumb fx-thumb" data-testid="shader-thumb">
       <canvas ref={ref} />
-      {problem && <div className="fx-thumb-note" data-testid="shader-thumb-no-gpu">No WebGPU</div>}
+      {problem && (
+        <div className="fx-thumb-note" data-testid="shader-thumb-no-gpu">
+          No WebGPU
+        </div>
+      )}
     </div>
   );
 }
 
 /** A look as a clip's effects would carry it, compiled. */
-const lookFx = (look: string, custom?: LookDef) => clipFx({ type: "clip", effects: [{ module: LOOK, params: { look, intensity: 1, ...(custom ? { custom } : {}) } }] });
+const lookFx = (look: string, custom?: LookDef) =>
+  clipFx({ type: "clip", effects: [{ module: LOOK, params: { look, intensity: 1, ...(custom ? { custom } : {}) } }] });
 /** An effect at its defaults, compiled (zoom pulse: a still at its widest). */
 const effectFx = (e: EffectInfo): ClipFx | undefined => clipFx({ type: "clip", effects: [{ module: e.id, params: effectParams(e.id, {}) }] });
 
@@ -227,7 +252,10 @@ export function EffectsLibrary({ project }: { project: Project }) {
   const has = new Set(effects.map((e) => e.module));
   const pluginFilters = contributions?.filters ?? [];
   const looks = useMemo(() => LOOKS.map((l) => ({ id: l.id, name: l.name, description: l.description, fx: lookFx(l.id) })), []);
-  const plugins = useMemo(() => pluginFilters.map((f) => ({ id: f.id, name: f.name, description: f.description || `From ${f.pluginName}`, fx: lookFx(f.id, f.look as LookDef) })), [pluginFilters]);
+  const plugins = useMemo(
+    () => pluginFilters.map((f) => ({ id: f.id, name: f.name, description: f.description || `From ${f.pluginName}`, fx: lookFx(f.id, f.look as LookDef) })),
+    [pluginFilters],
+  );
   const fxs = useMemo(() => EFFECTS.map((e) => ({ info: e, fx: effectFx(e) })), []);
   const shownLooks = [...looks, ...plugins].filter((l) => matches(query, l.name, l.description));
   const shaders = useMemo(() => shaderDefs(project), [project, contributions]);
@@ -277,7 +305,14 @@ export function EffectsLibrary({ project }: { project: Project }) {
       <div className="lib-section">
         <div className="music-filters">
           <div className="tr-search">
-            <input className="field input" data-testid="effects-search" placeholder="Search filters and effects" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+            <input
+              className="field input"
+              data-testid="effects-search"
+              placeholder="Search filters and effects"
+              value={query}
+              spellCheck={false}
+              onChange={(e) => setQuery(e.target.value)}
+            />
             {query && (
               <Tooltip label="Clear">
                 <button className="icon-btn" data-testid="effects-search-clear" onClick={() => setQuery("")}>
@@ -306,7 +341,17 @@ export function EffectsLibrary({ project }: { project: Project }) {
                   "filter-tile",
                   { "data-look": "none" },
                 )}
-              {shownLooks.map((l) => tile(`look:${l.id}`, l.name, `${l.name}: ${l.description}`, activeLook === l.id, <FxThumb fx={l.fx} source={source} testId="filter-thumb" />, "filter-tile", { "data-look": l.id }))}
+              {shownLooks.map((l) =>
+                tile(
+                  `look:${l.id}`,
+                  l.name,
+                  `${l.name}: ${l.description}`,
+                  activeLook === l.id,
+                  <FxThumb fx={l.fx} source={source} testId="filter-thumb" />,
+                  "filter-tile",
+                  { "data-look": l.id },
+                ),
+              )}
             </div>
           </>
         )}
@@ -314,7 +359,17 @@ export function EffectsLibrary({ project }: { project: Project }) {
           <>
             <div className="lib-label">Effects</div>
             <div className="grid2 fx-grid" data-testid="effects-grid">
-              {shownFx.map(({ info, fx }) => tile(`effect:${info.id}`, info.name, `${info.name}: ${info.description}`, has.has(info.id), <FxThumb fx={fx} source={source} testId="effect-thumb" />, "effect-tile", { "data-module": info.id }))}
+              {shownFx.map(({ info, fx }) =>
+                tile(
+                  `effect:${info.id}`,
+                  info.name,
+                  `${info.name}: ${info.description}`,
+                  has.has(info.id),
+                  <FxThumb fx={fx} source={source} testId="effect-thumb" />,
+                  "effect-tile",
+                  { "data-module": info.id },
+                ),
+              )}
             </div>
           </>
         )}
@@ -322,7 +377,17 @@ export function EffectsLibrary({ project }: { project: Project }) {
           <>
             <div className="lib-label">Shaders</div>
             <div className="grid2 fx-grid" data-testid="shaders-grid">
-              {shownShaders.map((d) => tile(`shader:${d.id}`, d.name, `${d.name}: ${d.description || "A shader effect"} (${d.from}; drawn with WebGPU)`, activeShader === d.id, <ShaderThumb def={d} source={source} />, "shader-tile", { "data-shader": d.id }))}
+              {shownShaders.map((d) =>
+                tile(
+                  `shader:${d.id}`,
+                  d.name,
+                  `${d.name}: ${d.description || "A shader effect"} (${d.from}; drawn with WebGPU)`,
+                  activeShader === d.id,
+                  <ShaderThumb def={d} source={source} />,
+                  "shader-tile",
+                  { "data-shader": d.id },
+                ),
+              )}
             </div>
           </>
         )}

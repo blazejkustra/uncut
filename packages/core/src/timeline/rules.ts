@@ -23,7 +23,8 @@ const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>>
 export const MAIN_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>(["clip", "component", "graphic", "text"]);
 
 /** Whether an item of this type may go on this track (the rule item-track-kind checks). */
-export const fitsTrackKind = (type: ItemType, track: Pick<Track, "kind" | "role">) => (track.role === "main" ? MAIN_ITEM_TYPES.has(type) : !!ITEM_TRACK_KINDS[type]?.includes(track.kind));
+export const fitsTrackKind = (type: ItemType, track: Pick<Track, "kind" | "role">) =>
+  track.role === "main" ? MAIN_ITEM_TYPES.has(type) : !!ITEM_TRACK_KINDS[type]?.includes(track.kind);
 
 const err = (code: string, path: string, message: string): Problem => ({ code, path, message });
 
@@ -91,8 +92,12 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
     const main = track.role === "main";
     track.items.forEach((item, index) => {
       const ipath = `${tpath}/items/${item.id}`;
-      if (!fitsTrackKind(item.type, track)) errors.push(err("item-track-kind", ipath, main ? `a ${item.type} item can't go on the main track` : `a ${item.type} item can't go on a ${track.kind} track`));
-      if (main && item.start !== undefined) errors.push(err("main-item-start", ipath, "main-track items are placed by their order and gap, and must not have a start"));
+      if (!fitsTrackKind(item.type, track))
+        errors.push(
+          err("item-track-kind", ipath, main ? `a ${item.type} item can't go on the main track` : `a ${item.type} item can't go on a ${track.kind} track`),
+        );
+      if (main && item.start !== undefined)
+        errors.push(err("main-item-start", ipath, "main-track items are placed by their order and gap, and must not have a start"));
       if (!main && item.gap !== undefined) errors.push(err("gap-track", ipath, "only main-track items have a gap (free items carry a start)"));
       if (!main && item.start === undefined) errors.push(err("missing-start", ipath, "items on free tracks need a start frame"));
 
@@ -106,7 +111,14 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
           if (needsAudio && !(m.kind === "audio" || m.probe?.hasAudio)) errors.push(err("media-kind", ipath, `"${mediaId}" has no audio`));
           if (!needsAudio && m.kind === "audio") errors.push(err("media-kind", ipath, `"${mediaId}" is audio-only`));
           const used = (item.in ?? 0) + item.duration * (item.speed ?? 1);
-          if (m.kind !== "image" && m.probe?.frames && !item.loop && !(item.type === "clip" && item.hold) && item.type !== "captions" && used > m.probe.frames) {
+          if (
+            m.kind !== "image" &&
+            m.probe?.frames &&
+            !item.loop &&
+            !(item.type === "clip" && item.hold) &&
+            item.type !== "captions" &&
+            used > m.probe.frames
+          ) {
             errors.push(err("media-range", ipath, `uses frames up to ${used} but "${mediaId}" has ${m.probe.frames}`));
           }
         }
@@ -142,7 +154,13 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
           if (half > 0 && curMedia && curMedia.kind === "video" && (item.in ?? 0) < half) {
             errors.push(err("transition-handles", ipath, `needs ${half} frames of "${item.media}" before its in-point for the ${tr.module}`));
           }
-          if (half > 0 && prevMedia && prevMedia.kind === "video" && prevMedia.probe?.frames && (prev.in ?? 0) + prev.duration + half > prevMedia.probe.frames) {
+          if (
+            half > 0 &&
+            prevMedia &&
+            prevMedia.kind === "video" &&
+            prevMedia.probe?.frames &&
+            (prev.in ?? 0) + prev.duration + half > prevMedia.probe.frames
+          ) {
             errors.push(err("transition-handles", ipath, `"${prev.id}" needs ${half} frames of "${prev.media}" after its out-point for the ${tr.module}`));
           }
         }

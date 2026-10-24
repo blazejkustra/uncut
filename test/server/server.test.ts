@@ -16,7 +16,8 @@ const T = { skip, timeout: 20000 };
 let dir: string, server: ChildProcess, ready: Ready;
 
 // The bundle runs from a temp dir with no node_modules around it, as in the packaged app.
-const startServer = (env: NodeJS.ProcessEnv, opts: StartOptions = {}) => start({ entry: join(dir, "server.mjs"), env: { UNCUT_DATA_DIR: join(dir, "data"), ...env }, ...opts });
+const startServer = (env: NodeJS.ProcessEnv, opts: StartOptions = {}) =>
+  start({ entry: join(dir, "server.mjs"), env: { UNCUT_DATA_DIR: join(dir, "data"), ...env }, ...opts });
 
 async function rpc(url: string, request: { tag: string; payload?: unknown }) {
   const { port, searchParams } = new URL(url);

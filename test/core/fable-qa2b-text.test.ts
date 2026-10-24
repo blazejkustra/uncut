@@ -3,7 +3,23 @@
 // stickers and their search, the image frame's fit and crop, caption styles and the karaoke fill.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { animationAt, applyEdit, captionAt, captionCards, createSession, DRAWN_MOVES, loadModules, moveFades, planMakeCaptions, textHtml, validateProject, type CutTranscript, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  animationAt,
+  applyEdit,
+  captionAt,
+  captionCards,
+  createSession,
+  DRAWN_MOVES,
+  loadModules,
+  moveFades,
+  planMakeCaptions,
+  textHtml,
+  validateProject,
+  type CutTranscript,
+  type Item,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { charCount, cutChars } from "../../packages/core/src/visual/render.ts";
 import { bounceOut } from "../../packages/core/src/timeline/timeline.ts";
 import { CAPTION_STYLES, captionStyleFields, captionStyleSample, planCaptionHighlight, planCaptionStyle } from "../../packages/core/src/text/captions.ts";
@@ -16,7 +32,15 @@ import { planAddComponent } from "../../apps/web/src/preview/components.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const canvas = { width: 1920, height: 1080, fps: 30 } as const;
-const text = (extra: Partial<Item> = {}): Item => ({ id: "t1", type: "text", start: 0, duration: 60, text: "Hello world", style: { preset: "text.title" }, ...extra });
+const text = (extra: Partial<Item> = {}): Item => ({
+  id: "t1",
+  type: "text",
+  start: 0,
+  duration: 60,
+  text: "Hello world",
+  style: { preset: "text.title" },
+  ...extra,
+});
 const at = (item: Item, local: number) => animationAt(item, local, canvas);
 const project = (items: ReadonlyArray<Item>): Project => ({
   format: "uncut/0",
@@ -26,7 +50,13 @@ const project = (items: ReadonlyArray<Item>): Project => ({
   media: [],
   tracks: [
     { id: "text", kind: "text", name: "Text", items },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 90, props: { color: "#000000" } }] },
+    {
+      id: "main",
+      kind: "video",
+      role: "main",
+      name: "Main",
+      items: [{ id: "bg", type: "component", component: "component.solid", duration: 90, props: { color: "#000000" } }],
+    },
   ],
 });
 
@@ -36,7 +66,10 @@ test("F21: the In list has the new moves, the Out list their out names, and Loop
   for (const name of ["Typewriter", "Bounce", "Blur in", "Scale in", "Pop"]) assert.ok(ins.includes(name), name);
   for (const name of ["Erase", "Bounce out", "Blur out", "Scale out", "Pop out"]) assert.ok(outs.includes(name), name);
   assert.ok(!outs.includes("Typewriter") && !outs.includes("Blur in"));
-  assert.deepEqual(LOOPS.map((l) => l.label), ["None", "Pulse", "Wiggle"]);
+  assert.deepEqual(
+    LOOPS.map((l) => l.label),
+    ["None", "Pulse", "Wiggle"],
+  );
   // Every listed move is a drawn, installed move module.
   for (const m of [...MOVES, ...LOOPS].filter((m) => m.id)) {
     assert.ok((DRAWN_MOVES as ReadonlyArray<string>).includes(m.id), m.id);
@@ -115,13 +148,17 @@ test("F21: loops repeat every loop length; equal phases draw equal HTML; no opac
   assert.ok(Math.abs(at(pulse, 15).motion.scale! - 1.08) < 1e-12, "the top of a pulse: +8 %");
   assert.equal(at(pulse, 15).opacity, 1);
   assert.equal(textHtml(pulse, { canvas }, { motion: at(pulse, 7).motion }), textHtml(pulse, { canvas }, { motion: at(pulse, 37).motion }));
-  const wiggle = text({ duration: 90, animation: { loop: { module: "move.wiggle", duration: 20, params: { amount: 6 } } }, transform: { x: 100, y: 100, rotate: 10 } });
+  const wiggle = text({
+    duration: 90,
+    animation: { loop: { module: "move.wiggle", duration: 20, params: { amount: 6 } } },
+    transform: { x: 100, y: 100, rotate: 10 },
+  });
   assert.equal(at(wiggle, 5).motion.rotate, 6);
   assert.equal(at(wiggle, 15).motion.rotate, -6);
   assert.match(textHtml(wiggle, { canvas }, { motion: at(wiggle, 5).motion }), /rotate\(16deg\)/);
   // In + loop together: the in's scale times the loop's.
   const both = text({ duration: 90, animation: { in: { module: "move.scale", duration: 10 }, loop: { module: "move.pulse", duration: 20 } } });
-  assert.ok(Math.abs(at(both, 5).motion.scale! - (1 - 0.5 ** 3) * (1 + 0.08 * (1 - Math.cos(Math.PI / 2)) / 2)) < 1e-12);
+  assert.ok(Math.abs(at(both, 5).motion.scale! - (1 - 0.5 ** 3) * (1 + (0.08 * (1 - Math.cos(Math.PI / 2))) / 2)) < 1e-12);
   // Valid in a project; the Inspector planner and the edit log name them.
   const p = project([pulse]);
   assert.deepEqual(validateProject(p, modules), []);
@@ -180,10 +217,23 @@ test("F22: image frame fit and crop: cover fills, contain shows it all, zoom and
   const target = { canvas, mediaUrl: (id: string) => `uncut-media://${id}` };
   const plain = drawImageFrame({ props: { fit: "contain", image: { media: "m-img" } }, w: 800, h: 500, local: 0, fps: 30, target } as never);
   assert.match(plain, /object-fit:contain">/);
-  const crop = drawImageFrame({ props: { fit: "cover", zoom: 1.5, focusX: 20, focusY: 80, image: { media: "m-img" } }, w: 800, h: 500, local: 0, fps: 30, target } as never);
+  const crop = drawImageFrame({
+    props: { fit: "cover", zoom: 1.5, focusX: 20, focusY: 80, image: { media: "m-img" } },
+    w: 800,
+    h: 500,
+    local: 0,
+    fps: 30,
+    target,
+  } as never);
   assert.match(crop, /object-fit:cover;object-position:20% 80%;transform:scale\(1\.5\);transform-origin:20% 80%">/);
   // The defaults (zoom 1, focus 50 %) draw as before the crop existed.
-  const item: Item = { id: "f", type: "component", component: "component.image-frame", duration: 30, props: { fit: "cover", zoom: 1, focusX: 50, focusY: 50, radius: 24 } };
+  const item: Item = {
+    id: "f",
+    type: "component",
+    component: "component.image-frame",
+    duration: 30,
+    props: { fit: "cover", zoom: 1, focusX: 50, focusY: 50, radius: 24 },
+  };
   assert.doesNotMatch(componentHtml(item, { canvas } as never, 0, { fps: 30 })!, /object-position|scale\(/);
   const withFrame = project([]);
   const valid = { ...withFrame, tracks: [{ id: "over", kind: "video" as const, name: "Overlay", items: [{ ...item, start: 0 }] }, ...withFrame.tracks] };
@@ -205,7 +255,9 @@ function captioned(captionStyle?: string, mode?: "line" | "word"): Project {
     name: "C",
     canvas,
     textLooks: 1,
-    media: [{ id: "m-talk", kind: "video", name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 90, fps: 30, width: 1920, height: 1080, hasAudio: true } }],
+    media: [
+      { id: "m-talk", kind: "video", name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 90, fps: 30, width: 1920, height: 1080, hasAudio: true } },
+    ],
     tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-talk", in: 0, duration: 90 }] }],
   };
   const made = planMakeCaptions(p, { media: "m-talk", transcript: T, ...(mode ? { mode } : {}), ...(captionStyle ? { captionStyle } : {}) });
@@ -220,9 +272,33 @@ const capOf = (p: Project) => p.tracks.flatMap((t) => t.items).find((i) => i.typ
 
 test("F24: caption styles: 8 presets, each a whole style (canvas px) with its id; applying sets the mode", () => {
   assert.equal(CAPTION_STYLES.length, 8);
-  assert.deepEqual(CAPTION_STYLES.map((s) => s.name), ["Box", "Outline", "Karaoke", "Highlight", "Word box", "Big yellow", "Minimal", "Card"]);
-  assert.deepEqual(captionStyleFields("big-yellow", canvas), { preset: "text.caption", size: 92, weight: 900, uppercase: true, color: "#FFE14D", stroke: { width: 8.6, color: "#000000" }, shadow: false, background: false, captionStyle: "big-yellow" });
-  assert.deepEqual(captionStyleFields("karaoke", canvas), { preset: "text.caption", size: 59, weight: 800, color: "#FFFFFF", stroke: { width: 5.4, color: "#000000" }, shadow: false, background: false, accent: "#FFD23F", karaoke: true, captionStyle: "karaoke" });
+  assert.deepEqual(
+    CAPTION_STYLES.map((s) => s.name),
+    ["Box", "Outline", "Karaoke", "Highlight", "Word box", "Big yellow", "Minimal", "Card"],
+  );
+  assert.deepEqual(captionStyleFields("big-yellow", canvas), {
+    preset: "text.caption",
+    size: 92,
+    weight: 900,
+    uppercase: true,
+    color: "#FFE14D",
+    stroke: { width: 8.6, color: "#000000" },
+    shadow: false,
+    background: false,
+    captionStyle: "big-yellow",
+  });
+  assert.deepEqual(captionStyleFields("karaoke", canvas), {
+    preset: "text.caption",
+    size: 59,
+    weight: 800,
+    color: "#FFFFFF",
+    stroke: { width: 5.4, color: "#000000" },
+    shadow: false,
+    background: false,
+    accent: "#FFD23F",
+    karaoke: true,
+    captionStyle: "karaoke",
+  });
   const p = captioned();
   const cap = capOf(p);
   const plan = planCaptionStyle(p, cap.id, "karaoke");

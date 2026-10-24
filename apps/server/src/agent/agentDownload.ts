@@ -87,7 +87,14 @@ export function downloadToProject(url: string, projectDir: string, name: string 
 }
 
 /** Fetch `url` into `folder` (made when missing), taking only `types` (content type → extension). */
-export async function downloadToFolder(url: string, folder: string, name: string | undefined, signal: AbortSignal, budget = MAX_BYTES, types: Readonly<Record<string, string>> = DOWNLOAD_TYPES): Promise<Downloaded> {
+export async function downloadToFolder(
+  url: string,
+  folder: string,
+  name: string | undefined,
+  signal: AbortSignal,
+  budget = MAX_BYTES,
+  types: Readonly<Record<string, string>> = DOWNLOAD_TYPES,
+): Promise<Downloaded> {
   const cap = Math.min(MAX_BYTES, budget);
   let target: URL;
   try {
@@ -99,7 +106,10 @@ export async function downloadToFolder(url: string, folder: string, name: string
   for (let hop = 0; ; hop++) {
     try {
       const at = target;
-      res = await retryOnReset(() => getOnce(at, { "user-agent": "Mozilla/5.0 (Macintosh) Uncut", accept: "image/*,video/*,audio/*;q=0.9,*/*;q=0.5" }, signal), signal);
+      res = await retryOnReset(
+        () => getOnce(at, { "user-agent": "Mozilla/5.0 (Macintosh) Uncut", accept: "image/*,video/*,audio/*;q=0.9,*/*;q=0.5" }, signal),
+        signal,
+      );
     } catch (error) {
       return { problem: `Couldn't download ${target.host}: ${(error as Error).message}` };
     }
@@ -122,7 +132,9 @@ export async function downloadToFolder(url: string, folder: string, name: string
   const ext = types[type] ?? (GENERIC.has(type) ? fromUrl : undefined);
   if (!ext) {
     await res.body?.cancel().catch(() => {});
-    return { problem: `${target.host} sent ${type || "a file of no type"}, not ${types === BRAND_DOWNLOAD_TYPES ? "a logo picture or a font file" : types === DOWNLOAD_TYPES ? "a picture, video or sound" : "a picture, video or sound (or a font file)"}${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.` };
+    return {
+      problem: `${target.host} sent ${type || "a file of no type"}, not ${types === BRAND_DOWNLOAD_TYPES ? "a logo picture or a font file" : types === DOWNLOAD_TYPES ? "a picture, video or sound" : "a picture, video or sound (or a font file)"}${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.`,
+    };
   }
   const length = Number(res.headers.get("content-length"));
   if (Number.isFinite(length) && length > cap) {
@@ -165,7 +177,12 @@ export async function sniff(file: string, ext: string): Promise<string | undefin
   if (ext === ".svg") {
     const text = (await readFile(file)).subarray(0, 5 * 1024 * 1024).toString("utf8");
     if (!/<svg[\s>]/i.test(text)) return "the file isn't an SVG";
-    if (/<script|<foreignObject|<!DOCTYPE|<!ENTITY|\son[a-z]+\s*=|javascript:|(?:xlink:)?href\s*=\s*["']\s*(?:https?:|\/\/|file:|data:text)|@import|url\(\s*["']?\s*(?:https?:|\/\/)/i.test(text)) return "the SVG has scripts or outside references; find a PNG of it";
+    if (
+      /<script|<foreignObject|<!DOCTYPE|<!ENTITY|\son[a-z]+\s*=|javascript:|(?:xlink:)?href\s*=\s*["']\s*(?:https?:|\/\/|file:|data:text)|@import|url\(\s*["']?\s*(?:https?:|\/\/)/i.test(
+        text,
+      )
+    )
+      return "the SVG has scripts or outside references; find a PNG of it";
     return undefined;
   }
   const handle = await open(file, "r");

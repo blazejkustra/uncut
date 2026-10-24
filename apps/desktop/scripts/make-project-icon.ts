@@ -8,10 +8,19 @@ import { encodePng, onU, rasterize, roundRect, U_WHITE, writeIcon, type Rgb } fr
 const out = new URL("../build/", import.meta.url).pathname;
 
 // The page: macOS document proportions on the 1024 grid, a folded top-right corner.
-const PX = 512, PY = 512, PHW = 304, PHH = 404, PR = 34, FOLD = 172, EDGE = 5;
-const RIGHT = PX + PHW, TOP = PY - PHH;
+const PX = 512,
+  PY = 512,
+  PHW = 304,
+  PHH = 404,
+  PR = 34,
+  FOLD = 172,
+  EDGE = 5;
+const RIGHT = PX + PHW,
+  TOP = PY - PHH;
 // The tile: the app icon, scaled down, a little below the page's centre.
-const S = 0.44, TX = 512, TY = 548;
+const S = 0.44,
+  TX = 512,
+  TY = 548;
 
 const page = (x: number, y: number) => roundRect(x, y, PX, PY, PHW, PHH, PR);
 // Above the fold's diagonal, in the corner square: cut away.
@@ -22,7 +31,8 @@ const png = encodePng(
   rasterize((x, y): Rgb | undefined => {
     if (page(x, y) > 0 || cutAway(x, y)) return undefined;
     // The tile and the U, mapped back to the app icon's grid.
-    const ux = 512 + (x - TX) / S, uy = 512 + (y - TY) / S;
+    const ux = 512 + (x - TX) / S,
+      uy = 512 + (y - TY) / S;
     if (roundRect(ux, uy, 512, 512, 412, 412, 185) <= 0) {
       if (onU(ux, uy)) return U_WHITE;
       const shade = 30 - ((uy - 100) / 824) * 16;

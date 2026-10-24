@@ -10,12 +10,30 @@ import { GeneratorChoice, GeneratorInfo, GenerateRequest, GenerateError, Generat
 
 // D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
 // like takeUploadName("screen", ...)) with the source's name, or what went wrong.
-export const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, { payload: Schema.Struct({ id: Schema.String, path: Schema.optional(Schema.String), source: Schema.optional(Schema.String), problem: Schema.optional(Schema.String) }) });
+export const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, {
+  payload: Schema.Struct({
+    id: Schema.String,
+    path: Schema.optional(Schema.String),
+    source: Schema.optional(Schema.String),
+    problem: Schema.optional(Schema.String),
+  }),
+});
 
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 export const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange), video: Schema.optional(ExportVideo), motionBlur: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({
+    output: Schema.String,
+    quality: ExportQuality,
+    loudness: ExportLoudness,
+    targetLufs: Schema.optional(Schema.Number),
+    overwrite: Schema.optional(Schema.Boolean),
+    subtitles: Schema.optional(ExportSubtitles),
+    burnCaptions: Schema.optional(Schema.Boolean),
+    range: Schema.optional(ExportRange),
+    video: Schema.optional(ExportVideo),
+    motionBlur: Schema.optional(Schema.Boolean),
+  }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });
@@ -80,34 +98,68 @@ export const HistoryJumpRpc = Rpc.make(RPC_METHODS.historyJump, {
 // The speech models and their downloads, now and on every change.
 export const TranscriptionStateRpc = Rpc.make(RPC_METHODS.transcriptionState, { payload: Empty, success: TranscriptionState, stream: true });
 // Downloads a model (the chosen one when none is named); returns at once, progress on transcription.state.
-export const TranscriptionDownloadRpc = Rpc.make(RPC_METHODS.transcriptionDownload, { payload: Schema.Struct({ model: Schema.optional(Schema.String) }), error: TranscriptionError });
+export const TranscriptionDownloadRpc = Rpc.make(RPC_METHODS.transcriptionDownload, {
+  payload: Schema.Struct({ model: Schema.optional(Schema.String) }),
+  error: TranscriptionError,
+});
 // Stops a model download (all of them when none is named); nothing of it is left.
-export const TranscriptionCancelDownloadRpc = Rpc.make(RPC_METHODS.transcriptionCancelDownload, { payload: Schema.Struct({ model: Schema.optional(Schema.String) }) });
+export const TranscriptionCancelDownloadRpc = Rpc.make(RPC_METHODS.transcriptionCancelDownload, {
+  payload: Schema.Struct({ model: Schema.optional(Schema.String) }),
+});
 // Chooses the model transcripts use (saved in settings).
-export const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSelectModel, { payload: Schema.Struct({ model: Schema.String }), error: TranscriptionError });
+export const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSelectModel, {
+  payload: Schema.Struct({ model: Schema.String }),
+  error: TranscriptionError,
+});
 
 // The plugins found (scans the folders again), and the user allowing one / taking that back (D97).
 export const PluginsListRpc = Rpc.make(RPC_METHODS.pluginsList, { payload: Empty, success: Schema.Array(PluginInfo) });
 // The approval names what the user saw (folder and capabilities): a plugin that changed since is refused.
 // D248: and the skills it showed (PluginInfo.skillsHash): a plugin whose skills changed since is refused too.
-export const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String), skills: Schema.optional(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
-export const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+export const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, {
+  payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String), skills: Schema.optional(Schema.String) }),
+  success: Schema.Array(PluginInfo),
+  error: PluginError,
+});
+export const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Array(PluginInfo),
+  error: PluginError,
+});
 // Installs a plugin from a folder or a git URL (D102) into <dataDir>/plugins/<id>; it still needs allowing.
 export const PluginsInstallRpc = Rpc.make(RPC_METHODS.pluginsInstall, {
   payload: Schema.Struct({ source: Schema.String, ref: Schema.optional(Schema.String), replaceBundled: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ id: Schema.String, note: Schema.optional(Schema.String), plugins: Schema.Array(PluginInfo) }),
   error: PluginError,
 });
-export const PluginsUninstallRpc = Rpc.make(RPC_METHODS.pluginsUninstall, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+export const PluginsUninstallRpc = Rpc.make(RPC_METHODS.pluginsUninstall, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Array(PluginInfo),
+  error: PluginError,
+});
 // D103: the allowed plugins' looks, components and check rules; the open project's findings from
 // process plugins' own checks (Checks are core Check objects); a plugin component copied into the
 // open project's graphics/ (the renderer then inserts a graphic item with the props); the catalog.
 export const PluginsContributionsRpc = Rpc.make(RPC_METHODS.pluginsContributions, { payload: Empty, success: PluginContributions });
-export const PluginsCheckRpc = Rpc.make(RPC_METHODS.pluginsCheck, { payload: Empty, success: Schema.Struct({ checks: Schema.Array(Schema.Unknown), notes: Schema.Array(Schema.String) }) });
-export const PluginsAddComponentRpc = Rpc.make(RPC_METHODS.pluginsAddComponent, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Struct({ src: Schema.String, name: Schema.String, props: Schema.Unknown }), error: PluginError });
-export const PluginsCatalogRpc = Rpc.make(RPC_METHODS.pluginsCatalog, { payload: Empty, success: Schema.Struct({ plugins: Schema.Array(CatalogEntry), problems: Schema.Array(Schema.String) }) });
+export const PluginsCheckRpc = Rpc.make(RPC_METHODS.pluginsCheck, {
+  payload: Empty,
+  success: Schema.Struct({ checks: Schema.Array(Schema.Unknown), notes: Schema.Array(Schema.String) }),
+});
+export const PluginsAddComponentRpc = Rpc.make(RPC_METHODS.pluginsAddComponent, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ src: Schema.String, name: Schema.String, props: Schema.Unknown }),
+  error: PluginError,
+});
+export const PluginsCatalogRpc = Rpc.make(RPC_METHODS.pluginsCatalog, {
+  payload: Empty,
+  success: Schema.Struct({ plugins: Schema.Array(CatalogEntry), problems: Schema.Array(Schema.String) }),
+});
 // Enabling a catalog plugin copies it into <dataDir>/plugins (D102's folder install); it still needs allowing. Disable removes only such a copy.
-export const PluginsDisableRpc = Rpc.make(RPC_METHODS.pluginsDisable, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+export const PluginsDisableRpc = Rpc.make(RPC_METHODS.pluginsDisable, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Array(PluginInfo),
+  error: PluginError,
+});
 export const PluginsEnableRpc = Rpc.make(RPC_METHODS.pluginsEnable, {
   payload: Schema.Struct({ id: Schema.String }),
   success: Schema.Struct({ id: Schema.String, note: Schema.optional(Schema.String), plugins: Schema.Array(PluginInfo) }),
@@ -138,7 +190,13 @@ export const CaptureBootRpc = Rpc.make(RPC_METHODS.captureBoot, {
 // D143: a take that replays a saved flow while recording; it ends with the flow and is imported as
 // one user edit, like Stop's.
 export const CaptureRecordRpc = Rpc.make(RPC_METHODS.captureRecord, {
-  payload: Schema.Struct({ device: Schema.String, flow: Schema.String, showTouches: Schema.optional(Schema.Boolean), orientation: Schema.optional(CaptureOrientation), bundleId: Schema.optional(Schema.String) }),
+  payload: Schema.Struct({
+    device: Schema.String,
+    flow: Schema.String,
+    showTouches: Schema.optional(Schema.Boolean),
+    orientation: Schema.optional(CaptureOrientation),
+    bundleId: Schema.optional(Schema.String),
+  }),
   success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number }),
   error: CaptureError,
 });
@@ -148,8 +206,20 @@ export const CaptureRecordRpc = Rpc.make(RPC_METHODS.captureRecord, {
 // converts it (m4a for a voiceover, mp4 for camera and screen) and imports it as one user edit,
 // placed on the timeline at `placeAt` (a project frame) when given. `device` is the input's name.
 export const CaptureSaveRpc = Rpc.make(RPC_METHODS.captureSave, {
-  payload: Schema.Struct({ path: Schema.String, kind: TakeKind, name: Schema.optional(Schema.String), device: Schema.optional(Schema.String), placeAt: Schema.optional(Schema.Number) }),
-  success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number, itemId: Schema.optional(Schema.String), trackId: Schema.optional(Schema.String) }),
+  payload: Schema.Struct({
+    path: Schema.String,
+    kind: TakeKind,
+    name: Schema.optional(Schema.String),
+    device: Schema.optional(Schema.String),
+    placeAt: Schema.optional(Schema.Number),
+  }),
+  success: Schema.Struct({
+    mediaId: Schema.String,
+    name: Schema.String,
+    seconds: Schema.Number,
+    itemId: Schema.optional(Schema.String),
+    trackId: Schema.optional(Schema.String),
+  }),
   error: CaptureError,
 });
 
@@ -158,13 +228,20 @@ export const CaptureSaveRpc = Rpc.make(RPC_METHODS.captureSave, {
 // system.m4a) and imported as one user edit; with placeAt every part goes on the timeline there,
 // start-aligned by the parts' offsets and grouped, the camera over the screen in `layout`.
 export const CaptureSaveMultiRpc = Rpc.make(RPC_METHODS.captureSaveMulti, {
-  payload: Schema.Struct({ parts: Schema.Array(MultiPart), name: Schema.optional(Schema.String), placeAt: Schema.optional(Schema.Number), layout: Schema.optional(MultiLayout) }),
+  payload: Schema.Struct({
+    parts: Schema.Array(MultiPart),
+    name: Schema.optional(Schema.String),
+    placeAt: Schema.optional(Schema.Number),
+    layout: Schema.optional(MultiLayout),
+  }),
   success: Schema.Struct({
     name: Schema.String,
     seconds: Schema.Number,
     folder: Schema.String,
     media: Schema.Array(Schema.Struct({ mediaId: Schema.String, kind: TakeKind, name: Schema.String, file: Schema.String })),
-    items: Schema.Array(Schema.Struct({ itemId: Schema.String, trackId: Schema.String, kind: TakeKind, start: Schema.Number, in: Schema.Number, duration: Schema.Number })),
+    items: Schema.Array(
+      Schema.Struct({ itemId: Schema.String, trackId: Schema.String, kind: TakeKind, start: Schema.Number, in: Schema.Number, duration: Schema.Number }),
+    ),
     group: Schema.optional(Schema.String),
   }),
   error: CaptureError,
@@ -173,15 +250,35 @@ export const CaptureSaveMultiRpc = Rpc.make(RPC_METHODS.captureSaveMulti, {
 // Generators (D99): which there are and whether each has its key; a generation into the open
 // project (returns at once; progress on generate.jobs); cancel one.
 export const GenerateListRpc = Rpc.make(RPC_METHODS.generateList, { payload: Empty, success: Schema.Array(GeneratorInfo) });
-export const GenerateStartRpc = Rpc.make(RPC_METHODS.generateStart, { payload: GenerateRequest, success: Schema.Struct({ jobId: Schema.String }), error: GenerateError });
+export const GenerateStartRpc = Rpc.make(RPC_METHODS.generateStart, {
+  payload: GenerateRequest,
+  success: Schema.Struct({ jobId: Schema.String }),
+  error: GenerateError,
+});
 export const GenerateJobsRpc = Rpc.make(RPC_METHODS.generateJobs, { payload: Empty, success: Schema.Array(GenerateJob), stream: true });
 export const GenerateCancelRpc = Rpc.make(RPC_METHODS.generateCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 // A plugin generator's choices for one option, from the plugin (#108: the voices of the user's account).
-export const GenerateChoicesRpc = Rpc.make(RPC_METHODS.generateChoices, { payload: Schema.Struct({ generator: Schema.String, option: Schema.String }), success: Schema.Array(GeneratorChoice), error: GenerateError });
+export const GenerateChoicesRpc = Rpc.make(RPC_METHODS.generateChoices, {
+  payload: Schema.Struct({ generator: Schema.String, option: Schema.String }),
+  success: Schema.Array(GeneratorChoice),
+  error: GenerateError,
+});
 // Settings › Keys (D99): which providers have a key; store or remove one. A key goes in, never out.
 export const KeysListRpc = Rpc.make(RPC_METHODS.keysList, { payload: Empty, success: Schema.Array(KeyInfo) });
-export const KeysSetRpc = Rpc.make(RPC_METHODS.keysSet, { payload: Schema.Struct({ provider: KeyProvider, key: Schema.String }), success: Schema.Array(KeyInfo), error: GenerateError });
-export const KeysRemoveRpc = Rpc.make(RPC_METHODS.keysRemove, { payload: Schema.Struct({ provider: KeyProvider }), success: Schema.Array(KeyInfo), error: GenerateError });
+export const KeysSetRpc = Rpc.make(RPC_METHODS.keysSet, {
+  payload: Schema.Struct({ provider: KeyProvider, key: Schema.String }),
+  success: Schema.Array(KeyInfo),
+  error: GenerateError,
+});
+export const KeysRemoveRpc = Rpc.make(RPC_METHODS.keysRemove, {
+  payload: Schema.Struct({ provider: KeyProvider }),
+  success: Schema.Array(KeyInfo),
+  error: GenerateError,
+});
 
 // The server's own disk, for a remote environment's pickers (D107): one folder's entries (hidden ones left out).
-export const FilesListRpc = Rpc.make(RPC_METHODS.filesList, { payload: Schema.Struct({ dir: Schema.optional(Schema.String) }), success: FileListing, error: FilesError });
+export const FilesListRpc = Rpc.make(RPC_METHODS.filesList, {
+  payload: Schema.Struct({ dir: Schema.optional(Schema.String) }),
+  success: FileListing,
+  error: FilesError,
+});

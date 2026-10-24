@@ -2,12 +2,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { CLAUDE_CODE_BASE_TOKENS, assistantUsage, contextOf, estimateTokens, messageContextEstimate, resultWindow, systemToolsEstimate, windowFor } from "../../apps/server/src/agent/session/usage.ts";
+import {
+  CLAUDE_CODE_BASE_TOKENS,
+  assistantUsage,
+  contextOf,
+  estimateTokens,
+  messageContextEstimate,
+  resultWindow,
+  systemToolsEstimate,
+  windowFor,
+} from "../../apps/server/src/agent/session/usage.ts";
 
-const assistant = (usage: unknown, extra: Record<string, unknown> = {}) => ({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", content: [], usage }, parent_tool_use_id: null, ...extra });
+const assistant = (usage: unknown, extra: Record<string, unknown> = {}) => ({
+  type: "assistant",
+  message: { id: "m1", model: "claude-opus-5-5", content: [], usage },
+  parent_tool_use_id: null,
+  ...extra,
+});
 
 test("assistantUsage: the call's input, cache read, cache creation and output", () => {
-  assert.deepEqual(assistantUsage(assistant({ input_tokens: 12, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 1_500, output_tokens: 400 })), { used: 31_912, model: "claude-opus-5-5" });
+  assert.deepEqual(assistantUsage(assistant({ input_tokens: 12, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 1_500, output_tokens: 400 })), {
+    used: 31_912,
+    model: "claude-opus-5-5",
+  });
 });
 
 test("assistantUsage: missing or odd fields count as 0; no usage or none at all is undefined", () => {
@@ -53,7 +70,14 @@ test("estimates: prose at 4 characters a token, JSON at 2.4, plus Claude Code's 
 });
 
 test("contextOf: the conversation is the rest, never below 0; parts never exceed what was used", () => {
-  assert.deepEqual(contextOf({ used: 100_000, window: 200_000, systemTools: 30_000, message: 2_000, model: "m" }), { used: 100_000, window: 200_000, systemTools: 30_000, conversation: 68_000, message: 2_000, model: "m" });
+  assert.deepEqual(contextOf({ used: 100_000, window: 200_000, systemTools: 30_000, message: 2_000, model: "m" }), {
+    used: 100_000,
+    window: 200_000,
+    systemTools: 30_000,
+    conversation: 68_000,
+    message: 2_000,
+    model: "m",
+  });
   const small = contextOf({ used: 10_000, window: 200_000, systemTools: 30_000, message: 2_000 });
   assert.deepEqual(small, { used: 10_000, window: 200_000, systemTools: 10_000, conversation: 0, message: 0 });
 });

@@ -47,7 +47,8 @@ export function drawFollowCard({ props, w, h, target, local, fps }: Draw) {
     const d = tile * 0.36;
     const badge = `<div data-badge="${esc(mark.platform)}" style="position:absolute;left:${px(tile - d * 0.8)};top:${px(tile - d * 0.8)};width:${px(d)};height:${px(d)};border-radius:50%;background:${mark.tint};box-shadow:0 0 0 ${px(Math.max(1, d * 0.08))} ${bg};display:flex;align-items:center;justify-content:center">${mark.glyph(d, markInk(mark.tint, mark.locked))}</div>`;
     picture = `<div style="position:absolute;inset:0;border-radius:${px(tileR)};background:rgb(128 128 128 / 12%);display:flex;align-items:center;justify-content:center"><img src="${logo}" alt="" style="display:block;width:${px(tile * 0.8)};height:${px(tile * 0.8)};object-fit:contain;border-radius:${px(tileR * 0.6)}"></div>${badge}`;
-  } else picture = `<div data-badge="${esc(mark.platform)}" style="position:absolute;inset:0;border-radius:${px(tileR)};background:${mark.tint};display:flex;align-items:center;justify-content:center">${mark.glyph(tile, markInk(mark.tint, mark.locked))}</div>`;
+  } else
+    picture = `<div data-badge="${esc(mark.platform)}" style="position:absolute;inset:0;border-radius:${px(tileR)};background:${mark.tint};display:flex;align-items:center;justify-content:center">${mark.glyph(tile, markInk(mark.tint, mark.locked))}</div>`;
   const pictureHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - tile) / 2)};width:${px(tile)};height:${px(tile)};transform:scale(${num(pop)})">${picture}</div>`;
   // The button: a rounded rectangle in the platform's colour, the word set to fit.
   const bh = tile * 0.44;
@@ -69,20 +70,35 @@ export function drawFollowCard({ props, w, h, target, local, fps }: Draw) {
 type Step = { text: string; detail: string };
 /** The steps as rows: objects {text, detail}, or plain strings. */
 const stepRows = (props: { readonly [key: string]: unknown }): ReadonlyArray<Step> =>
-  (Array.isArray(props.steps) ? (props.steps as ReadonlyArray<unknown>) : []).slice(0, 8).map((r) => (typeof r === "string" ? { text: r, detail: "" } : r && typeof r === "object" ? { text: str((r as Step).text), detail: str((r as Step).detail) } : { text: "", detail: "" }));
+  (Array.isArray(props.steps) ? (props.steps as ReadonlyArray<unknown>) : [])
+    .slice(0, 8)
+    .map((r) =>
+      typeof r === "string"
+        ? { text: r, detail: "" }
+        : r && typeof r === "object"
+          ? { text: str((r as Step).text), detail: str((r as Step).detail) }
+          : { text: "", detail: "" },
+    );
 
 /**
  * How far each step is at `local` frames: shown (0–1, it slides in at start + i × step) and dimmed
  * (0–1, once the next one is in, when focus isn't false). `line` is how far the line joining the
  * numbers has grown, in rows from the first number.
  */
-export function stepsAt(props: { readonly [key: string]: unknown }, local: number, fps: number): { rows: ReadonlyArray<{ shown: number; dimmed: number }>; line: number } {
+export function stepsAt(
+  props: { readonly [key: string]: unknown },
+  local: number,
+  fps: number,
+): { rows: ReadonlyArray<{ shown: number; dimmed: number }>; line: number } {
   const n = stepRows(props).length;
   const start = clamp(numOr(props.start, 0.4), 0, 30) * fps;
   const step = clamp(numOr(props.step, 0.8), 0.1, 10) * fps;
   const at = (i: number) => start + i * step;
   const shown = (i: number) => easeOut((local - at(i)) / (0.4 * fps));
-  const rows = Array.from({ length: n }, (_, i) => ({ shown: shown(i), dimmed: props.focus !== false && i + 1 < n ? easeOut((local - at(i + 1)) / (0.3 * fps)) : 0 }));
+  const rows = Array.from({ length: n }, (_, i) => ({
+    shown: shown(i),
+    dimmed: props.focus !== false && i + 1 < n ? easeOut((local - at(i + 1)) / (0.3 * fps)) : 0,
+  }));
   let line = 0;
   for (let i = 1; i < n; i++) line += shown(i);
   return { rows, line };
@@ -129,6 +145,8 @@ export function drawSteps({ props, w, h, target, local, fps }: Draw) {
       return badge + words;
     })
     .join("");
-  const titleHtml = title ? `<div style="position:absolute;left:${px(pad)};right:${px(pad)};top:${px(top)};font-weight:800;font-size:${px(titleSize)};line-height:1.1;letter-spacing:-0.01em;white-space:nowrap">${esc(title)}</div>` : "";
+  const titleHtml = title
+    ? `<div style="position:absolute;left:${px(pad)};right:${px(pad)};top:${px(top)};font-weight:800;font-size:${px(titleSize)};line-height:1.1;letter-spacing:-0.01em;white-space:nowrap">${esc(title)}</div>`
+    : "";
   return `<div style="position:absolute;inset:0;background:${bg};border-radius:${px(28 * k)};font-family:${DM_SANS};color:${ink};opacity:${num(card)};transform:translateY(${px((1 - card) * 18 * k)})">${titleHtml}${lineHtml}${list}</div>`;
 }

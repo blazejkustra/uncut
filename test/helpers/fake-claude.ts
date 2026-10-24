@@ -53,9 +53,16 @@ if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-
     process.stdin.on("end", () => resolve(text));
   });
   const msg = JSON.parse(line) as { message: { content: Array<{ type: string; text?: string }> } };
-  const text = msg.message.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+  const text = msg.message.content
+    .filter((c) => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
   const images = msg.message.content.filter((c) => c.type === "image").length;
-  if (process.env.FAKE_CRITIC_LOG) appendFileSync(process.env.FAKE_CRITIC_LOG, `${JSON.stringify({ critic: true, text, images, resume: flag("--resume") ?? null, args: argv, env: Object.keys(process.env), cwd: process.cwd() })}\n`);
+  if (process.env.FAKE_CRITIC_LOG)
+    appendFileSync(
+      process.env.FAKE_CRITIC_LOG,
+      `${JSON.stringify({ critic: true, text, images, resume: flag("--resume") ?? null, args: argv, env: Object.keys(process.env), cwd: process.cwd() })}\n`,
+    );
   let entry: unknown;
   if (process.env.FAKE_CRITIC) {
     const counter = `${process.env.FAKE_CRITIC}.turn`;
@@ -64,12 +71,20 @@ if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-
     entry = (JSON.parse(readFileSync(process.env.FAKE_CRITIC, "utf8")) as Array<unknown>)[k];
   }
   const ev = (k: string) => ({ score: 9, evidence: `f 0, f 30: ${k} fine` });
-  const all9 = { scores: Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(k)])), blockers: [], defects: [], fixes: [], summary: "Fine." };
+  const all9 = {
+    scores: Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(k)])),
+    blockers: [],
+    defects: [],
+    fixes: [],
+    summary: "Fine.",
+  };
   if (entry && typeof entry === "object" && "hang" in entry) await new Promise(() => {});
   const fail = entry && typeof entry === "object" && "fail" in entry ? String((entry as { fail: unknown }).fail) : undefined;
   const result = fail ?? (typeof entry === "string" ? entry : JSON.stringify(entry ?? all9));
   process.stdout.write(`${JSON.stringify({ type: "system", subtype: "init", session_id: "fake-critic", tools: [] })}\n`);
-  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: !!fail, result, session_id: "fake-critic" })}\n`, () => process.exit(0));
+  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: !!fail, result, session_id: "fake-critic" })}\n`, () =>
+    process.exit(0),
+  );
   await new Promise(() => {});
 }
 // Persistent mode (D139): `--input-format stream-json` keeps one process for many messages.
@@ -87,10 +102,16 @@ const prompt = await new Promise<string>((resolve) => {
 // `claude -p --output-format json`: the markup from $FAKE_SVG (a file), else a picture of the asked
 // size (an animated one when an animation was asked for), or $FAKE_SVG_FAIL as an error result.
 if (!argv.includes("--mcp-config")) {
-  if (process.env.FAKE_PROMPT_LOG) appendFileSync(process.env.FAKE_PROMPT_LOG, `${JSON.stringify({ oneshot: true, prompt, env: Object.keys(process.env), pid: process.pid, cwd: process.cwd(), system: flag("--append-system-prompt"), tools: flag("--tools"), args: argv })}\n`);
+  if (process.env.FAKE_PROMPT_LOG)
+    appendFileSync(
+      process.env.FAKE_PROMPT_LOG,
+      `${JSON.stringify({ oneshot: true, prompt, env: Object.keys(process.env), pid: process.pid, cwd: process.cwd(), system: flag("--append-system-prompt"), tools: flag("--tools"), args: argv })}\n`,
+    );
   if (process.env.FAKE_SVG_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.FAKE_SVG_SLEEP)));
   if (process.env.FAKE_SVG_FAIL) {
-    process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: true, result: process.env.FAKE_SVG_FAIL })}\n`, () => process.exit(0));
+    process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: true, result: process.env.FAKE_SVG_FAIL })}\n`, () =>
+      process.exit(0),
+    );
     await new Promise(() => {});
   }
   const size = /(\d+)x(\d+) pixels/.exec(prompt);
@@ -100,7 +121,10 @@ if (!argv.includes("--mcp-config")) {
     ? readFileSync(process.env.FAKE_SVG, "utf8")
     : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#0B1D3A"/>${animated ? `<style>@keyframes grow{from{r:10px}to{r:${Math.round(h / 3)}px}}circle{animation:grow 2s linear forwards}</style>` : ""}<circle cx="${w / 2}" cy="${h / 2}" r="${Math.round(h / 4)}" fill="#F5A524"/></svg>`;
   // Written before exiting: stdout to a pipe is asynchronous on macOS.
-  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: false, result: `Here it is:\n\n\`\`\`svg\n${svg}\n\`\`\``, total_cost_usd: 0.01 })}\n`, () => process.exit(0));
+  process.stdout.write(
+    `${JSON.stringify({ type: "result", subtype: "success", is_error: false, result: `Here it is:\n\n\`\`\`svg\n${svg}\n\`\`\``, total_cost_usd: 0.01 })}\n`,
+    () => process.exit(0),
+  );
   await new Promise(() => {});
 }
 const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as { command: string; args: Array<string>; env: Record<string, string> };
@@ -152,7 +176,13 @@ for (let k = 0; k < plan.length; k++) {
     try {
       more = existsSync(step.await) ? JSON.parse(readFileSync(step.await, "utf8")) : undefined;
     } catch {}
-    plan.splice(k + 1, 0, ...(Array.isArray(more) ? (more as Array<Step>) : [{ fail: existsSync(step.await) ? `${step.await} isn't a list of steps` : `no steps at ${step.await} within 5 minutes` }]));
+    plan.splice(
+      k + 1,
+      0,
+      ...(Array.isArray(more)
+        ? (more as Array<Step>)
+        : [{ fail: existsSync(step.await) ? `${step.await} isn't a list of steps` : `no steps at ${step.await} within 5 minutes` }]),
+    );
     continue;
   }
   if ("sleep" in step) {
@@ -171,7 +201,15 @@ for (let k = 0; k < plan.length; k++) {
     continue;
   }
   if ("fail" in step) {
-    out({ type: "result", subtype: "error_during_execution", is_error: true, result: step.fail, duration_ms: 10, num_turns: steps, session_id: "fake-session" });
+    out({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      result: step.fail,
+      duration_ms: 10,
+      num_turns: steps,
+      session_id: "fake-session",
+    });
     server.kill();
     process.exit(1);
   }

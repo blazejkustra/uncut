@@ -28,7 +28,11 @@ export function Sections({ project, ppf, online }: { project: ProjectModel; ppf:
           data-state={s.state}
           data-start={s.start}
           data-end={s.end}
-          title={s.state === "locked" ? "Locked: nothing here can move or change (right-click to unlock)" : `Not OK: for the agent to redo${s.note ? `: ${s.note}` : ""}`}
+          title={
+            s.state === "locked"
+              ? "Locked: nothing here can move or change (right-click to unlock)"
+              : `Not OK: for the agent to redo${s.note ? `: ${s.note}` : ""}`
+          }
           style={{ left: s.start * ppf, width: Math.max(2, (s.end - s.start) * ppf) }}
           onContextMenu={(e) => menu(e, s.id)}
         >

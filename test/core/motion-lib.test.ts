@@ -24,26 +24,65 @@ interface Motion {
   iris: (open: number, o: { x: number; y: number; r: number; blades?: number }) => Array<Array<Pt>>;
   squeeze: (xs: Array<number>, widths: Array<number>, anchor: number, f: number) => Array<{ x: number; scale: number; width: number }>;
   cursor: (t: number, path: Array<Record<string, unknown>>, o?: unknown) => { x: number; y: number; scale: number; down: boolean };
-  click: (t: number, o: Record<string, unknown> | Array<Record<string, unknown>>) => Record<"x" | "y" | "scale" | "press" | "button" | "start" | "arrive" | "pressAt" | "fire" | "release" | "end", number> & { down: boolean; fired: boolean };
-  camera: (t: number, keys: Array<Record<string, number | undefined>>, s?: unknown, o?: { drift?: number; height?: number; dur?: number }) => { x: number; y: number; zoom: number };
+  click: (
+    t: number,
+    o: Record<string, unknown> | Array<Record<string, unknown>>,
+  ) => Record<"x" | "y" | "scale" | "press" | "button" | "start" | "arrive" | "pressAt" | "fire" | "release" | "end", number> & {
+    down: boolean;
+    fired: boolean;
+  };
+  camera: (
+    t: number,
+    keys: Array<Record<string, number | undefined>>,
+    s?: unknown,
+    o?: { drift?: number; height?: number; dur?: number },
+  ) => { x: number; y: number; zoom: number };
   beat: (n: number, o?: { bpm?: number; offset?: number }) => number;
   loop: (t: number, d: number) => number;
   ease: { inOut: (p: number) => number; glide: (p: number) => number };
   mixColor: (a: string, b: string, p: number) => string;
-  shape: (t: number, keys: Array<Record<string, unknown>>, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; full: boolean };
+  shape: (
+    t: number,
+    keys: Array<Record<string, unknown>>,
+    o?: Record<string, unknown>,
+  ) => { x: number; y: number; w: number; h: number; r: number; full: boolean };
   shapePath: (ctx: unknown, s: { x: number; y: number; w: number; h: number; r: number }) => void;
   footageRect: (sw: number, sh: number, w: number, h: number, s?: Record<string, number>) => { x: number; y: number; w: number; h: number };
   riseText: (ctx: unknown, text: string, x: number, baseline: number, t: number, o: Record<string, unknown>) => boolean;
   frameRect: (left: number, top: number, w: number, h: number, o?: Record<string, unknown>) => { x: number; y: number; zoom: number };
   apply: (ctx: unknown, cam: { x: number; y: number; zoom: number }, w: number, h: number) => void;
   toScreen: (cam: { x: number; y: number; zoom: number }, x: number, y: number, w: number, h: number) => [number, number];
-  morph: (t: number, from: Record<string, number> | string, to: Record<string, number> | string, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; p: number; full: boolean };
+  morph: (
+    t: number,
+    from: Record<string, number> | string,
+    to: Record<string, number> | string,
+    o?: Record<string, unknown>,
+  ) => { x: number; y: number; w: number; h: number; r: number; p: number; full: boolean };
   coverage: (s: { x: number; y: number; w: number; h: number; r: number }, w: number, h: number) => number;
   cameraCSS: (cam: { x: number; y: number; zoom: number }, w: number, h: number) => string;
-  shapeCSS: (s: { x: number; y: number; w: number; h: number; r: number }) => { left: number; top: number; width: number; height: number; borderRadius: number };
+  shapeCSS: (s: { x: number; y: number; w: number; h: number; r: number }) => {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    borderRadius: number;
+  };
   riseCSS: (t: number, o: Record<string, number>) => { height: number; transform: string; visible: boolean };
   swap: (t: number, at: number, o?: Record<string, number>) => Record<"out" | "in", { alpha: number; blur: number; dy: number; visible: boolean }>;
-  grow: (t: number, o: Record<string, unknown>) => { rects: Array<{ x: number; y: number; w: number; h: number; r: number }>; x: number; y: number; w: number; h: number; r: number; scale: number; full: boolean; visible: boolean };
+  grow: (
+    t: number,
+    o: Record<string, unknown>,
+  ) => {
+    rects: Array<{ x: number; y: number; w: number; h: number; r: number }>;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    r: number;
+    scale: number;
+    full: boolean;
+    visible: boolean;
+  };
   growPath: (ctx: unknown, g: { rects: Array<{ x: number; y: number; w: number; h: number; r: number }> }) => void;
   growCSS: (g: { rects: Array<{ x: number; y: number; w: number; h: number; r: number }> }) => string;
   frameWidth: (drawn: number, zoom?: number) => number;
@@ -58,7 +97,12 @@ const M = load();
 const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps;
 
 test("spring is core's spring, value for value", () => {
-  for (const p of [...SPRING_NAMES, { stiffness: 100, damping: 20 }, { stiffness: 100, damping: 50, mass: 2, velocity: 1 }, { stiffness: 80, damping: 6, velocity: -3 }]) {
+  for (const p of [
+    ...SPRING_NAMES,
+    { stiffness: 100, damping: 20 },
+    { stiffness: 100, damping: 50, mass: 2, velocity: 1 },
+    { stiffness: 80, damping: 6, velocity: -3 },
+  ]) {
     for (let t = -0.1; t < 3; t += 0.037) assert.ok(near(M.spring(t, p), springAt(p, t), 1e-12), `${JSON.stringify(p)} at ${t}`);
   }
 });
@@ -145,9 +189,15 @@ test("iris: six blades; open, the aperture is clear; closed, the blades cover th
   assert.ok(!open.some((b) => inside([500, 500], b)), "open: the centre is clear");
   const half = M.iris(0.5, o);
   assert.ok(!half.some((b) => inside([500, 500], b)), "half: the centre is still clear");
-  assert.ok(half.some((b) => inside([500 + 150, 500 + 20], b)), "half: the blades cover the outer ring");
+  assert.ok(
+    half.some((b) => inside([500 + 150, 500 + 20], b)),
+    "half: the blades cover the outer ring",
+  );
   const closed = M.iris(0.02, o);
-  assert.ok(closed.some((b) => inside([510, 505], b)), "nearly closed: near the centre is covered");
+  assert.ok(
+    closed.some((b) => inside([510, 505], b)),
+    "nearly closed: near the centre is covered",
+  );
   for (const b of closed) for (const [x, y] of b) assert.ok(Math.hypot(x - 500, y - 500) <= 200 + 1e-6, "blades stay in the circle");
   assert.deepEqual(M.iris(0.5, o), half, "pure");
 });
@@ -192,9 +242,14 @@ test("click: the cursor lands and lies still, then presses, and the change start
     { x: 300, y: 100, fire: 1.4 },
   ];
   const first = M.click(1, tight[0]!);
-  assert.ok(M.click(1.4, tight).start < first.end && M.click(1.4, tight).start >= first.release - 1e-9, "the second leaves after the first press, before its release ends");
-  for (let t = first.arrive; t < first.release; t += 1 / 60) assert.ok(near(M.click(t, tight).x, 100, 1e-6), `on the first button through its press at ${t.toFixed(3)}`);
-  for (let t = 0.5; t < 2; t += 1 / 60) assert.ok(Math.abs(M.click(t + 1 / 60, tight).scale - M.click(t, tight).scale) < 0.08, `no scale pop at ${t.toFixed(3)}`);
+  assert.ok(
+    M.click(1.4, tight).start < first.end && M.click(1.4, tight).start >= first.release - 1e-9,
+    "the second leaves after the first press, before its release ends",
+  );
+  for (let t = first.arrive; t < first.release; t += 1 / 60)
+    assert.ok(near(M.click(t, tight).x, 100, 1e-6), `on the first button through its press at ${t.toFixed(3)}`);
+  for (let t = 0.5; t < 2; t += 1 / 60)
+    assert.ok(Math.abs(M.click(t + 1 / 60, tight).scale - M.click(t, tight).scale) < 0.08, `no scale pop at ${t.toFixed(3)}`);
   assert.ok(near(M.click(1.4, tight).fire, 1.4, 1e-9) && M.click(1.4, tight).fired, "the second still fires on time");
 });
 
@@ -235,7 +290,11 @@ test("squeeze, cursor, camera, beat, loop, colours", () => {
 test("shape: one rounded rect morphing key to key; bleed fills past every edge; continuous", () => {
   const W = 1080;
   const H = 1350;
-  const keys = [{ at: 0, x: 540, y: 675, w: 980, h: 1250, r: 48 }, { at: 1, bleed: true }, { at: 2, x: 540, y: 600, w: 700, h: 700, r: 350 }];
+  const keys = [
+    { at: 0, x: 540, y: 675, w: 980, h: 1250, r: 48 },
+    { at: 1, bleed: true },
+    { at: 2, x: 540, y: 600, w: 700, h: 700, r: 350 },
+  ];
   const a = M.shape(0.5, keys, { width: W, height: H });
   assert.deepEqual([a.w, a.h, a.r, a.full], [980, 1250, 48, false]);
   const b = M.shape(1.9, keys, { width: W, height: H });
@@ -266,7 +325,15 @@ test("footageRect: covers the frame and the growing shape; the same scale while 
 
 test("riseText: at rest the mask holds the whole line (ascenders and descenders); it's gone after it leaves", () => {
   const calls: Array<{ op: string; args: Array<number | string> }> = [];
-  const ctx = new Proxy({}, { get: (_t, op: string) => (...args: Array<number | string>) => calls.push({ op, args }) });
+  const ctx = new Proxy(
+    {},
+    {
+      get:
+        (_t, op: string) =>
+        (...args: Array<number | string>) =>
+          calls.push({ op, args }),
+    },
+  );
   assert.equal(M.riseText(ctx, "Uncut", 100, 500, 0.4, { at: 0.5, size: 100 }), false, "before it rises");
   assert.equal(M.riseText(ctx, "Uncut", 100, 500, 2, { at: 0.5, out: 3, size: 100 }), true);
   const rect = calls.find((c) => c.op === "rect")!.args as Array<number>;
@@ -302,7 +369,10 @@ test("frameRect covers the frame with a UI rect; apply and toScreen agree; camer
   assert.ok(near(a! * 200 + e!, l, 1e-6) && near(d! * 100 + f!, tp, 1e-6));
   // Zoom rides the spring in log space: halfway in time the log zoom is about halfway (1x to 4x passes 2x, not 2.5x),
   // and a key without x/y/zoom keeps the previous key's.
-  const keys: Array<Record<string, number>> = [{ at: 0, x: 540, y: 675, zoom: 1 }, { at: 1, zoom: 4 }];
+  const keys: Array<Record<string, number>> = [
+    { at: 0, x: 540, y: 675, zoom: 1 },
+    { at: 1, zoom: 4 },
+  ];
   const z = M.camera(1.15, keys, "spring.settle");
   const lin = 1 + 3 * M.spring(0.15, "spring.settle");
   assert.ok(near(Math.log(z.zoom), Math.log(4) * M.spring(0.15, "spring.settle"), 1e-9) && z.zoom < lin, `${z.zoom} vs linear ${lin}`);
@@ -312,7 +382,11 @@ test("frameRect covers the frame with a UI rect; apply and toScreen agree; camer
 // Blind round 3: still holds read as dead next to the references; drift keeps a hold alive without
 // a breathing loop, stays continuous through the next move and leaves the loop seam alone.
 test("camera drift: zoom creeps from key to key, springs away under the next move, continuous, none after the last key", () => {
-  const keys: Array<Record<string, number>> = [{ at: 0, x: 540, y: 675, zoom: 2 }, { at: 2, zoom: 3 }, { at: 4, zoom: 2 }];
+  const keys: Array<Record<string, number>> = [
+    { at: 0, x: 540, y: 675, zoom: 2 },
+    { at: 2, zoom: 3 },
+    { at: 4, zoom: 2 },
+  ];
   const o = { drift: 0.02 };
   const plain = (t: number) => M.camera(t, keys, "spring.settle").zoom;
   const drifted = (t: number) => M.camera(t, keys, "spring.settle", o).zoom;
@@ -320,10 +394,25 @@ test("camera drift: zoom creeps from key to key, springs away under the next mov
   assert.ok(near(drifted(1) / plain(1), Math.sqrt(1.02), 1e-6), "halfway through the hold, half the creep (log space)");
   assert.ok(near(drifted(2) / plain(2), 1.02, 1e-6), "the whole creep at the next key");
   assert.ok(drifted(1.5) > drifted(1) && drifted(1) > drifted(0.5), "always moving in a hold");
-  assert.ok(near(drifted(6), plain(6), 1e-3) && near(M.camera(9, keys, "spring.settle", o).zoom, 2, 1e-3), "after the last key it settles where the key says (the seam)");
+  assert.ok(
+    near(drifted(6), plain(6), 1e-3) && near(M.camera(9, keys, "spring.settle", o).zoom, 2, 1e-3),
+    "after the last key it settles where the key says (the seam)",
+  );
   const creep = (t: number) => Math.log(drifted(t) / plain(t));
   for (let f = 1; f < 6 * 60; f++) assert.ok(Math.abs(creep(f / 60) - creep((f - 1) / 60)) < 0.002, `the creep never jumps (f ${f})`);
-  assert.equal(M.camera(1, [{ at: 0, x: 0, y: 0, zoom: 1, drift: 0 }, { at: 2, zoom: 1 }], undefined, o).zoom, 1, "a key's drift: 0 opts its hold out");
+  assert.equal(
+    M.camera(
+      1,
+      [
+        { at: 0, x: 0, y: 0, zoom: 1, drift: 0 },
+        { at: 2, zoom: 1 },
+      ],
+      undefined,
+      o,
+    ).zoom,
+    1,
+    "a key's drift: 0 opts its hold out",
+  );
   assert.deepEqual(M.camera(1, keys, "spring.settle"), M.camera(1, keys, "spring.settle", {}), "no drift by default");
 });
 
@@ -442,7 +531,15 @@ test("grow: the next shot grows out of a shape into a seed on the kick, then ble
   assert.deepEqual({ ...M.grow(13, { at: 13, origin }).rects[0] }, origin);
   // Clip paths: canvas path has one round rect per rect; CSS is a path() of the same.
   const calls: Array<string> = [];
-  const ctx = new Proxy({}, { get: (_t, k) => (...a: Array<unknown>) => calls.push(`${String(k)}${a.length}`) });
+  const ctx = new Proxy(
+    {},
+    {
+      get:
+        (_t, k) =>
+        (...a: Array<unknown>) =>
+          calls.push(`${String(k)}${a.length}`),
+    },
+  );
   M.growPath(ctx, M.grow(13.4, { at: 13, kind: "split" }));
   assert.equal(calls.filter((c) => c === "beginPath0").length, 1);
   assert.equal(calls.filter((c) => c === "closePath0").length, 2);
@@ -476,7 +573,10 @@ test("frameRect safe and keep: a fit lands inside the safe inset; a cover push k
   const wide = M.frameRect(300, 200, 800, 500, { width: W, height: H, safe: S, keep: [300, 300, 800, 100] });
   assert.ok(inside(wide, 300, 300, 800, 100) && near(wide.zoom, (W - 2 * S) / 800, 1e-9));
   // No safe, no keep: unchanged.
-  assert.deepEqual(M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true }), M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true, safe: 0 }));
+  assert.deepEqual(
+    M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true }),
+    M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true, safe: 0 }),
+  );
 });
 
 test("frameWidth: footage is asked for at its drawn size times the zoom or larger, on fixed steps", () => {
@@ -502,16 +602,27 @@ test("calm defaults: the glide eases off and slows down longer than it sped up; 
   for (let p = 0.01; p < 1; p += 0.01) if (v(p) > v(peak)) peak = p;
   assert.ok(Math.abs(peak - 1 / 3) < 0.02, `top speed a third in (${peak})`);
   const tenth = v(peak) / 10;
-  let a = 0, b = 1;
+  let a = 0,
+    b = 1;
   while (v(a) < tenth) a += 0.001;
   while (v(b - 0.001) < tenth) b -= 0.001;
   const ratio = (b - peak) / (peak - a);
   assert.ok(ratio > 1.5 && ratio < 1.9, `slows down ${ratio.toFixed(2)}x as long as it speeds up`);
   // The camera: by default each move is a glide of 0.75 s or more (round 7: a 0.9 s floor made small moves read as drift); a 4x push takes longer, its zoom never faster than about 1.2 ln/s.
-  const keys = [{ at: 0, x: 500, y: 400, zoom: 1 }, { at: 1, zoom: 2 }, { at: 4, zoom: 8 }];
+  const keys = [
+    { at: 0, x: 500, y: 400, zoom: 1 },
+    { at: 1, zoom: 2 },
+    { at: 4, zoom: 8 },
+  ];
   const lz = (t: number) => Math.log(M.camera(t, keys).zoom);
   assert.ok(near(lz(1), 0, 1e-12) && lz(1.9) < Math.log(2) - 1e-4 && near(lz(2.05), Math.log(2), 1e-9), "about 1 s for a 2x push");
-  const small = (t: number) => Math.log(M.camera(t, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, zoom: 1.5 }]).zoom);
+  const small = (t: number) =>
+    Math.log(
+      M.camera(t, [
+        { at: 0, x: 0, y: 0, zoom: 1 },
+        { at: 1, zoom: 1.5 },
+      ]).zoom,
+    );
   assert.ok(small(1.7) < Math.log(1.5) - 1e-4 && near(small(1.75), Math.log(1.5), 1e-9), "0.75 s for a small one");
   let fastest = 0;
   for (let t = 0; t < 7; t += 1 / 60) {
@@ -522,12 +633,32 @@ test("calm defaults: the glide eases off and slows down longer than it sped up; 
   assert.ok(fastest <= 1.25, `zoom peaks at ${fastest.toFixed(2)} ln/s`);
   assert.ok(lz(5.6) < Math.log(8) - 0.01 && near(lz(6.1), Math.log(8), 1e-9), "the 4x push takes longer than 0.9 s, at most 2 s");
   // A key's dur wins; o.height slows a long pan; a spring name keeps the spring camera.
-  assert.ok(near(M.camera(1.3, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, x: 100, dur: 0.3 }]).x, 100, 1e-9));
-  const pan = [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 0, x: 0 }, { at: 1, x: 2700 }];
-  assert.ok(M.camera(1.9, pan, undefined, { height: 1350 }).x < 2700 - 1 && near(M.camera(1.9, pan).x, 2700, 1e-9), "a 2-frame-height pan glides longer with o.height");
+  assert.ok(
+    near(
+      M.camera(1.3, [
+        { at: 0, x: 0, y: 0, zoom: 1 },
+        { at: 1, x: 100, dur: 0.3 },
+      ]).x,
+      100,
+      1e-9,
+    ),
+  );
+  const pan = [
+    { at: 0, x: 0, y: 0, zoom: 1 },
+    { at: 0, x: 0 },
+    { at: 1, x: 2700 },
+  ];
+  assert.ok(
+    M.camera(1.9, pan, undefined, { height: 1350 }).x < 2700 - 1 && near(M.camera(1.9, pan).x, 2700, 1e-9),
+    "a 2-frame-height pan glides longer with o.height",
+  );
   assert.ok(near(M.camera(1.15, keys, "spring.settle").zoom, Math.exp(Math.log(2) * M.spring(0.15, "spring.settle")), 1e-9));
   // Pure and continuous through a retarget mid-move.
-  const re = [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, x: 300 }, { at: 1.4, x: -200 }];
+  const re = [
+    { at: 0, x: 0, y: 0, zoom: 1 },
+    { at: 1, x: 300 },
+    { at: 1.4, x: -200 },
+  ];
   for (let t = 0.9; t < 3; t += 1 / 60) assert.ok(Math.abs(M.camera(t + 1 / 60, re).x - M.camera(t, re).x) < 25, `continuous at ${t.toFixed(2)}`);
   assert.deepEqual(M.camera(1.234, re), M.camera(1.234, re));
 });

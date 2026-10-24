@@ -33,7 +33,9 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       const all = yield* Effect.promise(() => readBrand(brandDirs(v)));
       const skill = all.skills.find((x) => x.id === skillIdOf(asked)) ?? all.skills.find((x) => x.name.toLowerCase() === asked.toLowerCase());
       if (!skill) return textResult(`There's no skill "${asked.slice(0, 64)}". The installed ones: ${all.skills.map((x) => x.id).join(", ") || "none"}.`, true);
-      yield* Effect.promise(() => useSkills(v.dir, [skill.id]).catch((error) => console.error(`[uncut] couldn't note the skill ${skill.id} in ${v.dir}: ${(error as Error).message}`)));
+      yield* Effect.promise(() =>
+        useSkills(v.dir, [skill.id]).catch((error) => console.error(`[uncut] couldn't note the skill ${skill.id} in ${v.dir}: ${(error as Error).message}`)),
+      );
       return textResult({
         name: skill.id,
         title: skill.name,
@@ -72,17 +74,38 @@ export const makeBrandTools = (ctx: CardsCtx) => {
         if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
           // D198: drawn as a PNG (an SVG too) on the background it's for.
           const [drawn] = yield* Effect.promise(() => logoPictures([{ slot, path }]));
-          if (drawn?.png) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path}${ext === "svg" ? ` (an SVG: drawn here as a PNG; media_import keeps it vector, and in a graphic ${isLogo ? `uncut:brand/logo-${slot} inlines it` : "paste its <svg> inline, read from this path as it is, never redrawn"})` : ""}. media_import this path to place it.` }, picture(drawn.png)] };
+          if (drawn?.png)
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `${args.file} from the kit "${kit.name}": ${path}${ext === "svg" ? ` (an SVG: drawn here as a PNG; media_import keeps it vector, and in a graphic ${isLogo ? `uncut:brand/logo-${slot} inlines it` : "paste its <svg> inline, read from this path as it is, never redrawn"})` : ""}. media_import this path to place it.`,
+                },
+                picture(drawn.png),
+              ],
+            };
           if (ext !== "svg") {
             const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
             const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext]!;
-            if (data && data.length <= 5 * 1024 * 1024) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path} (media_import this path to place it).` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
+            if (data && data.length <= 5 * 1024 * 1024)
+              return {
+                content: [
+                  { type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path} (media_import this path to place it).` },
+                  { type: "image" as const, data: data.toString("base64"), mimeType: mime },
+                ],
+              };
           }
-          return textResult({ file: args.file, path, note: `Couldn't draw it${drawn?.problem ? ` (${drawn.problem})` : ""}; media_import this path to place it.` });
+          return textResult({
+            file: args.file,
+            path,
+            note: `Couldn't draw it${drawn?.problem ? ` (${drawn.problem})` : ""}; media_import this path to place it.`,
+          });
         }
         return textResult({ file: args.file, path, note: "media_import this path to use it." });
       }
-      const slots = (["light", "dark", "mark"] as const).flatMap((k) => (kit.logos[k] && files[kit.logos[k]!] ? [{ slot: k, name: kit.logos[k]!, path: files[kit.logos[k]!]! }] : []));
+      const slots = (["light", "dark", "mark"] as const).flatMap((k) =>
+        kit.logos[k] && files[kit.logos[k]!] ? [{ slot: k, name: kit.logos[k]!, path: files[kit.logos[k]!]! }] : [],
+      );
       const drawn = yield* Effect.promise(() => logoPictures(slots));
       const fonts = yield* Effect.promise(() => projectFonts(config.fontsDir, brandDirs(v), true).catch(() => undefined));
       const label = { light: "the logo for light backgrounds", dark: "the logo for dark backgrounds", mark: "the logo mark" } as const;
@@ -94,14 +117,27 @@ export const makeBrandTools = (ctx: CardsCtx) => {
         files,
         // D232: the skills the project uses, by name (skill_read gives their instructions).
         skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.id, title: s.name, description: s.description })),
-        ...(fonts?.kitMissing.length ? { fontsMissing: `${fonts.kitMissing.map((f) => `"${f}"`).join(", ")} ${fonts.kitMissing.length === 1 ? "has" : "have"} no font file in the kit and ${fonts.kitMissing.length === 1 ? "isn't" : "aren't"} installed: add the file (brand_write fonts with file) or it falls back to another font.` } : {}),
-        ...(!slots.length ? { logosMissing: "The kit has no logo files: find them (the brand's site, the folders the user named) and add them with brand_write logos; never draw or retype a logo." } : {}),
+        ...(fonts?.kitMissing.length
+          ? {
+              fontsMissing: `${fonts.kitMissing.map((f) => `"${f}"`).join(", ")} ${fonts.kitMissing.length === 1 ? "has" : "have"} no font file in the kit and ${fonts.kitMissing.length === 1 ? "isn't" : "aren't"} installed: add the file (brand_write fonts with file) or it falls back to another font.`,
+            }
+          : {}),
+        ...(!slots.length
+          ? {
+              logosMissing:
+                "The kit has no logo files: find them (the brand's site, the folders the user named) and add them with brand_write logos; never draw or retype a logo.",
+            }
+          : {}),
         next: "Use these by default: media_import a logo's path to place it (or uncut:brand/logo-… in a graphic), the colours by role in backgrounds, text and graphics (and the project's theme), the fonts in text style.font and graphics CSS, the tone in every line of copy.",
       };
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(summary) },
-          ...drawn.flatMap((d, i) => (d.png ? [{ type: "text" as const, text: `Logo: ${label[slots[i]!.slot]}, ${slots[i]!.name}:` }, picture(d.png)] : [{ type: "text" as const, text: `Logo ${slots[i]!.name} couldn't be drawn: ${d.problem ?? "unknown"}.` }])),
+          ...drawn.flatMap((d, i) =>
+            d.png
+              ? [{ type: "text" as const, text: `Logo: ${label[slots[i]!.slot]}, ${slots[i]!.name}:` }, picture(d.png)]
+              : [{ type: "text" as const, text: `Logo ${slots[i]!.name} couldn't be drawn: ${d.problem ?? "unknown"}.` }],
+          ),
         ],
       };
     });
@@ -117,16 +153,30 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       const dirs = brandDirs(v);
       const all = yield* Effect.promise(() => readBrand(dirs));
       let base = typeof args.kit === "string" ? all.kits.find((k) => k.id === args.kit) : undefined;
-      if (typeof args.kit === "string" && !base) return textResult(`There's no kit "${args.kit}". brand_read lists them; pass name (and no kit) to make a new one.`, true);
+      if (typeof args.kit === "string" && !base)
+        return textResult(`There's no kit "${args.kit}". brand_read lists them; pass name (and no kit) to make a new one.`, true);
       const fresh = !base && typeof args.name === "string" && args.name.trim() !== "" && !all.kits.some((k) => k.id === slug(String(args.name)));
       if (!base && !fresh) base = all.kits.find((k) => k.id === (typeof args.name === "string" ? slug(args.name) : all.active.kit));
       if (!base && !fresh) return textResult("No kit to write into: pass kit (an id from brand_read) or name for a new kit.", true);
       // D198: a new kit goes in the user's library unless the call pins it to this project.
-      const start: BrandKit = base ?? { id: slug(String(args.name)), name: String(args.name).trim().slice(0, 80), scope: args.scope === "project" ? "project" : "global", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
+      const start: BrandKit = base ?? {
+        id: slug(String(args.name)),
+        name: String(args.name).trim().slice(0, 80),
+        scope: args.scope === "project" ? "project" : "global",
+        logos: {},
+        colors: [],
+        fonts: [],
+        tone: "",
+        taglines: [],
+        urls: [],
+        dos: [],
+        donts: [],
+        examples: [],
+      };
       const merged = mergeKit(start, args);
       if ("problem" in merged) return textResult(merged.problem, true);
       // Files first (into the kit's folder; kit.json is written below): logos, font files, an import.
-      const files = { ...(all.files[start.id] ?? {}) };
+      const files = { ...all.files[start.id] };
       const notes: Array<string> = [];
       const bring = (source: string) =>
         Effect.promise(() => importIntoKit(dirs, start.id, start.scope, source, r.abort.signal).catch((e: Error) => ({ problem: e.message }) as const));
@@ -179,18 +229,39 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       // D198: an existing kit's colours and fonts change only with the user's approval.
       const changes = base ? kitChanges(base, kit) : [];
       if (changes.length) {
-        const answer = yield* askUser(r, `Change the ${changes.map((c) => c.field.toLowerCase()).join(" and ")} of the kit "${base!.name}"`, 0, undefined, undefined, undefined, { brand: { kit: base!.name, changes } });
+        const answer = yield* askUser(
+          r,
+          `Change the ${changes.map((c) => c.field.toLowerCase()).join(" and ")} of the kit "${base!.name}"`,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          { brand: { kit: base!.name, changes } },
+        );
         if (answer !== "allow") {
           kit = { ...kit, colors: base!.colors, fonts: base!.fonts };
-          notes.push(answer === "stopped" ? "The turn was stopped: the kit's colours and fonts stay as they were." : `The user ${answer === "timeout" ? "didn't answer" : "kept the kit as it is"}: its colours and fonts weren't changed. Don't put them in again in this turn; a reference's colours belong in style.`);
+          notes.push(
+            answer === "stopped"
+              ? "The turn was stopped: the kit's colours and fonts stay as they were."
+              : `The user ${answer === "timeout" ? "didn't answer" : "kept the kit as it is"}: its colours and fonts weren't changed. Don't put them in again in this turn; a reference's colours belong in style.`,
+          );
         }
       }
-      const saved = yield* Effect.tryPromise({ try: () => saveKit(dirs, kit), catch: (e) => e as Error }).pipe(Effect.map((k) => ({ ok: true as const, k })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
+      const saved = yield* Effect.tryPromise({ try: () => saveKit(dirs, kit), catch: (e) => e as Error }).pipe(
+        Effect.map((k) => ({ ok: true as const, k })),
+        Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+      );
       if (!saved.ok) return textResult(`Couldn't save the kit: ${saved.message}`, true);
       if (fresh && !all.active.kit) yield* Effect.promise(() => writeActive(v.dir, { kit: saved.k.id, skills: all.active.skills }).catch(() => {}));
       const what = args.style ? `Style guide written into ${saved.k.name}` : fresh ? `New kit ${saved.k.name}` : `Saved the kit ${saved.k.name}`;
       addCard(r, { type: "brand", text: what }, what);
-      return textResult({ saved: saved.k.id, scope: saved.k.scope === "global" ? "the user's library: every project can pick it" : "pinned to this project", kit: kitLines(saved.k, (yield* Effect.promise(() => readBrand(dirs))).files[saved.k.id] ?? {}).join("\n"), ...(fresh && !all.active.kit ? { note: "It's now this project's kit." } : {}), ...(notes.length ? { notes } : {}) });
+      return textResult({
+        saved: saved.k.id,
+        scope: saved.k.scope === "global" ? "the user's library: every project can pick it" : "pinned to this project",
+        kit: kitLines(saved.k, (yield* Effect.promise(() => readBrand(dirs))).files[saved.k.id] ?? {}).join("\n"),
+        ...(fresh && !all.active.kit ? { note: "It's now this project's kit." } : {}),
+        ...(notes.length ? { notes } : {}),
+      });
     });
 
   /** reference_frames (D190): a contact sheet of a file on disk that isn't imported. */
@@ -204,18 +275,39 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       if (/\.svg$/i.test(path)) {
         const [drawn] = yield* Effect.promise(() => logoPictures([{ slot: "mark", path }]));
         if (!drawn?.png) return textResult(`Couldn't draw ${shortName(path)}: ${drawn?.problem ?? "it isn't there"}.`, true);
-        return { content: [{ type: "text" as const, text: `The reference ${shortName(path)} (an SVG, drawn as a PNG on grey). Read its grammar (palette, type, layout), not its content.` }, { type: "image" as const, data: drawn.png.toString("base64"), mimeType: "image/png" }] };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `The reference ${shortName(path)} (an SVG, drawn as a PNG on grey). Read its grammar (palette, type, layout), not its content.`,
+            },
+            { type: "image" as const, data: drawn.png.toString("base64"), mimeType: "image/png" },
+          ],
+        };
       }
-      const probed = yield* mediaCore.probeMany([path]).pipe(Effect.map((list) => list[0]), Effect.catch(() => Effect.succeed(undefined)));
-      if (!probed || !probed.ok) return textResult(`Couldn't read ${shortName(path)}: ${probed && !probed.ok ? probed.message : "it isn't a media file Uncut can open"}.`, true);
+      const probed = yield* mediaCore.probeMany([path]).pipe(
+        Effect.map((list) => list[0]),
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
+      if (!probed || !probed.ok)
+        return textResult(`Couldn't read ${shortName(path)}: ${probed && !probed.ok ? probed.message : "it isn't a media file Uncut can open"}.`, true);
       const info = probed.info;
       if (info.kind === "audio") return textResult(`${shortName(path)} is a sound file, with no picture to read a style from.`, true);
       if (info.kind === "image") {
         const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
         const ext = path.toLowerCase().split(".").pop() ?? "";
         const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext];
-        if (!data || !mime || data.length > 5 * 1024 * 1024) return textResult(`${shortName(path)} is a picture Uncut can't hand over (${mime ? "over 5 MB" : "not PNG, JPEG, WebP or GIF"}).`, true);
-        return { content: [{ type: "text" as const, text: `The reference ${shortName(path)}, ${info.width ?? "?"}×${info.height ?? "?"}. Read its grammar (palette, type, layout, grain), not its content.` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
+        if (!data || !mime || data.length > 5 * 1024 * 1024)
+          return textResult(`${shortName(path)} is a picture Uncut can't hand over (${mime ? "over 5 MB" : "not PNG, JPEG, WebP or GIF"}).`, true);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `The reference ${shortName(path)}, ${info.width ?? "?"}×${info.height ?? "?"}. Read its grammar (palette, type, layout, grain), not its content.`,
+            },
+            { type: "image" as const, data: data.toString("base64"), mimeType: mime },
+          ],
+        };
       }
       const seconds = info.durationSeconds ?? 0;
       if (!seconds) return textResult(`${shortName(path)} has no known length.`, true);
@@ -223,14 +315,22 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       const times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * seconds);
       const grid = sheetLayout(count, info.width && info.height ? info.width / info.height : 16 / 9);
       const sheet = yield* exporter.mediaFrames(path, times, CELL_WIDTH, fps).pipe(
-        Effect.flatMap((pulled) => exporter.sheetImage(pulled.map((p, i) => ({ jpeg: p.jpeg, caption: `${i + 1}   ${clock(p.seconds)}` })), grid)),
+        Effect.flatMap((pulled) =>
+          exporter.sheetImage(
+            pulled.map((p, i) => ({ jpeg: p.jpeg, caption: `${i + 1}   ${clock(p.seconds)}` })),
+            grid,
+          ),
+        ),
         Effect.map((jpeg) => ({ ok: true as const, jpeg })),
         Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
       );
       if (!sheet.ok) return textResult(`Couldn't make the sheet: ${sheet.message}`, true);
       return {
         content: [
-          { type: "text" as const, text: `The reference ${shortName(path)}: ${seconds.toFixed(1)} s, ${info.width ?? "?"}×${info.height ?? "?"}, ${count} frames spread evenly (cell n at ${times.map((t) => clock(t)).join(", ")}). Read its grammar (palette as hex, type, shot lengths, transitions, camera, grain), never its content; then brand_write the style.` },
+          {
+            type: "text" as const,
+            text: `The reference ${shortName(path)}: ${seconds.toFixed(1)} s, ${info.width ?? "?"}×${info.height ?? "?"}, ${count} frames spread evenly (cell n at ${times.map((t) => clock(t)).join(", ")}). Read its grammar (palette as hex, type, shot lengths, transitions, camera, grain), never its content; then brand_write the style.`,
+          },
           { type: "image" as const, data: sheet.jpeg.toString("base64"), mimeType: "image/jpeg" },
         ],
       };
@@ -243,19 +343,52 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       const fps = project.canvas.fps;
       const audio = project.tracks.filter((t) => t.kind === "audio").flatMap((t) => t.items.filter((i) => i.type === "audio" && typeof i.media === "string"));
       const item = typeof args.item === "string" ? audio.find((i) => i.id === args.item) : [...audio].sort((a, b) => b.duration - a.duration)[0];
-      if (!item) return textResult(typeof args.item === "string" ? `There's no audio item "${args.item}" on an audio track.` : "There's no music on the timeline yet: add it (library_add or media_import, then timeline_edit) first.", true);
+      if (!item)
+        return textResult(
+          typeof args.item === "string"
+            ? `There's no audio item "${args.item}" on an audio track.`
+            : "There's no music on the timeline yet: add it (library_add or media_import, then timeline_edit) first.",
+          true,
+        );
       const m = project.media.find((x) => x.id === item.media);
       if (!m) return textResult(`The media of ${item.id} is missing.`, true);
       const range = args.range as { start?: unknown; end?: unknown } | undefined;
-      if (range !== undefined && (typeof range !== "object" || !Number.isInteger(range.start) || !Number.isInteger(range.end))) return textResult("range is { start, end } in timeline frames.", true);
+      if (range !== undefined && (typeof range !== "object" || !Number.isInteger(range.start) || !Number.isInteger(range.end)))
+        return textResult("range is { start, end } in timeline frames.", true);
       const snap = Array.isArray(args.snap) ? args.snap.filter((f): f is number => Number.isInteger(f) && f >= 0).slice(0, 60) : undefined;
       const [answer] = yield* requestAndWait([{ target: targetOf(v.dir, m, fps), analyzer: "beats" }]);
       const outcome = answer!.outcome;
-      if (!outcome) return textResult({ item: item.id, beats: pendingOut(answer!.jobId), note: "Finding the beats is still running: call beat_grid again with the same arguments." });
-      if (outcome.state !== "done") return textResult(`Couldn't find the beats of ${m.name}: ${outcome.state === "failed" ? outcome.error : cancelledNote}`, true);
+      if (!outcome)
+        return textResult({
+          item: item.id,
+          beats: pendingOut(answer!.jobId),
+          note: "Finding the beats is still running: call beat_grid again with the same arguments.",
+        });
+      if (outcome.state !== "done")
+        return textResult(`Couldn't find the beats of ${m.name}: ${outcome.state === "failed" ? outcome.error : cancelledNote}`, true);
       const result = outcome.result as BeatsResult;
-      if (!result.hasAudio || !result.bpm) return textResult({ item: item.id, bpm: null, note: "No steady beat in this sound (speech, ambience or silence): cut on the picture and the words instead." });
-      return textResult(beatGrid(result, { id: item.id, media: m.id, start: (layout(project).starts.get(item.id) ?? item.start ?? 0), in: item.in ?? 0, duration: item.duration, speed: item.speed ?? 1 } satisfies GridItem, fps, range as { start: number; end: number } | undefined, snap));
+      if (!result.hasAudio || !result.bpm)
+        return textResult({
+          item: item.id,
+          bpm: null,
+          note: "No steady beat in this sound (speech, ambience or silence): cut on the picture and the words instead.",
+        });
+      return textResult(
+        beatGrid(
+          result,
+          {
+            id: item.id,
+            media: m.id,
+            start: layout(project).starts.get(item.id) ?? item.start ?? 0,
+            in: item.in ?? 0,
+            duration: item.duration,
+            speed: item.speed ?? 1,
+          } satisfies GridItem,
+          fps,
+          range as { start: number; end: number } | undefined,
+          snap,
+        ),
+      );
     });
 
   /** The shader effects the agent can name (D213): allowed plugins', the project's shaders/ folder's, and those clips carry. */

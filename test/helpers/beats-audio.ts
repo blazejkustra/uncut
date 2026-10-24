@@ -87,7 +87,11 @@ export function writeWav(path: string, samples: Float64Array, rate = RATE) {
  * them), over a noise floor of `floor` (0: digital silence between hits). `swing` places the
  * off-beat hat (0.5 straight, 2/3 swung).
  */
-export function pop(bpm: number, seconds: number, { floor = 0, swing = 0.5, rate = RATE, seed = 5 }: { floor?: number; swing?: number; rate?: number; seed?: number } = {}) {
+export function pop(
+  bpm: number,
+  seconds: number,
+  { floor = 0, swing = 0.5, rate = RATE, seed = 5 }: { floor?: number; swing?: number; rate?: number; seed?: number } = {},
+) {
   const rnd = noise(seed);
   const buf = new Float64Array(Math.round(seconds * rate));
   for (let i = 0; i < buf.length; i++) buf[i] = floor * rnd();

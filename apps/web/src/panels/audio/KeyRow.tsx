@@ -6,7 +6,17 @@ import { actions, useApp } from "../../state/store.ts";
  * A missing key or client ID, pasted right here (D99: it goes to the server once, is kept in the
  * Keychain and never comes back), as the Generate tab does. Used for Freesound and ElevenLabs (D250).
  */
-export function KeyRow({ provider, text, placeholder, link }: { provider: KeyProvider; text: string; placeholder: string; link?: { readonly href: string; readonly label: string } | undefined }) {
+export function KeyRow({
+  provider,
+  text,
+  placeholder,
+  link,
+}: {
+  provider: KeyProvider;
+  text: string;
+  placeholder: string;
+  link?: { readonly href: string; readonly label: string } | undefined;
+}) {
   const app = useApp();
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false);
@@ -44,7 +54,12 @@ export function KeyRow({ provider, text, placeholder, link }: { provider: KeyPro
             if (e.key === "Enter") void save();
           }}
         />
-        <button className="btn" data-testid={`lib-key-save-${provider}`} disabled={!key.trim() || saving || app.connection !== "connected"} onClick={() => void save()}>
+        <button
+          className="btn"
+          data-testid={`lib-key-save-${provider}`}
+          disabled={!key.trim() || saving || app.connection !== "connected"}
+          onClick={() => void save()}
+        >
           Save
         </button>
       </div>

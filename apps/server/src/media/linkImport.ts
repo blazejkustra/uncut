@@ -69,7 +69,8 @@ export const layer = Layer.effect(
     const controllers = new Map<string, AbortController>();
     yield* Effect.addFinalizer(() => Effect.sync(() => controllers.forEach((c) => c.abort())));
 
-    const update = (id: string, patch: Partial<LinkJob>) => Effect.runSync(SubscriptionRef.update(jobsRef, (jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j))));
+    const update = (id: string, patch: Partial<LinkJob>) =>
+      Effect.runSync(SubscriptionRef.update(jobsRef, (jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j))));
 
     /** The plugin's status (installed and allowed: "ready"), after a fresh scan; undefined when it isn't installed. */
     const pluginStatus = Effect.map(plugins.list, (list) => list.find((p) => p.id === LINK_PLUGIN_ID)?.status);
@@ -78,7 +79,11 @@ export const layer = Layer.effect(
       await config.shellReady;
       return ytDlpSearchPath(process.env);
     });
-    const textOf = (r: { readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }> }) => r.content.flatMap((c) => (c.type === "text" && c.text ? [c.text] : [])).join(" ").trim();
+    const textOf = (r: { readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }> }) =>
+      r.content
+        .flatMap((c) => (c.type === "text" && c.text ? [c.text] : []))
+        .join(" ")
+        .trim();
 
     const check: LinkImportShape["check"] = Effect.gen(function* () {
       const refused = pluginRefusal(yield* pluginStatus);
@@ -87,7 +92,11 @@ export const layer = Layer.effect(
       const out = (r.structured ?? {}) as { found?: unknown; path?: unknown; version?: unknown };
       if (r.isError) return { found: false, problem: textOf(r) || "Import from link couldn't look for yt-dlp." };
       if (out.found !== true) return { found: false };
-      return { found: true, ...(typeof out.path === "string" ? { path: out.path } : {}), ...(typeof out.version === "string" ? { version: out.version.slice(0, 32) } : {}) };
+      return {
+        found: true,
+        ...(typeof out.path === "string" ? { path: out.path } : {}),
+        ...(typeof out.version === "string" ? { version: out.version.slice(0, 32) } : {}),
+      };
     });
 
     /** The project's media/links/, inside the project by realpath (a symlinked media/ pointing out is refused). */
@@ -111,7 +120,17 @@ export const layer = Layer.effect(
         await Promise.all(files.filter((f) => f.startsWith(`${stem}.`)).map((f) => rm(join(folder, f), { force: true, recursive: true })));
       });
 
-    const run = (id: string, request: { readonly url: string; readonly kind: LinkRequest["kind"]; readonly quality: NonNullable<LinkRequest["quality"]>; readonly drop?: LinkRequest["drop"] }, target: { readonly openId: number; readonly dir: string }, signal: AbortSignal) =>
+    const run = (
+      id: string,
+      request: {
+        readonly url: string;
+        readonly kind: LinkRequest["kind"];
+        readonly quality: NonNullable<LinkRequest["quality"]>;
+        readonly drop?: LinkRequest["drop"];
+      },
+      target: { readonly openId: number; readonly dir: string },
+      signal: AbortSignal,
+    ) =>
       Effect.gen(function* () {
         const failed = (message: string) => new LinkError({ reason: "failed", message });
         const folder = yield* linksFolder(target.dir);
@@ -151,7 +170,9 @@ export const layer = Layer.effect(
             const real = await realpath(isAbsolute(out.file) ? out.file : join(folder, out.file)).catch(() => undefined);
             if (real && ours(real) && (await stat(real).catch(() => undefined))?.isFile()) return real;
           }
-          const files = (await readdir(folder).catch(() => [] as Array<string>)).filter((f) => f.startsWith(`${stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f));
+          const files = (await readdir(folder).catch(() => [] as Array<string>)).filter(
+            (f) => f.startsWith(`${stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f),
+          );
           return files.length === 1 ? join(folder, files[0]!) : undefined;
         });
         if (!made) {
@@ -179,8 +200,17 @@ export const layer = Layer.effect(
         update(id, { phase: "importing", status: "Adding it to Media…", progress: 1 });
         const open = Effect.runSync(projects.view);
         const names = new Set(open && open.openId === target.openId ? open.session.project.media.map((m) => m.name) : []);
-        const source = { module: "import.link", url: request.url, ...(title ? { title } : {}), kind: request.kind, ...(request.kind === "video" ? { quality: request.quality } : {}), tool: "yt-dlp" };
-        const drop = request.drop ? { frame: Math.max(0, Math.round(request.drop.frame)), ...(request.drop.track ? { track: request.drop.track } : {}) } : undefined;
+        const source = {
+          module: "import.link",
+          url: request.url,
+          ...(title ? { title } : {}),
+          kind: request.kind,
+          ...(request.kind === "video" ? { quality: request.quality } : {}),
+          tool: "yt-dlp",
+        };
+        const drop = request.drop
+          ? { frame: Math.max(0, Math.round(request.drop.frame)), ...(request.drop.track ? { track: request.drop.track } : {}) }
+          : undefined;
         const imported = yield* media
           .importCapture({ openId: target.openId, dir: target.dir, path: final, name: linkMediaName(title, names), source, drop })
           .pipe(Effect.mapError((e) => failed(`It was downloaded but couldn't be added: ${e.message}`)));
@@ -201,19 +231,39 @@ export const layer = Layer.effect(
         const checked = checkLink(request.url);
         if ("problem" in checked) return yield* new LinkError({ reason: "bad-url", message: checked.problem });
         const tool = yield* check;
-        if (!tool.found) return yield* new LinkError(tool.problem ? { reason: "failed", message: tool.problem } : { reason: "no-tool", message: "yt-dlp isn't installed. Install it with: brew install yt-dlp" });
+        if (!tool.found)
+          return yield* new LinkError(
+            tool.problem
+              ? { reason: "failed", message: tool.problem }
+              : { reason: "no-tool", message: "yt-dlp isn't installed. Install it with: brew install yt-dlp" },
+          );
         const id = randomUUID();
         const quality = request.quality ?? DEFAULT_LINK_QUALITY;
-        const job: LinkJob = { id, projectDir: open.dir, url: checked.url, kind: request.kind, quality, phase: "running", status: "Starting yt-dlp…", startedAt: new Date().toISOString() };
+        const job: LinkJob = {
+          id,
+          projectDir: open.dir,
+          url: checked.url,
+          kind: request.kind,
+          quality,
+          phase: "running",
+          status: "Starting yt-dlp…",
+          startedAt: new Date().toISOString(),
+        };
         const live = (j: LinkJob) => j.phase === "running" || j.phase === "importing";
         yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter(live), ...jobs.filter((j) => !live(j)).slice(-MAX_JOBS_KEPT), job]);
         const controller = new AbortController();
         controllers.set(id, controller);
         yield* Effect.forkIn(
-          run(id, { url: checked.url, kind: request.kind, quality, ...(request.drop ? { drop: request.drop } : {}) }, { openId: open.openId, dir: open.dir }, controller.signal).pipe(
+          run(
+            id,
+            { url: checked.url, kind: request.kind, quality, ...(request.drop ? { drop: request.drop } : {}) },
+            { openId: open.openId, dir: open.dir },
+            controller.signal,
+          ).pipe(
             Effect.match({
               onSuccess: (entry) => update(id, { phase: "done", status: undefined, mediaId: entry.id, name: entry.name }),
-              onFailure: (e) => update(id, controller.signal.aborted ? { phase: "cancelled", status: undefined } : { phase: "failed", status: undefined, error: e.message }),
+              onFailure: (e) =>
+                update(id, controller.signal.aborted ? { phase: "cancelled", status: undefined } : { phase: "failed", status: undefined, error: e.message }),
             }),
             Effect.ensuring(Effect.sync(() => controllers.delete(id))),
           ),

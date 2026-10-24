@@ -27,11 +27,25 @@ after(() => {
 });
 
 const lib = (opts: { musicRoot?: string; dataDir?: string } = {}) =>
-  soundLibrary({ sfxDir: "assets/sfx", dataDir: opts.dataDir ?? join(root, "data"), freesoundKey: async () => undefined, musicRoot: opts.musicRoot, probeSeconds: async () => 1 });
+  soundLibrary({
+    sfxDir: "assets/sfx",
+    dataDir: opts.dataDir ?? join(root, "data"),
+    freesoundKey: async () => undefined,
+    musicRoot: opts.musicRoot,
+    probeSeconds: async () => 1,
+  });
 
 const plist = (tracks: Array<Record<string, string | number | boolean>>) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Major Version</key><integer>1</integer><key>Tracks</key><dict>\n${tracks
-    .map((t, i) => `<key>${100 + i}</key><dict>${Object.entries(t).map(([k, v]) => `<key>${k}</key>${typeof v === "boolean" ? `<${v}/>` : typeof v === "number" ? `<integer>${v}</integer>` : `<string>${v.replace(/&/g, "&#38;")}</string>`}`).join("")}</dict>`)
+    .map(
+      (t, i) =>
+        `<key>${100 + i}</key><dict>${Object.entries(t)
+          .map(
+            ([k, v]) =>
+              `<key>${k}</key>${typeof v === "boolean" ? `<${v}/>` : typeof v === "number" ? `<integer>${v}</integer>` : `<string>${v.replace(/&/g, "&#38;")}</string>`}`,
+          )
+          .join("")}</dict>`,
+    )
     .join("\n")}\n</dict><key>Playlists</key><array><dict><key>Name</key><string>Library</string></dict></array></dict></plist>\n`;
 
 test("the Music library: its XML (DRM-free files only, counted), else its media folder; never the real one in a test", async () => {
@@ -47,7 +61,16 @@ test("the Music library: its XML (DRM-free files only, counted), else its media 
   writeFileSync(join(songs, "Locked.m4p"), mp3);
   const loc = (f: string) => pathToFileURL(join(songs, f)).href.replace("file:///", "file://localhost/");
   const tracks: Array<Record<string, string | number | boolean>> = [
-    { "Track ID": 1, Name: "Yellow", Artist: "A Band", Album: "Parachutes", Kind: "Purchased AAC audio file", Size: mp3.length, "Track Type": "File", Location: loc("Yellow.m4a") },
+    {
+      "Track ID": 1,
+      Name: "Yellow",
+      Artist: "A Band",
+      Album: "Parachutes",
+      Kind: "Purchased AAC audio file",
+      Size: mp3.length,
+      "Track Type": "File",
+      Location: loc("Yellow.m4a"),
+    },
     { "Track ID": 2, Name: "Fix You & Me", Artist: "A Band", Album: "X&Y", Kind: "MPEG audio file", "Track Type": "File", Location: loc("Fix You.mp3") },
     { "Track ID": 3, Name: "Streamed", Artist: "Someone", Kind: "Apple Music AAC audio file", "Apple Music": true, "Track Type": "Remote" },
     { "Track ID": 4, Name: "Old DRM", Artist: "Someone", Kind: "Protected AAC audio file", Protected: true, "Track Type": "File", Location: loc("Locked.m4p") },
@@ -65,7 +88,10 @@ test("the Music library: its XML (DRM-free files only, counted), else its media 
   const music = listed.find((f) => f.system === "music")!;
   assert.equal(music.name, "Music library");
   assert.equal(music.path, join(home, "Music", "Library.xml"));
-  assert.deepEqual(music.sounds.map((s) => s.name), ["Yellow", "Fix You & Me"]);
+  assert.deepEqual(
+    music.sounds.map((s) => s.name),
+    ["Yellow", "Fix You & Me"],
+  );
   assert.equal(music.skipped, 2, "Apple Music and the protected song (the film isn't music)");
   assert.equal(music.sounds[0]!.rel, "A Band/Parachutes/Yellow.m4a", "artist and album as words to search by");
   // Added: copied into media/ with its own name and type.
@@ -89,7 +115,10 @@ test("the Music library: its XML (DRM-free files only, counted), else its media 
   writeFileSync(join(media, "Artist", "Album", "02 Locked.m4p"), mp3);
   writeFileSync(join(media, "Apple Music", "X", "Sub.m4a"), mp3);
   const f = await lib({ musicRoot: plain, dataDir: join(root, "data-f") }).folders.add(MUSIC_LIBRARY_PATH);
-  assert.deepEqual(f[0]!.sounds.map((s) => s.rel), ["Artist/Album/01 Song.m4a"]);
+  assert.deepEqual(
+    f[0]!.sounds.map((s) => s.rel),
+    ["Artist/Album/01 Song.m4a"],
+  );
   assert.equal(f[0]!.path, media);
 
   // None at all: listed as missing.

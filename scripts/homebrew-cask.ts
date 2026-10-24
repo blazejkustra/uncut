@@ -89,7 +89,10 @@ Renders Uncut's Homebrew cask (Casks/uncut.rb in ${TAP}) for a published release
   --out      write the cask there instead of printing it`;
 
 async function main(argv: Array<string>) {
-  const { values } = parseArgs({ args: argv, options: { version: { type: "string" }, zip: { type: "string" }, sha256: { type: "string" }, out: { type: "string" }, help: { type: "boolean" } } });
+  const { values } = parseArgs({
+    args: argv,
+    options: { version: { type: "string" }, zip: { type: "string" }, sha256: { type: "string" }, out: { type: "string" }, help: { type: "boolean" } },
+  });
   if (values.help) return void console.log(HELP);
   if (!values.version || !values.zip === !values.sha256) {
     console.error(HELP);

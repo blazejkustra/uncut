@@ -26,10 +26,15 @@ addEventListener("message", (e: MessageEvent) => {
   if (!d) return;
   const target = e.source as Window;
   // "*": an opaque origin can't be named; the desktop keeps the frame on its graphic (allowFrameNavigation).
-  const reply = (r: { blob: Blob; full?: { width: number; height: number } } | { error: string }) => target.postMessage({ uncut: "media-reply", seq: d.seq, ...r }, "*");
+  const reply = (r: { blob: Blob; full?: { width: number; height: number } } | { error: string }) =>
+    target.postMessage({ uncut: "media-reply", seq: d.seq, ...r }, "*");
   const url = graphicMediaUrl(d.id, num(d.t) ?? 0, num(d.w) || undefined, num(d.h) || undefined, d.p === true && proxiesOn());
   if (!url) return reply({ error: "not connected to Uncut's server yet" });
   void fetch(url)
-    .then(async (r) => (r.ok ? reply({ blob: await r.blob(), ...fullOf(r.headers.get("x-uncut-full")) }) : reply({ error: (await r.text()) || `the media couldn't be loaded (${r.status})` })))
+    .then(async (r) =>
+      r.ok
+        ? reply({ blob: await r.blob(), ...fullOf(r.headers.get("x-uncut-full")) })
+        : reply({ error: (await r.text()) || `the media couldn't be loaded (${r.status})` }),
+    )
     .catch((error: Error) => reply({ error: error.message }));
 });

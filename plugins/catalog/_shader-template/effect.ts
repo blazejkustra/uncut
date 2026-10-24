@@ -33,7 +33,10 @@ import tgpu from "typegpu";
 import * as d from "typegpu/data";
 
 /** Duotone: the picture's light mapped between two colours, with a slow shimmer. */
-export const duotone = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ amount: d.f32, dark: d.vec3f, light: d.vec3f, shimmer: d.f32 })], d.vec4f)`(uv, t, size, p) {
+export const duotone = tgpu.fn(
+  [d.vec2f, d.f32, d.vec2f, d.struct({ amount: d.f32, dark: d.vec3f, light: d.vec3f, shimmer: d.f32 })],
+  d.vec4f,
+)`(uv, t, size, p) {
   let c = frame(uv).rgb;
   let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));
   let wave = 0.04 * p.shimmer * sin(uv.y * 12.0 + t * 3.0);

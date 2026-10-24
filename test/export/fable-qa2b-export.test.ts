@@ -18,8 +18,15 @@ import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skipServer = !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP) ? "server, desktop or media core not built (run pnpm build)" : hasFfmpeg ? false : "needs ffmpeg";
-const localEncoders = hasFfmpeg ? new Set([...execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }).matchAll(/^\s*[VAS][\w.]{5}\s+(\S+)/gm)].map((m) => m[1]!)) : new Set<string>();
+const skipServer =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) || !existsSync(DESKTOP)
+    ? "server, desktop or media core not built (run pnpm build)"
+    : hasFfmpeg
+      ? false
+      : "needs ffmpeg";
+const localEncoders = hasFfmpeg
+  ? new Set([...execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }).matchAll(/^\s*[VAS][\w.]{5}\s+(\S+)/gm)].map((m) => m[1]!))
+  : new Set<string>();
 
 const VT: Caps = { encoders: new Set(["h264_videotoolbox", "hevc_videotoolbox", "libx264"]), videotoolboxDecode: true, major: 8 };
 const SW: Caps = { encoders: new Set(["libx264", "libx265"]), videotoolboxDecode: false, major: 8 };
@@ -71,15 +78,37 @@ let server: Server;
 let client: Client;
 let jobs: ReturnType<Client["subscribe"]>;
 const job = (id: string) => jobs.values.at(-1)?.find((j: { id: string }) => j.id === id);
-const finished = (id: string, timeout = 120000) => jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), timeout).then(() => job(id));
+const finished = (id: string, timeout = 120000) =>
+  jobs.until((list) => list.some((j: any) => j.id === id && ["done", "failed", "cancelled"].includes(j.phase)), timeout).then(() => job(id));
 
 /** The fixture's picture clips only (no text, so no rasteriser: quick). */
 function plainProject(dir = join(root, "media")): Project {
   const p = exportProject(dir);
-  return { ...p, tracks: p.tracks.filter((t) => t.id === "main" || t.id === "audio").map((t) => (t.id === "main" ? { ...t, items: t.items.filter((i) => i.type === "clip") } : t)) };
+  return {
+    ...p,
+    tracks: p.tracks
+      .filter((t) => t.id === "main" || t.id === "audio")
+      .map((t) => (t.id === "main" ? { ...t, items: t.items.filter((i) => i.type === "clip") } : t)),
+  };
 }
 const probe = (file: string) => {
-  const out = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,codec_tag_string,width,height,r_frame_rate,nb_frames,bit_rate:format=duration", "-of", "json", file], { encoding: "utf8" })) as {
+  const out = JSON.parse(
+    execFileSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,codec_tag_string,width,height,r_frame_rate,nb_frames,bit_rate:format=duration",
+        "-of",
+        "json",
+        file,
+      ],
+      { encoding: "utf8" },
+    ),
+  ) as {
     streams: Array<{ codec_name: string; codec_tag_string: string; width: number; height: number; r_frame_rate: string; nb_frames: string; bit_rate?: string }>;
     format: { duration: string };
   };
@@ -120,27 +149,35 @@ test("F4 on the server: High is H.264 at the canvas size", { skip: skipServer, t
   assert.equal(j.codec, "h264");
 });
 
-test("F4 on the server: HEVC when chosen in Advanced", { skip: skipServer || (canHevc({ encoders: localEncoders }) ? false : "this ffmpeg has no HEVC encoder"), timeout: 120000 }, async () => {
-  const { job: j, probe: p } = await exportWith("Hevc", { quality: "high", video: { codec: "hevc" } });
-  assert.equal(p.codec_name, "hevc");
-  assert.equal(p.codec_tag_string, "hvc1");
-  assert.equal(j.codec, "hevc");
-});
+test(
+  "F4 on the server: HEVC when chosen in Advanced",
+  { skip: skipServer || (canHevc({ encoders: localEncoders }) ? false : "this ffmpeg has no HEVC encoder"), timeout: 120000 },
+  async () => {
+    const { job: j, probe: p } = await exportWith("Hevc", { quality: "high", video: { codec: "hevc" } });
+    assert.equal(p.codec_name, "hevc");
+    assert.equal(p.codec_tag_string, "hvc1");
+    assert.equal(j.codec, "hevc");
+  },
+);
 
-test("F4 on the server: a size, frame rate and bitrate override is what the file gets; bad values are refused", { skip: skipServer, timeout: 120000 }, async () => {
-  const { job: j, probe: p } = await exportWith("Small", { quality: "standard", video: { shortSide: 720, fps: 24, bitrateMbps: 2 } });
-  assert.equal(p.codec_name, "h264");
-  assert.deepEqual([p.width, p.height, p.r_frame_rate], [1280, 720, "24/1"]);
-  const plan = planExport(plainProject(), { mediaPath: (m) => m.path, width: 1280, height: 720 });
-  assert.ok(!("problem" in plan));
-  const seconds = plan.frames / plan.fps;
-  assert.ok(Math.abs(p.duration - seconds) < 0.1, `${p.duration} vs ${seconds}`);
-  assert.equal(Number(p.nb_frames), Math.round(seconds * 24));
-  assert.deepEqual([j.width, j.height, j.fps, j.bitrateMbps], [1280, 720, 24, 2]);
-  // VideoToolbox aims at the bitrate; well under the preset's (3.1 Mb/s at 720p24 would be Standard's own).
-  if (p.bit_rate) assert.ok(Number(p.bit_rate) < 3.5e6, `bit rate ${p.bit_rate}`);
-  for (const video of [{ fps: 0 }, { bitrateMbps: 9000 }, { shortSide: 4 }]) {
-    const refused = await client.fail("export.start", { output: join(root, "out", "Bad.mp4"), quality: "standard", loudness: "off", video });
-    assert.equal((refused as { reason: string }).reason, "invalid-settings", JSON.stringify(video));
-  }
-});
+test(
+  "F4 on the server: a size, frame rate and bitrate override is what the file gets; bad values are refused",
+  { skip: skipServer, timeout: 120000 },
+  async () => {
+    const { job: j, probe: p } = await exportWith("Small", { quality: "standard", video: { shortSide: 720, fps: 24, bitrateMbps: 2 } });
+    assert.equal(p.codec_name, "h264");
+    assert.deepEqual([p.width, p.height, p.r_frame_rate], [1280, 720, "24/1"]);
+    const plan = planExport(plainProject(), { mediaPath: (m) => m.path, width: 1280, height: 720 });
+    assert.ok(!("problem" in plan));
+    const seconds = plan.frames / plan.fps;
+    assert.ok(Math.abs(p.duration - seconds) < 0.1, `${p.duration} vs ${seconds}`);
+    assert.equal(Number(p.nb_frames), Math.round(seconds * 24));
+    assert.deepEqual([j.width, j.height, j.fps, j.bitrateMbps], [1280, 720, 24, 2]);
+    // VideoToolbox aims at the bitrate; well under the preset's (3.1 Mb/s at 720p24 would be Standard's own).
+    if (p.bit_rate) assert.ok(Number(p.bit_rate) < 3.5e6, `bit rate ${p.bit_rate}`);
+    for (const video of [{ fps: 0 }, { bitrateMbps: 9000 }, { shortSide: 4 }]) {
+      const refused = await client.fail("export.start", { output: join(root, "out", "Bad.mp4"), quality: "standard", loudness: "off", video });
+      assert.equal((refused as { reason: string }).reason, "invalid-settings", JSON.stringify(video));
+    }
+  },
+);

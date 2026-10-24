@@ -26,7 +26,10 @@ function run(n: number, change?: (i: number, frame: number, l: Record<string, La
 
 test("a clean run counts nothing", () => {
   const c = countGlitches(run(400), layers, { fps: FPS });
-  assert.deepEqual({ ...c, worstFrameMs: 0, details: [] }, { flash: 0, late: 0, lookFlash: 0, stale: 0, frozen: 0, order: 0, longFrames: 0, worstFrameMs: 0, details: [] });
+  assert.deepEqual(
+    { ...c, worstFrameMs: 0, details: [] },
+    { flash: 0, late: 0, lookFlash: 0, stale: 0, frozen: 0, order: 0, longFrames: 0, worstFrameMs: 0, details: [] },
+  );
 });
 
 test("a layer that blanks for a few frames is one flash; one that never shows is late", () => {
@@ -44,7 +47,11 @@ test("a layer that blanks for a few frames is one flash; one that never shows is
 });
 
 test("effects lost after they showed is a look flash", () => {
-  const c = countGlitches(run(300, (i, _f, l) => i >= 150 && i < 160 && (l.v1 = { ...l.v1!, f: false })), layers, { fps: FPS });
+  const c = countGlitches(
+    run(300, (i, _f, l) => i >= 150 && i < 160 && (l.v1 = { ...l.v1!, f: false })),
+    layers,
+    { fps: FPS },
+  );
   assert.equal(c.lookFlash, 1);
   assert.equal(c.flash, 0);
 });
@@ -72,7 +79,18 @@ test("layers stacked against their tracks count once per sample; long frames cou
 });
 
 test("paused, nothing is stale or frozen; the first moments of playback aren't judged", () => {
-  assert.equal(countGlitches(run(200, (_i, _f, l) => (l.v2 = { ...l.v2!, mt: 0, p: 0 }), false), layers, { fps: FPS }).stale, 0);
-  const c = countGlitches(run(400, (i, frame, l) => i < 20 && (l.v2 = { ...l.v2!, mt: (30 + frame) / FPS - 1 })), layers, { fps: FPS });
+  assert.equal(
+    countGlitches(
+      run(200, (_i, _f, l) => (l.v2 = { ...l.v2!, mt: 0, p: 0 }), false),
+      layers,
+      { fps: FPS },
+    ).stale,
+    0,
+  );
+  const c = countGlitches(
+    run(400, (i, frame, l) => i < 20 && (l.v2 = { ...l.v2!, mt: (30 + frame) / FPS - 1 })),
+    layers,
+    { fps: FPS },
+  );
   assert.equal(c.stale, 0);
 });

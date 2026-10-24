@@ -25,9 +25,17 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `issue72-${name}.png`);
 
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const item = (id: string): Item => onDisk().tracks.flatMap((t) => t.items).find((i) => i.id === id)!;
+const item = (id: string): Item =>
+  onDisk()
+    .tracks.flatMap((t) => t.items)
+    .find((i) => i.id === id)!;
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
-const waitRevision = (n: number) => page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) >= r, { timeout: 10000 }, n);
+const waitRevision = (n: number) =>
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) >= r,
+    { timeout: 10000 },
+    n,
+  );
 const boxOf = async (selector: string) => {
   const b = await (await page.$(selector))?.boundingBox();
   assert.ok(b, `no box for ${selector}`);
@@ -41,7 +49,13 @@ async function drag(from: { x: number; y: number }, dx: number, dy: number) {
   await page.mouse.up();
 }
 /** The drawn text's box in canvas px (laid out at canvas size). */
-const drawn = () => page.$eval('[data-testid=preview-text] .pv-text[data-item="title"]', (el) => ({ x: (el as HTMLElement).offsetLeft, y: (el as HTMLElement).offsetTop, w: (el as HTMLElement).offsetWidth, h: (el as HTMLElement).offsetHeight }));
+const drawn = () =>
+  page.$eval('[data-testid=preview-text] .pv-text[data-item="title"]', (el) => ({
+    x: (el as HTMLElement).offsetLeft,
+    y: (el as HTMLElement).offsetTop,
+    w: (el as HTMLElement).offsetWidth,
+    h: (el as HTMLElement).offsetHeight,
+  }));
 
 before(async () => {
   if (skip) return;
@@ -54,7 +68,22 @@ before(async () => {
     canvas: { width: 1280, height: 720, fps: 30, background: "#202020" },
     media: [],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [{ id: "title", type: "text", start: 0, duration: 90, text: "Resize me", transform: { x: 200, y: 200 }, style: { preset: "text.title", size: 80, weight: 700 } }] },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [
+          {
+            id: "title",
+            type: "text",
+            start: 0,
+            duration: 90,
+            text: "Resize me",
+            transform: { x: 200, y: 200 },
+            style: { preset: "text.title", size: 80, weight: 700 },
+          },
+        ],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: [] },
     ],
   } as Project);
@@ -79,7 +108,7 @@ test("issue #72: a text's corner handles resize it (font size), one undoable edi
   const start = await drawn();
   // A click on the text selects it; its corners now take presses.
   await page.mouse.click(at({ x: start.x + start.w / 2, y: start.y + start.h / 2 }).x, at({ x: start.x + start.w / 2, y: start.y + start.h / 2 }).y);
-  await page.waitForSelector('[data-testid=text-handle][data-text-handle=se]');
+  await page.waitForSelector("[data-testid=text-handle][data-text-handle=se]");
   const events = await page.$eval("[data-testid=text-handle][data-text-handle=se]", (el) => getComputedStyle(el).pointerEvents);
   assert.equal(events, "auto", "the corner takes presses");
   await page.screenshot({ path: out("selected") });
@@ -100,7 +129,7 @@ test("issue #72: a text's corner handles resize it (font size), one undoable edi
   await page.screenshot({ path: out("bigger") });
 
   // The top-left corner in: smaller, the bottom-right corner kept (within a few px of text layout).
-  await page.waitForSelector('[data-testid=text-handle][data-text-handle=nw]');
+  await page.waitForSelector("[data-testid=text-handle][data-text-handle=nw]");
   const nw = await boxOf("[data-testid=text-handle][data-text-handle=nw]");
   r = await revision();
   await drag({ x: nw.x + nw.width / 2, y: nw.y + nw.height / 2 }, (bigger.w / 2) * k, (bigger.h / 2) * k);
@@ -109,7 +138,10 @@ test("issue #72: a text's corner handles resize it (font size), one undoable edi
   it = item("title");
   const smaller = await drawn();
   assert.ok(it.style!.size! < 80, `size ${it.style!.size} (smaller than 80)`);
-  assert.ok(Math.abs(smaller.x + smaller.w - (bigger.x + bigger.w)) <= 8 && Math.abs(smaller.y + smaller.h - (bigger.y + bigger.h)) <= 8, `the bottom-right corner stays: ${JSON.stringify(bigger)} → ${JSON.stringify(smaller)}`);
+  assert.ok(
+    Math.abs(smaller.x + smaller.w - (bigger.x + bigger.w)) <= 8 && Math.abs(smaller.y + smaller.h - (bigger.y + bigger.h)) <= 8,
+    `the bottom-right corner stays: ${JSON.stringify(bigger)} → ${JSON.stringify(smaller)}`,
+  );
   await page.screenshot({ path: out("smaller") });
 
   // ⌘Z: back to 120 in one step.
@@ -120,7 +152,10 @@ test("issue #72: a text's corner handles resize it (font size), one undoable edi
   await waitRevision(r + 1);
   await sleep(300);
   it = item("title");
-  assert.ok(Math.abs(it.style!.size! - 120) <= 3 && it.transform!.x === 200 && it.transform!.y === 200, `undone to ${JSON.stringify({ style: it.style, transform: it.transform })}`);
+  assert.ok(
+    Math.abs(it.style!.size! - 120) <= 3 && it.transform!.x === 200 && it.transform!.y === 200,
+    `undone to ${JSON.stringify({ style: it.style, transform: it.transform })}`,
+  );
 
   // A press on the text itself still moves it (not a resize).
   const now = await drawn();

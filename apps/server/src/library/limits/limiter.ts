@@ -38,7 +38,12 @@ export class Limiter {
     return limit;
   }
   /** What the source reported: requests left this minute / today (0 blocks), or a 429's Retry-After. */
-  report(left: { readonly minute?: number | undefined; readonly day?: number | undefined; readonly retryAfter?: number | undefined; readonly refused?: boolean }) {
+  report(left: {
+    readonly minute?: number | undefined;
+    readonly day?: number | undefined;
+    readonly retryAfter?: number | undefined;
+    readonly refused?: boolean;
+  }) {
     const t = this.now();
     if (left.day === 0 || (left.refused && left.minute !== 0 && left.day !== undefined && left.day <= 0)) {
       const midnight = new Date(t);

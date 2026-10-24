@@ -9,7 +9,11 @@ export default function DownloadButtons({ github = true }: { github?: boolean })
         <AppleMark />
         Download for macOS
       </a>
-      {github ? <a className="btn" href={REPO_URL}>View on GitHub</a> : null}
+      {github ? (
+        <a className="btn" href={REPO_URL}>
+          View on GitHub
+        </a>
+      ) : null}
     </div>
   );
 }

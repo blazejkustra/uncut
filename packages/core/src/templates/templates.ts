@@ -259,20 +259,29 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
     if (k.name.trim()) out.product = oneLine(k.name);
     if (k.colors.length) out.palette = paletteOf(k.colors);
     const faces = k.typefaces?.length ? k.typefaces : undefined;
-    if (faces) out.fonts = faces.map((f) => `${f.family}${f.roles.length ? ` for ${andList(f.roles)}` : ""} (${f.file ?? "not in the kit as a file"})`).join("; ");
+    if (faces)
+      out.fonts = faces.map((f) => `${f.family}${f.roles.length ? ` for ${andList(f.roles)}` : ""} (${f.file ?? "not in the kit as a file"})`).join("; ");
     else if (k.fonts.length) out.fonts = [...new Set(k.fonts)].join("; ");
     const r = k.logoRoles;
-    const placed = r ? [r.dark && `${r.dark} (on dark)`, r.light && `${r.light} (on light)`, r.mark && `${r.mark} (the mark)`].filter((x): x is string => !!x) : [];
+    const placed = r
+      ? [r.dark && `${r.dark} (on dark)`, r.light && `${r.light} (on light)`, r.mark && `${r.mark} (the mark)`].filter((x): x is string => !!x)
+      : [];
     if (placed.length) out.logos = placed.join(", ");
     else if (k.logos.length) out.logos = k.logos.join(", ");
     const screens = k.screens?.length ? k.screens : k.files.filter((f) => IMAGE_FILE.test(f) && SCREEN_NAME.test(f));
     if (screens.length) out.screens = screens.map((f) => `- ${f}`).join("\n");
-    const bullets = (xs: ReadonlyArray<string> | undefined) => (xs ?? []).map(oneLine).filter(Boolean).map((x) => `- ${x}`).join("\n");
+    const bullets = (xs: ReadonlyArray<string> | undefined) =>
+      (xs ?? [])
+        .map(oneLine)
+        .filter(Boolean)
+        .map((x) => `- ${x}`)
+        .join("\n");
     if (bullets(k.dos)) out.look = bullets(k.dos);
     if (bullets(k.donts)) out.avoid = bullets(k.donts);
     if (taglines.length) out.tagline = `"${taglines[0]}"`;
     if (urls.length) out.url = urls[0]!;
-    if ([...k.files, ...k.logos].includes(CLAUDE_MARK)) out["claude-mark"] = `${CLAUDE_MARK} from the kit, pasted in as it is (never redrawn, recoloured or swapped for another icon)`;
+    if ([...k.files, ...k.logos].includes(CLAUDE_MARK))
+      out["claude-mark"] = `${CLAUDE_MARK} from the kit, pasted in as it is (never redrawn, recoloured or swapped for another icon)`;
   }
   const s = f.music;
   if (s) {

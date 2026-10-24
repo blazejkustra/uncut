@@ -44,7 +44,15 @@ export function parseFindings(plugin: Pick<FoundPlugin, "name" | "contributions"
     const itemIds = Array.isArray(f.itemIds) ? f.itemIds.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
     const frame = typeof f.frame === "number" && Number.isInteger(f.frame) && f.frame >= 0 ? f.frame : undefined;
     const hint = str(f.hint, 300) ?? rule.hint;
-    checks.push({ id: rule.id, key: `${rule.id}:${str(f.key, 80) ?? i}`, severity, message, ...(itemIds.length ? { itemIds } : {}), ...(frame !== undefined ? { frame } : {}), ...(hint ? { hint } : {}) });
+    checks.push({
+      id: rule.id,
+      key: `${rule.id}:${str(f.key, 80) ?? i}`,
+      severity,
+      message,
+      ...(itemIds.length ? { itemIds } : {}),
+      ...(frame !== undefined ? { frame } : {}),
+      ...(hint ? { hint } : {}),
+    });
   });
   return { checks, notes: [] };
 }
@@ -69,7 +77,8 @@ export async function copyComponent(projectDir: string, component: PluginCompone
       await writeFile(file, html, { flag: "wx" });
       return { src: `graphics/${name}` };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") return { problem: `Couldn't copy ${component.name} into the project: ${(error as Error).message}` };
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST")
+        return { problem: `Couldn't copy ${component.name} into the project: ${(error as Error).message}` };
       if ((await readFile(file, "utf8").catch(() => undefined)) === html) return { src: `graphics/${name}` };
     }
   }

@@ -19,7 +19,11 @@ const opt = (name: string) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 };
-if (process.env.FAKE_WHISPER_LOG) appendFileSync(process.env.FAKE_WHISPER_LOG, `${JSON.stringify({ argv, pid: process.pid, env: Object.keys(process.env).filter((k) => k.startsWith("ANTHROPIC")), uncutEnv: Object.keys(process.env).filter((k) => k.startsWith("UNCUT_")).length })}\n`);
+if (process.env.FAKE_WHISPER_LOG)
+  appendFileSync(
+    process.env.FAKE_WHISPER_LOG,
+    `${JSON.stringify({ argv, pid: process.pid, env: Object.keys(process.env).filter((k) => k.startsWith("ANTHROPIC")), uncutEnv: Object.keys(process.env).filter((k) => k.startsWith("UNCUT_")).length })}\n`,
+  );
 const model = opt("-m");
 const wav = opt("-f");
 const out = opt("-of");

@@ -8,7 +8,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DOC_TOPICS, DOCS, docsRead, LOOK_TOOLS, mcpTools, projectSummary, stepLabel, doingLabel, SYSTEM_PROMPT, withoutDecisionIds, COMPACT_ITEMS } from "../../apps/server/src/agent/agentTools.ts";
+import {
+  DOC_TOPICS,
+  DOCS,
+  docsRead,
+  LOOK_TOOLS,
+  mcpTools,
+  projectSummary,
+  stepLabel,
+  doingLabel,
+  SYSTEM_PROMPT,
+  withoutDecisionIds,
+  COMPACT_ITEMS,
+} from "../../apps/server/src/agent/agentTools.ts";
 import { leanPlanBlock, RESEND_EVERY } from "../../apps/server/src/agent/session/send.ts";
 import { capNote, NOTE_LINES } from "../../apps/server/src/agent/turns/notes.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
@@ -64,7 +76,7 @@ test("D274: library_search no longer offers jamendo; music_list and music_add ar
 });
 
 test("#81: <brand> and <plan> whole only when they changed; unchanged ones are a line each", () => {
-  const brand = "<brand>\nKit \"Acme\" (acme, the user's)\nColours: #000000 background\n</brand>";
+  const brand = '<brand>\nKit "Acme" (acme, the user\'s)\nColours: #000000 background\n</brand>';
   const plan = "<plan>\nBrief:\n film: a teaser\n</plan>";
   const full = `${brand}\n\n${plan}`;
   // A new session: everything.
@@ -115,18 +127,61 @@ test("#81: the manual-edits note is capped", () => {
 });
 
 test("#81: project_read gives a long project's items as compact lines, every field on request", () => {
-  const project: any = { format: "uncut/0", name: "P", canvas: { width: 1920, height: 1080, fps: 30 }, textLooks: 1, media: [{ id: "m-a", kind: "video", name: "A.MP4", path: "/x/A.MP4", probe: { frames: 9000, fps: 30, width: 1920, height: 1080, hasAudio: true } }], tracks: [{ id: "text", kind: "text", name: "Text", items: [] }, { id: "main", kind: "video", role: "main", name: "Main", items: [] }] };
+  const project: any = {
+    format: "uncut/0",
+    name: "P",
+    canvas: { width: 1920, height: 1080, fps: 30 },
+    textLooks: 1,
+    media: [{ id: "m-a", kind: "video", name: "A.MP4", path: "/x/A.MP4", probe: { frames: 9000, fps: 30, width: 1920, height: 1080, hasAudio: true } }],
+    tracks: [
+      { id: "text", kind: "text", name: "Text", items: [] },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+    ],
+  };
   const small = structuredClone(project);
-  small.tracks[0].items.push({ id: "title-1", type: "text", start: 0, duration: 90, text: "Hello", transform: { x: 100, y: 100 }, style: { preset: "text.title", size: 120, weight: 700 } });
+  small.tracks[0].items.push({
+    id: "title-1",
+    type: "text",
+    start: 0,
+    duration: 90,
+    text: "Hello",
+    transform: { x: 100, y: 100 },
+    style: { preset: "text.title", size: 120, weight: 700 },
+  });
   const s = projectSummary(small, 3) as any;
   assert.equal(s.tracks[0].items[0].style.size, 120, "a small project: every field, as before");
   assert.equal(s.itemsNote, undefined);
   const big = structuredClone(project);
-  for (let i = 0; i < COMPACT_ITEMS + 1; i++) big.tracks[1].items.push({ id: `clip-${i}`, type: "clip", media: "m-a", in: i * 10, duration: 60, transform: { x: 0, y: 0, w: 960, h: 540, fit: "cover" }, ...(i ? { transitionIn: { module: "transition.crossfade", duration: 10 } } : {}) });
-  big.tracks[0].items.push({ id: "title-1", type: "text", start: 30, duration: 90, text: "A very long title ".repeat(10), style: { preset: "text.title", size: 120 } });
+  for (let i = 0; i < COMPACT_ITEMS + 1; i++)
+    big.tracks[1].items.push({
+      id: `clip-${i}`,
+      type: "clip",
+      media: "m-a",
+      in: i * 10,
+      duration: 60,
+      transform: { x: 0, y: 0, w: 960, h: 540, fit: "cover" },
+      ...(i ? { transitionIn: { module: "transition.crossfade", duration: 10 } } : {}),
+    });
+  big.tracks[0].items.push({
+    id: "title-1",
+    type: "text",
+    start: 30,
+    duration: 90,
+    text: "A very long title ".repeat(10),
+    style: { preset: "text.title", size: 120 },
+  });
   const c = projectSummary(big, 4) as any;
   const clip = c.tracks[1].items[1];
-  assert.deepEqual(clip, { id: "clip-1", type: "clip", start: 60, duration: 60, in: 10, media: "m-a", mediaName: "A.MP4", transitionIn: "transition.crossfade 10" });
+  assert.deepEqual(clip, {
+    id: "clip-1",
+    type: "clip",
+    start: 60,
+    duration: 60,
+    in: 10,
+    media: "m-a",
+    mediaName: "A.MP4",
+    transitionIn: "transition.crossfade 10",
+  });
   assert.equal(c.tracks[0].items[0].style, undefined);
   assert.ok(c.tracks[0].items[0].text.length <= 80);
   assert.match(c.itemsNote, /32 items, listed compactly[^]*detail "items"/);
@@ -135,11 +190,17 @@ test("#81: project_read gives a long project's items as compact lines, every fie
   const all = projectSummary(big, 4, undefined, { detail: "items" }) as any;
   assert.deepEqual(all.tracks[1].items[1].transform, { x: 0, y: 0, w: 960, h: 540, fit: "cover" });
   const some = projectSummary(big, 4, undefined, { items: ["title-1", "nope"] }) as any;
-  assert.deepEqual(some.tracks.map((t: any) => t.items.map((i: any) => i.id)), [["title-1"], []]);
+  assert.deepEqual(
+    some.tracks.map((t: any) => t.items.map((i: any) => i.id)),
+    [["title-1"], []],
+  );
   assert.equal(some.tracks[0].items[0].style.size, 120);
   assert.match(some.itemsNote, /not found: nope/);
   const ranged = projectSummary(big, 4, { start: 0, end: 120 }) as any;
-  assert.ok(ranged.tracks[1].items.every((i: any) => i.transform), "a range gives every field");
+  assert.ok(
+    ranged.tracks[1].items.every((i: any) => i.transform),
+    "a range gives every field",
+  );
   // Compact JSON is what the agent gets (no indentation).
   assert.ok(JSON.stringify(c).length < JSON.stringify(all).length * 0.75);
 });

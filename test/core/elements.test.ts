@@ -7,8 +7,23 @@ import assert from "node:assert/strict";
 import { componentDefaults, componentHtml, componentInfo, type Item } from "../../packages/core/src/index.ts";
 
 const target = { canvas: { width: 1920, height: 1080 } };
-const ELEMENTS = ["component.shape", "component.progress-bar", "component.lower-third", "component.callout", "component.subscribe", "component.countdown", "component.sticker", "component.image-frame"];
-const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 150): Item => ({ id: "e1", type: "component", component, duration, props });
+const ELEMENTS = [
+  "component.shape",
+  "component.progress-bar",
+  "component.lower-third",
+  "component.callout",
+  "component.subscribe",
+  "component.countdown",
+  "component.sticker",
+  "component.image-frame",
+];
+const item = (component: string, props: Record<string, unknown> = componentDefaults(component), duration = 150): Item => ({
+  id: "e1",
+  type: "component",
+  component,
+  duration,
+  props,
+});
 const html = (i: Item, local: number, t: Parameters<typeof componentHtml>[1] = target) => componentHtml(i, t, local, { fps: 30 });
 
 test("every general element is drawn with its defaults at the start, middle and end", () => {
@@ -66,7 +81,10 @@ test("shape kinds draw differently; lines and arrows are SVG", () => {
   assert.match(outs[1]!, /border-radius:50%/);
   assert.match(outs[2]!, /<svg data-shape="line"/);
   assert.match(outs[3]!, /<svg data-shape="arrow"[^]*<path/);
-  assert.match(html(item("component.shape", { kind: "rectangle", fill: "#112233", stroke: "#FFFFFF", strokeWidth: 6 }), 0), /background:#112233[^"]*border:6px solid #FFFFFF/);
+  assert.match(
+    html(item("component.shape", { kind: "rectangle", fill: "#112233", stroke: "#FFFFFF", strokeWidth: 6 }), 0),
+    /background:#112233[^"]*border:6px solid #FFFFFF/,
+  );
 });
 
 test("the subscribe button turns into its done label when pressed", () => {
@@ -85,6 +103,7 @@ test("the image frame shows its media via mediaUrl; empty, a placeholder glyph w
 });
 
 test("the callout's arrow points where it's told, or there's none", () => {
-  for (const arrow of ["left", "right", "up", "down"]) assert.match(html(item("component.callout", { label: "x", arrow }), 0), new RegExp(`data-arrow="${arrow}"`));
+  for (const arrow of ["left", "right", "up", "down"])
+    assert.match(html(item("component.callout", { label: "x", arrow }), 0), new RegExp(`data-arrow="${arrow}"`));
   assert.doesNotMatch(html(item("component.callout", { label: "x", arrow: "none" }), 0), /<svg/);
 });

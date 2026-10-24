@@ -49,7 +49,8 @@ export const set = (patch: Partial<AppStateShape>) => {
   if (state.analysisError && before.snapshot?.dir !== state.snapshot?.dir) state = { ...state, analysisError: undefined };
   for (const listener of listeners) listener();
   // D280: and the plugins (File › Import from Link… follows its plugin being installed and allowed).
-  if (before.snapshot !== state.snapshot || before.recents !== state.recents || before.environment !== state.environment || before.plugins !== state.plugins) syncShell();
+  if (before.snapshot !== state.snapshot || before.recents !== state.recents || before.environment !== state.environment || before.plugins !== state.plugins)
+    syncShell();
   // Plugins allowed, removed or installed: their looks, components and rules follow (D103).
   if (before.plugins !== state.plugins && state.connection === "connected") void actions.loadContributions();
 };
@@ -100,7 +101,7 @@ export const useApp = () =>
  * re-renders on every change: a key typed in the chat, a job's progress). `select` must return the
  * same value for the same state (a field, a primitive), not a new object each time.
  */
-export const useAppSelect = <T,>(select: (s: AppStateShape) => T): T =>
+export const useAppSelect = <T>(select: (s: AppStateShape) => T): T =>
   useSyncExternalStore(
     (listener) => (listeners.add(listener), () => listeners.delete(listener)),
     () => select(state),
@@ -124,7 +125,12 @@ function syncShell() {
     recents: state.recents.map(({ name, dir }) => ({ name, dir })),
     // D245: the menu's Environments… is disabled while the Labs flag is off (and a remote isn't active).
     environments: environmentsUsable(flagOn("environments"), state.environment.kind),
-    panels: { lib: panelShown(panels.get(), "lib"), side: panelShown(panels.get(), "side"), bottom: panelShown(panels.get(), "bottom"), focus: panels.get().focus },
+    panels: {
+      lib: panelShown(panels.get(), "lib"),
+      side: panelShown(panels.get(), "side"),
+      bottom: panelShown(panels.get(), "bottom"),
+      focus: panels.get().focus,
+    },
     // #94 (D263, D280): File › Import from Link… only while its plugin is installed and allowed.
     importLink: linkImportReady(state.plugins),
   });

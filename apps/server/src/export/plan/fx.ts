@@ -4,11 +4,13 @@ import { n } from "./num.ts";
 import { blurFilters, BLUR_STEPS } from "./layers.ts";
 
 /** The colour tables (D136) a plan's layers use, each once: what the exporter writes as .cube files. */
-export const planLuts = (plan: Pick<ExportPlan, "visuals">): Array<ColourLut> => [...new Map(plan.visuals.flatMap((l) => (l.kind === "video" || l.kind === "image") && l.fx?.lut ? [[l.fx.lut.key, l.fx.lut] as const] : [])).values()];
+export const planLuts = (plan: Pick<ExportPlan, "visuals">): Array<ColourLut> => [
+  ...new Map(plan.visuals.flatMap((l) => ((l.kind === "video" || l.kind === "image") && l.fx?.lut ? [[l.fx.lut.key, l.fx.lut] as const] : []))).values(),
+];
 
 /** A file path as an ffmpeg filter argument: only plain path characters (the exporter's temp files), so nothing needs escaping. */
 const filterPath = (path: string) => {
-  if (!/^[\w/.\-]+$/.test(path)) throw new Error(`can't pass ${path} to ffmpeg's lut3d`);
+  if (!/^[\w/.-]+$/.test(path)) throw new Error(`can't pass ${path} to ffmpeg's lut3d`);
   return path;
 };
 
@@ -32,7 +34,10 @@ export function fxGraph(lf: LayerFx, input: string, output: string, fps: number,
     const zh = Math.max(h, Math.round(h * z));
     const t = `(n+${f0 - lf.start})/${fps}`;
     const at = (base: number, d: string, max: number) => `'min(max(floor(${n(base)}+${d}+0.5),0),${max})'`;
-    chain.push(`scale=w=${zw}:h=${zh}`, `crop=w=${w}:h=${h}:x=${at((zw - w) / 2, shakeExpr(fx.shake, "x", t, k), zw - w)}:y=${at((zh - h) / 2, shakeExpr(fx.shake, "y", t, k), zh - h)}:exact=1`);
+    chain.push(
+      `scale=w=${zw}:h=${zh}`,
+      `crop=w=${w}:h=${h}:x=${at((zw - w) / 2, shakeExpr(fx.shake, "x", t, k), zw - w)}:y=${at((zh - h) / 2, shakeExpr(fx.shake, "y", t, k), zh - h)}:exact=1`,
+    );
   }
   if (fx.pixelate) {
     const b = Math.max(1, Math.round(fx.pixelate * k));

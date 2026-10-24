@@ -1,4 +1,31 @@
-import type { ServerHello, ProjectSnapshot, RecentProject, SetupCheck, PluginInfo, PluginContributions, CatalogEntry, CaptureState, GeneratorInfo, GenerateJob, GenerateOptions, KeyInfo, ImportJob, MediaImportResult, AgentState, HistoryState, AgentMention, AgentImage, AgentUiPanel, ExportJob, AnalysisJob, ProxyState, TranscriptionState, BrandState, GenerateKind, TemplateInfo } from "@uncut/contracts";
+import type {
+  ServerHello,
+  ProjectSnapshot,
+  RecentProject,
+  SetupCheck,
+  PluginInfo,
+  PluginContributions,
+  CatalogEntry,
+  CaptureState,
+  GeneratorInfo,
+  GenerateJob,
+  GenerateOptions,
+  KeyInfo,
+  ImportJob,
+  MediaImportResult,
+  AgentState,
+  HistoryState,
+  AgentMention,
+  AgentImage,
+  AgentUiPanel,
+  ExportJob,
+  AnalysisJob,
+  ProxyState,
+  TranscriptionState,
+  BrandState,
+  GenerateKind,
+  TemplateInfo,
+} from "@uncut/contracts";
 import type { AppInfo, EnvironmentInfo } from "../bridge.ts";
 import type { Check } from "@uncut/core/checks";
 import type { ProjectModel } from "../project.ts";

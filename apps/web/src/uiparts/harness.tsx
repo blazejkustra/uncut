@@ -12,7 +12,20 @@ import { set } from "../state/store/core.ts";
 import { setServerConnection } from "../state/store/server.ts";
 import { playback } from "../preview/playback.ts";
 import { closeMenu } from "../timeline/ContextMenu.tsx";
-import { FIXTURE_AGENT_CHIP, FIXTURE_AGENT_DONE, FIXTURE_AGENT_PLAN, FIXTURE_CHIP, FIXTURE_DIR, FIXTURE_EXPORT_JOB, FIXTURE_FX_CLIP, FIXTURE_MENU_CLIP, FIXTURE_PROMPT, FIXTURE_SETUP, FIXTURE_SNAPSHOT, FIXTURE_SNAPSHOT_FX } from "./fixture.ts";
+import {
+  FIXTURE_AGENT_CHIP,
+  FIXTURE_AGENT_DONE,
+  FIXTURE_AGENT_PLAN,
+  FIXTURE_CHIP,
+  FIXTURE_DIR,
+  FIXTURE_EXPORT_JOB,
+  FIXTURE_FX_CLIP,
+  FIXTURE_MENU_CLIP,
+  FIXTURE_PROMPT,
+  FIXTURE_SETUP,
+  FIXTURE_SNAPSHOT,
+  FIXTURE_SNAPSHOT_FX,
+} from "./fixture.ts";
 import "../styles.css";
 
 // Waveforms come from the server's peaks: a fixed, beat-like envelope here (120 BPM, a kick every
@@ -56,7 +69,14 @@ const base = {
 
 const SCENES = {
   // A new chat: the prompt typed in the composer, Send ready.
-  compose: { ...base, agent: { dir: FIXTURE_DIR, provider: "Claude Code", running: null, turns: [] }, agentDraft: FIXTURE_PROMPT, exportOpen: false, exportJobs: [], exportJobId: undefined },
+  compose: {
+    ...base,
+    agent: { dir: FIXTURE_DIR, provider: "Claude Code", running: null, turns: [] },
+    agentDraft: FIXTURE_PROMPT,
+    exportOpen: false,
+    exportJobs: [],
+    exportJobId: undefined,
+  },
   // The storyboard waits for Approve.
   plan: { ...base, agent: FIXTURE_AGENT_PLAN, agentDraft: "", exportOpen: false, exportJobs: [], exportJobId: undefined },
   // The turn is done: the review card, the reply, the edits; the composer empty.
@@ -69,14 +89,23 @@ const SCENES = {
   effects: { ...base, snapshot: FIXTURE_SNAPSHOT_FX, agent: FIXTURE_AGENT_DONE, agentDraft: "", exportOpen: false, exportJobs: [], exportJobId: undefined },
   // A Main clip's right-click menu open, "Add to chat" under the pointer; the composer holding that
   // clip's chip and a sent prompt with one (only the menu is lifted from here; the chips give their CSS).
-  menu: { ...base, agent: FIXTURE_AGENT_CHIP, agentDraft: `@${FIXTURE_CHIP.label} `, agentMentions: [FIXTURE_CHIP], exportOpen: false, exportJobs: [], exportJobId: undefined },
+  menu: {
+    ...base,
+    agent: FIXTURE_AGENT_CHIP,
+    agentDraft: `@${FIXTURE_CHIP.label} `,
+    agentMentions: [FIXTURE_CHIP],
+    exportOpen: false,
+    exportJobs: [],
+    exportJobId: undefined,
+  },
 };
 export type SceneName = keyof typeof SCENES;
 
-const frames = (n: number) => new Promise<void>((done) => {
-  const step = (left: number) => (left <= 0 ? done() : requestAnimationFrame(() => step(left - 1)));
-  step(n);
-});
+const frames = (n: number) =>
+  new Promise<void>((done) => {
+    const step = (left: number) => (left <= 0 ? done() : requestAnimationFrame(() => step(left - 1)));
+    step(n);
+  });
 
 declare global {
   interface Window {
@@ -104,7 +133,9 @@ window.__uiparts = {
       // the pointer's row: the first entry, Add to chat, highlighted as under the pointer.
       const clip = document.querySelector<HTMLElement>(`[data-testid=timeline-item][data-item="${FIXTURE_MENU_CLIP}"]`)!;
       const r = clip.getBoundingClientRect();
-      clip.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 2 }));
+      clip.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 2 }),
+      );
       await frames(2);
       document.querySelector(".ctx-menu")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
       await frames(2);

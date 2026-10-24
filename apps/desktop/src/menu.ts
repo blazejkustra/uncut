@@ -83,7 +83,12 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         // D245: behind the Labs flag; disabled (with where to turn it on) while it's off.
         state.environments
           ? item("Environments…", undefined, { type: "open-environments" })
-          : { label: "Environments…", sublabel: "Turn it on in Settings › Labs", toolTip: "Environments is in Labs: turn it on in Settings › Labs", enabled: false },
+          : {
+              label: "Environments…",
+              sublabel: "Turn it on in Settings › Labs",
+              toolTip: "Environments is in Labs: turn it on in Settings › Labs",
+              enabled: false,
+            },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -136,7 +141,9 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { type: "separator" },
         { role: "togglefullscreen" },
         // In development also the usual reload and developer tools.
-        ...(app.isPackaged ? [] : ([{ type: "separator" }, { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }] as Array<MenuItemConstructorOptions>)),
+        ...(app.isPackaged
+          ? []
+          : ([{ type: "separator" }, { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }] as Array<MenuItemConstructorOptions>)),
       ],
     },
     { role: "windowMenu" },

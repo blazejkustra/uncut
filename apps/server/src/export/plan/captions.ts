@@ -28,9 +28,18 @@ export function captionLayers(project: Project, item: Item, track: Track, durati
  * Drawn exactly as each text item alone would be (no motion, keys or opacity of their own), without
  * an ffmpeg input per cue.
  */
-export function subtitleLayers(project: Project, track: Track, items: ReadonlyArray<Item>, starts: ReadonlyMap<string, number>, duration: number, warnings: Array<string>): Array<VisualLayer> {
+export function subtitleLayers(
+  project: Project,
+  track: Track,
+  items: ReadonlyArray<Item>,
+  starts: ReadonlyMap<string, number>,
+  duration: number,
+  warnings: Array<string>,
+): Array<VisualLayer> {
   if (!items.length) return [];
-  const segs = items.map((it) => ({ from: starts.get(it.id) ?? it.start ?? 0, to: (starts.get(it.id) ?? it.start ?? 0) + it.duration, text: it })).sort((a, b) => a.from - b.from);
+  const segs = items
+    .map((it) => ({ from: starts.get(it.id) ?? it.start ?? 0, to: (starts.get(it.id) ?? it.start ?? 0) + it.duration, text: it }))
+    .sort((a, b) => a.from - b.from);
   return segmentLayers(project, { ...items[0]!, name: track.name }, track, segs, duration, warnings);
 }
 
@@ -39,7 +48,10 @@ export function subtitleLayers(project: Project, track: Track, items: ReadonlyAr
  * Overlapping cues (a user dragged one onto another) each take the normal text path, so both draw, as in the preview.
  */
 export function mergeableCues(track: Track, starts: ReadonlyMap<string, number>): Array<Item> {
-  const spans = track.items.map((it) => ({ it, from: starts.get(it.id) ?? it.start ?? 0 })).map((x) => ({ ...x, to: x.from + x.it.duration })).sort((a, b) => a.from - b.from);
+  const spans = track.items
+    .map((it) => ({ it, from: starts.get(it.id) ?? it.start ?? 0 }))
+    .map((x) => ({ ...x, to: x.from + x.it.duration }))
+    .sort((a, b) => a.from - b.from);
   const overlapping = new Set<Item>();
   let last: (typeof spans)[number] | undefined;
   for (const x of spans) {
@@ -53,10 +65,15 @@ export function mergeableCues(track: Track, starts: ReadonlyMap<string, number>)
 }
 
 /** Stretches of one look each (a card, a speaking word, a cue) as raster layers: touching stretches one run, at most MAX_CAPTION_LAYERS runs. */
-function segmentLayers(project: Project, item: Item, track: Track, all: ReadonlyArray<{ readonly from: number; readonly to: number; readonly text: Item }>, duration: number, warnings: Array<string>): Array<VisualLayer> {
-  const segs = all
-    .map((s) => ({ from: Math.max(0, s.from), to: Math.min(duration, s.to), text: s.text }))
-    .filter((s) => s.to > s.from);
+function segmentLayers(
+  project: Project,
+  item: Item,
+  track: Track,
+  all: ReadonlyArray<{ readonly from: number; readonly to: number; readonly text: Item }>,
+  duration: number,
+  warnings: Array<string>,
+): Array<VisualLayer> {
+  const segs = all.map((s) => ({ from: Math.max(0, s.from), to: Math.min(duration, s.to), text: s.text })).filter((s) => s.to > s.from);
   if (!segs.length) return [];
   const runs: Array<Array<(typeof segs)[number]>> = [];
   for (const s of segs) {
@@ -90,6 +107,9 @@ function segmentLayers(project: Project, item: Item, track: Track, all: Readonly
     looks += states.length;
     return { item, track, f0, f1, ramps: [], kind: "raster", states, frames };
   });
-  if (looks > CAPTION_LOOKS_WARN) warnings.push(`"${item.name ?? item.id}" has ${looks} caption looks to draw, which adds about ${Math.max(1, Math.round(looks / CAPTION_LOOKS_PER_S / 60))} min to the export.`);
+  if (looks > CAPTION_LOOKS_WARN)
+    warnings.push(
+      `"${item.name ?? item.id}" has ${looks} caption looks to draw, which adds about ${Math.max(1, Math.round(looks / CAPTION_LOOKS_PER_S / 60))} min to the export.`,
+    );
   return layers;
 }

@@ -17,12 +17,24 @@ export const CORE_OPS: ReadonlyArray<string> = CORE.map((b) => (b.properties!.op
 /** The convenience ops: name, the spec $def with their full shape, and a line for the tool description. */
 const CONVENIENCE: ReadonlyArray<{ readonly op: string; readonly def: string; readonly line: string }> = [
   { op: "insert_text", def: "insertText", line: "text in a look (a text-style module) on the top-most free text track, with the looks it comes with" },
-  { op: "insert_device_frame", def: "insertDeviceFrame", line: "a phone or browser frame with footage on its screen (the clip on a video track, the frame above it)" },
-  { op: "place_item", def: "placeItem", line: "puts a new item (or moves one by id) where asked when free, else after what's in the way, on a free track of that kind, or rippling; the result's placed says where" },
+  {
+    op: "insert_device_frame",
+    def: "insertDeviceFrame",
+    line: "a phone or browser frame with footage on its screen (the clip on a video track, the frame above it)",
+  },
+  {
+    op: "place_item",
+    def: "placeItem",
+    line: "puts a new item (or moves one by id) where asked when free, else after what's in the way, on a free track of that kind, or rippling; the result's placed says where",
+  },
   { op: "put_on_main", def: "putOnMain", line: "moves a picture off Main onto it at the nearest cut; a take's microphone and other parts get linked under it" },
   { op: "detach_audio", def: "detachAudio", line: "moves a clip's sound to its own audio item and mutes the clip" },
   { op: "set_speed", def: "setSpeed", line: "changes a clip's or audio item's speed (0.1 to 10) and its length with it" },
-  { op: "replace_range", def: "replaceRange", line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves (stays in sync)" },
+  {
+    op: "replace_range",
+    def: "replaceRange",
+    line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves (stays in sync)",
+  },
   { op: "edit_captions", def: "editCaptions", line: "fixes caption words (by transcript word id), forces card starts, changes mode, grouping or fillers" },
 ];
 export const CONVENIENCE_OPS: ReadonlyArray<string> = CONVENIENCE.map((c) => c.op);
@@ -33,7 +45,11 @@ function shapeOf(s: Schema | undefined): string {
   if (!s || typeof s !== "object") return "";
   if (Array.isArray(s.enum)) return s.enum.map((v) => JSON.stringify(v)).join("|");
   const union = (s.oneOf ?? s.anyOf) as ReadonlyArray<Schema> | undefined;
-  if (union) return union.map((u) => shapeOf(u) || String(u.type ?? "")).filter(Boolean).join("|");
+  if (union)
+    return union
+      .map((u) => shapeOf(u) || String(u.type ?? ""))
+      .filter(Boolean)
+      .join("|");
   if (s.type === "null") return "null";
   if (s.properties) return objectShape(s);
   if (s.type === "object") return "{…}";
@@ -51,10 +67,12 @@ function objectShape(s: Schema): string {
   return `{${fields.join(", ")}}`;
 }
 
-
 /** Each op's shape, e.g. {"op":"trim_item", item, edge: "start"|"end", frames}. */
 export const OP_SHAPES: Readonly<Record<string, string>> = Object.fromEntries([
-  ...CORE.map((b) => [(b.properties!.op as { const: string }).const, (b.properties!.op as { const: string }).const === "set_transition" ? objectShape(b).replace(/\}$/, ", allowTrim?: true}") : objectShape(b)]),
+  ...CORE.map((b) => [
+    (b.properties!.op as { const: string }).const,
+    (b.properties!.op as { const: string }).const === "set_transition" ? objectShape(b).replace(/\}$/, ", allowTrim?: true}") : objectShape(b),
+  ]),
   ...CONVENIENCE.map((c) => [c.op, objectShape(DEFS[c.def]!)]),
 ]);
 
@@ -107,7 +125,8 @@ export function unknownOp(ops: ReadonlyArray<unknown>): string | undefined {
   for (const [i, op] of ops.entries()) {
     const name = (op as { op?: unknown } | null)?.op;
     if (!op || typeof op !== "object" || Array.isArray(op)) return `ops[${i}] must be an object like {"op":"trim_item", ...}.`;
-    if (typeof name !== "string" || !(name in OP_SHAPES)) return `ops[${i}]: unknown op ${JSON.stringify(name)}. The ops: ${Object.keys(OP_SHAPES).join(", ")}. docs_read edits gives each one's fields.`;
+    if (typeof name !== "string" || !(name in OP_SHAPES))
+      return `ops[${i}]: unknown op ${JSON.stringify(name)}. The ops: ${Object.keys(OP_SHAPES).join(", ")}. docs_read edits gives each one's fields.`;
   }
   return undefined;
 }
@@ -118,7 +137,15 @@ export function unknownOp(ops: ReadonlyArray<unknown>): string | undefined {
  */
 export function opsSchema(): { ops: Record<string, unknown>; defs: Record<string, unknown> } {
   const strip = (v: unknown): unknown =>
-    Array.isArray(v) ? v.map(strip) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== "description").map(([k, x]) => [k, strip(x)])) : v;
+    Array.isArray(v)
+      ? v.map(strip)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.entries(v)
+              .filter(([k]) => k !== "description")
+              .map(([k, x]) => [k, strip(x)]),
+          )
+        : v;
   const core = strip(editOpsSchema.$defs.op) as { oneOf: Array<Schema> };
   // set_transition also takes allowTrim (the server trims the spare media an overlap lacks).
   const st = core.oneOf.find((b) => (b.properties!.op as { const: string }).const === "set_transition")!;
@@ -127,7 +154,12 @@ export function opsSchema(): { ops: Record<string, unknown>; defs: Record<string
     ops: { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/convenienceOp" }] } },
     defs: {
       op: core,
-      convenienceOp: { type: "object", required: ["op"], properties: { op: { enum: [...CONVENIENCE_OPS] } }, description: "Fields as listed in this tool's description." },
+      convenienceOp: {
+        type: "object",
+        required: ["op"],
+        properties: { op: { enum: [...CONVENIENCE_OPS] } },
+        description: "Fields as listed in this tool's description.",
+      },
     },
   };
 }

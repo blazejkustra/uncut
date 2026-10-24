@@ -41,14 +41,27 @@ test("a long graphic reports its frames while drawn, at least every couple of se
   } as unknown as Rasterizer;
   const heard: Array<[number, number]> = [];
   const sent: Array<{ at: number; done?: number; total?: number; kind: string }> = [];
-  const step = stepReporter((s) => sent.push({ at: clock, ...s }), () => clock);
+  const step = stepReporter(
+    (s) => sent.push({ at: clock, ...s }),
+    () => clock,
+  );
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "uncut-step-")));
   try {
     // Without an ffmpeg to stream into, every frame of the graphic is drawn as a PNG (no ffmpeg needed here).
-    await rasterise(stub, plan, project, () => "", dir, new AbortController().signal, undefined, undefined, (done, total) => {
-      heard.push([done, total]);
-      step("graphics", done, total);
-    });
+    await rasterise(
+      stub,
+      plan,
+      project,
+      () => "",
+      dir,
+      new AbortController().signal,
+      undefined,
+      undefined,
+      (done, total) => {
+        heard.push([done, total]);
+        step("graphics", done, total);
+      },
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -65,7 +78,10 @@ test("a long graphic reports its frames while drawn, at least every couple of se
 test("the reporter: steps without a count at once, counted ones at most every STEP_MS", () => {
   let clock = 0;
   const sent: Array<unknown> = [];
-  const step = stepReporter((s) => sent.push(s), () => clock);
+  const step = stepReporter(
+    (s) => sent.push(s),
+    () => clock,
+  );
   step("sound");
   step("graphics", 1, 10);
   clock += 100;
@@ -74,12 +90,21 @@ test("the reporter: steps without a count at once, counted ones at most every ST
   step("graphics", 3, 10);
   step("graphics", 10, 10);
   step("loudness");
-  assert.deepEqual(sent, [{ kind: "sound" }, { kind: "graphics", done: 1, total: 10 }, { kind: "graphics", done: 3, total: 10 }, { kind: "graphics", done: 10, total: 10 }, { kind: "loudness" }]);
+  assert.deepEqual(sent, [
+    { kind: "sound" },
+    { kind: "graphics", done: 1, total: 10 },
+    { kind: "graphics", done: 3, total: 10 },
+    { kind: "graphics", done: 10, total: 10 },
+    { kind: "loudness" },
+  ]);
 });
 
 test("the dialog says which frame it's drawing, and its bar follows", () => {
   assert.deepEqual(preparingStatus({}), { text: "Getting ready…", fraction: undefined });
-  assert.deepEqual(preparingStatus({ step: { kind: "graphics", done: 312, total: 1680 } }), { text: "Drawing the graphics: frame 312 of 1680", fraction: 312 / 1680 });
+  assert.deepEqual(preparingStatus({ step: { kind: "graphics", done: 312, total: 1680 } }), {
+    text: "Drawing the graphics: frame 312 of 1680",
+    fraction: 312 / 1680,
+  });
   assert.deepEqual(preparingStatus({ step: { kind: "shaders", done: 5, total: 10 } }), { text: "Drawing the shader effects: frame 5 of 10", fraction: 0.5 });
   assert.deepEqual(preparingStatus({ step: { kind: "graphics", done: 3, total: 9 } }, false).text, "Drawing the text: frame 3 of 9", "no graphics: the text");
   assert.deepEqual(preparingStatus({ step: { kind: "graphics" } }), { text: "Drawing the graphics…", fraction: undefined });

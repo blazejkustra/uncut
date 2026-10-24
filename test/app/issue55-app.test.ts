@@ -57,7 +57,29 @@ before(async () => {
   dir = join(root, "Busy.uncut");
   mkdirSync(join(dir, "media"), { recursive: true });
   const seconds = String((3 * SEG) / FPS + 4);
-  const make = (size: string, file: string) => execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=${size}:rate=${FPS}`, "-t", seconds, "-c:v", "libx264", "-preset", "veryfast", "-g", "30", "-bf", "0", "-pix_fmt", "yuv420p", join(root, file)]);
+  const make = (size: string, file: string) =>
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc2=size=${size}:rate=${FPS}`,
+      "-t",
+      seconds,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-g",
+      "30",
+      "-bf",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      join(root, file),
+    ]);
   make("1280x720", "Layer.mp4");
   make("640x360", "Small.mp4");
   const frames = 3 * SEG + 4 * FPS;
@@ -111,9 +133,20 @@ before(async () => {
   tracks.push({ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "main1", type: "clip", media: "m-layer", in: 0, duration: 3 * SEG }] });
   tracks.forEach((t, track) => {
     for (const it of t.items as Array<{ id: string; type: string; start?: number; duration: number; in?: number; effects?: unknown }>)
-      layers.push({ id: it.id, kind: it.type === "text" ? "text" : "video", track, start: it.start ?? 0, duration: it.duration, ...(it.type === "clip" ? { in: it.in ?? 0 } : {}), ...(it.effects ? { fx: true } : {}) });
+      layers.push({
+        id: it.id,
+        kind: it.type === "text" ? "text" : "video",
+        track,
+        start: it.start ?? 0,
+        duration: it.duration,
+        ...(it.type === "clip" ? { in: it.in ?? 0 } : {}),
+        ...(it.effects ? { fx: true } : {}),
+      });
   });
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Busy", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({ format: "uncut/0", name: "Busy", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks }),
+  );
 });
 after(async () => {
   await app?.close();
@@ -121,7 +154,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const rng = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 
 async function clickAt(f: number) {
   const ruler = (await (await page.$("[data-testid=ruler]"))!.boundingBox())!;
@@ -130,7 +163,10 @@ async function clickAt(f: number) {
   await page.mouse.click(ruler.x + 0.5 + f * ppf - scroll, ruler.y + ruler.height / 2);
 }
 
-const ready = () => page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), { timeout: 20000 });
+const ready = () =>
+  page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), {
+    timeout: 20000,
+  });
 
 /** Counts a run's glitches and prints them. */
 function report(label: string, r: Awaited<ReturnType<typeof stopGlitchProbe>>, lateMs: number): GlitchCounts & { contextLost: number } {
@@ -143,8 +179,12 @@ function report(label: string, r: Awaited<ReturnType<typeof stopGlitchProbe>>, l
     const first = playing[0]!;
     const last = playing.at(-1)!;
     const s = (last.t - first.t) / 1000;
-    const rates = layers.filter((l) => l.kind === "video" && pick(l.id) && first.layers[l.id]?.p !== undefined && last.layers[l.id]?.p !== undefined).map((l) => (last.layers[l.id]!.p! - first.layers[l.id]!.p!) / s);
-    return rates.length ? `${Math.min(...rates).toFixed(1)}–${(rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(1)} fps (min–mean of ${rates.length})` : "-";
+    const rates = layers
+      .filter((l) => l.kind === "video" && pick(l.id) && first.layers[l.id]?.p !== undefined && last.layers[l.id]?.p !== undefined)
+      .map((l) => (last.layers[l.id]!.p! - first.layers[l.id]!.p!) / s);
+    return rates.length
+      ? `${Math.min(...rates).toFixed(1)}–${(rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(1)} fps (min–mean of ${rates.length})`
+      : "-";
   };
   console.log(
     `# issue55 ${label}: ${r.samples.length} samples; flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, order ${c.order}, contexts lost ${r.contextLost}, frames > ${LONG_MS} ms ${c.longFrames} (worst ${c.worstFrameMs.toFixed(0)} ms; > 25 ms ${gaps.filter((g) => g > 25).length}, > 50 ms ${gaps.filter((g) => g > 50).length}); seeking events while playing ${r.playSeeks} (incl. each video's seek as playback starts; drift seeks are stats.playSeeks); videos presented: 1280×720 ${rate((id) => !small.has(id))}, 640×360 ${rate((id) => small.has(id))}; stats ${JSON.stringify(r.stats)}`,
@@ -158,7 +198,10 @@ async function play(label: string, from: number, ms: number) {
   await clickAt(from);
   await ready();
   await sleep(500);
-  await startGlitchProbe(page, layers.map((l) => l.id));
+  await startGlitchProbe(
+    page,
+    layers.map((l) => l.id),
+  );
   await page.keyboard.press("Space");
   await sleep(ms);
   await page.keyboard.press("Space");
@@ -204,7 +247,10 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   await clickAt(2 * SEG + 60);
   await ready();
   await sleep(500);
-  await startGlitchProbe(page, layers.map((l) => l.id));
+  await startGlitchProbe(
+    page,
+    layers.map((l) => l.id),
+  );
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press(i < 20 ? "ArrowRight" : "ArrowLeft");
     await sleep(70);
@@ -223,7 +269,12 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   const last: GlitchSample = scrub.samples.at(-1)!;
   const inside = layers.filter((l) => last.frame >= l.start + 2 && last.frame < l.start + l.duration - 2);
   const missing = inside.filter((l) => !last.layers[l.id]?.d).map((l) => l.id);
-  const off = inside.filter((l) => l.kind === "video" && last.layers[l.id]?.mt !== undefined && Math.abs(last.layers[l.id]!.mt! - ((l.in ?? 0) + last.frame - l.start) / FPS) > 1.5 / FPS).map((l) => `${l.id} ${last.layers[l.id]!.mt!.toFixed(3)}`);
+  const off = inside
+    .filter(
+      (l) =>
+        l.kind === "video" && last.layers[l.id]?.mt !== undefined && Math.abs(last.layers[l.id]!.mt! - ((l.in ?? 0) + last.frame - l.start) / FPS) > 1.5 / FPS,
+    )
+    .map((l) => `${l.id} ${last.layers[l.id]!.mt!.toFixed(3)}`);
   console.log(`# issue55 settled at frame ${last.frame}: ${inside.length} layers, not drawn [${missing.join(", ")}], off their frame [${off.join(", ")}]`);
   assert.deepEqual(missing, [], "every layer is drawn once the playhead rests");
   assert.deepEqual(off, [], "every video shows the playhead's frame once it rests");

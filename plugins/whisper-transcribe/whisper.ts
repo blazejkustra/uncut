@@ -243,7 +243,15 @@ export const NO_WHISPER = "whisper.cpp isn't installed. Uncut transcribes speech
  * Transcribes a WAV with whisper-cli. Progress is 0–1 (whisper's `progress = N%` lines). Rejects
  * with Stopped when `signal` aborts (whisper is killed), else with a sentence.
  */
-export async function transcribeWav(input: TranscribeInput, options: { readonly signal: AbortSignal; readonly run?: Run | undefined; readonly onProgress?: ((fraction: number) => void) | undefined; readonly timeoutMs?: number | undefined }): Promise<Speech> {
+export async function transcribeWav(
+  input: TranscribeInput,
+  options: {
+    readonly signal: AbortSignal;
+    readonly run?: Run | undefined;
+    readonly onProgress?: ((fraction: number) => void) | undefined;
+    readonly timeoutMs?: number | undefined;
+  },
+): Promise<Speech> {
   const bin = input.bin ?? (await onPath(WHISPER_BIN));
   if (!bin) throw new Error(NO_WHISPER);
   const out = join(dirname(input.audio), "transcript");

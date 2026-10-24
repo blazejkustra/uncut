@@ -37,7 +37,12 @@ import { isApproved, pluginInfos, contributesOf, contributesFor, skillsHash, plu
  * app (the agent's skills list, skill_read, brief suggestions, the critic's checklists), as if not installed.
  */
 export const withoutSkills = <S extends { readonly name: string }>(skills: ReadonlyArray<S>, off: string | undefined): ReadonlyArray<S> => {
-  const names = new Set((off ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+  const names = new Set(
+    (off ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  );
   return names.size ? skills.filter((x) => !names.has(x.name)) : skills;
 };
 
@@ -58,10 +63,20 @@ export interface PluginsShape {
   readonly refresh: Effect.Effect<void>;
   /** Every plugin found, with its status (after a fresh scan). */
   readonly list: Effect.Effect<ReadonlyArray<PluginInfo>>;
-  readonly approve: (input: { readonly id: string; readonly dir: string; readonly capabilities: ReadonlyArray<string>; readonly skills?: string | undefined }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
+  readonly approve: (input: {
+    readonly id: string;
+    readonly dir: string;
+    readonly capabilities: ReadonlyArray<string>;
+    readonly skills?: string | undefined;
+  }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   readonly revoke: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** Installs a plugin from a folder or git URL into <dataDir>/plugins/<id> (D102); it needs allowing afterwards. */
-  readonly install: (input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined; readonly catalog?: boolean }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
+  readonly install: (input: {
+    readonly source: string;
+    readonly ref?: string | undefined;
+    readonly replaceBundled?: boolean | undefined;
+    readonly catalog?: boolean;
+  }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
   /** Stops and removes a plugin Uncut installed (one in <dataDir>/plugins), with its approval. */
   readonly uninstall: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** The allowed plugins' agent tools, from the last scan. */
@@ -72,12 +87,22 @@ export interface PluginsShape {
    * Runs a plugin's tool; undefined when no plugin has a tool by that name. `projectDir` is the
    * open project's folder, passed to the plugin as context (D98) by what it may do.
    */
-  readonly call: (tool: string, args: unknown, turn?: AbortSignal, projectDir?: string) => Effect.Effect<(PluginResult & { readonly plugin: PluginCaller }) | undefined>;
+  readonly call: (
+    tool: string,
+    args: unknown,
+    turn?: AbortSignal,
+    projectDir?: string,
+  ) => Effect.Effect<(PluginResult & { readonly plugin: PluginCaller }) | undefined>;
   /**
    * Runs a tool of the plugin `id` for Uncut itself (the Capture tab): any tool the process serves,
    * also those it doesn't list for the agent. Refused (an error result) when it isn't allowed.
    */
-  readonly callPlugin: (id: string, tool: string, args: unknown, options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined } & CallExtra) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
+  readonly callPlugin: (
+    id: string,
+    tool: string,
+    args: unknown,
+    options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined } & CallExtra,
+  ) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
   /** modules_list entries for the plugins (D97). */
   readonly modules: (kind?: string) => Effect.Effect<ReadonlyArray<Record<string, unknown>>>;
   /** The allowed plugins' looks, components and check rules (D103), from the last scan; an unallowed plugin's never show. */
@@ -98,7 +123,10 @@ export interface PluginsShape {
    * `check` tool called with the project (in parallel, CHECK_TIMEOUT_MS each); findings for rules
    * it declared become Checks. A plugin that fails or is too slow adds a note instead.
    */
-  readonly processChecks: (project: unknown, projectDir: string | undefined) => Effect.Effect<{ readonly checks: ReadonlyArray<Check>; readonly notes: ReadonlyArray<string> }>;
+  readonly processChecks: (
+    project: unknown,
+    projectDir: string | undefined,
+  ) => Effect.Effect<{ readonly checks: ReadonlyArray<Check>; readonly notes: ReadonlyArray<string> }>;
   /** The running process of a plugin (tests). */
   readonly host: PluginHost;
   /** #107: the allowed generator plugins that run (kind generator), with their manifests, after a fresh scan. */
@@ -159,7 +187,10 @@ export const layer = Layer.effect(
     const keepSkills = Effect.map(settings.pluginApprovals, (approvals) => {
       // D248: the plugins that ship with Uncut first, so their skill names are theirs whatever the order of the folders.
       const allowed = discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id));
-      skills = withoutSkills(mergeSkills([...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => p.contributions)), process.env.UNCUT_SKILLS_OFF);
+      skills = withoutSkills(
+        mergeSkills([...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => p.contributions)),
+        process.env.UNCUT_SKILLS_OFF,
+      );
     });
 
     const refresh = scanLock.withPermits(1)(
@@ -181,7 +212,10 @@ export const layer = Layer.effect(
     const userRoot = config.pluginDirs.find((r) => r.source === "user" && r.dir === join(config.dataDir, "plugins"))?.dir ?? join(config.dataDir, "plugins");
     const removableDirs = () =>
       Effect.promise(async () => {
-        const dirs = [...discovery.plugins.filter((p) => p.source === "user").map((p) => p.dir), ...discovery.broken.filter((b) => b.source === "user").map((b) => b.dir)];
+        const dirs = [
+          ...discovery.plugins.filter((p) => p.source === "user").map((p) => p.dir),
+          ...discovery.broken.filter((b) => b.source === "user").map((b) => b.dir),
+        ];
         const ok = await Promise.all(dirs.map((d) => isRemovable(userRoot, d)));
         return new Set(dirs.filter((_, i) => ok[i]));
       });
@@ -196,7 +230,8 @@ export const layer = Layer.effect(
         yield* refresh;
         const plugin = discovery.plugins.find((p) => p.id === id);
         if (plugin) return plugin;
-        if (discovery.broken.some((b) => b.id === id)) return yield* new PluginError({ reason: "broken", message: `The plugin ${id} can't be used: ${discovery.broken.find((b) => b.id === id)!.problem}` });
+        if (discovery.broken.some((b) => b.id === id))
+          return yield* new PluginError({ reason: "broken", message: `The plugin ${id} can't be used: ${discovery.broken.find((b) => b.id === id)!.problem}` });
         return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id}.` });
       });
 
@@ -212,11 +247,7 @@ export const layer = Layer.effect(
     // contract), which covers a server that was killed outright.
     const killAll = () => host.killAllNow();
     process.on("exit", killAll);
-    yield* Effect.addFinalizer(() =>
-      Effect.promise(() => host.stopAll()).pipe(
-        Effect.ensuring(Effect.sync(() => process.off("exit", killAll))),
-      ),
-    );
+    yield* Effect.addFinalizer(() => Effect.promise(() => host.stopAll()).pipe(Effect.ensuring(Effect.sync(() => process.off("exit", killAll)))));
 
     const refusal = (plugin: FoundPlugin, approval: PluginApproval | undefined) =>
       isApproved(plugin, approval)
@@ -232,7 +263,10 @@ export const layer = Layer.effect(
         const approvals = yield* settings.pluginApprovals;
         // The plugins that ship with Uncut first, so their generator ids are theirs.
         const allowed = discovery.plugins.filter((p) => p.kind === "generator" && p.runs && isApproved(p, approvals[p.id]) && !installing.has(p.id));
-        return [...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => ({ ...callerOf(p), manifest: p.manifest as unknown as Record<string, unknown> }));
+        return [...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => ({
+          ...callerOf(p),
+          manifest: p.manifest as unknown as Record<string, unknown>,
+        }));
       }),
       approve: ({ id, dir, capabilities, skills }) =>
         Effect.gen(function* () {
@@ -240,11 +274,22 @@ export const layer = Layer.effect(
           // Only what the user was shown: the same folder, nothing asked for beyond it, and (D248) the same skills.
           const hash = skillsHash(plugin.contributions);
           if (plugin.dir !== dir || plugin.capabilities.some((c) => !capabilities.includes(c)) || (hash !== undefined && skills !== hash)) {
-            return yield* new PluginError({ reason: "changed", message: `${plugin.name} changed since it was shown (another folder, other skills, or it asks for more). Look at it again before allowing it.` });
+            return yield* new PluginError({
+              reason: "changed",
+              message: `${plugin.name} changed since it was shown (another folder, other skills, or it asks for more). Look at it again before allowing it.`,
+            });
           }
           if (plugin.source !== "bundled") {
             yield* settings
-              .setPluginApproval(id, { dir: plugin.dir, version: plugin.version, command: plugin.spec.command, args: [...plugin.spec.args], capabilities: [...plugin.capabilities], ...(hash ? { skills: hash } : {}), approvedAt: new Date().toISOString() })
+              .setPluginApproval(id, {
+                dir: plugin.dir,
+                version: plugin.version,
+                command: plugin.spec.command,
+                args: [...plugin.spec.args],
+                capabilities: [...plugin.capabilities],
+                ...(hash ? { skills: hash } : {}),
+                approvedAt: new Date().toISOString(),
+              })
               .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is allowed: ${error.message}` })));
           }
           yield* keepSkills;
@@ -253,65 +298,117 @@ export const layer = Layer.effect(
       revoke: (id) =>
         Effect.gen(function* () {
           const plugin = yield* find(id);
-          if (plugin.source === "bundled") return yield* new PluginError({ reason: "bundled", message: `${plugin.name} ships with Uncut and is always allowed.` });
+          if (plugin.source === "bundled")
+            return yield* new PluginError({ reason: "bundled", message: `${plugin.name} ships with Uncut and is always allowed.` });
           yield* settings
             .setPluginApproval(id, undefined)
-            .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is no longer allowed: ${error.message}` })));
+            .pipe(
+              Effect.mapError(
+                (error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is no longer allowed: ${error.message}` }),
+              ),
+            );
           yield* Effect.promise(() => host.stop(id));
           yield* keepSkills;
           return yield* infos;
         }),
       install: (input) =>
-        installLock.withPermits(1)(Effect.gen(function* () {
-          // The plugins that ship with Uncut, found on their own (a user plugin may shadow one).
-          const shipped = yield* Effect.promise(() => discoverPlugins(config.pluginDirs.filter((r) => r.source === "bundled"), { moduleIds: reserved.moduleIds, toolNames: new Set() }));
-          const bundled = new Map(shipped.plugins.map((p) => [p.id, p.name]));
-          // Right before the new copy replaces the old (D102 review M1): no calls start it from now
-          // on, its approval goes (a failed write aborts the install) and the old process stops.
-          let swapping: string | undefined;
-          const beforeSwap = async (id: string) => {
-            swapping = id;
-            installing.add(id);
-            await Effect.runPromise(settings.setPluginApproval(id, undefined));
-            await host.stop(id);
-          };
-          const installed = yield* Effect.tryPromise({
-            try: () => installPlugin(input, { pluginsRoot: userRoot, builtinIds: reserved.moduleIds, bundled, git: () => which("git", process.env.PATH ?? ""), beforeSwap }),
-            catch: (error) =>
-              error instanceof InstallError
-                ? new PluginError({ reason: error.reason, message: error.message })
-                : new PluginError({ reason: "io", message: `Couldn't install it: ${messageOf(error)}` }),
-          }).pipe(Effect.ensuring(Effect.sync(() => swapping && installing.delete(swapping))));
-          // A new copy: the user allows it again (D97), whatever was allowed before.
-          yield* settings
-            .setPluginInstall(installed.id, { dir: installed.dir, source: installed.source, kind: input.catalog ? "catalog" : installed.kind, ...(installed.ref ? { ref: installed.ref } : {}), ...(installed.commit ? { commit: installed.commit } : {}), installedAt: new Date().toISOString() })
-            .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `${installed.name} was copied, but Uncut couldn't record where it came from: ${error.message}` })));
-          yield* refresh;
-          const winner = discovery.plugins.find((p) => p.id === installed.id);
-          const note = winner && winner.dir !== installed.dir ? `Another plugin with the id ${installed.id} comes first (${winner.dir}), so the one you installed isn't used until that one is removed.` : undefined;
-          return { id: installed.id, ...(note ? { note } : {}), plugins: yield* infos };
-        })),
+        installLock.withPermits(1)(
+          Effect.gen(function* () {
+            // The plugins that ship with Uncut, found on their own (a user plugin may shadow one).
+            const shipped = yield* Effect.promise(() =>
+              discoverPlugins(
+                config.pluginDirs.filter((r) => r.source === "bundled"),
+                { moduleIds: reserved.moduleIds, toolNames: new Set() },
+              ),
+            );
+            const bundled = new Map(shipped.plugins.map((p) => [p.id, p.name]));
+            // Right before the new copy replaces the old (D102 review M1): no calls start it from now
+            // on, its approval goes (a failed write aborts the install) and the old process stops.
+            let swapping: string | undefined;
+            const beforeSwap = async (id: string) => {
+              swapping = id;
+              installing.add(id);
+              await Effect.runPromise(settings.setPluginApproval(id, undefined));
+              await host.stop(id);
+            };
+            const installed = yield* Effect.tryPromise({
+              try: () =>
+                installPlugin(input, {
+                  pluginsRoot: userRoot,
+                  builtinIds: reserved.moduleIds,
+                  bundled,
+                  git: () => which("git", process.env.PATH ?? ""),
+                  beforeSwap,
+                }),
+              catch: (error) =>
+                error instanceof InstallError
+                  ? new PluginError({ reason: error.reason, message: error.message })
+                  : new PluginError({ reason: "io", message: `Couldn't install it: ${messageOf(error)}` }),
+            }).pipe(Effect.ensuring(Effect.sync(() => swapping && installing.delete(swapping))));
+            // A new copy: the user allows it again (D97), whatever was allowed before.
+            yield* settings
+              .setPluginInstall(installed.id, {
+                dir: installed.dir,
+                source: installed.source,
+                kind: input.catalog ? "catalog" : installed.kind,
+                ...(installed.ref ? { ref: installed.ref } : {}),
+                ...(installed.commit ? { commit: installed.commit } : {}),
+                installedAt: new Date().toISOString(),
+              })
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new PluginError({ reason: "io", message: `${installed.name} was copied, but Uncut couldn't record where it came from: ${error.message}` }),
+                ),
+              );
+            yield* refresh;
+            const winner = discovery.plugins.find((p) => p.id === installed.id);
+            const note =
+              winner && winner.dir !== installed.dir
+                ? `Another plugin with the id ${installed.id} comes first (${winner.dir}), so the one you installed isn't used until that one is removed.`
+                : undefined;
+            return { id: installed.id, ...(note ? { note } : {}), plugins: yield* infos };
+          }),
+        ),
       uninstall: (id) =>
-        installLock.withPermits(1)(Effect.gen(function* () {
-          yield* refresh;
-          const dir = discovery.plugins.find((p) => p.id === id && p.source === "user")?.dir ?? discovery.broken.find((b) => b.id === id && b.source === "user")?.dir;
-          if (!dir) {
-            if (discovery.plugins.some((p) => p.id === id && p.source === "bundled")) return yield* new PluginError({ reason: "bundled", message: `That plugin ships with Uncut and can't be removed.` });
-            return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id}.` });
-          }
-          if (!(yield* Effect.promise(() => isRemovable(userRoot, dir)))) {
-            return yield* new PluginError({ reason: "not-removable", message: `Uncut didn't install that plugin (it's in ${dir}), so it doesn't remove it: delete the folder yourself.` });
-          }
-          yield* Effect.promise(() => host.stop(id));
-          yield* Effect.tryPromise({ try: () => removePluginFolder(userRoot, dir), catch: (error) => new PluginError({ reason: "io", message: `Couldn't remove it: ${messageOf(error)}` }) });
-          yield* settings.setPluginInstall(id, undefined).pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `It was removed, but Uncut couldn't update its settings: ${error.message}` })));
-          yield* refresh;
-          return yield* infos;
-        })),
+        installLock.withPermits(1)(
+          Effect.gen(function* () {
+            yield* refresh;
+            const dir =
+              discovery.plugins.find((p) => p.id === id && p.source === "user")?.dir ?? discovery.broken.find((b) => b.id === id && b.source === "user")?.dir;
+            if (!dir) {
+              if (discovery.plugins.some((p) => p.id === id && p.source === "bundled"))
+                return yield* new PluginError({ reason: "bundled", message: `That plugin ships with Uncut and can't be removed.` });
+              return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id}.` });
+            }
+            if (!(yield* Effect.promise(() => isRemovable(userRoot, dir)))) {
+              return yield* new PluginError({
+                reason: "not-removable",
+                message: `Uncut didn't install that plugin (it's in ${dir}), so it doesn't remove it: delete the folder yourself.`,
+              });
+            }
+            yield* Effect.promise(() => host.stop(id));
+            yield* Effect.tryPromise({
+              try: () => removePluginFolder(userRoot, dir),
+              catch: (error) => new PluginError({ reason: "io", message: `Couldn't remove it: ${messageOf(error)}` }),
+            });
+            yield* settings
+              .setPluginInstall(id, undefined)
+              .pipe(
+                Effect.mapError(
+                  (error) => new PluginError({ reason: "io", message: `It was removed, but Uncut couldn't update its settings: ${error.message}` }),
+                ),
+              );
+            yield* refresh;
+            return yield* infos;
+          }),
+        ),
       // Only allowed plugins' tools reach the agent's list (D97): an unapproved plugin's manifest
       // text never gets into the prompt; modules_list says it's installed and waits for approval.
       tools: Effect.map(settings.pluginApprovals, (approvals) =>
-        discovery.plugins.filter((p) => isApproved(p, approvals[p.id])).flatMap((p) => p.tools.map((t) => ({ ...t, description: `${t.description} (Plugin: ${p.name}.)` }))),
+        discovery.plugins
+          .filter((p) => isApproved(p, approvals[p.id]))
+          .flatMap((p) => p.tools.map((t) => ({ ...t, description: `${t.description} (Plugin: ${p.name}.)` }))),
       ),
       owner: (tool) => {
         const p = byTool(tool);
@@ -327,9 +424,12 @@ export const layer = Layer.effect(
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
           if (refused) return { ...errorResult(refused), plugin: callerOf(plugin) };
           // ...and again once the process is up, in case it was revoked while it started.
-          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? refusal(plugin, approvals[plugin.id])));
+          const allowed = () =>
+            Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? refusal(plugin, approvals[plugin.id])));
           const context = yield* Effect.promise(() => pluginContext(plugin, projectDir).catch(() => ({})));
-          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, turn ? AbortSignal.any([signal, turn]) : signal, allowed, context));
+          const result = yield* Effect.promise((signal) =>
+            host.call(plugin.spec, tool, args, turn ? AbortSignal.any([signal, turn]) : signal, allowed, context),
+          );
           return { ...result, plugin: callerOf(plugin) };
         }),
       callPlugin: (id, tool, args, options = {}) =>
@@ -345,9 +445,21 @@ export const layer = Layer.effect(
           if (installingNow) return { ...errorResult(installingNow), plugin: callerOf(plugin) };
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
           if (refused) return { ...errorResult(`${plugin.name} isn't allowed to run yet: allow it in Settings, the Capture step.`), plugin: callerOf(plugin) };
-          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
+          const allowed = () =>
+            Effect.runPromise(
+              Effect.map(
+                settings.pluginApprovals,
+                (approvals) => busy(plugin.id) ?? (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined),
+              ),
+            );
           const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
-          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress, meta: options.meta }));
+          const result = yield* Effect.promise((signal) =>
+            host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, {
+              timeoutMs: options.timeoutMs,
+              onProgress: options.onProgress,
+              meta: options.meta,
+            }),
+          );
           return { ...result, plugin: callerOf(plugin) };
         }),
       catalog: Effect.gen(function* () {
@@ -355,7 +467,8 @@ export const layer = Layer.effect(
         const installs = yield* settings.pluginInstalls;
         // Enabled: the plugin in use under that id is the copy Uncut made from the catalog (a
         // same-id plugin from git or a folder doesn't count).
-        const fromCatalog = (id: string) => installs[id]?.kind === "catalog" && discovery.plugins.some((d) => d.id === id && d.source === "user" && d.dir === installs[id]!.dir);
+        const fromCatalog = (id: string) =>
+          installs[id]?.kind === "catalog" && discovery.plugins.some((d) => d.id === id && d.source === "user" && d.dir === installs[id]!.dir);
         const found = yield* Effect.promise(() => discoverPlugins([catalogRoot], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
         const approvals = yield* settings.pluginApprovals;
         return {
@@ -374,7 +487,13 @@ export const layer = Layer.effect(
             // D258: what the marketplace card shows: who made it, what allowing it means, and whether the copy in use is allowed.
             ...(typeof p.manifest.author === "string" && p.manifest.author ? { author: p.manifest.author } : {}),
             asks: pluginAsks(p),
-            ...(fromCatalog(p.id) ? { status: discovery.plugins.some((d) => d.id === p.id && d.source === "user" && isApproved(d, approvals[p.id])) ? ("ready" as const) : ("needs-approval" as const) } : {}),
+            ...(fromCatalog(p.id)
+              ? {
+                  status: discovery.plugins.some((d) => d.id === p.id && d.source === "user" && isApproved(d, approvals[p.id]))
+                    ? ("ready" as const)
+                    : ("needs-approval" as const),
+                }
+              : {}),
           })),
           problems: found.broken.map((b) => `${b.id ?? b.dir}: ${b.problem}`),
         };
@@ -382,7 +501,11 @@ export const layer = Layer.effect(
       disable: (id) =>
         Effect.gen(function* () {
           const install = (yield* settings.pluginInstalls)[id];
-          if (install?.kind !== "catalog") return yield* new PluginError({ reason: "not-removable", message: `${id} wasn't enabled from Uncut's catalog, so Disable doesn't remove it (Remove does, in its row).` });
+          if (install?.kind !== "catalog")
+            return yield* new PluginError({
+              reason: "not-removable",
+              message: `${id} wasn't enabled from Uncut's catalog, so Disable doesn't remove it (Remove does, in its row).`,
+            });
           return yield* self.uninstall(id);
         }),
       enable: (id) =>
@@ -400,15 +523,25 @@ export const layer = Layer.effect(
       processChecks: (project, projectDir) =>
         Effect.gen(function* () {
           const approvals = yield* settings.pluginApprovals;
-          const askers = discovery.plugins.filter((p) => p.runs && isApproved(p, approvals[p.id]) && p.contributions.rules.some((r) => r.rule.type === "process"));
+          const askers = discovery.plugins.filter(
+            (p) => p.runs && isApproved(p, approvals[p.id]) && p.contributions.rules.some((r) => r.rule.type === "process"),
+          );
           if (!askers.length) return { checks: [], notes: [] };
           const results = yield* Effect.forEach(
             askers,
             (plugin) =>
               Effect.gen(function* () {
-                const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (now) => busy(plugin.id) ?? (refusal(plugin, now[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
+                const allowed = () =>
+                  Effect.runPromise(
+                    Effect.map(
+                      settings.pluginApprovals,
+                      (now) => busy(plugin.id) ?? (refusal(plugin, now[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined),
+                    ),
+                  );
                 const context = yield* Effect.promise(() => pluginContext(plugin, projectDir).catch(() => ({})));
-                const result = yield* Effect.promise((signal) => host.call(plugin.spec, "check", { project }, signal, allowed, context, { timeoutMs: CHECK_TIMEOUT_MS }));
+                const result = yield* Effect.promise((signal) =>
+                  host.call(plugin.spec, "check", { project }, signal, allowed, context, { timeoutMs: CHECK_TIMEOUT_MS }),
+                );
                 return parseFindings(plugin, result);
               }),
             { concurrency: "unbounded" },
@@ -433,21 +566,54 @@ export const layer = Layer.effect(
                     capabilities: p.capabilities,
                     tools: p.tools.map((t) => t.name),
                     ...(contributesOf(p.contributions) ? { contributes: contributesFor(p.contributions) } : {}),
-                    ...(p.kind === "generator" && Array.isArray(p.manifest.generators) ? { generators: generatorsFor(p.manifest.generators as ReadonlyArray<Record<string, any>>) } : {}),
+                    ...(p.kind === "generator" && Array.isArray(p.manifest.generators)
+                      ? { generators: generatorsFor(p.manifest.generators as ReadonlyArray<Record<string, any>>) }
+                      : {}),
                     ...(p.warnings.length ? { warnings: p.warnings } : {}),
                   }
-                : { id: p.id, kind: p.kind, name: p.name.slice(0, 80), source: p.source, plugin: true, approved: false, note: "Installed, but the user hasn't allowed it yet: its tools aren't available until they do (Uncut > Settings…, the Capture step, Plugins)." },
+                : {
+                    id: p.id,
+                    kind: p.kind,
+                    name: p.name.slice(0, 80),
+                    source: p.source,
+                    plugin: true,
+                    approved: false,
+                    note: "Installed, but the user hasn't allowed it yet: its tools aren't available until they do (Uncut > Settings…, the Capture step, Plugins).",
+                  },
             ),
           // An allowed plugin's looks and components among the built-ins of that kind (D103).
           ...discovery.plugins
             .filter((p) => (kind === "text-style" || kind === "component") && isApproved(p, approvals[p.id]))
             .flatMap((p): Array<Record<string, unknown>> =>
               kind === "text-style"
-                ? p.contributions.looks.map((l) => ({ id: l.id, kind, name: l.name, description: l.description, source: p.source, plugin: p.id, note: `From the plugin ${p.name}: insert_text with look ${l.id}; the text carries the whole look, so it keeps drawing if the plugin goes.` }))
-                : p.contributions.components.map((c) => ({ id: c.id, kind, name: c.name, description: c.description, source: p.source, plugin: p.id, params: c.params, note: `From the plugin ${p.name}: the user adds it from the Elements tab (it becomes a graphic item whose props are these params; you can change them with update_item).` })),
+                ? p.contributions.looks.map((l) => ({
+                    id: l.id,
+                    kind,
+                    name: l.name,
+                    description: l.description,
+                    source: p.source,
+                    plugin: p.id,
+                    note: `From the plugin ${p.name}: insert_text with look ${l.id}; the text carries the whole look, so it keeps drawing if the plugin goes.`,
+                  }))
+                : p.contributions.components.map((c) => ({
+                    id: c.id,
+                    kind,
+                    name: c.name,
+                    description: c.description,
+                    source: p.source,
+                    plugin: p.id,
+                    params: c.params,
+                    note: `From the plugin ${p.name}: the user adds it from the Elements tab (it becomes a graphic item whose props are these params; you can change them with update_item).`,
+                  })),
             ),
           ...(!kind || kind === "plugin"
-            ? discovery.broken.map((b) => ({ id: (b.id ?? b.dir.split("/").at(-1))?.slice(0, 80), source: b.source, plugin: true, skipped: true, warnings: [b.problem.slice(0, 300)] }))
+            ? discovery.broken.map((b) => ({
+                id: (b.id ?? b.dir.split("/").at(-1))?.slice(0, 80),
+                source: b.source,
+                plugin: true,
+                skipped: true,
+                warnings: [b.problem.slice(0, 300)],
+              }))
             : []),
         ]),
     });

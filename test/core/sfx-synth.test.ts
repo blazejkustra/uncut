@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 
 import { RATE, SYNTH_SOUNDS } from "../../scripts/sfx-synth.ts";
 
-const pack = (JSON.parse(readFileSync("assets/sfx/library.json", "utf8")) as { sounds: Array<{ id: string; provider: string; title: string; tags: Array<string> }> }).sounds;
+const pack = (
+  JSON.parse(readFileSync("assets/sfx/library.json", "utf8")) as { sounds: Array<{ id: string; provider: string; title: string; tags: Array<string> }> }
+).sounds;
 
 test("every synth recipe is in the pack under the same id, title and tags (D250, D286)", () => {
   const uncut = pack.filter((s) => s.provider === "uncut");

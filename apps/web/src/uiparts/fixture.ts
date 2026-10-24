@@ -11,8 +11,20 @@ export const FIXTURE_DIR = "/Users/you/Movies/Launch film.uncut";
 const FPS = 60;
 const s = (seconds: number) => Math.round(seconds * FPS);
 
-const clip = (id: string, name: string, frames: number) => ({ id, kind: "video" as const, name, path: `/Users/you/Footage/${name.replace(" ", "_")}.MP4`, probe: { frames, fps: 50, width: 3840, height: 2160, hasAudio: false } });
-const sound = (id: string, name: string, seconds: number) => ({ id, kind: "audio" as const, name, path: `/Users/you/Sounds/${name}.wav`, probe: { frames: Math.round(seconds * 50), hasAudio: true } });
+const clip = (id: string, name: string, frames: number) => ({
+  id,
+  kind: "video" as const,
+  name,
+  path: `/Users/you/Footage/${name.replace(" ", "_")}.MP4`,
+  probe: { frames, fps: 50, width: 3840, height: 2160, hasAudio: false },
+});
+const sound = (id: string, name: string, seconds: number) => ({
+  id,
+  kind: "audio" as const,
+  name,
+  path: `/Users/you/Sounds/${name}.wav`,
+  probe: { frames: Math.round(seconds * 50), hasAudio: true },
+});
 
 export const FIXTURE_PROJECT = {
   format: "uncut/1",
@@ -20,7 +32,13 @@ export const FIXTURE_PROJECT = {
   canvas: { width: 1080, height: 1350, fps: FPS },
   textLooks: 1,
   media: [
-    { id: "m-music", kind: "audio" as const, name: "electro-dreams.mp3", path: "/Users/you/Music/electro-dreams.mp3", probe: { frames: s(28), hasAudio: true } },
+    {
+      id: "m-music",
+      kind: "audio" as const,
+      name: "electro-dreams.mp3",
+      path: "/Users/you/Music/electro-dreams.mp3",
+      probe: { frames: s(28), hasAudio: true },
+    },
     clip("m-dji-0050", "DJI 0050", 1896),
     clip("m-dji-0055", "DJI 0055", 2300),
     clip("m-dji-0063", "DJI 0063", 2900),
@@ -30,8 +48,28 @@ export const FIXTURE_PROJECT = {
     sound("m-typing", "Keyboard typing", 2.9),
   ],
   tracks: [
-    { id: "t-text", kind: "text" as const, name: "Text", items: [{ id: "title", type: "text" as const, name: "Edit videos by talking", text: "Edit videos by talking", start: s(0.5), duration: s(5.5), style: { size: 120 } }] },
-    { id: "t-gfx", kind: "video" as const, name: "Graphics", items: [{ id: "end", type: "graphic" as const, name: "End card", src: "graphics/end-card.html", start: s(22), duration: s(6) }] },
+    {
+      id: "t-text",
+      kind: "text" as const,
+      name: "Text",
+      items: [
+        {
+          id: "title",
+          type: "text" as const,
+          name: "Edit videos by talking",
+          text: "Edit videos by talking",
+          start: s(0.5),
+          duration: s(5.5),
+          style: { size: 120 },
+        },
+      ],
+    },
+    {
+      id: "t-gfx",
+      kind: "video" as const,
+      name: "Graphics",
+      items: [{ id: "end", type: "graphic" as const, name: "End card", src: "graphics/end-card.html", start: s(22), duration: s(6) }],
+    },
     {
       id: "t-main",
       kind: "video" as const,
@@ -44,7 +82,12 @@ export const FIXTURE_PROJECT = {
         { id: "c4", type: "clip" as const, media: "m-dji-0050", in: s(15.8), duration: s(8) },
       ],
     },
-    { id: "t-music", kind: "audio" as const, name: "Audio", items: [{ id: "music", type: "audio" as const, media: "m-music", start: 0, in: 0, duration: s(28) }] },
+    {
+      id: "t-music",
+      kind: "audio" as const,
+      name: "Audio",
+      items: [{ id: "music", type: "audio" as const, media: "m-music", start: 0, in: 0, duration: s(28) }],
+    },
     {
       id: "t-sfx",
       kind: "audio" as const,
@@ -67,7 +110,20 @@ export const FIXTURE_SNAPSHOT_FX: ProjectSnapshot = {
   ...FIXTURE_SNAPSHOT,
   project: {
     ...FIXTURE_PROJECT,
-    tracks: FIXTURE_PROJECT.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.id === FIXTURE_FX_CLIP ? { ...i, effects: [{ module: "effect.look", params: { look: "warm" } }, { module: "effect.vignette", params: { amount: 0.5, size: 0.5 } }] } : i)) })),
+    tracks: FIXTURE_PROJECT.tracks.map((t) => ({
+      ...t,
+      items: t.items.map((i) =>
+        i.id === FIXTURE_FX_CLIP
+          ? {
+              ...i,
+              effects: [
+                { module: "effect.look", params: { look: "warm" } },
+                { module: "effect.vignette", params: { amount: 0.5, size: 0.5 } },
+              ],
+            }
+          : i,
+      ),
+    })),
   },
 };
 
@@ -78,13 +134,50 @@ export const FIXTURE_CHIP = { kind: "item" as const, id: FIXTURE_MENU_CLIP, labe
 export const FIXTURE_PROMPT = "Make a 28 s launch film for Uncut on the Electro Dreams beat, the drone clips as the film being edited.";
 
 export const FIXTURE_STORYBOARD: Storyboard = {
-  summary: "One take on Electro Dreams: the composer, the agent's plan, the timeline building, the preview flooding full-frame on the drop, the critic's card, the export.",
+  summary:
+    "One take on Electro Dreams: the composer, the agent's plan, the timeline building, the preview flooding full-frame on the drop, the critic's card, the export.",
   status: "proposed",
   beats: [
-    { start: 0, end: 2, title: "Hook", entry: '"Edit videos by talking to an agent" huge on the canvas', exit: "The empty composer under it", purpose: "Stop the scroll with the claim", assets: ["Kit fonts", "composer UI"], sound: "Downbeat 0" },
-    { start: 2, end: 6, title: "Typing the prompt", entry: "The cursor clicks into the composer", exit: "Prompt typed; Send pressed at 6.0", purpose: "Show you typing this prompt", assets: ["Composer UI"], sound: "Click on 2.5, send on 6.0" },
-    { start: 6, end: 12, title: "It edits the timeline", entry: "The panel morphs into the editor", exit: "Camera pushes onto the preview", purpose: "The agent putting clips on real tracks", assets: ["DJI 0055", "DJI 0063", "DJI 0068"], sound: "A clip lands on every beat" },
-    { start: 12, end: 18, title: "Drop: the film plays", entry: "The preview floods full-frame", exit: "Shots grow out of each other", purpose: "The reveal: the edited film itself", assets: ["DJI 0063", "DJI 0050"], sound: "Drop 12.0" },
+    {
+      start: 0,
+      end: 2,
+      title: "Hook",
+      entry: '"Edit videos by talking to an agent" huge on the canvas',
+      exit: "The empty composer under it",
+      purpose: "Stop the scroll with the claim",
+      assets: ["Kit fonts", "composer UI"],
+      sound: "Downbeat 0",
+    },
+    {
+      start: 2,
+      end: 6,
+      title: "Typing the prompt",
+      entry: "The cursor clicks into the composer",
+      exit: "Prompt typed; Send pressed at 6.0",
+      purpose: "Show you typing this prompt",
+      assets: ["Composer UI"],
+      sound: "Click on 2.5, send on 6.0",
+    },
+    {
+      start: 6,
+      end: 12,
+      title: "It edits the timeline",
+      entry: "The panel morphs into the editor",
+      exit: "Camera pushes onto the preview",
+      purpose: "The agent putting clips on real tracks",
+      assets: ["DJI 0055", "DJI 0063", "DJI 0068"],
+      sound: "A clip lands on every beat",
+    },
+    {
+      start: 12,
+      end: 18,
+      title: "Drop: the film plays",
+      entry: "The preview floods full-frame",
+      exit: "Shots grow out of each other",
+      purpose: "The reveal: the edited film itself",
+      assets: ["DJI 0063", "DJI 0050"],
+      sound: "Drop 12.0",
+    },
   ],
 };
 
@@ -99,7 +192,16 @@ export const FIXTURE_REVIEW: Review = {
   fixes: [],
 };
 
-const turn = (id: string, patch: Partial<AgentTurn>): AgentTurn => ({ id, prompt: FIXTURE_PROMPT, startedAt: "2026-10-16T10:00:00.000Z", status: "done", items: [], edits: [], undo: { state: "none" }, ...patch });
+const turn = (id: string, patch: Partial<AgentTurn>): AgentTurn => ({
+  id,
+  prompt: FIXTURE_PROMPT,
+  startedAt: "2026-10-16T10:00:00.000Z",
+  status: "done",
+  items: [],
+  edits: [],
+  undo: { state: "none" },
+  ...patch,
+});
 
 /** The plan scene: the turn is waiting on the storyboard card (Approve). */
 export const FIXTURE_AGENT_PLAN: AgentState = {
@@ -133,7 +235,10 @@ export const FIXTURE_AGENT_DONE: AgentState = {
         { kind: "step", text: "Wrote graphic film.html", tool: "graphic_write", status: "done" },
         { kind: "step", text: "Placed the clips on Main", tool: "edit", status: "done" },
         { kind: "card", text: "", card: { type: "review", review: FIXTURE_REVIEW } },
-        { kind: "text", text: "The film is built on the Electro Dreams beat: it opens on the claim, types your prompt, builds the timeline, floods the preview on the drop and ends on the export." },
+        {
+          kind: "text",
+          text: "The film is built on the Electro Dreams beat: it opens on the claim, types your prompt, builds the timeline, floods the preview on the drop and ends on the export.",
+        },
       ],
       edits: [
         { revision: 14, summary: "Placed the clips on Main", lines: ["Added DJI 0055", "Added DJI 0063", "Added DJI 0068", "Added DJI 0050"], at: 1 },
@@ -150,7 +255,13 @@ export const FIXTURE_AGENT_CHIP: AgentState = {
   dir: FIXTURE_DIR,
   provider: "Claude Code",
   running: null,
-  turns: [turn("turn-1", { prompt: `@${FIXTURE_CHIP.label} make this one slow motion`, mentions: [{ kind: FIXTURE_CHIP.kind, label: FIXTURE_CHIP.label }], finishedAt: "2026-10-16T10:01:00.000Z" })],
+  turns: [
+    turn("turn-1", {
+      prompt: `@${FIXTURE_CHIP.label} make this one slow motion`,
+      mentions: [{ kind: FIXTURE_CHIP.kind, label: FIXTURE_CHIP.label }],
+      finishedAt: "2026-10-16T10:01:00.000Z",
+    }),
+  ],
 };
 
 export const FIXTURE_SETUP: ReadonlyArray<SetupCheck> = [

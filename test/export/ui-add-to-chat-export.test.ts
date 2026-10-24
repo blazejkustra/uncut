@@ -97,11 +97,36 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test("uncutUI Add to chat: the clip menu with Add to chat highlighted, and the clip's chip in the composer, a message and the stage", { skip, timeout: 120000 }, async () => {
-  const out = join(root, "f.png");
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: 0, info: graphicInfo({ duration: 60, props: {} }, canvas, 60), out, name: "graphics/chat.html" });
-  const px = rgbaOf(out);
-  const [r, g] = [px[0]!, px[1]!];
-  const why = ["", "Add to chat isn't highlighted with ⌘L", "the menu isn't where it's mounted", "active didn't move the highlight", "no chip in the typed composer", "the chip has no CSS", "the typed text is off the schedule", "a partly typed @label became a chip", "no chip in the message", "no chip in the stage's composer"][Math.round(r / 20)] ?? `pixel ${r},${g}`;
-  assert.ok(g > 200 && r < 30, why);
-});
+test(
+  "uncutUI Add to chat: the clip menu with Add to chat highlighted, and the clip's chip in the composer, a message and the stage",
+  { skip, timeout: 120000 },
+  async () => {
+    const out = join(root, "f.png");
+    await raster.render({
+      kind: "graphic",
+      width: W,
+      height: H,
+      doc,
+      t: 0,
+      info: graphicInfo({ duration: 60, props: {} }, canvas, 60),
+      out,
+      name: "graphics/chat.html",
+    });
+    const px = rgbaOf(out);
+    const [r, g] = [px[0]!, px[1]!];
+    const why =
+      [
+        "",
+        "Add to chat isn't highlighted with ⌘L",
+        "the menu isn't where it's mounted",
+        "active didn't move the highlight",
+        "no chip in the typed composer",
+        "the chip has no CSS",
+        "the typed text is off the schedule",
+        "a partly typed @label became a chip",
+        "no chip in the message",
+        "no chip in the stage's composer",
+      ][Math.round(r / 20)] ?? `pixel ${r},${g}`;
+    assert.ok(g > 200 && r < 30, why);
+  },
+);

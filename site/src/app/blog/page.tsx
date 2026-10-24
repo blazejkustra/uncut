@@ -27,7 +27,16 @@ export default function BlogIndex() {
           name: `${SITE_NAME} blog`,
           url: `${SITE_URL}/blog/`,
           description: DESCRIPTION,
-          blogPost: posts.filter((p) => !p.draft).map((p) => ({ "@type": "BlogPosting", headline: p.title, description: p.description, datePublished: p.date, dateModified: p.updated ?? p.date, url: `${SITE_URL}/blog/${p.slug}/` })),
+          blogPost: posts
+            .filter((p) => !p.draft)
+            .map((p) => ({
+              "@type": "BlogPosting",
+              headline: p.title,
+              description: p.description,
+              datePublished: p.date,
+              dateModified: p.updated ?? p.date,
+              url: `${SITE_URL}/blog/${p.slug}/`,
+            })),
         }}
       />
       <SiteHeader />
@@ -39,14 +48,19 @@ export default function BlogIndex() {
             {posts.map((p) => (
               <li key={p.slug}>
                 <a className="post-card" href={`/blog/${p.slug}/`}>
-                  <p className="meta">{p.draft ? <span className="draft-tag">Draft</span> : null}<time dateTime={p.date}>{formatDate(p.date)}</time></p>
+                  <p className="meta">
+                    {p.draft ? <span className="draft-tag">Draft</span> : null}
+                    <time dateTime={p.date}>{formatDate(p.date)}</time>
+                  </p>
                   <h2>{p.title}</h2>
                   <p className="desc">{p.description}</p>
                 </a>
               </li>
             ))}
           </ul>
-          <p className="feed"><a href="/blog/rss.xml">RSS feed</a></p>
+          <p className="feed">
+            <a href="/blog/rss.xml">RSS feed</a>
+          </p>
         </div>
       </main>
       <SiteFooter />

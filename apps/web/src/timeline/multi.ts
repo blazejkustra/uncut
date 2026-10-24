@@ -19,7 +19,12 @@ export interface ManyPlan extends Plan {
  * applied, so planners that read neighbours (a main clip's speed moves the clips after it) see the
  * real timeline. `summary(n, one)` labels the edit (`one`: the single item's own label).
  */
-export function planForAll(project: ProjectModel, ids: ReadonlyArray<string>, plan: (p: ProjectModel, id: string) => Plan | Problem, summary: (n: number, one: string) => string): ManyPlan | Problem {
+export function planForAll(
+  project: ProjectModel,
+  ids: ReadonlyArray<string>,
+  plan: (p: ProjectModel, id: string) => Plan | Problem,
+  summary: (n: number, one: string) => string,
+): ManyPlan | Problem {
   const unique = [...new Set(ids)];
   let current = project;
   const ops: Array<Op> = [];

@@ -31,7 +31,14 @@ const markOf = (page: Page, selector: string) =>
     document.body.append(probe);
     const fgRgb = getComputedStyle(probe).color;
     probe.remove();
-    return { mask: cs.maskImage || cs.getPropertyValue("-webkit-mask-image"), width: r.width, height: r.height, fill: cs.backgroundColor, fg: fgRgb, lucide: !!el.parentElement!.querySelector(":scope > svg.lucide") };
+    return {
+      mask: cs.maskImage || cs.getPropertyValue("-webkit-mask-image"),
+      width: r.width,
+      height: r.height,
+      fill: cs.backgroundColor,
+      fg: fgRgb,
+      lucide: !!el.parentElement!.querySelector(":scope > svg.lucide"),
+    };
   });
 
 before(async () => {
@@ -48,7 +55,11 @@ after(async () => {
 });
 
 test("tool and plugin rows show marks; the Speech model keeps its waveform; Settings › Plugins cards too", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, firstLaunch: true, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) } });
+  app = await launchApp({
+    command: APP,
+    firstLaunch: true,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) },
+  });
   const { page } = app;
   try {
     await waitFor(page, "[data-testid=onboarding]");
@@ -65,7 +76,13 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
       const row = await page.$eval(`[data-testid=check-${id}] .wiz-row`, (el) => {
         const mark = el.querySelector(":scope > svg.wiz-mark");
         const r = mark?.getBoundingClientRect();
-        return { mark: mark?.getAttribute("data-testid"), lucide: !!el.querySelector(":scope > svg.lucide"), w: r?.width, h: r?.height, paths: mark?.querySelectorAll("path").length ?? 0 };
+        return {
+          mark: mark?.getAttribute("data-testid"),
+          lucide: !!el.querySelector(":scope > svg.lucide"),
+          w: r?.width,
+          h: r?.height,
+          paths: mark?.querySelectorAll("path").length ?? 0,
+        };
       });
       assert.equal(row.mark, `row-mark-${id}`, `${id}'s row draws its mark`);
       assert.equal(row.lucide, false, `${id}'s row has no generic icon`);
@@ -74,7 +91,8 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
       assert.ok(row.paths > 0);
     }
     // The Speech model row (when whisper.cpp is found) keeps its waveform.
-    if (await page.$("[data-testid=whisper-model]")) assert.ok(await page.$("[data-testid=whisper-model] .wiz-row > svg.lucide-audio-lines"), "the Speech model keeps its waveform icon");
+    if (await page.$("[data-testid=whisper-model]"))
+      assert.ok(await page.$("[data-testid=whisper-model] .wiz-row > svg.lucide-audio-lines"), "the Speech model keeps its waveform icon");
 
     for (const id of ["argent.capture", "uncut.elevenlabs", "uncut.skills", "whisper.transcribe"]) {
       await waitFor(page, `[data-testid='plugin-${id}'] [data-testid='plugin-mark-${id}']`);
@@ -95,7 +113,9 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
     // Browse…: the catalog's plugins with their icons.
     await page.click("[data-testid=plugin-browse]");
     await waitFor(page, "[data-testid=plugin-catalog-entry]");
-    const catalog = await page.$$eval("[data-testid=plugin-catalog-entry]", (els) => els.map((e) => ({ id: e.getAttribute("data-id"), mark: !!e.querySelector(".plugin-mark"), lucide: !!e.querySelector(":scope > svg.lucide") })));
+    const catalog = await page.$$eval("[data-testid=plugin-catalog-entry]", (els) =>
+      els.map((e) => ({ id: e.getAttribute("data-id"), mark: !!e.querySelector(".plugin-mark"), lucide: !!e.querySelector(":scope > svg.lucide") })),
+    );
     assert.ok(catalog.length >= 3, `catalog: ${JSON.stringify(catalog)}`);
     for (const c of catalog) assert.ok(c.mark && !c.lucide, `${c.id} in the catalog draws its icon`);
     await page.$eval("[data-testid=plugin-browse-panel]", (el) => el.scrollIntoView({ block: "start" }));
@@ -119,7 +139,14 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
     await waitFor(page, "[data-testid=plugins-market] [data-testid=market-card]");
     await waitFor(page, "[data-testid=market-available] [data-testid=market-card]");
     await sleep(300);
-    const cards = await page.$$eval("[data-testid=market-card]", (els) => els.map((e) => ({ id: e.getAttribute("data-id"), mark: !!e.querySelector(".pm-icon .plugin-mark"), lucide: !!e.querySelector(".pm-icon svg.lucide"), size: e.querySelector(".pm-icon .plugin-mark")?.getBoundingClientRect().width })));
+    const cards = await page.$$eval("[data-testid=market-card]", (els) =>
+      els.map((e) => ({
+        id: e.getAttribute("data-id"),
+        mark: !!e.querySelector(".pm-icon .plugin-mark"),
+        lucide: !!e.querySelector(".pm-icon svg.lucide"),
+        size: e.querySelector(".pm-icon .plugin-mark")?.getBoundingClientRect().width,
+      })),
+    );
     assert.ok(cards.length >= 6, `cards: ${JSON.stringify(cards)}`);
     for (const c of cards) {
       assert.ok(c.mark && !c.lucide, `${c.id}'s card draws its icon`);

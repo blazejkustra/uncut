@@ -20,12 +20,24 @@ export function errorOf(r: FetchResult): string {
   try {
     const body = JSON.parse(r.text ?? "") as { detail?: unknown; message?: unknown };
     const d = body.detail as { message?: unknown; status?: unknown } | Array<{ msg?: unknown }> | string | undefined;
-    detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => String(x?.msg ?? "")).join("; ") : typeof d?.message === "string" ? d.message : typeof body.message === "string" ? body.message : "";
+    detail =
+      typeof d === "string"
+        ? d
+        : Array.isArray(d)
+          ? d.map((x) => String(x?.msg ?? "")).join("; ")
+          : typeof d?.message === "string"
+            ? d.message
+            : typeof body.message === "string"
+              ? body.message
+              : "";
   } catch {
     detail = (r.text ?? "").trim().split("\n")[0] ?? "";
   }
   // Its own sentence without the full stop: ours ends it.
-  detail = detail.slice(0, 300).trim().replace(/[.\s]+$/, "");
+  detail = detail
+    .slice(0, 300)
+    .trim()
+    .replace(/[.\s]+$/, "");
   const tail = detail ? `: ${detail}` : "";
   if (r.status === 401) return `ElevenLabs didn't accept your key (401)${tail}. Check it in Settings › Keys.`;
   if (r.status === 402 || r.status === 403) return `ElevenLabs refused it for your plan (${r.status})${tail}.`;
@@ -69,7 +81,10 @@ export async function findVoice(ctx: ToolContext, wanted: string): Promise<{ rea
   if (!w) return { id: "JBFqnCBsd6RMkjVDRZzb", name: "George" };
   const voices = VOICE_ID.test(w) ? await listVoices(ctx) : await listVoices(ctx, shortName(w));
   const lower = w.toLowerCase();
-  const found = voices.find((v) => v.voice_id === w) ?? voices.find((v) => v.name.toLowerCase() === lower) ?? voices.find((v) => shortName(v.name).toLowerCase() === shortName(lower));
+  const found =
+    voices.find((v) => v.voice_id === w) ??
+    voices.find((v) => v.name.toLowerCase() === lower) ??
+    voices.find((v) => shortName(v.name).toLowerCase() === shortName(lower));
   if (found) return { id: found.voice_id, name: shortName(found.name) };
   // An id that isn't listed (a shared voice): ElevenLabs says so if it can't use it.
   if (VOICE_ID.test(w)) return { id: w, name: "the voice" };

@@ -213,7 +213,12 @@ function TurnGroup({ group, turn, ...rest }: RowProps & { group: Group; turn: Ag
       data-turn={group.turnId}
       data-undo={undo?.state ?? "none"}
     >
-      <button className="history-turn-head" aria-expanded={rest.selected === newest.revision} title="Preview the project after this turn" onClick={() => rest.onPick(newest.revision)}>
+      <button
+        className="history-turn-head"
+        aria-expanded={rest.selected === newest.revision}
+        title="Preview the project after this turn"
+        onClick={() => rest.onPick(newest.revision)}
+      >
         <Sparkles />
         <span className="history-label">
           <span className="history-who">Agent</span>
@@ -229,7 +234,13 @@ function TurnGroup({ group, turn, ...rest }: RowProps & { group: Group; turn: Ag
           {undo.state === "undone" ? (
             <span className="muted small">Turn undone</span>
           ) : (
-            <button className="link-btn" data-testid="history-undo-turn" disabled={!rest.online || undo.state !== "available"} title={undo.reason ?? "Undo this turn's edits, keeping later ones"} onClick={() => void actions.agentUndoTurn(turn!.id)}>
+            <button
+              className="link-btn"
+              data-testid="history-undo-turn"
+              disabled={!rest.online || undo.state !== "available"}
+              title={undo.reason ?? "Undo this turn's edits, keeping later ones"}
+              onClick={() => void actions.agentUndoTurn(turn!.id)}
+            >
               <Undo2 />
               Undo turn
             </button>
@@ -240,4 +251,3 @@ function TurnGroup({ group, turn, ...rest }: RowProps & { group: Group; turn: Ag
     </div>
   );
 }
-

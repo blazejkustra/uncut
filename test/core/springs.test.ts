@@ -92,7 +92,12 @@ test("presets: snap barely overshoots, land overshoots visibly once, bounce osci
   const land = peak("spring.land");
   assert.ok(land > 0.03 && land < 0.15, `land ${land}`);
   // Land: one visible overshoot, then the rest is under 3 %.
-  assert.ok(extremes("spring.land").slice(1).every((d) => Math.abs(d) < 0.03), JSON.stringify(extremes("spring.land")));
+  assert.ok(
+    extremes("spring.land")
+      .slice(1)
+      .every((d) => Math.abs(d) < 0.03),
+    JSON.stringify(extremes("spring.land")),
+  );
   const bounce = extremes("spring.bounce").filter((d) => Math.abs(d) > 0.02);
   assert.ok(bounce.length >= 3, `bounce turning points over 2 %: ${JSON.stringify(bounce)}`);
   for (let i = 1; i < bounce.length; i++) assert.ok(Math.sign(bounce[i]!) !== Math.sign(bounce[i - 1]!), "alternating sides");
@@ -103,11 +108,20 @@ test("presets: snap barely overshoots, land overshoots visibly once, bounce osci
 test("pure: the same t gives the same value whatever was asked before", () => {
   const ts = [0.9, 0.1, 0.5, 0.1, 2, 0.9, 0.33];
   const first = ts.map((t) => springAt("spring.bounce", t));
-  const again = [...ts].reverse().map((t) => springAt("spring.bounce", t)).reverse();
+  const again = [...ts]
+    .reverse()
+    .map((t) => springAt("spring.bounce", t))
+    .reverse();
   assert.deepEqual(first, again);
-  const keys: Item["keys"] = [{ frame: 0, x: 0, ease: "spring.land" }, { frame: 10, x: 100, ease: "spring.bounce" }, { frame: 25, x: -50 }];
+  const keys: Item["keys"] = [
+    { frame: 0, x: 0, ease: "spring.land" },
+    { frame: 10, x: 100, ease: "spring.bounce" },
+    { frame: 25, x: -50 },
+  ];
   const forward = Array.from({ length: 60 }, (_, f) => keyAt(keys, "x", f, 30));
-  const backward = Array.from({ length: 60 }, (_, f) => 59 - f).map((f) => keyAt(keys, "x", f, 30)).reverse();
+  const backward = Array.from({ length: 60 }, (_, f) => 59 - f)
+    .map((f) => keyAt(keys, "x", f, 30))
+    .reverse();
   assert.deepEqual(forward, backward);
 });
 
@@ -125,10 +139,14 @@ test("springEase: 0 at the start, exactly 1 at the end, overshoots in between fo
 });
 
 test("keys: a spring runs from its key's frame in real time (fps) toward the next value, holding the first value before", () => {
-  const keys: Item["keys"] = [{ frame: 10, x: 100, ease: "spring.land" }, { frame: 20, x: 300 }];
+  const keys: Item["keys"] = [
+    { frame: 10, x: 100, ease: "spring.land" },
+    { frame: 20, x: 300 },
+  ];
   assert.equal(keyAt(keys, "x", 0, 30), 100);
   assert.equal(keyAt(keys, "x", 10, 30), 100);
-  for (const f of [12, 15, 20, 30, 40]) assert.ok(Math.abs(keyAt(keys, "x", f, 30)! - (100 + 200 * springAt("spring.land", (f - 10) / 30))) < 1e-9, `frame ${f}`);
+  for (const f of [12, 15, 20, 30, 40])
+    assert.ok(Math.abs(keyAt(keys, "x", f, 30)! - (100 + 200 * springAt("spring.land", (f - 10) / 30))) < 1e-9, `frame ${f}`);
   // It runs on past the next key's frame (overshoot included) and settles there.
   const after = Array.from({ length: 40 }, (_, k) => keyAt(keys, "x", 20 + k, 30)!);
   assert.ok(Math.max(...after) > 310, `overshoots past 300: ${Math.max(...after)}`);
@@ -144,7 +162,11 @@ test("keys: a spring runs from its key's frame in real time (fps) toward the nex
 
 test("retarget: a key that starts before the spring settled keeps the value and velocity continuous", () => {
   // Spring toward 100 from frame 0, retargeted at frame 6 (mid-flight) toward 20.
-  const keys: Item["keys"] = [{ frame: 0, x: 0, ease: "spring.settle" }, { frame: 6, x: 100, ease: "spring.settle" }, { frame: 30, x: 20 }];
+  const keys: Item["keys"] = [
+    { frame: 0, x: 0, ease: "spring.settle" },
+    { frame: 6, x: 100, ease: "spring.settle" },
+    { frame: 30, x: 20 },
+  ];
   const fps = 30;
   const at = (f: number) => keyAt(keys, "x", f, fps)!;
   const h = 1e-4;
@@ -160,7 +182,12 @@ test("retarget: a key that starts before the spring settled keeps the value and 
 });
 
 test("keys mixing a spring with linear and cubic moves; without springs nothing changes", () => {
-  const keys: Item["keys"] = [{ frame: 0, scale: 1 }, { frame: 10, scale: 2, ease: "spring.snap" }, { frame: 20, scale: 3, ease: "inOut" }, { frame: 40, scale: 1 }];
+  const keys: Item["keys"] = [
+    { frame: 0, scale: 1 },
+    { frame: 10, scale: 2, ease: "spring.snap" },
+    { frame: 20, scale: 3, ease: "inOut" },
+    { frame: 40, scale: 1 },
+  ];
   const fps = 30;
   // Linear from 0 to 10.
   assert.ok(Math.abs(keyAt(keys, "scale", 5, fps)! - 1.5) < 1e-12);
@@ -172,12 +199,21 @@ test("keys mixing a spring with linear and cubic moves; without springs nothing 
     assert.ok(Math.abs(keyAt(keys, "scale", f, fps)! - (2 + spring - 2 * cubic)) < 1e-12, `frame ${f}`);
   }
   // No spring: exactly the plain interpolation (the D75 path).
-  const plain: Item["keys"] = [{ frame: 0, x: 0, ease: "inOut" }, { frame: 10, x: 10 }];
+  const plain: Item["keys"] = [
+    { frame: 0, x: 0, ease: "inOut" },
+    { frame: 10, x: 10 },
+  ];
   assert.equal(keyAt(plain, "x", 2.5, 30), 10 * 4 * 0.25 ** 3);
 });
 
 const canvas = { width: 1920, height: 1080 };
-const text = (module: string, params: Record<string, unknown>): Item => ({ id: "t", type: "text", text: "Hello there", duration: 60, animation: { in: { module, duration: 20, params } } });
+const text = (module: string, params: Record<string, unknown>): Item => ({
+  id: "t",
+  type: "text",
+  text: "Hello there",
+  duration: 60,
+  animation: { in: { module, duration: 20, params } },
+});
 
 test("text moves with a spring ease: zoom, rise, pop and scale follow the fitted spring; fades stay linear", () => {
   const e = springEase("spring.land");
@@ -203,7 +239,13 @@ test("text moves with a spring ease: zoom, rise, pop and scale follow the fitted
   const rise = animationAt(text("move.rise", {}), 10, canvas);
   assert.ok(Math.abs((rise.motion.dy ?? 0) - (1 - (1 - (1 - 0.5) ** 3)) * 1080 * 0.04) < 1e-9);
   // Out moves mirror the in move (the same curve, reversed).
-  const out: Item = { id: "t", type: "text", text: "Hi", duration: 60, animation: { out: { module: "move.scale", duration: 20, params: { ease: "spring.bounce" } } } };
+  const out: Item = {
+    id: "t",
+    type: "text",
+    text: "Hi",
+    duration: 60,
+    animation: { out: { module: "move.scale", duration: 20, params: { ease: "spring.bounce" } } },
+  };
   assert.ok(Math.abs((animationAt(out, 49, canvas).motion.scale ?? 1) - springEase("spring.bounce")(10 / 20)) < 1e-12);
 });
 
@@ -213,16 +255,30 @@ function project(keys: Item["keys"]): Project {
     name: "Springs",
     canvas: { width: 1920, height: 1080, fps: 30 },
     media: [{ id: "m", kind: "video", name: "A.mp4", path: "/A.mp4", probe: { frames: 300, fps: 30, width: 1920, height: 1080, hasAudio: false } }],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c", type: "clip", media: "m", in: 0, duration: 120, keys, transform: { w: 400, h: 300 } }] }],
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "c", type: "clip", media: "m", in: 0, duration: 120, keys, transform: { w: 400, h: 300 } }],
+      },
+    ],
   };
 }
 
 test("split through a moving spring: both halves keep the motion frame for frame", async () => {
-  const keys: Item["keys"] = [{ frame: 0, x: 0, scale: 1, ease: "spring.bounce" }, { frame: 10, x: 500, scale: 1.5, ease: "spring.land" }, { frame: 30, x: 200 }];
+  const keys: Item["keys"] = [
+    { frame: 0, x: 0, scale: 1, ease: "spring.bounce" },
+    { frame: 10, x: 500, scale: 1.5, ease: "spring.land" },
+    { frame: 30, x: 200 },
+  ];
   const before = project(keys);
   const modules = await loadModules(join(root, "spec/modules/builtin"));
   assert.deepEqual(validateProject(before, modules), []);
-  const s = applyEdit(createSession(before), { baseRevision: 0, actor: "user", ops: [{ op: "split_item", item: "c", at: 20, newId: "c2" }] }, (p) => validateProject(p, modules));
+  const s = applyEdit(createSession(before), { baseRevision: 0, actor: "user", ops: [{ op: "split_item", item: "c", at: 20, newId: "c2" }] }, (p) =>
+    validateProject(p, modules),
+  );
   const items = s.project.tracks[0]!.items;
   const [a, b] = [items[0]!, items[1]!];
   for (let f = 0; f < 120; f++) {
@@ -238,11 +294,28 @@ test("split through a moving spring: both halves keep the motion frame for frame
 
 test("schemas take the spring names on keys and move params; the doc names them", async () => {
   const modules = await loadModules(join(root, "spec/modules/builtin"));
-  const ok = project([{ frame: 0, x: 0, ease: "spring.land" }, { frame: 10, x: 100, ease: "spring" }]);
+  const ok = project([
+    { frame: 0, x: 0, ease: "spring.land" },
+    { frame: 10, x: 100, ease: "spring" },
+  ]);
   assert.deepEqual(validateProject(ok, modules), []);
-  const bad = project([{ frame: 0, x: 0, ease: "spring.wobble" as "spring" }, { frame: 10, x: 100 }]);
+  const bad = project([
+    { frame: 0, x: 0, ease: "spring.wobble" as "spring" },
+    { frame: 10, x: 100 },
+  ]);
   assert.ok(validateProject(bad, modules).length > 0);
-  const withMove = (module: string, ease: string): Project => ({ ...ok, tracks: [...ok.tracks, { id: "tx", kind: "text", name: "Text", items: [{ id: "t", type: "text", text: "Hi", start: 0, duration: 60, animation: { in: { module, duration: 20, params: { ease } } } }] }] });
+  const withMove = (module: string, ease: string): Project => ({
+    ...ok,
+    tracks: [
+      ...ok.tracks,
+      {
+        id: "tx",
+        kind: "text",
+        name: "Text",
+        items: [{ id: "t", type: "text", text: "Hi", start: 0, duration: 60, animation: { in: { module, duration: 20, params: { ease } } } }],
+      },
+    ],
+  });
   for (const m of ["move.zoom", "move.rise", "move.pop", "move.scale", "move.slide-left", "move.bounce", "move.blur", "move.wipe"]) {
     assert.deepEqual(validateProject(withMove(m, "spring.land"), modules), [], m);
     assert.ok(validateProject(withMove(m, "wobbly"), modules).length > 0, `${m} refuses an unknown ease`);

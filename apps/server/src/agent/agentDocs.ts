@@ -76,7 +76,11 @@ export const DOCS = {
   edits: { title: "the edit ops reference", summary: "every timeline_edit op's fields and rules", body: EDITS_DOC },
   production: { title: "the production process", summary: "brand, brief, storyboard, build, sound, critic; skills; styles from a reference", body: PRODUCTION },
   text: { title: "the text reference", summary: "text items, looks, style fields, animations", body: TEXT },
-  picture: { title: "the picture reference", summary: "backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws", body: PICTURE },
+  picture: {
+    title: "the picture reference",
+    summary: "backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws",
+    body: PICTURE,
+  },
   sound: { title: "the sound reference", summary: "volume, fades, mixer, track effects, ducking, limiter, loudness, music", body: SOUND },
   components: { title: "the components reference", summary: "end cards, follow cards, steps, terminals, charts, device frames", body: COMPONENTS_DOC },
   graphics: { title: "the graphics reference", summary: "graphic_write, bundled libraries, project media in graphics, generate_media", body: GRAPHICS },
@@ -165,7 +169,9 @@ export function libraryReference(libs: Readonly<Record<string, string>>): string
       const text = [header, signatures ? `Every function it has, from its code:\n${signatures}` : undefined].filter(Boolean).join("\n");
       return text ? [`uncut:lib/${name}\n${text}`] : [];
     });
-  return parts.length ? `\n\nThe bundled libraries' full API, from each library's own header (everything each one has; their files are inlined by Uncut, so there is nothing on disk to look up):\n\n${parts.join("\n\n")}` : "";
+  return parts.length
+    ? `\n\nThe bundled libraries' full API, from each library's own header (everything each one has; their files are inlined by Uncut, so there is nothing on disk to look up):\n\n${parts.join("\n\n")}`
+    : "";
 }
 
 /** docs_read's answer: one topic's text, or the topics there are. With `libs`, the graphics topic carries the libraries' own API references (libraryReference). */

@@ -75,7 +75,10 @@ export function drawShape({ props, w, h, target }: Draw) {
     const head = kind === "arrow" ? Math.min(w * 0.4, Math.max(t * 3, h * 0.45)) : 0;
     const end = w - (kind === "arrow" ? head * 0.6 : t / 2);
     const shaft = `<line x1="${num(t / 2)}" y1="${num(y)}" x2="${num(end)}" y2="${num(y)}" stroke="${c}" stroke-width="${num(t)}" stroke-linecap="round"/>`;
-    const tip = kind === "arrow" ? `<path d="M${num(w - head)} ${num(y - head / 2)}L${num(w)} ${num(y)}L${num(w - head)} ${num(y + head / 2)}Z" fill="${c}" stroke="${c}" stroke-width="${num(t / 2)}" stroke-linejoin="round"/>` : "";
+    const tip =
+      kind === "arrow"
+        ? `<path d="M${num(w - head)} ${num(y - head / 2)}L${num(w)} ${num(y)}L${num(w - head)} ${num(y + head / 2)}Z" fill="${c}" stroke="${c}" stroke-width="${num(t / 2)}" stroke-linejoin="round"/>`
+        : "";
     return `<svg data-shape="${kind}" width="${num(w)}" height="${num(h)}" viewBox="0 0 ${num(w)} ${num(h)}" style="position:absolute;inset:0;overflow:visible">${shaft}${tip}</svg>`;
   }
   if (kind === "star" || kind === "triangle") {
@@ -98,12 +101,15 @@ export function progressAt(props: { readonly [key: string]: unknown }, local: nu
 }
 
 export function drawProgressBar(d: Draw) {
-  const { props, w, h, target, local } = d;
+  const { props, h, target, local } = d;
   const r = px(clamp(numOr(props.radius, h / 2), 0, h / 2));
   const p = progressAt(props, local, lengthOf(d));
   const bar = color(target, props.color, accent(target));
   const track = color(target, props.track, "#FFFFFF33");
-  return box(`<div data-progress="${num(p)}" style="position:absolute;left:0;top:0;bottom:0;width:${num(p * 100)}%;background:${bar};border-radius:${r}"></div>`, `background:${track};border-radius:${r};overflow:hidden`);
+  return box(
+    `<div data-progress="${num(p)}" style="position:absolute;left:0;top:0;bottom:0;width:${num(p * 100)}%;background:${bar};border-radius:${r}"></div>`,
+    `background:${track};border-radius:${r};overflow:hidden`,
+  );
 }
 
 // ---- lower third ----
@@ -123,9 +129,16 @@ export function drawLowerThird({ props, w, h, target, local, fps }: Draw) {
   const bar = color(target, props.accent, accent(target));
   const ink = fg(target);
   const font = `font-family:${DM_SANS}`;
-  const nameLine = (size: number, width: number, c: string, extra = "") => (name ? `<div style="font-weight:700;font-size:${px(fitText(name, size, width, 0.55))};line-height:1.05;letter-spacing:-0.01em;white-space:nowrap;color:${c}${extra}">${esc(name)}</div>` : "");
-  const titleLine = (size: number, width: number, c: string, extra = "") => (title ? `<div style="font-weight:500;font-size:${px(fitText(title, size, width, 0.52))};line-height:1.2;white-space:nowrap;color:${c};opacity:${num(0.78 * p2)};transform:translateX(${px((1 - p2) * -24 * k)})${extra}">${esc(title)}</div>` : "");
-  const column = (left: number, right: number, inner: string, extra = "") => `<div style="position:absolute;left:${px(left)};right:${px(right)};top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:${px(8 * k)};${font};transform:translateX(${px((1 - p) * -40 * k)});opacity:${num(p)}${extra}">${inner}</div>`;
+  const nameLine = (size: number, width: number, c: string, extra = "") =>
+    name
+      ? `<div style="font-weight:700;font-size:${px(fitText(name, size, width, 0.55))};line-height:1.05;letter-spacing:-0.01em;white-space:nowrap;color:${c}${extra}">${esc(name)}</div>`
+      : "";
+  const titleLine = (size: number, width: number, c: string, extra = "") =>
+    title
+      ? `<div style="font-weight:500;font-size:${px(fitText(title, size, width, 0.52))};line-height:1.2;white-space:nowrap;color:${c};opacity:${num(0.78 * p2)};transform:translateX(${px((1 - p2) * -24 * k)})${extra}">${esc(title)}</div>`
+      : "";
+  const column = (left: number, right: number, inner: string, extra = "") =>
+    `<div style="position:absolute;left:${px(left)};right:${px(right)};top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:${px(8 * k)};${font};transform:translateX(${px((1 - p) * -40 * k)});opacity:${num(p)}${extra}">${inner}</div>`;
   if (style === "pill") {
     const d = h * 0.7;
     const bg = color(target, props.background, "#0A0A0BCC");
@@ -140,7 +153,9 @@ export function drawLowerThird({ props, w, h, target, local, fps }: Draw) {
     const width = w - 8 * k;
     const shadow = `;text-shadow:0 2px 12px rgb(0 0 0 / 45%)`;
     const line = `<div style="height:${px(8 * k)};width:${num(Math.min(100, p * 100))}%;max-width:${px(Math.min(width, (name ? fitText(name, 64 * k, width, 0.55) * len(name) * 0.55 : 200 * k) + 20 * k))};background:${bar};border-radius:${px(4 * k)};margin:${px(2 * k)} 0 ${px(4 * k)}"></div>`;
-    return box(`<div style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:${px(6 * k)};${font}">${nameLine(64 * k, width, ink, shadow + `;opacity:${num(p)};transform:translateY(${px((1 - p) * 16 * k)})`)}${line}${titleLine(32 * k, width, ink, shadow)}</div>`);
+    return box(
+      `<div style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:${px(6 * k)};${font}">${nameLine(64 * k, width, ink, shadow + `;opacity:${num(p)};transform:translateY(${px((1 - p) * 16 * k)})`)}${line}${titleLine(32 * k, width, ink, shadow)}</div>`,
+    );
   }
   if (style === "card") {
     const bg = color(target, props.background, "#FFFFFF");
@@ -155,7 +170,9 @@ export function drawLowerThird({ props, w, h, target, local, fps }: Draw) {
     const titleSize = fitText(title, (h - nameH) * 0.56, w - 60 * k, 0.52);
     const bg = color(target, props.background, "#0A0A0B");
     const top = `<div style="position:absolute;left:0;top:0;height:${px(nameH)};max-width:100%;padding:0 ${px(30 * k)};display:flex;align-items:center;background:${bar};${font};font-weight:800;font-size:${px(nameSize)};color:${inkOn(bar)};white-space:nowrap;clip-path:inset(0 ${num((1 - p) * 100)}% 0 0)">${esc(name)}</div>`;
-    const bottom = title ? `<div style="position:absolute;left:0;top:${px(nameH)};height:${px(h - nameH)};max-width:100%;padding:0 ${px(30 * k)};display:flex;align-items:center;background:${bg};${font};font-weight:600;font-size:${px(titleSize)};color:${ink};white-space:nowrap;clip-path:inset(0 ${num((1 - p2) * 100)}% 0 0)">${esc(title)}</div>` : "";
+    const bottom = title
+      ? `<div style="position:absolute;left:0;top:${px(nameH)};height:${px(h - nameH)};max-width:100%;padding:0 ${px(30 * k)};display:flex;align-items:center;background:${bg};${font};font-weight:600;font-size:${px(titleSize)};color:${ink};white-space:nowrap;clip-path:inset(0 ${num((1 - p2) * 100)}% 0 0)">${esc(title)}</div>`
+      : "";
     return box(top + bottom);
   }
   if (style === "minimal") {
@@ -180,7 +197,12 @@ export function drawCallout({ props, w, h, target, local, fps }: Draw) {
   const k = Math.min(w / 560, h / 160);
   const horizontal = arrow === "left" || arrow === "right";
   const reach = arrow === "none" ? 0 : horizontal ? Math.min(w * 0.3, 140 * k) : Math.min(h * 0.4, 70 * k);
-  const inset = { left: arrow === "left" ? reach : 0, right: arrow === "right" ? reach : 0, top: arrow === "up" ? reach : 0, bottom: arrow === "down" ? reach : 0 };
+  const inset = {
+    left: arrow === "left" ? reach : 0,
+    right: arrow === "right" ? reach : 0,
+    top: arrow === "up" ? reach : 0,
+    bottom: arrow === "down" ? reach : 0,
+  };
   const pillH = h - inset.top - inset.bottom;
   const pillW = w - inset.left - inset.right;
   // The words get smaller to fit the pill rather than being cut (D251).
@@ -195,13 +217,23 @@ export function drawCallout({ props, w, h, target, local, fps }: Draw) {
   const t = Math.max(2, 8 * k);
   const head = Math.max(t * 2.5, 26 * k);
   // The arrow from the pill's edge to the box's edge, pointing out.
-  const [x1, y1, x0, y0] = arrow === "left" ? [reach, h / 2, t, h / 2] : arrow === "right" ? [w - reach, h / 2, w - t, h / 2] : arrow === "up" ? [w / 2, reach, w / 2, t] : [w / 2, h - reach, w / 2, h - t];
+  const [x1, y1, x0, y0] =
+    arrow === "left"
+      ? [reach, h / 2, t, h / 2]
+      : arrow === "right"
+        ? [w - reach, h / 2, w - t, h / 2]
+        : arrow === "up"
+          ? [w / 2, reach, w / 2, t]
+          : [w / 2, h - reach, w / 2, h - t];
   const x2 = x1 + (x0 - x1) * reachP;
   const y2 = y1 + (y0 - y1) * reachP;
   const ang = Math.atan2(y0 - y1, x0 - x1);
   const hx = (a: number) => num(x2 - head * Math.cos(ang + a));
   const hy = (a: number) => num(y2 - head * Math.sin(ang + a));
-  const svg = reachP > 0 ? `<svg data-arrow="${arrow}" width="${num(w)}" height="${num(h)}" viewBox="0 0 ${num(w)} ${num(h)}" style="position:absolute;inset:0;overflow:visible"><path d="M${num(x1)} ${num(y1)}L${num(x2)} ${num(y2)}M${hx(0.5)} ${hy(0.5)}L${num(x2)} ${num(y2)}L${hx(-0.5)} ${hy(-0.5)}" fill="none" stroke="${pill}" stroke-width="${num(t)}" stroke-linecap="round" stroke-linejoin="round"/></svg>` : `<svg data-arrow="${arrow}" width="0" height="0" style="position:absolute"></svg>`;
+  const svg =
+    reachP > 0
+      ? `<svg data-arrow="${arrow}" width="${num(w)}" height="${num(h)}" viewBox="0 0 ${num(w)} ${num(h)}" style="position:absolute;inset:0;overflow:visible"><path d="M${num(x1)} ${num(y1)}L${num(x2)} ${num(y2)}M${hx(0.5)} ${hy(0.5)}L${num(x2)} ${num(y2)}L${hx(-0.5)} ${hy(-0.5)}" fill="none" stroke="${pill}" stroke-width="${num(t)}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      : `<svg data-arrow="${arrow}" width="0" height="0" style="position:absolute"></svg>`;
   return box(svg + body);
 }
 
@@ -259,7 +291,10 @@ export function drawCountdown(d: Draw) {
   const seg = lengthOf(d) / from;
   const within = local - Math.floor(local / seg) * seg;
   const pop = 1 + 0.18 * (1 - out(within / (0.25 * d.fps)));
-  return box(`${ring}<div data-count="${number}" style="position:relative;font-family:${DM_SANS};font-weight:700;font-size:${px((s * 0.5) / Math.max(1, digits * 0.6))};line-height:1;color:${c};font-variant-numeric:tabular-nums;transform:scale(${num(pop)})">${number}</div>`, "display:flex;align-items:center;justify-content:center");
+  return box(
+    `${ring}<div data-count="${number}" style="position:relative;font-family:${DM_SANS};font-weight:700;font-size:${px((s * 0.5) / Math.max(1, digits * 0.6))};line-height:1;color:${c};font-variant-numeric:tabular-nums;transform:scale(${num(pop)})">${number}</div>`,
+    "display:flex;align-items:center;justify-content:center",
+  );
 }
 
 // ---- sticker ----
@@ -281,7 +316,11 @@ export function stickerEnter(props: { readonly [key: string]: unknown }): "pop" 
  * moments, then its loop (wiggle, float, pulse, spin), periodic in whole frames from the moment it's
  * in. Scale and rotation in degrees, dy in shares of its size, draw 0–1.
  */
-export function stickerMotion(props: { readonly [key: string]: unknown }, local: number, fps: number): { scale: number; rotate: number; dy: number; opacity: number; draw: number } {
+export function stickerMotion(
+  props: { readonly [key: string]: unknown },
+  local: number,
+  fps: number,
+): { scale: number; rotate: number; dy: number; opacity: number; draw: number } {
   const enter = stickerEnter(props);
   const tilt = clamp(numOr(props.tilt, 0), -45, 45);
   const inFrames = enter === "none" ? 0 : Math.max(1, Math.round(ENTER_SECONDS[enter]! * fps));
@@ -322,10 +361,18 @@ export function drawSticker({ props, w, h, local, fps }: Draw) {
   // (a hand-drawn circle, an underline) fills its box; a picture is square in it.
   const art = typeof props.art === "string" ? stickerArt(props.art) : undefined;
   if (art) {
-    const svg = artSvg(String(props.art), { color: typeof props.color === "string" ? props.color : undefined, text: typeof props.text === "string" && props.text ? props.text : undefined, draw: m.draw, aspect: w / Math.max(1, h) });
+    const svg = artSvg(String(props.art), {
+      color: typeof props.color === "string" ? props.color : undefined,
+      text: typeof props.text === "string" && props.text ? props.text : undefined,
+      draw: m.draw,
+      aspect: w / Math.max(1, h),
+    });
     const [bw, bh] = art.mark ? [w, h] : [s * 0.92, s * 0.92];
     const hidden = m.draw <= 0 ? ";visibility:hidden" : "";
-    return box(`<div data-art="${esc(String(props.art))}" style="width:${px(bw)};height:${px(bh)};transform:${moves}${fade}${hidden}">${svg}</div>`, "display:flex;align-items:center;justify-content:center");
+    return box(
+      `<div data-art="${esc(String(props.art))}" style="width:${px(bw)};height:${px(bh)};transform:${moves}${fade}${hidden}">${svg}</div>`,
+      "display:flex;align-items:center;justify-content:center",
+    );
   }
   const glyphs = [...emoji].length;
   return box(
@@ -342,7 +389,12 @@ const PICTURE = (s: number) =>
 
 /** An image frame's fit and crop (D165): cover (fill, cropped) or contain (the whole picture), a zoom 1–4 and its focus in % of the picture. */
 export function imageFrameCrop(props: { readonly [key: string]: unknown }): { fit: "cover" | "contain"; zoom: number; focusX: number; focusY: number } {
-  return { fit: props.fit === "contain" ? "contain" : "cover", zoom: clamp(numOr(props.zoom, 1), 1, 4), focusX: clamp(numOr(props.focusX, 50), 0, 100), focusY: clamp(numOr(props.focusY, 50), 0, 100) };
+  return {
+    fit: props.fit === "contain" ? "contain" : "cover",
+    zoom: clamp(numOr(props.zoom, 1), 1, 4),
+    focusX: clamp(numOr(props.focusX, 50), 0, 100),
+    focusY: clamp(numOr(props.focusY, 50), 0, 100),
+  };
 }
 
 /**
@@ -350,7 +402,11 @@ export function imageFrameCrop(props: { readonly [key: string]: unknown }): { fi
  * object-position / scale lay it out: the fitted picture (iw × ih) placed at its focus, then
  * scaled about that point. The frame clips what's outside.
  */
-export function imageFrameRect(props: { readonly [key: string]: unknown }, frame: { readonly w: number; readonly h: number }, image: { readonly width: number; readonly height: number }): { x: number; y: number; w: number; h: number } {
+export function imageFrameRect(
+  props: { readonly [key: string]: unknown },
+  frame: { readonly w: number; readonly h: number },
+  image: { readonly width: number; readonly height: number },
+): { x: number; y: number; w: number; h: number } {
   const c = imageFrameCrop(props);
   const k = c.fit === "cover" ? Math.max(frame.w / image.width, frame.h / image.height) : Math.min(frame.w / image.width, frame.h / image.height);
   const w = image.width * k;
@@ -372,7 +428,11 @@ export function drawImageFrame({ props, w, h, target }: Draw) {
   const src = imageSrc(target, props.image);
   const crop = imageFrameCrop(props);
   // Cropped (D165): the picture sits at its focus (object-position) and zooms about it; the frame clips it.
-  const cropCss = (crop.focusX !== 50 || crop.focusY !== 50 ? `;object-position:${num(crop.focusX)}% ${num(crop.focusY)}%` : "") + (crop.zoom !== 1 ? `;transform:scale(${num(crop.zoom)});transform-origin:${num(crop.focusX)}% ${num(crop.focusY)}%` : "");
-  const inner = src ? `<img src="${src}" alt="" style="display:block;width:100%;height:100%;object-fit:${crop.fit}${cropCss}">` : `<div data-empty="true" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2A2A2F,#18181B)">${PICTURE(Math.min(w, h) * 0.3)}</div>`;
+  const cropCss =
+    (crop.focusX !== 50 || crop.focusY !== 50 ? `;object-position:${num(crop.focusX)}% ${num(crop.focusY)}%` : "") +
+    (crop.zoom !== 1 ? `;transform:scale(${num(crop.zoom)});transform-origin:${num(crop.focusX)}% ${num(crop.focusY)}%` : "");
+  const inner = src
+    ? `<img src="${src}" alt="" style="display:block;width:100%;height:100%;object-fit:${crop.fit}${cropCss}">`
+    : `<div data-empty="true" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2A2A2F,#18181B)">${PICTURE(Math.min(w, h) * 0.3)}</div>`;
   return box(inner, `border-radius:${radius};overflow:hidden;${border}${shadow}`);
 }

@@ -8,7 +8,11 @@ import { actions } from "../actions.ts";
 export const settingsActions = {
   /** Settings (G8): Project when a project is open, else App. */
   openSettings(section?: SettingsSection) {
-    set({ settingsOpen: true, shortcutsOpen: false, settingsSection: section ?? (state.snapshot ? state.settingsSection : state.settingsSection === "project" ? "app" : state.settingsSection) });
+    set({
+      settingsOpen: true,
+      shortcutsOpen: false,
+      settingsSection: section ?? (state.snapshot ? state.settingsSection : state.settingsSection === "project" ? "app" : state.settingsSection),
+    });
   },
   closeSettings: () => set({ settingsOpen: false }),
   openShortcuts: () => set({ shortcutsOpen: true }),
@@ -39,7 +43,12 @@ export const settingsActions = {
     set({ pluginInstalling: true, pluginInstallError: undefined, pluginInstallNote: undefined, pluginError: undefined });
     const result = await call((c) => c["plugins.enable"]({ id }));
     if (result.ok) {
-      set({ pluginInstalling: false, plugins: result.value.plugins, pluginInstallNote: result.value.note, pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined });
+      set({
+        pluginInstalling: false,
+        plugins: result.value.plugins,
+        pluginInstallNote: result.value.note,
+        pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined,
+      });
     } else set({ pluginInstalling: false, pluginError: plainError(result.error) });
     void actions.loadCatalog();
   },
@@ -59,20 +68,42 @@ export const settingsActions = {
   async approvePlugin(plugin: Pick<PluginInfo, "id" | "dir" | "capabilities" | "skillsHash">) {
     set({ pluginError: undefined });
     // D248: the skills it showed too, so a plugin whose skills changed meanwhile is refused.
-    const result = await call((c) => c["plugins.approve"]({ id: plugin.id, dir: plugin.dir, capabilities: [...plugin.capabilities], ...(plugin.skillsHash ? { skills: plugin.skillsHash } : {}) }));
+    const result = await call((c) =>
+      c["plugins.approve"]({
+        id: plugin.id,
+        dir: plugin.dir,
+        capabilities: [...plugin.capabilities],
+        ...(plugin.skillsHash ? { skills: plugin.skillsHash } : {}),
+      }),
+    );
     if (result.ok) set({ plugins: result.value, pluginDialog: undefined });
     else set({ pluginError: plainError(result.error) });
   },
   /** Installs a plugin from a folder or git URL (D102), then opens its approval dialog. */
   async installPlugin(input: { source: string; ref?: string | undefined; replaceBundled?: boolean }) {
     set({ pluginInstalling: true, pluginInstallError: undefined, pluginInstallNote: undefined, pluginError: undefined });
-    const result = await call((c) => c["plugins.install"]({ source: input.source, ...(input.ref ? { ref: input.ref } : {}), ...(input.replaceBundled ? { replaceBundled: true } : {}) }));
+    const result = await call((c) =>
+      c["plugins.install"]({ source: input.source, ...(input.ref ? { ref: input.ref } : {}), ...(input.replaceBundled ? { replaceBundled: true } : {}) }),
+    );
     if (result.ok) {
-      set({ pluginInstalling: false, plugins: result.value.plugins, pluginInstallNote: result.value.note, pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined });
+      set({
+        pluginInstalling: false,
+        plugins: result.value.plugins,
+        pluginInstallNote: result.value.note,
+        pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined,
+      });
       return true;
     }
     const error = result.error as { reason?: unknown };
-    set({ pluginInstalling: false, pluginInstallError: { message: plainError(result.error), reason: typeof error.reason === "string" ? error.reason : "", source: input.source, ref: input.ref } });
+    set({
+      pluginInstalling: false,
+      pluginInstallError: {
+        message: plainError(result.error),
+        reason: typeof error.reason === "string" ? error.reason : "",
+        source: input.source,
+        ref: input.ref,
+      },
+    });
     return false;
   },
   /** Add plugin… › Choose folder: the folder dialog, then install. */

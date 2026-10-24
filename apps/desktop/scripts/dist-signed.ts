@@ -18,7 +18,20 @@
 // --skip-build (package the apps/*/dist already built); --dmg-only (D288: only remake and sign the
 // local DMG from the app already signed in dist/signed/mac-arm64, to check the installer window).
 import { execFileSync, spawnSync } from "node:child_process";
-import { closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,7 +97,10 @@ const signOnly = argv.includes("--sign-only") || dmgOnly;
 const skipBuild = argv.includes("--skip-build");
 
 // 1. Identity.
-const picked = pickIdentity(parseIdentities(execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], { encoding: "utf8" })), process.env.UNCUT_SIGN_IDENTITY);
+const picked = pickIdentity(
+  parseIdentities(execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], { encoding: "utf8" })),
+  process.env.UNCUT_SIGN_IDENTITY,
+);
 if ("problem" in picked) fail(picked.problem);
 const { identity, shareable: developerId } = picked as Exclude<typeof picked, { problem: string }>;
 if (!developerId) console.warn(`\n⚠ ${(picked as { warning: string }).warning}`);
@@ -109,7 +125,9 @@ if (shareable) {
   if (check.code !== 0) {
     if (isMissingProfile(check.out)) fail(`No notarytool keychain profile "${auth.profile}". Create it once:\n  ${storeCredentialsHint(auth)}`);
     // notarytool's own message (an auth or network error); it holds no secret.
-    fail(`notarytool could not use the profile "${auth.profile}":\n${check.out.trim()}\nIf the credentials changed, store them again:\n  ${storeCredentialsHint(auth)}`);
+    fail(
+      `notarytool could not use the profile "${auth.profile}":\n${check.out.trim()}\nIf the credentials changed, store them again:\n  ${storeCredentialsHint(auth)}`,
+    );
   }
 }
 
@@ -124,7 +142,9 @@ if (skipBuild) {
   console.log(`plugins: ${staged.bundled.length} bundled, ${staged.catalog.length} in the catalog`);
 } else {
   // stdout only (the password), piped, never on the terminal or in an argv.
-  const k = process.env.UNCUT_TELEMETRY_TOKEN?.trim() ? undefined : spawnSync("security", ["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const k = process.env.UNCUT_TELEMETRY_TOKEN?.trim()
+    ? undefined
+    : spawnSync("security", ["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   const fromKeychain = k && { code: k.status ?? 1, out: k.stdout ?? "" };
   const t = telemetryToken(process.env.UNCUT_TELEMETRY_TOKEN, fromKeychain);
   console.log(t.line);
@@ -171,7 +191,9 @@ try {
   copyFileSync(dmg, out);
   const sha = capture("shasum", ["-a", "256", out]).out.split(/\s/)[0];
   const feed = await updateFeed(version, out);
-  console.log(`\n✓ Developer ID-signed, notarized and stapled:\n  ${out}\n  sha256 ${sha}\nAuto-update feed (upload all of these to the release of tag v${version}):\n  ${feed.join("\n  ")}`);
+  console.log(
+    `\n✓ Developer ID-signed, notarized and stapled:\n  ${out}\n  sha256 ${sha}\nAuto-update feed (upload all of these to the release of tag v${version}):\n  ${feed.join("\n  ")}`,
+  );
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

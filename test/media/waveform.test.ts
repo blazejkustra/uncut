@@ -10,10 +10,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { isWaveformFileOf, makeLimiter, PeakMeter } from "../../apps/server/src/media/waveforms.ts";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skip = !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
 const T = { skip, timeout: 60000 };
 
 let root = "";
@@ -30,7 +31,26 @@ before(async () => {
   // 2 s of a 440 Hz tone at half scale, then 1 s of silence.
   ff("-f", "lavfi", "-i", "aevalsrc='if(lt(t,2),0.5*sin(2*PI*440*t),0)':s=48000:d=3", "-c:a", "aac", "-b:a", "192k", join(root, "Tone.m4a"));
   ff("-f", "lavfi", "-i", "testsrc=size=160x120:rate=30", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "silent.mp4"));
-  ff("-f", "lavfi", "-i", "testsrc=size=160x120:rate=30", "-f", "lavfi", "-i", "aevalsrc=0.25*sin(2*PI*660*t):s=48000", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "talk.mp4"));
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=160x120:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc=0.25*sin(2*PI*660*t):s=48000",
+    "-t",
+    "1",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    join(root, "talk.mp4"),
+  );
   server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
   client = await connect(server.ready.port, server.ready.token);
   base = `http://127.0.0.1:${server.ready.port}`;
@@ -53,8 +73,26 @@ test("waveforms: token, known media with sound, peaks that match the file, cache
   await client!.ok("project.edit", {
     ops: [
       { op: "add_media", media: { id: "m-tone", kind: "audio", name: "Tone.m4a", path: join(root, "Tone.m4a"), probe: { frames: 90, hasAudio: true } } },
-      { op: "add_media", media: { id: "m-silent", kind: "video", name: "silent.mp4", path: join(root, "silent.mp4"), probe: { frames: 30, fps: 30, width: 160, height: 120, hasAudio: false } } },
-      { op: "add_media", media: { id: "m-talk", kind: "video", name: "talk.mp4", path: join(root, "talk.mp4"), probe: { frames: 30, fps: 30, width: 160, height: 120, hasAudio: true } } },
+      {
+        op: "add_media",
+        media: {
+          id: "m-silent",
+          kind: "video",
+          name: "silent.mp4",
+          path: join(root, "silent.mp4"),
+          probe: { frames: 30, fps: 30, width: 160, height: 120, hasAudio: false },
+        },
+      },
+      {
+        op: "add_media",
+        media: {
+          id: "m-talk",
+          kind: "video",
+          name: "talk.mp4",
+          path: join(root, "talk.mp4"),
+          probe: { frames: 30, fps: 30, width: 160, height: 120, hasAudio: true },
+        },
+      },
       { op: "add_media", media: { id: "m-gone", kind: "audio", name: "gone.m4a", path: join(root, "gone.m4a"), probe: { frames: 30, hasAudio: true } } },
     ],
   });
@@ -143,7 +181,11 @@ test("a cache folder that can't be written still gets its peaks; a missing ffmpe
     const r = await fetch(`http://127.0.0.1:${bare.ready.port}/media/waveform/m-talk?token=${encodeURIComponent(bare.ready.token)}`);
     assert.equal(r.status, 503);
     assert.equal(r.headers.get("retry-after"), "30");
-    assert.equal((await fetch(`http://127.0.0.1:${bare.ready.port}/media/waveform/m-silent?token=${encodeURIComponent(bare.ready.token)}`)).status, 404, "no sound is still a 404");
+    assert.equal(
+      (await fetch(`http://127.0.0.1:${bare.ready.port}/media/waveform/m-silent?token=${encodeURIComponent(bare.ready.token)}`)).status,
+      404,
+      "no sound is still a 404",
+    );
   } finally {
     c.close();
     await bare.stop();

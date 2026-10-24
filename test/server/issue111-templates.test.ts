@@ -8,7 +8,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { deleteTemplate, fillFor, listTemplates, projectFacts, saveTemplate, templatesDir, type BeatsReader } from "../../apps/server/src/templates/templates.ts";
+import {
+  deleteTemplate,
+  fillFor,
+  listTemplates,
+  projectFacts,
+  saveTemplate,
+  templatesDir,
+  type BeatsReader,
+} from "../../apps/server/src/templates/templates.ts";
 import type { BeatsResult } from "../../apps/server/src/analysis/beats.ts";
 
 let root = "";
@@ -22,7 +30,10 @@ after(() => {
 test("the user's templates: saved as Markdown, listed after the built-ins by name, deleted; built-ins are read-only", async () => {
   const data = join(root, "data1");
   const before = await listTemplates(data);
-  assert.deepEqual(before.map((t) => t.id), ["keynote-one-take", "one-shape-never-cut", "beat-cut-reel", "talking-head-subtitles"]);
+  assert.deepEqual(
+    before.map((t) => t.id),
+    ["keynote-one-take", "one-shape-never-cut", "beat-cut-reel", "talking-head-subtitles"],
+  );
   assert.ok(before.every((t) => t.builtin));
   await saveTemplate(data, { id: "zed", name: "Zed reel", description: "Mine.", body: "Cut {{footage}}." });
   await saveTemplate(data, { id: "alpha", name: "Alpha", description: "", body: "A" });
@@ -33,7 +44,14 @@ test("the user's templates: saved as Markdown, listed after the built-ins by nam
   writeFileSync(join(templatesDir(data), "notes.txt"), "x");
   writeFileSync(join(templatesDir(data), "hand-made.md"), "Plain brief for {{project}}.");
   const list = await listTemplates(data);
-  assert.deepEqual(list.slice(4).map((t) => [t.id, t.name, t.builtin]), [["alpha", "Alpha", undefined], ["hand-made", "hand-made", undefined], ["zed", "Zed reel", undefined]]);
+  assert.deepEqual(
+    list.slice(4).map((t) => [t.id, t.name, t.builtin]),
+    [
+      ["alpha", "Alpha", undefined],
+      ["hand-made", "hand-made", undefined],
+      ["zed", "Zed reel", undefined],
+    ],
+  );
   assert.equal(list.find((t) => t.id === "beat-cut-reel")!.name, "Beat-cut reel");
   await assert.rejects(saveTemplate(data, { id: "keynote-one-take", name: "Mine", description: "", body: "" }), /can't be changed; duplicate it/);
   await assert.rejects(deleteTemplate(data, "keynote-one-take"), /can't be deleted/);
@@ -132,7 +150,12 @@ test("a template fills from the open project: media, kit files, canvas, song len
   assert.deepEqual(facts.kit?.typefaces, [{ family: "Inter", roles: ["heading", "body"], file: "Inter.woff2" }]);
   assert.deepEqual(facts.music?.downbeat, { seconds: 0, beat: 0 });
 
-  await saveTemplate(data, { id: "probe", name: "Probe", description: "", body: "{{project}}\n{{canvas}}\n{{length}}\n{{tempo}}\n{{drop}}\n{{beats}}\n{{footage}}\n{{kit}}\n{{grid}}\n{{fonts}}\n{{screens}}\n{{look}}\n{{avoid}}\n{{tagline}} {{url}}\n{{claude-mark}}" });
+  await saveTemplate(data, {
+    id: "probe",
+    name: "Probe",
+    description: "",
+    body: "{{project}}\n{{canvas}}\n{{length}}\n{{tempo}}\n{{drop}}\n{{beats}}\n{{footage}}\n{{kit}}\n{{grid}}\n{{fonts}}\n{{screens}}\n{{look}}\n{{avoid}}\n{{tagline}} {{url}}\n{{claude-mark}}",
+  });
   const filled = await fillFor(data, "probe", open, [], readBeats);
   assert.deepEqual(filled.missing, []);
   assert.equal(
@@ -163,7 +186,10 @@ test("a template fills from the open project: media, kit files, canvas, song len
     ].join("\n"),
   );
   // The brief's duration wins over the song's length, and the beats are counted inside it.
-  writeFileSync(join(open.dir, "brief.json"), JSON.stringify({ film: "A coast film", audience: "", duration: "20 s", formats: [], assets: [], visual: "", hardLines: [], deliverables: [] }));
+  writeFileSync(
+    join(open.dir, "brief.json"),
+    JSON.stringify({ film: "A coast film", audience: "", duration: "20 s", formats: [], assets: [], visual: "", hardLines: [], deliverables: [] }),
+  );
   const briefed = await projectFacts(data, open, [], readBeats);
   assert.deepEqual(briefed.length, { seconds: 20, from: "brief" });
   assert.equal(briefed.music?.beatCount, 40);

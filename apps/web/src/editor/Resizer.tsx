@@ -17,7 +17,8 @@ export function Resizer({ panel }: { panel: PanelSize }) {
     const rect = app?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
     // The left panel starts after the rail; its width is measured from there.
     const libLeft = app?.querySelector(".library")?.getBoundingClientRect().left ?? rect.left + 56;
-    const sizeAt = (ev: { clientX: number; clientY: number }) => (panel === "lib" ? ev.clientX - libLeft : panel === "side" ? rect.right - ev.clientX : rect.bottom - ev.clientY);
+    const sizeAt = (ev: { clientX: number; clientY: number }) =>
+      panel === "lib" ? ev.clientX - libLeft : panel === "side" ? rect.right - ev.clientX : rect.bottom - ev.clientY;
     const move = (ev: PointerEvent) => layout.set(panel, sizeAt(ev), false);
     let ended = false;
     // Ends on pointerup / pointercancel, or when the capture is lost some other way (the drag must
@@ -42,5 +43,13 @@ export function Resizer({ panel }: { panel: PanelSize }) {
     handle.addEventListener("lostpointercapture", up);
     window.addEventListener("pointerup", up, true);
   };
-  return <div className={`resizer ${panel === "bottom" ? "h" : "v"} resizer-${panel}`} data-testid={`resize-${panel}`} title="Drag to resize, double-click to reset" onPointerDown={onPointerDown} onDoubleClick={() => layout.reset(panel)} />;
+  return (
+    <div
+      className={`resizer ${panel === "bottom" ? "h" : "v"} resizer-${panel}`}
+      data-testid={`resize-${panel}`}
+      title="Drag to resize, double-click to reset"
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => layout.reset(panel)}
+    />
+  );
 }

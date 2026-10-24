@@ -42,7 +42,10 @@ export interface GraphicMediaRequest {
 }
 
 /** A media request from a URL's path id and query (t, w, h), or why not. Sizes are whole pixels 1–8192. */
-export function parseGraphicMediaRequest(id: string, query: { readonly get: (name: string) => string | null }): GraphicMediaRequest | { readonly problem: string } {
+export function parseGraphicMediaRequest(
+  id: string,
+  query: { readonly get: (name: string) => string | null },
+): GraphicMediaRequest | { readonly problem: string } {
   if (!ID.test(id)) return { problem: "bad media id" };
   const t = Number(query.get("t") ?? 0);
   if (!Number.isFinite(t) || t < 0 || t > MAX_T) return { problem: "t must be seconds from 0" };
@@ -63,7 +66,12 @@ export function parseGraphicMediaRequest(id: string, query: { readonly get: (nam
  * smaller (never larger) to fit the asked box and GRAPHIC_MEDIA_MAX_EDGE, its aspect kept, in even
  * pixels (what ffmpeg's scale gives every chroma layout).
  */
-export function graphicMediaSize(width: number, height: number, ask: { readonly w?: number | undefined; readonly h?: number | undefined } = {}, maxEdge = GRAPHIC_MEDIA_MAX_EDGE): { readonly width: number; readonly height: number } {
+export function graphicMediaSize(
+  width: number,
+  height: number,
+  ask: { readonly w?: number | undefined; readonly h?: number | undefined } = {},
+  maxEdge = GRAPHIC_MEDIA_MAX_EDGE,
+): { readonly width: number; readonly height: number } {
   const k = Math.min(1, maxEdge / Math.max(width, height), ask.w ? ask.w / width : 1, ask.h ? ask.h / height : 1);
   const even = (x: number) => Math.max(2, Math.round(x / 2) * 2);
   return { width: even(width * k), height: even(height * k) };

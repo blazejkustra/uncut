@@ -2,7 +2,22 @@
 // a line shows where it lands; a click still switches. Right-click: Move up, Move down, Hide, and
 // Reset order (which also shows the hidden ones). Hidden tabs are in the More menu at the end. The
 // order and the hidden ones are remembered on this Mac (S2, D117).
-import { AudioWaveform, Blend, BookOpen, CircleDot, Ellipsis, Film, Music, Palette, ScrollText, Shapes, Sparkles, SwatchBook, Type, type LucideIcon } from "lucide-react";
+import {
+  AudioWaveform,
+  Blend,
+  BookOpen,
+  CircleDot,
+  Ellipsis,
+  Film,
+  Music,
+  Palette,
+  ScrollText,
+  Shapes,
+  Sparkles,
+  SwatchBook,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -146,7 +161,14 @@ export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab)
   return (
     // No overlay scrollbar on the rail (D263): it drew a grey bar along the left panel's edge whenever the pointer was over a rail
     // a little too tall for the window; the wheel still scrolls it.
-    <nav className={`rail ${drag ? "dragging" : ""}`} ref={nav} data-testid="rail" data-scrollbars="off" data-order={order.join(",")} data-hidden={hidden.join(",")}>
+    <nav
+      className={`rail ${drag ? "dragging" : ""}`}
+      ref={nav}
+      data-testid="rail"
+      data-scrollbars="off"
+      data-order={order.join(",")}
+      data-hidden={hidden.join(",")}
+    >
       {shown.map((id) => {
         const t = info(id);
         const Icon = t.icon;

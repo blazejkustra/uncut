@@ -9,5 +9,11 @@ const skip = process.env.UNCUT_DOCKER_IT === "1" ? false : "set UNCUT_DOCKER_IT=
 test("Connect over SSH to a Linux container: pair, browse, upload, edit, agent turn, export and download", { skip, timeout: 30 * 60 * 1000 }, async () => {
   const { remoteDockerCheck } = await import("../../scripts/remote-docker-check.ts");
   const result = await remoteDockerCheck({ log: (l) => console.log(`# ${l}`) });
-  assert.ok(result.ok, result.checks.filter((c) => c.outcome === "FAIL").map((c) => c.what).join("\n"));
+  assert.ok(
+    result.ok,
+    result.checks
+      .filter((c) => c.outcome === "FAIL")
+      .map((c) => c.what)
+      .join("\n"),
+  );
 });

@@ -34,7 +34,9 @@ export async function loadInputs() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const list = (kind: MediaDeviceKind, fallback: string) =>
-      devices.filter((d) => d.kind === kind && d.deviceId && d.deviceId !== "communications").map((d, i) => ({ id: d.deviceId, label: d.label || `${fallback} ${i + 1}` }));
+      devices
+        .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== "communications")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `${fallback} ${i + 1}` }));
     set({ mics: list("audioinput", "Microphone"), cameras: list("videoinput", "Camera") });
   } catch {
     set({ mics: [], cameras: [] });
@@ -90,8 +92,7 @@ export async function openMonitor(id: string | undefined) {
     if (level >= peak) {
       peak = level;
       peakAt = t;
-    }
-    else if (t - peakAt > PEAK_HOLD_MS) peak = Math.max(level, peak - 0.02);
+    } else if (t - peakAt > PEAK_HOLD_MS) peak = Math.max(level, peak - 0.02);
     if (Math.abs(level - state.level) > 0.01 || peak !== state.peak) set({ level, peak });
   };
   monitor = { stream, ctx, raf: requestAnimationFrame(tick) };

@@ -64,9 +64,35 @@ export const makeSend = (ctx: SpawnCtx) => {
 
   /** The plugins' tool names now (D97): a session started with other ones is started again. */
   // D232: and the installed skills' names (the system prompt lists them), so installing one starts a new session.
-  const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => `${extra.map((t) => t.name).sort().join(",")}|skills:${plugins.skillsNow().map((x) => x.name).sort().join(",")}`));
+  const toolsKeyNow = Effect.andThen(
+    plugins.refresh,
+    Effect.map(
+      plugins.tools,
+      (extra) =>
+        `${extra
+          .map((t) => t.name)
+          .sort()
+          .join(",")}|skills:${plugins
+          .skillsNow()
+          .map((x) => x.name)
+          .sort()
+          .join(",")}`,
+    ),
+  );
 
-  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, provider = "claude", model: askedModel, effort, access = "auto", images = [], skipStoryboard = false, ranges }) =>
+  const send: AgentShape["send"] = ({
+    prompt,
+    frame,
+    selected,
+    mentions,
+    provider = "claude",
+    model: askedModel,
+    effort,
+    access = "auto",
+    images = [],
+    skipStoryboard = false,
+    ranges,
+  }) =>
     Effect.gen(function* () {
       const owner = yield* ensureLoaded;
       if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -79,16 +105,27 @@ export const makeSend = (ctx: SpawnCtx) => {
       }
       const text = prompt.trim();
       if (!text) return yield* new AgentError({ reason: "failed", message: "Write what you'd like the agent to do." });
-      if (images.length > AGENT_IMAGES_MAX) return yield* new AgentError({ reason: "failed", message: `Attach at most ${AGENT_IMAGES_MAX} images to a message.` });
+      if (images.length > AGENT_IMAGES_MAX)
+        return yield* new AgentError({ reason: "failed", message: `Attach at most ${AGENT_IMAGES_MAX} images to a message.` });
       const decoded = images.map((img) => ({ ...img, bytes: Buffer.from(img.data, "base64") }));
       const tooBig = decoded.find((img) => img.bytes.length > AGENT_IMAGE_MAX || img.bytes.length === 0);
-      if (tooBig) return yield* new AgentError({ reason: "failed", message: `${tooBig.name.slice(0, 80)} is ${tooBig.bytes.length ? "over 5 MB" : "empty"}; attach a smaller image.` });
+      if (tooBig)
+        return yield* new AgentError({
+          reason: "failed",
+          message: `${tooBig.name.slice(0, 80)} is ${tooBig.bytes.length ? "over 5 MB" : "empty"}; attach a smaller image.`,
+        });
       // Wait for the login shell's PATH, or a Finder launch would miss ~/.local/bin.
       yield* Effect.promise(() => config.shellReady);
       // Issue #106: the CLI the composer chose.
       const bin = yield* Effect.promise(() => (provider === "codex" ? findCodex() : findClaude()));
       if (!bin) {
-        return yield* new AgentError({ reason: "not-installed", message: provider === "codex" ? "Codex isn't installed. Install it (`npm install -g @openai/codex`), sign in once with `codex login`, then try again." : "Claude Code isn't installed. Install it, sign in once with `claude`, then try again." });
+        return yield* new AgentError({
+          reason: "not-installed",
+          message:
+            provider === "codex"
+              ? "Codex isn't installed. Install it (`npm install -g @openai/codex`), sign in once with `codex login`, then try again."
+              : "Claude Code isn't installed. Install it, sign in once with `claude`, then try again.",
+        });
       }
       const toolsKey = yield* toolsKeyNow;
       if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
@@ -104,7 +141,13 @@ export const makeSend = (ctx: SpawnCtx) => {
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
       // Issue #118: the sections the user locked and flagged "not OK", with every message.
       const sections = sectionsNote(project);
-      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "", accessLine(access, provider), capNote(note)].filter(Boolean);
+      const context = [
+        frame !== undefined ? playheadLine(project, frame) : "",
+        selected ? `Selected item: ${selected}.` : "",
+        sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "",
+        accessLine(access, provider),
+        capNote(note),
+      ].filter(Boolean);
       // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
       // D198: and each one is listed in the message (names only), so the agent can't miss one.
       const named = namedFolders(text, v.dir, (p) => {
@@ -124,7 +167,9 @@ export const makeSend = (ctx: SpawnCtx) => {
         const shown = shownPath(f.dir);
         if (f.problem) {
           folderList.push({ path: shown, files: 0, folders: 0, problem: f.problem });
-          folderLines.push(`${shown}: not listed, ${f.problem}. Ask the user for the folder inside it they mean, or use the files they named by their full paths.`);
+          folderLines.push(
+            `${shown}: not listed, ${f.problem}. Ask the user for the folder inside it they mean, or use the files they named by their full paths.`,
+          );
           continue;
         }
         const listing = yield* Effect.promise(() => listFolder(f.dir));
@@ -135,9 +180,13 @@ export const makeSend = (ctx: SpawnCtx) => {
         }
         folderList.push({ path: shown, files: listing.files, folders: listing.folders });
         const more = listing.files + listing.folders - listing.names.length;
-        folderLines.push(`${shown} (${f.dir}): ${listingWords(listing)}${listing.names.length ? `: ${listing.names.join(", ")}${more > 0 ? ` and ${more} more` : ""}` : ", empty"}.`);
+        folderLines.push(
+          `${shown} (${f.dir}): ${listingWords(listing)}${listing.names.length ? `: ${listing.names.join(", ")}${more > 0 ? ` and ${more} more` : ""}` : ", empty"}.`,
+        );
       }
-      const foldersBlock = folderLines.length ? `<folders>\nThe folders the user named in this message, each listed by Uncut (top level, hidden files left out). Use every one of them; media_import takes these paths.\n${folderLines.join("\n")}\n</folders>` : "";
+      const foldersBlock = folderLines.length
+        ? `<folders>\nThe folders the user named in this message, each listed by Uncut (top level, hidden files left out). Use every one of them; media_import takes these paths.\n${folderLines.join("\n")}\n</folders>`
+        : "";
       const dirsKey = [...owner.dirs].sort().join("\n");
       // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
       const skip = access === "auto" && skipStoryboard;
@@ -148,14 +197,26 @@ export const makeSend = (ctx: SpawnCtx) => {
           owner.plan = await readPlan(v.dir);
           const dirs = { dataDir: config.dataDir, projectDir: v.dir, skills: plugins.skillsNow() };
           let all = await readBrand(dirs);
-          const called = calledSkills(text, all.skills.map((x) => x.id));
+          const called = calledSkills(
+            text,
+            all.skills.map((x) => x.id),
+          );
           if (called.length) {
             await useSkills(v.dir, called);
             all = await readBrand(dirs);
           }
           const kit = all.kits.find((k) => k.id === all.active.kit);
           return {
-            planBlock: planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })) }, owner.plan, gateOf(owner.plan, skip)),
+            planBlock: planContext(
+              {
+                kit,
+                files: kit ? (all.files[kit.id] ?? {}) : {},
+                skills: all.skills.filter((x) => all.active.skills.includes(x.id)),
+                others: all.kits.map((k) => ({ id: k.id, name: k.name })),
+              },
+              owner.plan,
+              gateOf(owner.plan, skip),
+            ),
             skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
             called,
           };
@@ -168,7 +229,20 @@ export const makeSend = (ctx: SpawnCtx) => {
       // and effort (D184: another choice starts another claude that resumes the conversation).
       const model = modelFor(askedModel, provider);
       let s = st.session;
-      if (s && (s.closed || s.provider !== provider || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.access !== access || !s.child || s.child.exitCode !== null)) {
+      if (
+        s &&
+        (s.closed ||
+          s.provider !== provider ||
+          s.owner !== owner ||
+          s.openId !== owner.openId ||
+          s.toolsKey !== toolsKey ||
+          s.model !== model ||
+          s.effort !== effort ||
+          s.dirsKey !== dirsKey ||
+          s.access !== access ||
+          !s.child ||
+          s.child.exitCode !== null)
+      ) {
         closeSession(s, "graceful");
         s = undefined;
       }
@@ -187,7 +261,16 @@ export const makeSend = (ctx: SpawnCtx) => {
       blocks.pending = undefined;
       sentBlocks.set(s, blocks);
       const lean = leanPlanBlock(planBlock, blocks.committed);
-      let message = [userMessageText(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock ? lean.text : "", context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+      let message = [
+        userMessageText(text, called),
+        skillsBlock,
+        contextBlock(project, pointed),
+        foldersBlock,
+        planBlock ? lean.text : "",
+        context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
       const turnId = `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
       // D184: attached images are kept in .cache/agent-images/ for the card (the cache can be
@@ -208,7 +291,8 @@ export const makeSend = (ctx: SpawnCtx) => {
           }
         });
         // D232: their paths too, so a skill can bring a dropped logo into a kit (brand_write logos) or the project.
-        if (imageNames.length) message += `\n\n<attachments>\nThe attached images are also saved as files (brand_write logos and media_import take these paths):\n${imageNames.map((n, i) => `${decoded[i]?.name.slice(0, 80) ?? n}: ${join(folder, n)}`).join("\n")}\n</attachments>`;
+        if (imageNames.length)
+          message += `\n\n<attachments>\nThe attached images are also saved as files (brand_write logos and media_import take these paths):\n${imageNames.map((n, i) => `${decoded[i]?.name.slice(0, 80) ?? n}: ${join(folder, n)}`).join("\n")}\n</attachments>`;
       }
       const turn: StoredTurn = {
         id: turnId,

@@ -59,7 +59,13 @@ export interface CaptureImportInput {
 export interface MultiImportInput {
   readonly openId: number;
   readonly dir: string;
-  readonly parts: ReadonlyArray<{ readonly path: string; readonly name: string; readonly kind: MultiKind; readonly offsetMs: number; readonly source: { readonly module: string; readonly [key: string]: unknown } }>;
+  readonly parts: ReadonlyArray<{
+    readonly path: string;
+    readonly name: string;
+    readonly kind: MultiKind;
+    readonly offsetMs: number;
+    readonly source: { readonly module: string; readonly [key: string]: unknown };
+  }>;
   readonly frame?: number | undefined;
   readonly layout?: MultiLayoutName | undefined;
   readonly summary: string;

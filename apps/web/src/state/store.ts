@@ -15,9 +15,36 @@ import { onJobs, onExportJobs, onAnalysisJobs, applyFromServer } from "./store/s
 import { applyAgentUi } from "./store/agentUi.ts";
 export { MAX_NAME_LENGTH } from "./store/types.ts";
 export type { ConnectionState, Project, Notice, AppStateShape, PickerPurpose, RemotePickerRequest, GenerateDraft, SettingsSection } from "./store/types.ts";
-export { pluginRules, pluginRuleList, pluginLooks, textPresets, subscribeApp, useApp, useAppSelect, getState, projectOf, online, isRemote } from "./store/core.ts";
+export {
+  pluginRules,
+  pluginRuleList,
+  pluginLooks,
+  textPresets,
+  subscribeApp,
+  useApp,
+  useAppSelect,
+  getState,
+  projectOf,
+  online,
+  isRemote,
+} from "./store/core.ts";
 export { plainError } from "./store/server.ts";
-export { brandFileUrl, agentImageUrl, thumbUrl, recentThumbUrl, mediaUrl, proxyUrl, proxyOf, sfxUrl, folderSoundUrl, libraryPreviewUrl, waveformUrl, filmstripUrl, graphicUrl, graphicMediaUrl } from "./store/urls.ts";
+export {
+  brandFileUrl,
+  agentImageUrl,
+  thumbUrl,
+  recentThumbUrl,
+  mediaUrl,
+  proxyUrl,
+  proxyOf,
+  sfxUrl,
+  folderSoundUrl,
+  libraryPreviewUrl,
+  waveformUrl,
+  filmstripUrl,
+  graphicUrl,
+  graphicMediaUrl,
+} from "./store/urls.ts";
 export { activeAnalyses, activeJobs } from "./store/sync.ts";
 export { setLeaveGate, pendingSaves, revealItem, previewEdits, endPreview, speedPlan, shaderDefs } from "./store/edits.ts";
 export { actions } from "./store/actions.ts";
@@ -52,7 +79,13 @@ export async function start() {
   bridge.onServerExit((message) => !isRemote() && set({ connection: "server-exited", connectionMessage: message }));
   bridge.onMenuCommand(runCommand);
   window.addEventListener("keydown", onKeyDown);
-  const [appInfo, server] = await Promise.all([bridge.appInfo(), bridge.getServerConnection().then((c) => ({ ok: true as const, c }), (e: Error) => ({ ok: false as const, e }))]);
+  const [appInfo, server] = await Promise.all([
+    bridge.appInfo(),
+    bridge.getServerConnection().then(
+      (c) => ({ ok: true as const, c }),
+      (e: Error) => ({ ok: false as const, e }),
+    ),
+  ]);
   set({ appInfo });
   if (!server.ok) {
     // The active remote couldn't even be set up (its token unreadable): say so, with the way back to Local.
@@ -97,11 +130,20 @@ export async function start() {
       unsubscribeAnalysis?.();
       unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
       unsubscribeProxies?.();
-      unsubscribeProxies = conn.subscribe((c) => c["media.proxies"]({}), (proxies) => set({ proxies }));
+      unsubscribeProxies = conn.subscribe(
+        (c) => c["media.proxies"]({}),
+        (proxies) => set({ proxies }),
+      );
       unsubscribeTranscription?.();
-      unsubscribeTranscription = conn.subscribe((c) => c["transcription.state"]({}), (transcription) => set({ transcription }));
+      unsubscribeTranscription = conn.subscribe(
+        (c) => c["transcription.state"]({}),
+        (transcription) => set({ transcription }),
+      );
       unsubscribeGenerate?.();
-      unsubscribeGenerate = conn.subscribe((c) => c["generate.jobs"]({}), (generateJobs) => set({ generateJobs }));
+      unsubscribeGenerate = conn.subscribe(
+        (c) => c["generate.jobs"]({}),
+        (generateJobs) => set({ generateJobs }),
+      );
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
@@ -122,7 +164,10 @@ export async function start() {
         },
       );
       unsubscribeHistory?.();
-      unsubscribeHistory = conn.subscribe((c) => c["history.subscribe"]({}), (history) => set({ history }));
+      unsubscribeHistory = conn.subscribe(
+        (c) => c["history.subscribe"]({}),
+        (history) => set({ history }),
+      );
       unsubscribe?.();
       unsubscribe = conn.subscribe(
         (c) => c["project.subscribe"]({}),

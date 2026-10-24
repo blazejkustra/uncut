@@ -172,7 +172,12 @@ export class Compositor extends CompositorBase {
       // A push or zoom transition is in its box (D79), drawn into the HTML.
       // Only a moved one gets visualsAt's box (taken at the fractional playhead): otherwise its own at the
       // whole frame, so a keyed component isn't rebuilt on every animation frame while playing.
-      const html = componentHtml(v.item, target, whole - starts.get(v.item.id)!, { opacity: v.opacity, motion: v.motion, fps, ...(v.box && (v.shift !== undefined || v.shiftY !== undefined || v.zoom !== undefined) ? { box: v.box } : {}) });
+      const html = componentHtml(v.item, target, whole - starts.get(v.item.id)!, {
+        opacity: v.opacity,
+        motion: v.motion,
+        fps,
+        ...(v.box && (v.shift !== undefined || v.shiftY !== undefined || v.zoom !== undefined) ? { box: v.box } : {}),
+      });
       const key = `${html}|${v.wipe ?? ""}|${v.iris ?? ""}|${v.mask ? `${v.mask.shape}:${v.mask.p}` : ""}`;
       let c = this.comps.get(v.item.id);
       if (!c || c.key !== key) {
@@ -189,7 +194,8 @@ export class Compositor extends CompositorBase {
           const edge = b.w / 2 + (project.canvas.width * v.wipe - centre) / b.scale;
           const reveal = v.motion.reveal;
           const right = Math.min(b.w, Math.max(0, b.w - edge, reveal !== undefined && reveal < 1 ? (1 - reveal) * b.w : 0));
-          el.style.clipPath = reveal !== undefined && reveal < 1 ? `inset(${px(-0.2 * b.h)} ${px(right)} ${px(-0.2 * b.h)} ${px(-0.05 * b.w)})` : `inset(0 ${px(right)} 0 0)`;
+          el.style.clipPath =
+            reveal !== undefined && reveal < 1 ? `inset(${px(-0.2 * b.h)} ${px(right)} ${px(-0.2 * b.h)} ${px(-0.05 * b.w)})` : `inset(0 ${px(right)} 0 0)`;
         } else if (v.iris !== undefined && v.box) {
           // An iris (D79): the canvas's circle in the element's own pixels, through its scale about the box's centre and the move's offset.
           const b = v.box;
@@ -220,12 +226,24 @@ export class Compositor extends CompositorBase {
     type Shown = Pick<Visual, "wipe" | "iris" | "mask" | "shift" | "shiftY" | "zoom" | "blur"> & { item: Item; opacity: number; visible: boolean };
     const graphics: Array<Shown> = drawn
       .filter((v) => v.item.type === "graphic" && typeof v.item.src === "string")
-      .map((v) => ({ item: v.item, opacity: v.opacity, ...(v.wipe !== undefined ? { wipe: v.wipe } : {}), ...(v.iris !== undefined ? { iris: v.iris } : {}), ...(v.mask ? { mask: v.mask } : {}), ...(v.shift !== undefined ? { shift: v.shift } : {}), ...(v.shiftY !== undefined ? { shiftY: v.shiftY } : {}), ...(v.zoom !== undefined ? { zoom: v.zoom } : {}), ...(v.blur !== undefined ? { blur: v.blur } : {}), visible: true }));
+      .map((v) => ({
+        item: v.item,
+        opacity: v.opacity,
+        ...(v.wipe !== undefined ? { wipe: v.wipe } : {}),
+        ...(v.iris !== undefined ? { iris: v.iris } : {}),
+        ...(v.mask ? { mask: v.mask } : {}),
+        ...(v.shift !== undefined ? { shift: v.shift } : {}),
+        ...(v.shiftY !== undefined ? { shiftY: v.shiftY } : {}),
+        ...(v.zoom !== undefined ? { zoom: v.zoom } : {}),
+        ...(v.blur !== undefined ? { blur: v.blur } : {}),
+        visible: true,
+      }));
     for (const track of project.tracks) {
       if (track.hidden || track.kind !== "video") continue;
       for (const it of track.items) {
         const s = starts.get(it.id)!;
-        if (it.type === "graphic" && typeof it.src === "string" && s > frame && s - frame <= 2 * fps && !graphics.some((g) => g.item.id === it.id)) graphics.push({ item: it, opacity: 0, visible: false });
+        if (it.type === "graphic" && typeof it.src === "string" && s > frame && s - frame <= 2 * fps && !graphics.some((g) => g.item.id === it.id))
+          graphics.push({ item: it, opacity: 0, visible: false });
       }
     }
     for (const [id, g] of [...this.graphics]) {
@@ -245,7 +263,10 @@ export class Compositor extends CompositorBase {
           if (check === "pending" || (typeof check === "number" && Date.now() < check)) continue;
           this.graphicCheck.set(src, "pending");
           void fetch(src)
-            .then((r) => r.ok, () => false)
+            .then(
+              (r) => r.ok,
+              () => false,
+            )
             .then((ok) => {
               this.graphicCheck.set(src, ok ? "ok" : Date.now() + 3000);
               if (!ok) setTimeout(() => this.render(), 3100);
@@ -302,7 +323,10 @@ export class Compositor extends CompositorBase {
       const wrap = this.boxes.get(c.item.id)!;
       wrap.classList.toggle("sel-clip", c.item.id === selected);
       // D221: paused or shuttling, a video's picture may be its cached frame (a canvas over it).
-      const scrubbed = el instanceof HTMLVideoElement ? this.scrubPicture(c.item.id, el, c.source + 0.0001, playing, running && rate !== 1 ? rate : 0) : { pic: el, seek: true };
+      const scrubbed =
+        el instanceof HTMLVideoElement
+          ? this.scrubPicture(c.item.id, el, c.source + 0.0001, playing, running && rate !== 1 ? rate : 0)
+          : { pic: el, seek: true };
       const pic = scrubbed.pic;
       // The opacity stays on the media element (the wrapper only places, clips and rounds it).
       el.style.opacity = String(c.opacity);
@@ -320,7 +344,9 @@ export class Compositor extends CompositorBase {
         this.dropFx(c.item.id, !!use);
         const fx = this.effectsOf(c.item);
         // D265: a shader (D213) still runs on its own canvas (out of sight in the transparent box), the picture the compositor reads.
-        const shaded = use ? this.drawShader(c.item, pic, wrap, use, fxPictureSize(c.box, media.probe), shaderTime(frame, starts.get(c.item.id)!, fps)) : undefined;
+        const shaded = use
+          ? this.drawShader(c.item, pic, wrap, use, fxPictureSize(c.box, media.probe), shaderTime(frame, starts.get(c.item.id)!, fps))
+          : undefined;
         gpuPictures.set(c.item.id, {
           id: c.item.id,
           source: shaded ?? pic,
@@ -329,7 +355,10 @@ export class Compositor extends CompositorBase {
           opacity: c.opacity,
           wipe: c.wipe,
           iris: c.iris !== undefined ? { x: project.canvas.width / 2, y: project.canvas.height / 2, r: irisRadius(c.iris, project.canvas) } : undefined,
-          fx: fx && needsPicturePass(fx) && !this.fxBroken ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps } : undefined,
+          fx:
+            fx && needsPicturePass(fx) && !this.fxBroken
+              ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps }
+              : undefined,
           gamut: !shaded && pic instanceof HTMLVideoElement && this.gamutVideo(pic),
           mask: c.mask ? maskRings(c.mask.shape, c.mask.p, project.canvas.width, project.canvas.height) : undefined,
           blur: c.blur,
@@ -344,7 +373,8 @@ export class Compositor extends CompositorBase {
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       // A held clip (D94) past its media's end sits paused on the last frame.
-      if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
+      if (scrubbed.seek)
+        drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
     this.warmBudget = 1;
@@ -408,7 +438,9 @@ export class Compositor extends CompositorBase {
       // Layout is read only while one is moved (not on every frame of every text).
       const ox = moved ? el.offsetLeft + el.offsetWidth / 2 : 0;
       const oy = moved ? el.offsetTop + el.offsetHeight / 2 : 0;
-      const translate = moved ? `${px((v!.shift ?? 0) + (1 - zoom) * (project.canvas.width / 2 - ox))} ${px((v!.shiftY ?? 0) + (1 - zoom) * (project.canvas.height / 2 - oy))}` : "";
+      const translate = moved
+        ? `${px((v!.shift ?? 0) + (1 - zoom) * (project.canvas.width / 2 - ox))} ${px((v!.shiftY ?? 0) + (1 - zoom) * (project.canvas.height / 2 - oy))}`
+        : "";
       if (el.style.translate !== translate) el.style.translate = translate;
       const scale = zoom !== 1 ? String(zoom) : "";
       if (el.style.scale !== scale) el.style.scale = scale;
@@ -419,7 +451,10 @@ export class Compositor extends CompositorBase {
         // Its own pixels: the layout box moved by the in/out move's translate (motion), as for components.
         const left = el.offsetLeft + (v.motion.dx ?? 0);
         const top = el.offsetTop + (v.motion.dy ?? 0);
-        el.style.clipPath = v.iris !== undefined ? irisClip(v.iris, project.canvas, left, top) : maskClipPath(v.mask!.shape, v.mask!.p, project.canvas, (x, y) => [x - left, y - top]);
+        el.style.clipPath =
+          v.iris !== undefined
+            ? irisClip(v.iris, project.canvas, left, top)
+            : maskClipPath(v.mask!.shape, v.mask!.p, project.canvas, (x, y) => [x - left, y - top]);
       } else if (el.dataset.clip !== undefined) {
         el.style.clipPath = el.dataset.clip;
         delete el.dataset.clip;
@@ -442,7 +477,8 @@ export class Compositor extends CompositorBase {
             }
             const p = gpuPictures.get(v.item.id);
             if (p) this.gpu.drawPicture(p);
-            else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
+            else if (v.item.type === "component")
+              this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
             last = z.get(v.item.id)!;
           }
           if (last !== undefined) this.gpu.flush(last);

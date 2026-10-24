@@ -21,7 +21,15 @@ import type { Running } from "../session/types.ts";
 import type { LibraryCtx } from "./library.ts";
 
 /** Folder words a user says ("export to Desktop"), each a folder in their home. */
-export const FOLDER_WORDS: Readonly<Record<string, string>> = { desktop: "Desktop", downloads: "Downloads", movies: "Movies", documents: "Documents", videos: "Movies", music: "Music", pictures: "Pictures" };
+export const FOLDER_WORDS: Readonly<Record<string, string>> = {
+  desktop: "Desktop",
+  downloads: "Downloads",
+  movies: "Movies",
+  documents: "Documents",
+  videos: "Movies",
+  music: "Music",
+  pictures: "Pictures",
+};
 const ACTIVE = new Set(["queued", "preparing", "rendering"]);
 /** How long export_video waits for its job (UNCUT_EXPORT_WAIT_MS for tests); after it, the job goes on in the editor. */
 export const exportWaitMs = () => {
@@ -56,7 +64,12 @@ const lexists = (p: string) => {
  * control characters, not hidden (no leading dot), short enough for " 999.mp4" to fit in 255 bytes.
  */
 export const exportFileName = (name: string) => {
-  const clean = name.replace(/[\u0000-\u001f\u007f]/g, "").replace(/[/:\\]/g, "-").trim().replace(/^\.+/, "").trim();
+  const clean = name
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[/:\\]/g, "-")
+    .trim()
+    .replace(/^\.+/, "")
+    .trim();
   let stem = clean.replace(/\.mp4$/i, "").trim() || "Untitled";
   const ext = /\.mp4$/i.test(clean) ? clean.slice(-4) : ".mp4";
   if (Buffer.byteLength(stem) > 200) {
@@ -74,7 +87,10 @@ export const exportFileName = (name: string) => {
  * The folder `asked` means: a folder word (Desktop, Movies...), ~/… or an absolute path; nothing
  * is the dialog's folder (`fallback`). Its real path, or why it can't be used.
  */
-export function resolveExportFolder(asked: string | undefined, o: { readonly project: string; readonly dataDir: string; readonly fallback: string; readonly home?: string }): { readonly dir: string } | { readonly problem: string } {
+export function resolveExportFolder(
+  asked: string | undefined,
+  o: { readonly project: string; readonly dataDir: string; readonly fallback: string; readonly home?: string },
+): { readonly dir: string } | { readonly problem: string } {
   const home = o.home ?? homedir();
   const said = asked?.trim().replace(/\/+$/, "") ?? "";
   let dir: string;
@@ -92,7 +108,8 @@ export function resolveExportFolder(asked: string | undefined, o: { readonly pro
     const s = statSync(dir);
     kind = s.isDirectory() ? "dir" : "file";
   } catch {}
-  if (kind !== "dir") return { problem: kind === "file" ? `${dir} is a file, not a folder.` : `The folder ${dir} doesn't exist. Make it first, or choose another.` };
+  if (kind !== "dir")
+    return { problem: kind === "file" ? `${dir} is a file, not a folder.` : `The folder ${dir} doesn't exist. Make it first, or choose another.` };
   const at = real(dir);
   const problem = exportFolderProblem(at, { project: real(o.project), dataDir: real(o.dataDir), home: real(home) });
   return problem ? { problem } : { dir: at };
@@ -102,7 +119,8 @@ export function resolveExportFolder(asked: string | undefined, o: { readonly pro
 export function exportFolderProblem(dir: string, o: { readonly project: string; readonly dataDir: string; readonly home: string }): string | undefined {
   if (inside(dir, o.dataDir)) return "That's Uncut's own data folder; choose another folder.";
   // A project is a package (Finder shows Name.uncut as one item): a video inside it can't be found.
-  if (inside(dir, o.project)) return "That's inside the project (Finder shows it as one item, so the video would be hidden); choose another folder, like Desktop or Movies.";
+  if (inside(dir, o.project))
+    return "That's inside the project (Finder shows it as one item, so the video would be hidden); choose another folder, like Desktop or Movies.";
   if (inside(dir, o.home)) {
     const rel = relative(o.home, dir).split(sep).filter(Boolean);
     if (rel[0] === "Library") return "That's in ~/Library (apps' own files); choose another folder.";
@@ -118,7 +136,8 @@ export function exportFolderProblem(dir: string, o: { readonly project: string; 
 /** Whether the user's message names the (real) folder `dir`: a folder word or a pasted path. */
 // A folder word counts only as a place ("to Desktop", "in my Movies folder"), not "a desktop app" or "add music".
 export function messageNamesFolder(text: string, dir: string, project: string, home = homedir()): boolean {
-  for (const [word, folder] of Object.entries(FOLDER_WORDS)) if (new RegExp(`\\b(?:to|in|into|on|onto)\\s+(?:(?:my|the)\\s+)?(?:~\\/)?${word}\\b`, "i").test(text) && real(join(home, folder)) === dir) return true;
+  for (const [word, folder] of Object.entries(FOLDER_WORDS))
+    if (new RegExp(`\\b(?:to|in|into|on|onto)\\s+(?:(?:my|the)\\s+)?(?:~\\/)?${word}\\b`, "i").test(text) && real(join(home, folder)) === dir) return true;
   const exists = (p: string) => {
     try {
       const s = statSync(p);
@@ -156,28 +175,46 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       const loudness = (args.loudness ?? choiceOfTarget(target)) as ExportLoudness;
       if (!LOUDNESS.includes(loudness)) return textResult(`loudness must be one of ${LOUDNESS.join(", ")}.`, true);
       if (args.motionBlur !== undefined && typeof args.motionBlur !== "boolean") return textResult("motionBlur must be true or false.", true);
-      for (const k of ["fps", "shortSide"] as const) if (args[k] !== undefined && typeof args[k] !== "number") return textResult(`${k} must be a number.`, true);
+      for (const k of ["fps", "shortSide"] as const)
+        if (args[k] !== undefined && typeof args[k] !== "number") return textResult(`${k} must be a number.`, true);
       if (args.name !== undefined && (typeof args.name !== "string" || !args.name.trim())) return textResult("name must be a file name.", true);
       if (args.folder !== undefined && typeof args.folder !== "string") return textResult("folder must be a folder name or path.", true);
       // The part of the timeline (the dialog's range): the marks and selection as they were when the message was sent.
       const kind = args.range ?? "all";
       if (kind !== "all" && kind !== "marks" && kind !== "selection") return textResult('range must be "all", "marks" or "selection".', true);
       const span = kind === "marks" ? r.ranges?.marks : kind === "selection" ? r.ranges?.selection : undefined;
-      if (kind !== "all" && !span) return textResult(kind === "marks" ? "No In/Out marks were set when the user sent this message. Export the whole timeline, or ask them to set In and Out (I, O) first." : "Nothing was selected on the timeline when the user sent this message. Export the whole timeline, or ask them to select the clips first.", true);
+      if (kind !== "all" && !span)
+        return textResult(
+          kind === "marks"
+            ? "No In/Out marks were set when the user sent this message. Export the whole timeline, or ask them to set In and Out (I, O) first."
+            : "Nothing was selected on the timeline when the user sent this message. Export the whole timeline, or ask them to select the clips first.",
+          true,
+        );
       const range = span ? { from: Math.round(span.from), to: Math.round(span.to) } : undefined;
       if (range && range.to <= range.from) return textResult("That range is empty.", true);
 
       // One export at a time, as in the editor.
       const jobs = yield* exporter.jobList;
       const running = jobs.find((j) => ACTIVE.has(j.phase));
-      if (exporter.busy() || running) return textResult({ refused: `An export is already running${running ? ` (${basename(running.output)}, ${running.phase === "rendering" ? `${Math.round(running.progress * 100)}%` : running.phase})` : ""}: one at a time. Tell the user, and export once it's done.` }, true);
+      if (exporter.busy() || running)
+        return textResult(
+          {
+            refused: `An export is already running${running ? ` (${basename(running.output)}, ${running.phase === "rendering" ? `${Math.round(running.progress * 100)}%` : running.phase})` : ""}: one at a time. Tell the user, and export once it's done.`,
+          },
+          true,
+        );
 
-      if ((startedIn.get(r) ?? 0) >= EXPORTS_PER_TURN) return textResult({ refused: `This turn already exported ${EXPORTS_PER_TURN} videos; no more in this turn. Tell the user where they are.` }, true);
+      if ((startedIn.get(r) ?? 0) >= EXPORTS_PER_TURN)
+        return textResult({ refused: `This turn already exported ${EXPORTS_PER_TURN} videos; no more in this turn. Tell the user where they are.` }, true);
 
       // Where: the folder asked for, else the dialog's (the last export's folder, else ~/Movies).
       const last = [...jobs].reverse().find((j) => j.phase === "done" || ACTIVE.has(j.phase));
       const lastDir = last && existsSync(dirname(last.output)) ? dirname(last.output) : undefined;
-      const where = resolveExportFolder(args.folder as string | undefined, { project: v.dir, dataDir: config.dataDir, fallback: lastDir ?? defaultParentDir() });
+      const where = resolveExportFolder(args.folder as string | undefined, {
+        project: v.dir,
+        dataDir: config.dataDir,
+        fallback: lastDir ?? defaultParentDir(),
+      });
       if ("problem" in where) return textResult({ refused: where.problem }, true);
       const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : project.name);
       const busyOutputs = new Set(jobs.filter((j) => ACTIVE.has(j.phase)).map((j) => j.output));
@@ -187,14 +224,35 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       // folder in this message.
       const free = r.access === "auto" && typeof args.folder === "string" && args.folder.trim() !== "" && messageNamesFolder(r.turn.prompt, where.dir, v.dir);
       if (!free) {
-        const why = r.access === "auto" ? "You didn't name this folder in your message, so Uncut asks before writing there." : "This chat asks before writing files.";
-        const answer = yield* askUser(r, "Export the video", 0, undefined, undefined, undefined, { permission: { tool: "export", target: output, why, always: false } });
-        if (answer !== "allow") return textResult(answer === "stopped" ? "The turn was stopped." : `Not exported: the user ${answer === "timeout" ? "didn't answer" : "said no"}. Don't try again in this turn; they can export from the Export dialog (⌘E).`, true);
+        const why =
+          r.access === "auto" ? "You didn't name this folder in your message, so Uncut asks before writing there." : "This chat asks before writing files.";
+        const answer = yield* askUser(r, "Export the video", 0, undefined, undefined, undefined, {
+          permission: { tool: "export", target: output, why, always: false },
+        });
+        if (answer !== "allow")
+          return textResult(
+            answer === "stopped"
+              ? "The turn was stopped."
+              : `Not exported: the user ${answer === "timeout" ? "didn't answer" : "said no"}. Don't try again in this turn; they can export from the Export dialog (⌘E).`,
+            true,
+          );
       }
 
-      const video = { ...(typeof args.fps === "number" ? { fps: args.fps } : {}), ...(typeof args.shortSide === "number" ? { shortSide: args.shortSide } : {}) };
+      const video = {
+        ...(typeof args.fps === "number" ? { fps: args.fps } : {}),
+        ...(typeof args.shortSide === "number" ? { shortSide: args.shortSide } : {}),
+      };
       const started = yield* exporter
-        .start({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), ...(range ? { range } : {}), ...(Object.keys(video).length ? { video } : {}), ...(typeof args.motionBlur === "boolean" ? { motionBlur: args.motionBlur } : {}), agent: true })
+        .start({
+          output,
+          quality,
+          loudness,
+          ...(loudness === "target" ? { targetLufs: target } : {}),
+          ...(range ? { range } : {}),
+          ...(Object.keys(video).length ? { video } : {}),
+          ...(typeof args.motionBlur === "boolean" ? { motionBlur: args.motionBlur } : {}),
+          agent: true,
+        })
         .pipe(
           Effect.map((x) => ({ ok: true as const, jobId: x.jobId })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
@@ -212,13 +270,24 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
           yield* exporter.cancel(started.jobId);
           return textResult("The turn was stopped, so the export was cancelled.", true);
         }
-        if (Date.now() > until) return textResult({ state: job.phase, output, progress: Math.round(job.progress * 100), note: "Still exporting; it goes on in the editor (the Export button shows its progress). Tell the user where it will be saved." });
+        if (Date.now() > until)
+          return textResult({
+            state: job.phase,
+            output,
+            progress: Math.round(job.progress * 100),
+            note: "Still exporting; it goes on in the editor (the Export button shows its progress). Tell the user where it will be saved.",
+          });
         yield* Effect.promise(() => new Promise((res) => setTimeout(res, 250)));
       }
       if (!job) return textResult({ failed: "The export job went away." }, true);
       if (job.phase === "cancelled") return textResult("Not exported: the user cancelled the export.", true);
       if (job.phase === "failed") return textResult({ failed: job.error ?? "The export didn't finish." }, true);
-      const bytes = yield* Effect.promise(() => stat(job!.output).then((s) => s.size, () => undefined));
+      const bytes = yield* Effect.promise(() =>
+        stat(job!.output).then(
+          (s) => s.size,
+          () => undefined,
+        ),
+      );
       return textResult({
         saved: job.output,
         seconds: Number(job.seconds.toFixed(2)),

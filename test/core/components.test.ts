@@ -38,7 +38,7 @@ import {
   type Project,
 } from "../../packages/core/src/index.ts";
 import { capStates } from "../../apps/server/src/export/exportPlan.ts";
-import { expandDeviceFrames, mcpTools, modulesList, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
+import { expandDeviceFrames, mcpTools, modulesList, stepLabel, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import { svgSize } from "../../apps/server/src/export/svg.ts";
 import { planAddComponent, planAlignScreen, planComponentProps, planDevice, planScreenFootage, screenClipOf } from "../../apps/web/src/preview/components.ts";
 import { clipState, planClipBox } from "../../apps/web/src/timeline/clip.ts";
@@ -56,7 +56,13 @@ function project(items: Array<{ track: string; item: Item }> = [], extra: Partia
   const tracks = [
     { id: "text", kind: "text" as const, name: "Text", items: [] as Array<Item> },
     { id: "overlay", kind: "video" as const, name: "Overlay", items: [] as Array<Item> },
-    { id: "main", kind: "video" as const, role: "main" as const, name: "Main", items: [{ id: "bg", type: "component" as const, component: "component.solid", duration: 300, props: { color: "bg" } }] as Array<Item> },
+    {
+      id: "main",
+      kind: "video" as const,
+      role: "main" as const,
+      name: "Main",
+      items: [{ id: "bg", type: "component" as const, component: "component.solid", duration: 300, props: { color: "bg" } }] as Array<Item>,
+    },
   ];
   for (const { track, item } of items) tracks.find((t) => t.id === track)!.items.push(item);
   return {
@@ -95,16 +101,53 @@ test("every built-in component manifest is drawn by core's registry or listed as
     assert.ok(c.block.size.width > 0 && c.block.size.height > 0);
     // A new one (its defaults) is a valid item; a wrong prop is refused.
     valid(project([{ track: "overlay", item: { id: "c1", type: "component", component: c.id, start: 0, duration: 90, props: componentDefaults(c.id) } }]));
-    const bad = validateProject(project([{ track: "overlay", item: { id: "c1", type: "component", component: c.id, start: 0, duration: 90, props: { ...componentDefaults(c.id), nope: 1 } } }]), modules);
-    assert.ok(bad.some((e) => e.code === "params"), `${c.id}: an unknown prop is refused`);
+    const bad = validateProject(
+      project([
+        { track: "overlay", item: { id: "c1", type: "component", component: c.id, start: 0, duration: 90, props: { ...componentDefaults(c.id), nope: 1 } } },
+      ]),
+      modules,
+    );
+    assert.ok(
+      bad.some((e) => e.code === "params"),
+      `${c.id}: an unknown prop is refused`,
+    );
   }
   // Only the terminal, the agent log and the compare table change from frame to frame.
-  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.lower-third", "component.callout", "component.progress-bar", "component.countdown", "component.subscribe", "component.sticker", "component.quote", "component.before-after", "component.social-button", "component.follow", "component.follow-card", "component.checklist", "component.steps", "component.rating", "component.price-tag", "component.map-pin", "component.terminal", "component.agent-log", "component.compare-table"]);
+  assert.deepEqual(
+    COMPONENTS.filter((c) => c.block.animated).map((c) => c.id),
+    [
+      "component.lower-third",
+      "component.callout",
+      "component.progress-bar",
+      "component.countdown",
+      "component.subscribe",
+      "component.sticker",
+      "component.quote",
+      "component.before-after",
+      "component.social-button",
+      "component.follow",
+      "component.follow-card",
+      "component.checklist",
+      "component.steps",
+      "component.rating",
+      "component.price-tag",
+      "component.map-pin",
+      "component.terminal",
+      "component.agent-log",
+      "component.compare-table",
+    ],
+  );
   // Every device has a frame size and a screen inside it.
-  assert.deepEqual([...DEVICES].sort(), [...(modules.get("component.device-frame")!.params as { properties: { device: { enum: Array<string> } } }).properties.device.enum].sort());
+  assert.deepEqual(
+    [...DEVICES].sort(),
+    [...(modules.get("component.device-frame")!.params as { properties: { device: { enum: Array<string> } } }).properties.device.enum].sort(),
+  );
   for (const d of DEVICES) {
     const s = deviceSpec(d);
-    assert.ok(s.screen.x >= 0 && s.screen.y >= 0 && s.screen.x + s.screen.width <= s.size.width && s.screen.y + s.screen.height <= s.size.height, `${d}: the screen is inside the frame`);
+    assert.ok(
+      s.screen.x >= 0 && s.screen.y >= 0 && s.screen.x + s.screen.width <= s.size.width && s.screen.y + s.screen.height <= s.size.height,
+      `${d}: the screen is inside the frame`,
+    );
   }
 });
 
@@ -113,14 +156,26 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
     componentHtml({ id: "c1", type: "component", component: id, duration: 120, props, ...extra }, t, local);
   for (const c of COMPONENTS) {
     const a = html(c.id, componentDefaults(c.id));
-    assert.match(a, new RegExp(`^<div class="pv-comp" data-item="c1" data-component="${c.id}" style="left:[\\d.-]+px;top:[\\d.-]+px;width:[\\d.]+px;height:[\\d.]+px;opacity:1">`), `${c.id} wrapper`);
+    assert.match(
+      a,
+      new RegExp(
+        `^<div class="pv-comp" data-item="c1" data-component="${c.id}" style="left:[\\d.-]+px;top:[\\d.-]+px;width:[\\d.]+px;height:[\\d.]+px;opacity:1">`,
+      ),
+      `${c.id} wrapper`,
+    );
     assert.ok(a.endsWith("</div>"));
     assert.equal(a, html(c.id, componentDefaults(c.id)), `${c.id}: the same item and frame give the same HTML`);
     if (!c.block.animated) assert.equal(html(c.id, componentDefaults(c.id), 0), html(c.id, componentDefaults(c.id), 99), `${c.id}: static`);
     assert.doesNotMatch(a, /<video|<script|<iframe/i, `${c.id}: no footage or scripts inside a component`);
   }
   // End card: logo (through the target's mediaUrl), title with markup, the code chip and the URL, centred, filling the canvas.
-  const end = html("component.end-card", { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.example.com", background: "bg" }, 0, {}, { ...target, mediaUrl: (id) => `data:image/svg+xml;base64,${id}` });
+  const end = html(
+    "component.end-card",
+    { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.example.com", background: "bg" },
+    0,
+    {},
+    { ...target, mediaUrl: (id) => `data:image/svg+xml;base64,${id}` },
+  );
   assert.match(end, /left:0px;top:0px;width:1920px;height:1080px/);
   assert.match(end, /<img src="data:image\/svg\+xml;base64,m-logo"/);
   assert.match(end, /Argent <span class="accent">for agents<\/span>/);
@@ -133,7 +188,7 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
   assert.doesNotMatch(html("component.end-card", { logo: { media: "m-logo" } }), /<img/);
   assert.doesNotMatch(html("component.end-card", { logo: { media: "m-logo" } }, 0, {}, { ...target, mediaUrl: () => "javascript:alert(1)" }), /<img/);
   // Text is escaped.
-  assert.match(html("component.end-card", { title: "<b>x</b>", url: "\"><script>" }), /&lt;b&gt;x&lt;\/b&gt;.*&quot;&gt;&lt;script&gt;/s);
+  assert.match(html("component.end-card", { title: "<b>x</b>", url: '"><script>' }), /&lt;b&gt;x&lt;\/b&gt;.*&quot;&gt;&lt;script&gt;/s);
   // Device frame: an SVG bezel with a transparent hole (evenodd) and a camera pill; centred at its default size.
   const phone = html("component.device-frame", { device: "phone" });
   assert.match(phone, /left:750px;top:100px;width:420px;height:880px/);
@@ -149,7 +204,14 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
   assert.equal(code.match(/\$ </g)!.length, 3);
   assert.match(code, /text-decoration:line-through/);
   // Chart: a column, its value and its label per bar; the accent bar in the theme's accent.
-  const chart = html("component.chart", { bars: [{ label: "Swift", value: 42 }, { label: "RN", value: 12.5, accent: true }, { label: "Kotlin", value: 0 }], unit: " min" });
+  const chart = html("component.chart", {
+    bars: [
+      { label: "Swift", value: 42 },
+      { label: "RN", value: 12.5, accent: true },
+      { label: "Kotlin", value: 0 },
+    ],
+    unit: " min",
+  });
   assert.match(chart, />42 min</);
   assert.match(chart, />12.5 min</);
   assert.match(chart, />Kotlin</);
@@ -157,7 +219,15 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
   // Size follows the box: a component with w only keeps its shape; scale and keys move it.
   const resized = componentBox({ type: "component", component: "component.chart", transform: { x: 0, y: 0, w: 500 } }, target.canvas, 0)!;
   assert.deepEqual([resized.w, resized.h], [500, 300]);
-  const keyed = { type: "component" as const, component: "component.code-block", transform: { x: 100, y: 100 }, keys: [{ frame: 0, x: 100, opacity: 0 }, { frame: 10, x: 300, opacity: 1 }] };
+  const keyed = {
+    type: "component" as const,
+    component: "component.code-block",
+    transform: { x: 100, y: 100 },
+    keys: [
+      { frame: 0, x: 100, opacity: 0 },
+      { frame: 10, x: 300, opacity: 1 },
+    ],
+  };
   assert.deepEqual([componentBox(keyed, target.canvas, 5)!.x, componentBox(keyed, target.canvas, 5)!.opacity], [200, 0.5]);
   // A vertical canvas: sizes scale by the shorter side (1080 here), centred.
   const tall = componentBox({ type: "component", component: "component.terminal" }, { width: 1080, height: 1920 }, 0)!;
@@ -169,7 +239,10 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
 
 test("terminal: input lines type in by frame, output lines appear after them; N distinct looks for N typed states, capped by the export", () => {
   const props = { typeFrom: 10, speed: 30, lines: [{ text: "npx init", kind: "input" }, { text: "done" }, { text: "ls", kind: "input", at: 60 }] };
-  const shown = (f: number) => terminalState(props, f, 30).lines.map((l) => l.shown).join("|");
+  const shown = (f: number) =>
+    terminalState(props, f, 30)
+      .lines.map((l) => l.shown)
+      .join("|");
   assert.equal(shown(0), "", "before typeFrom nothing is typed");
   assert.equal(terminalState(props, 0, 30).idle, true, "a prompt with the cursor waits for the first input");
   assert.equal(shown(10), "");
@@ -184,7 +257,9 @@ test("terminal: input lines type in by frame, output lines appear after them; N 
   assert.equal(shown(200), "npx init|done|ls");
   assert.equal(terminalState(props, 200, 30).idle, true);
   // The HTML changes exactly when a character lands or a line appears.
-  const looks = Array.from({ length: 90 }, (_, f) => componentHtml({ id: "t", type: "component", component: "component.terminal", duration: 90, props }, target, f));
+  const looks = Array.from({ length: 90 }, (_, f) =>
+    componentHtml({ id: "t", type: "component", component: "component.terminal", duration: 90, props }, target, f),
+  );
   const distinct = new Set(looks).size;
   assert.equal(distinct, new Set(Array.from({ length: 90 }, (_, f) => `${shown(f)}|${terminalState(props, f, 30).idle}`)).size);
   const capped = capStates(looks, 5);
@@ -209,7 +284,14 @@ test("device frame planner: the footage clip's box is the frame's screen, under 
   // Aligned: the clip's box is the screen rect of the frame's box (rounded), cover, the screen's corners.
   const box = componentBox(frame, after.canvas, 0)!;
   const scr = screenRect("phone", box.w, box.h);
-  assert.deepEqual(clip.transform, { x: Math.round(box.x + scr.x), y: Math.round(box.y + scr.y), w: Math.round(scr.w), h: Math.round(scr.h), fit: "cover", radius: Math.round(scr.radius) });
+  assert.deepEqual(clip.transform, {
+    x: Math.round(box.x + scr.x),
+    y: Math.round(box.y + scr.y),
+    w: Math.round(scr.w),
+    h: Math.round(scr.h),
+    fit: "cover",
+    radius: Math.round(scr.radius),
+  });
   // Default: centred, 86 % of the canvas height, the phone's shape.
   assert.equal(frame.transform!.h, Math.round(1080 * 0.86));
   assert.ok(Math.abs(frame.transform!.x! + frame.transform!.w! / 2 - 960) <= 1);
@@ -225,19 +307,37 @@ test("device frame planner: the footage clip's box is the frame's screen, under 
   assert.ok(vs.indexOf(cv) < vs.indexOf(fv), "the clip draws first (under the frame)");
   assert.ok(Math.abs(cv.box!.x - (fv.box!.x + scr.x)) <= 0.5 && Math.abs(cv.box!.w - scr.w) <= 0.5);
   // Every track taken: two new tracks, the frame's above the clip's.
-  const busy = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "busy", type: "component", component: "component.solid", start: 0, duration: 300, props: { color: "#000" } } }]);
+  const busy = apply(p, [
+    {
+      op: "insert_item",
+      track: "overlay",
+      item: { id: "busy", type: "component", component: "component.solid", start: 0, duration: 300, props: { color: "#000" } },
+    },
+  ]);
   const both = planDeviceFrame(busy, { media: "m-rec", device: "browser", start: 0, duration: 60 });
   assert.ok(!("problem" in both));
-  assert.deepEqual(both.ops.filter((o) => o.op === "add_track").map((o) => (o as { track: { name: string } }).track.name), ["Screen", "Device"]);
+  assert.deepEqual(
+    both.ops.filter((o) => o.op === "add_track").map((o) => (o as { track: { name: string } }).track.name),
+    ["Screen", "Device"],
+  );
   valid(apply(busy, both.ops));
   // Problems: unknown media, audio, used ids, bad times.
   assert.match((planDeviceFrame(p, { media: "nope", start: 0, duration: 9 }) as { problem: string }).problem, /does not exist/);
   assert.match((planDeviceFrame(p, { frameId: "bg", start: 0, duration: 9 }) as { problem: string }).problem, /already used/);
   assert.match((planDeviceFrame(p, { start: -1, duration: 9 }) as { problem: string }).problem, /start/);
   // Keys on the frame carry over to the screen, offset by the screen rect.
-  const keyedFrame = { ...frame, keys: [{ frame: 0, x: 100 }, { frame: 60, x: 400, ease: "inOut" as const }] };
+  const keyedFrame = {
+    ...frame,
+    keys: [
+      { frame: 0, x: 100 },
+      { frame: 60, x: 400, ease: "inOut" as const },
+    ],
+  };
   const k = screenKeys(keyedFrame, after.canvas)!;
-  assert.deepEqual(k.map((x) => x.x), [Math.round(100 + scr.x), Math.round(400 + scr.x)]);
+  assert.deepEqual(
+    k.map((x) => x.x),
+    [Math.round(100 + scr.x), Math.round(400 + scr.x)],
+  );
   assert.deepEqual(screenTransform(frame, after.canvas), clip.transform);
 });
 
@@ -255,7 +355,12 @@ test("graphic documents: canvas-sized, the strict CSP, the author's markup, and 
   // The bootstrap is in <head>, before the author's markup (an unclosed tag can't swallow it).
   assert.ok(doc.indexOf("__uncutRender") < doc.indexOf("<body>") && doc.indexOf("<body>") < doc.indexOf("<div id=x>"));
   // The format takes only the names the loader serves.
-  for (const [src, ok] of [["graphics/move.html", true], ["graphics/../x.html", false], ["graphics/sub/x.html", false], ["graphics/.x.html", false]] as const) {
+  for (const [src, ok] of [
+    ["graphics/move.html", true],
+    ["graphics/../x.html", false],
+    ["graphics/sub/x.html", false],
+    ["graphics/.x.html", false],
+  ] as const) {
     const errors = validateProject(project([{ track: "overlay", item: { id: "g", type: "graphic", src, start: 0, duration: 30 } }]), modules);
     assert.equal(errors.length === 0, ok, `${src}: ${JSON.stringify(errors)}`);
   }
@@ -342,7 +447,11 @@ test("device frames, edge cases (review): never a main clip as the footage; shor
   const p = project();
   const withMain = apply(p, [
     { op: "insert_item", track: "main", index: 0, item: { id: "main-clip", type: "clip", media: "m-rec", in: 0, duration: 120, transform: { fit: "cover" } } },
-    { op: "insert_item", track: "overlay", item: { id: "dev", type: "component", component: "component.device-frame", start: 0, duration: 120, props: { device: "phone" } } },
+    {
+      op: "insert_item",
+      track: "overlay",
+      item: { id: "dev", type: "component", component: "component.device-frame", start: 0, duration: 120, props: { device: "phone" } },
+    },
   ]);
   assert.equal(screenClipOf(withMain, "dev"), undefined);
   // insert_device_frame with footage shorter than the frame: the clip loops (else media-range).
@@ -353,7 +462,25 @@ test("device frames, edge cases (review): never a main clip as the footage; shor
   assert.equal(looped.tracks.flatMap((t) => t.items).find((i) => i.id === short.clipId)!.loop, true);
   assert.match((planDeviceFrame(p, { media: "m-short", start: 0, duration: 10, in: 60 }) as { problem: string }).problem, /past the end/);
   // A keyed, scaled frame: new footage gets the keys; its box is the scaled screen.
-  const keyed = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "dev", type: "component", component: "component.device-frame", start: 0, duration: 120, props: { device: "phone" }, transform: { x: 100, y: 50, h: 600, w: 286, scale: 0.5 }, keys: [{ frame: 0, x: 100 }, { frame: 60, x: 500 }] } }]);
+  const keyed = apply(p, [
+    {
+      op: "insert_item",
+      track: "overlay",
+      item: {
+        id: "dev",
+        type: "component",
+        component: "component.device-frame",
+        start: 0,
+        duration: 120,
+        props: { device: "phone" },
+        transform: { x: 100, y: 50, h: 600, w: 286, scale: 0.5 },
+        keys: [
+          { frame: 0, x: 100 },
+          { frame: 60, x: 500 },
+        ],
+      },
+    },
+  ]);
   const put = planScreenFootage(keyed, "dev", "m-rec");
   assert.ok("ops" in put);
   const withFootage = apply(keyed, put.ops);
@@ -361,18 +488,47 @@ test("device frames, edge cases (review): never a main clip as the footage; shor
   const frame = withFootage.tracks.flatMap((t) => t.items).find((i) => i.id === "dev")!;
   const box = componentBox({ ...frame, keys: undefined }, withFootage.canvas, 0)!;
   const r = screenRect("phone", box.w, box.h);
-  assert.ok(Math.abs(clip.transform!.w! - r.w * 0.5) <= 1 && Math.abs(clip.transform!.x! - (box.x + box.w / 2 + (r.x - box.w / 2) * 0.5)) <= 1, JSON.stringify(clip.transform));
-  assert.deepEqual(clip.keys!.map((k) => k.x! - clip.transform!.x!), [0, 400], "the footage moves with the frame");
+  assert.ok(
+    Math.abs(clip.transform!.w! - r.w * 0.5) <= 1 && Math.abs(clip.transform!.x! - (box.x + box.w / 2 + (r.x - box.w / 2) * 0.5)) <= 1,
+    JSON.stringify(clip.transform),
+  );
+  assert.deepEqual(
+    clip.keys!.map((k) => k.x! - clip.transform!.x!),
+    [0, 400],
+    "the footage moves with the frame",
+  );
   // Fit keeps the clip's own zoom keys.
   const zoomed = apply(withFootage, [{ op: "update_item", item: clip.id, set: { keys: [...clip.keys!, { frame: 30, scale: 1.2 }] } }]);
   const fit = planAlignScreen(zoomed, "dev");
   assert.ok("ops" in fit);
-  assert.ok(((fit.ops[0] as unknown as { set: { keys: Array<{ scale?: number }> } }).set.keys).some((k) => k.scale === 1.2));
+  assert.ok((fit.ops[0] as unknown as { set: { keys: Array<{ scale?: number }> } }).set.keys.some((k) => k.scale === 1.2));
   // Another device keeps the centre of a frame with only h (or none).
-  const noW = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "d2", type: "component", component: "component.device-frame", start: 0, duration: 60, props: { device: "phone" }, transform: { x: 500, y: 40, h: 600 } } }]);
-  const before = componentBox(noW.tracks.flatMap((t) => t.items).find((i) => i.id === "d2")!, noW.canvas, 0)!;
+  const noW = apply(p, [
+    {
+      op: "insert_item",
+      track: "overlay",
+      item: {
+        id: "d2",
+        type: "component",
+        component: "component.device-frame",
+        start: 0,
+        duration: 60,
+        props: { device: "phone" },
+        transform: { x: 500, y: 40, h: 600 },
+      },
+    },
+  ]);
+  const before = componentBox(
+    noW.tracks.flatMap((t) => t.items).find((i) => i.id === "d2")!,
+    noW.canvas,
+    0,
+  )!;
   const after = apply(noW, (planDevice(noW, "d2", "browser") as unknown as { ops: Array<unknown> }).ops);
-  const b2 = componentBox(after.tracks.flatMap((t) => t.items).find((i) => i.id === "d2")!, after.canvas, 0)!;
+  const b2 = componentBox(
+    after.tracks.flatMap((t) => t.items).find((i) => i.id === "d2")!,
+    after.canvas,
+    0,
+  )!;
   assert.ok(Math.abs(b2.x + b2.w / 2 - (before.x + before.w / 2)) <= 1 && b2.h === 600);
 });
 
@@ -398,23 +554,43 @@ test("the agent: modules_list shows components with params and placement, truthf
     { op: "insert_item", track: "text", item: { id: "t1", type: "text", start: 0, duration: 30, text: "Hi" } },
   ]);
   assert.ok("ops" in out, JSON.stringify(out));
-  assert.deepEqual(out.ops.map((o) => (o as { op: string }).op), ["add_track", "insert_item", "insert_item", "insert_item"]);
+  assert.deepEqual(
+    out.ops.map((o) => (o as { op: string }).op),
+    ["add_track", "insert_item", "insert_item", "insert_item"],
+  );
   const after = apply(p, out.ops);
   valid(after);
-  assert.ok(after.tracks.find((t) => t.id === "overlay")!.items.some((i) => i.id === "rec-1"), "the clip on the free track nearest main");
-  assert.ok(after.tracks.find((t) => t.id === "phones")!.items.some((i) => i.id === "phone-1"), "the frame on the free track added just before, above it");
+  assert.ok(
+    after.tracks.find((t) => t.id === "overlay")!.items.some((i) => i.id === "rec-1"),
+    "the clip on the free track nearest main",
+  );
+  assert.ok(
+    after.tracks.find((t) => t.id === "phones")!.items.some((i) => i.id === "phone-1"),
+    "the frame on the free track added just before, above it",
+  );
   assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0 }]) as { problem: string }).problem, /start and duration are required/);
-  assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, device: "nokia" }]) as { problem: string }).problem, /device must be/);
+  assert.match(
+    (expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, device: "nokia" }]) as { problem: string }).problem,
+    /device must be/,
+  );
   assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, media: "nope" }]) as { problem: string }).problem, /does not exist/);
-  assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, box: { h: 0 } }]) as { problem: string }).problem, /box\.h must be more than 0/);
+  assert.match(
+    (expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, box: { h: 0 } }]) as { problem: string }).problem,
+    /box\.h must be more than 0/,
+  );
   assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, in: -3 }]) as { problem: string }).problem, /in must be 0 or more/);
-  assert.match((expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, box: { w: 100 } }]) as { problem: string }).problem, /box takes numbers x, y and h/);
+  assert.match(
+    (expandDeviceFrames(p, [{ op: "insert_device_frame", start: 0, duration: 9, box: { w: 100 } }]) as { problem: string }).problem,
+    /box takes numbers x, y and h/,
+  );
   assert.deepEqual(expandDeviceFrames(p, [{ op: "delete_item", item: "bg" }]), { ops: [{ op: "delete_item", item: "bg" }] });
   // The MCP schema offers the op; graphic_write is listed with its label.
   const tools = mcpTools();
   const edit = tools.find((t) => t.name === "timeline_edit")!;
   // D285: the edit ops strict, the convenience ops (insert_device_frame among them) as one branch the server checks.
-  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/convenienceOp" }] });
+  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, {
+    anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/convenienceOp" }],
+  });
   assert.ok(((edit.inputSchema.$defs as any).convenienceOp.properties.op.enum as Array<string>).includes("insert_device_frame"));
   assert.match(edit.description, /"op":"insert_device_frame", media\?, device\?: "phone"\|"android"\|"browser", start, duration/);
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("graphic_write") && tools.some((t) => t.name === "graphic_write"));
@@ -425,7 +601,19 @@ test("the agent: modules_list shows components with params and placement, truthf
   assert.match(AGENT_TEXT, /graphic_write/);
   assert.match(AGENT_TEXT, /component\.zoom-pan\) and effect\.stabilize are saved but don't draw yet/);
   // The edit log names components.
-  assert.equal(describeOp({ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90 } }, p), "Added end card end-1 on track overlay");
-  const withCard = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90, props: { title: "x" } } }]);
-  assert.equal(describeOp({ op: "update_item", item: "end-1", set: { props: { title: "Argent", url: "argent.dev" } } }, withCard), 'Restyled end card (end-1): title "Argent", url "argent.dev"');
+  assert.equal(
+    describeOp({ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90 } }, p),
+    "Added end card end-1 on track overlay",
+  );
+  const withCard = apply(p, [
+    {
+      op: "insert_item",
+      track: "overlay",
+      item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90, props: { title: "x" } },
+    },
+  ]);
+  assert.equal(
+    describeOp({ op: "update_item", item: "end-1", set: { props: { title: "Argent", url: "argent.dev" } } }, withCard),
+    'Restyled end card (end-1): title "Argent", url "argent.dev"',
+  );
 });

@@ -16,7 +16,11 @@ const DISCOURSE: Readonly<Record<string, ReadonlyArray<string>>> = {
 };
 export const FILLERS = { hesitation: HESITATIONS, discourse: DISCOURSE } as const;
 
-const bare = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, "").trim();
+const bare = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}' ]+/gu, "")
+    .trim();
 
 export interface Filler {
   /** Index of its first word, and how many words. */
@@ -74,7 +78,14 @@ export interface Pause {
  * whisper timed too early, never past its end), and says silent; one overlapping none says
  * silent: false (breath, noise or music there).
  */
-export function pausesOf(words: ReadonlyArray<{ readonly start: number; readonly end: number }>, seconds: number | undefined, silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>, min = PAUSE_MIN_S, segments?: ReadonlyArray<SpeechSegment>, envelope?: SpeechEnvelope): Array<Pause> {
+export function pausesOf(
+  words: ReadonlyArray<{ readonly start: number; readonly end: number }>,
+  seconds: number | undefined,
+  silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>,
+  min = PAUSE_MIN_S,
+  segments?: ReadonlyArray<SpeechSegment>,
+  envelope?: SpeechEnvelope,
+): Array<Pause> {
   const out: Array<Pause> = [];
   if (!words.length) return out;
   const heard = speechWords(words, { segments, silences, seconds, envelope });

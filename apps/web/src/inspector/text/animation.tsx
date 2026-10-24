@@ -40,14 +40,29 @@ function Slot({ project, item, slot, disabled }: { project: ProjectModel; item: 
         </select>
       </Prop>
       <Prop label={slot === "loop" ? "Every" : "Duration"}>
-        <NumInput testId={`insp-anim-${slot}-dur`} unit="s" value={Number((frames / fps).toFixed(2))} step={0.1} min={0.04} max={Math.max(0.04, item.duration / fps)} disabled={disabled || !module} onCommit={(v) => v !== undefined && set(module, Math.round(v * fps))} />
+        <NumInput
+          testId={`insp-anim-${slot}-dur`}
+          unit="s"
+          value={Number((frames / fps).toFixed(2))}
+          step={0.1}
+          min={0.04}
+          max={Math.max(0.04, item.duration / fps)}
+          disabled={disabled || !module}
+          onCommit={(v) => v !== undefined && set(module, Math.round(v * fps))}
+        />
       </Prop>
       {slot === "loop" && module && (
         <Prop label={module === WIGGLE_MOVE ? "Tilt" : "Grow"}>
           <NumInput
             testId="insp-anim-loop-amount"
             unit={module === WIGGLE_MOVE ? "°" : "%"}
-            value={module === WIGGLE_MOVE ? (typeof params.amount === "number" ? params.amount : LOOP_DEFAULTS[module]!) : Math.round((typeof params.amount === "number" ? params.amount : LOOP_DEFAULTS[module] ?? 0.08) * 100)}
+            value={
+              module === WIGGLE_MOVE
+                ? typeof params.amount === "number"
+                  ? params.amount
+                  : LOOP_DEFAULTS[module]!
+                : Math.round((typeof params.amount === "number" ? params.amount : (LOOP_DEFAULTS[module] ?? 0.08)) * 100)
+            }
             min={module === WIGGLE_MOVE ? 0.5 : 1}
             max={module === WIGGLE_MOVE ? 30 : 50}
             step={module === WIGGLE_MOVE ? 0.5 : 1}
@@ -58,16 +73,38 @@ function Slot({ project, item, slot, disabled }: { project: ProjectModel; item: 
       )}
       {module === "move.word-by-word" && (
         <Prop label="Words">
-          <Segmented testId={`insp-anim-${slot}-word-style`} attr="style" options={WORD_STYLES.map((w) => [w, w[0]!.toUpperCase() + w.slice(1)] as const)} value={(params.style as string | undefined) ?? "pop"} disabled={disabled} onChange={(w) => setParam("style", w)} />
+          <Segmented
+            testId={`insp-anim-${slot}-word-style`}
+            attr="style"
+            options={WORD_STYLES.map((w) => [w, w[0]!.toUpperCase() + w.slice(1)] as const)}
+            value={(params.style as string | undefined) ?? "pop"}
+            disabled={disabled}
+            onChange={(w) => setParam("style", w)}
+          />
         </Prop>
       )}
       {module === "move.zoom" && (
         <>
           <Prop label={slot === "in" ? "From" : "To"}>
-            <NumInput testId={`insp-anim-${slot}-zoom-scale`} unit="%" value={Math.round((typeof params.scale === "number" ? params.scale : ZOOM_DEFAULTS.scale) * 100)} min={5} max={400} step={5} disabled={disabled} onCommit={(v) => v !== undefined && setParam("scale", v / 100)} />
+            <NumInput
+              testId={`insp-anim-${slot}-zoom-scale`}
+              unit="%"
+              value={Math.round((typeof params.scale === "number" ? params.scale : ZOOM_DEFAULTS.scale) * 100)}
+              min={5}
+              max={400}
+              step={5}
+              disabled={disabled}
+              onCommit={(v) => v !== undefined && setParam("scale", v / 100)}
+            />
           </Prop>
           <Prop label="Ease">
-            <select className="pselect" data-testid={`insp-anim-${slot}-zoom-ease`} value={typeof params.ease === "string" ? params.ease : ZOOM_DEFAULTS.ease} disabled={disabled} onChange={(e) => setParam("ease", e.target.value)}>
+            <select
+              className="pselect"
+              data-testid={`insp-anim-${slot}-zoom-ease`}
+              value={typeof params.ease === "string" ? params.ease : ZOOM_DEFAULTS.ease}
+              disabled={disabled}
+              onChange={(e) => setParam("ease", e.target.value)}
+            >
               {EASE_NAMES.map(([v, label]) => (
                 <option key={v} value={v}>
                   {label}

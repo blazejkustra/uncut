@@ -9,7 +9,22 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  closeSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -65,9 +80,19 @@ const gappedGraph = (amp: number) =>
     "[a][s1][b][s2][c][s3]concat=n=6:v=0:a=1",
   ].join(";");
 
-const target = (path: string, mediaId = "m-tone", extra: Partial<AnalysisTarget> = {}): AnalysisTarget => ({ dir: project, mediaId, path, kind: "audio", hasAudio: true, ...extra });
-const queueWith = (runner: Runner, jobs?: Array<ReadonlyArray<AnalysisJob>>) => new AnalysisQueue({ ffmpeg: async () => ffmpegPath, runner, onChange: (j) => jobs?.push(j) });
-const counting = (calls: Array<ReadonlyArray<string>>): Runner => (bin, args, options) => (calls.push(args), spawnRunner(bin, args, options));
+const target = (path: string, mediaId = "m-tone", extra: Partial<AnalysisTarget> = {}): AnalysisTarget => ({
+  dir: project,
+  mediaId,
+  path,
+  kind: "audio",
+  hasAudio: true,
+  ...extra,
+});
+const queueWith = (runner: Runner, jobs?: Array<ReadonlyArray<AnalysisJob>>) =>
+  new AnalysisQueue({ ffmpeg: async () => ffmpegPath, runner, onChange: (j) => jobs?.push(j) });
+const counting =
+  (calls: Array<ReadonlyArray<string>>): Runner =>
+  (bin, args, options) => (calls.push(args), spawnRunner(bin, args, options));
 const doneResult = async (q: AnalysisQueue, t: AnalysisTarget) => {
   const r = await q.request(t, "loudness");
   const outcome = await r.done;
@@ -126,43 +151,62 @@ test("the ffmpeg log: silences, an open silence at the end, the loudness summary
     integratedLufs: null,
     loudnessRangeLu: 3.4,
     truePeakDbtp: -1.5,
-    silence: { thresholdDb: -40, minSeconds: 0.3, ranges: [{ start: 0, end: 1.25 }, { start: 60, end: 62.5 }] },
+    silence: {
+      thresholdDb: -40,
+      minSeconds: 0.3,
+      ranges: [
+        { start: 0, end: 1.25 },
+        { start: 60, end: 62.5 },
+      ],
+    },
   });
 });
 
-test("a tone with silent gaps: silences within ±50 ms; a known-level tone's loudness within ±0.5 LU of ffmpeg's own measurement", { skip, timeout: 60000 }, async () => {
-  const q = queueWith(spawnRunner);
-  const { result } = await doneResult(q, target(join(root, "gaps.wav")));
-  assert.equal(result.hasAudio, true);
-  assert.ok(Math.abs(result.seconds! - 5.1) < 0.05, `decoded ${result.seconds} s`);
-  const ranges = result.silence!.ranges;
-  assert.equal(ranges.length, GAPS.length, JSON.stringify(ranges));
-  for (const [i, [start, end]] of GAPS.entries()) {
-    assert.ok(Math.abs(ranges[i]!.start - start!) <= 0.05 && Math.abs(ranges[i]!.end - end!) <= 0.05, `silence ${i}: ${JSON.stringify(ranges[i])} vs ${start}–${end}`);
-  }
-  assert.deepEqual([result.silence!.thresholdDb, result.silence!.minSeconds], [-40, 0.3], "the defaults are in the result");
-  // The speech envelope from the same pass (D74): 10 ms RMS windows, silent in the gaps, loud elsewhere.
-  const env = decodeEnvelope(result.envelope)!;
-  assert.equal(env.rate, 100);
-  assert.ok(Math.abs(env.db.length - 510) <= 2, `${env.db.length} windows`);
-  for (const [start, end] of GAPS) {
-    const mid = Math.round(((start! + end!) / 2) * 100);
-    assert.ok(env.db[mid]! <= -90, `gap ${start}–${end}: ${env.db[mid]} dB`);
-  }
-  assert.ok(env.db[Math.round(GAPS[0]![0]! * 100) - 10]! > -40, "sound before the first gap");
+test(
+  "a tone with silent gaps: silences within ±50 ms; a known-level tone's loudness within ±0.5 LU of ffmpeg's own measurement",
+  { skip, timeout: 60000 },
+  async () => {
+    const q = queueWith(spawnRunner);
+    const { result } = await doneResult(q, target(join(root, "gaps.wav")));
+    assert.equal(result.hasAudio, true);
+    assert.ok(Math.abs(result.seconds! - 5.1) < 0.05, `decoded ${result.seconds} s`);
+    const ranges = result.silence!.ranges;
+    assert.equal(ranges.length, GAPS.length, JSON.stringify(ranges));
+    for (const [i, [start, end]] of GAPS.entries()) {
+      assert.ok(
+        Math.abs(ranges[i]!.start - start!) <= 0.05 && Math.abs(ranges[i]!.end - end!) <= 0.05,
+        `silence ${i}: ${JSON.stringify(ranges[i])} vs ${start}–${end}`,
+      );
+    }
+    assert.deepEqual([result.silence!.thresholdDb, result.silence!.minSeconds], [-40, 0.3], "the defaults are in the result");
+    // The speech envelope from the same pass (D74): 10 ms RMS windows, silent in the gaps, loud elsewhere.
+    const env = decodeEnvelope(result.envelope)!;
+    assert.equal(env.rate, 100);
+    assert.ok(Math.abs(env.db.length - 510) <= 2, `${env.db.length} windows`);
+    for (const [start, end] of GAPS) {
+      const mid = Math.round(((start! + end!) / 2) * 100);
+      assert.ok(env.db[mid]! <= -90, `gap ${start}–${end}: ${env.db[mid]} dB`);
+    }
+    assert.ok(env.db[Math.round(GAPS[0]![0]! * 100) - 10]! > -40, "sound before the first gap");
 
-  const level = (await doneResult(q, target(join(root, "level.wav"), "m-level"))).result;
-  const loudnorm = spawnSync("ffmpeg", ["-hide_banner", "-nostdin", "-i", join(root, "level.wav"), "-af", "loudnorm=print_format=json", "-f", "null", "-"], { encoding: "utf8" });
-  const measured = JSON.parse([...loudnorm.stderr.matchAll(/\{[^{}]*\}/g)].at(-1)![0]) as { input_i: string; input_tp: string };
-  assert.ok(Math.abs(level.integratedLufs! - Number(measured.input_i)) <= 0.5, `${level.integratedLufs} LUFS vs ffmpeg's ${measured.input_i}`);
-  // And what a -12 dBFS mono sine is in theory (EBU R128: a 0 dBFS mono sine at 1 kHz is -3 LUFS).
-  assert.ok(Math.abs(level.integratedLufs! - -15.04) <= 1, `${level.integratedLufs} LUFS`);
-  assert.ok(Math.abs(level.truePeakDbtp! - -12.04) <= 0.5, `true peak ${level.truePeakDbtp}`);
-  assert.equal(level.silence!.ranges.length, 0);
-  // A −12 dBFS sine's RMS is −15 dBFS, in every window (0.5 dB steps).
-  const levels = Array.from(decodeEnvelope(level.envelope)!.db).slice(5, -5);
-  assert.ok(levels.every((v) => Math.abs(v - -15.05) <= 0.6), `envelope ${Math.min(...levels)}–${Math.max(...levels)} dB`);
-});
+    const level = (await doneResult(q, target(join(root, "level.wav"), "m-level"))).result;
+    const loudnorm = spawnSync("ffmpeg", ["-hide_banner", "-nostdin", "-i", join(root, "level.wav"), "-af", "loudnorm=print_format=json", "-f", "null", "-"], {
+      encoding: "utf8",
+    });
+    const measured = JSON.parse([...loudnorm.stderr.matchAll(/\{[^{}]*\}/g)].at(-1)![0]) as { input_i: string; input_tp: string };
+    assert.ok(Math.abs(level.integratedLufs! - Number(measured.input_i)) <= 0.5, `${level.integratedLufs} LUFS vs ffmpeg's ${measured.input_i}`);
+    // And what a -12 dBFS mono sine is in theory (EBU R128: a 0 dBFS mono sine at 1 kHz is -3 LUFS).
+    assert.ok(Math.abs(level.integratedLufs! - -15.04) <= 1, `${level.integratedLufs} LUFS`);
+    assert.ok(Math.abs(level.truePeakDbtp! - -12.04) <= 0.5, `true peak ${level.truePeakDbtp}`);
+    assert.equal(level.silence!.ranges.length, 0);
+    // A −12 dBFS sine's RMS is −15 dBFS, in every window (0.5 dB steps).
+    const levels = Array.from(decodeEnvelope(level.envelope)!.db).slice(5, -5);
+    assert.ok(
+      levels.every((v) => Math.abs(v - -15.05) <= 0.6),
+      `envelope ${Math.min(...levels)}–${Math.max(...levels)} dB`,
+    );
+  },
+);
 
 test("cache: a re-ask spawns no ffmpeg; the same content under another name hits; a modified file misses", { skip, timeout: 60000 }, async () => {
   const calls: Array<ReadonlyArray<string>> = [];
@@ -173,7 +217,10 @@ test("cache: a re-ask spawns no ffmpeg; the same content under another name hits
   const first = await doneResult(q, target(file, "m-cache"));
   assert.equal(first.cached, false);
   assert.equal(calls.length, 1, "one ffmpeg run");
-  assert.ok(calls[0]!.some((a) => a.startsWith("[0:a:0]")), "the first audio stream, mapped explicitly");
+  assert.ok(
+    calls[0]!.some((a) => a.startsWith("[0:a:0]")),
+    "the first audio stream, mapped explicitly",
+  );
   const fp = await fingerprint(file);
   assert.ok(existsSync(cacheFile(project, fp, "loudness")), "cached under the fingerprint");
   assert.deepEqual(filesUnder(join(analysisDir(project), fp)), ["loudness.json"], "no temp files left");
@@ -215,7 +262,31 @@ test("cache: a re-ask spawns no ffmpeg; the same content under another name hits
 test("a file whose probe didn't know: ffmpeg finds no audio stream, and that's a result, not an error", { skip, timeout: 60000 }, async () => {
   const file = join(root, "picture.mp4");
   // A picture-only file with a second, larger mjpeg stream (like a DJI cover picture).
-  ff("-f", "lavfi", "-i", "color=red:size=160x90:rate=30", "-f", "lavfi", "-i", "color=blue:size=640x360:rate=30", "-t", "1", "-map", "0:v", "-map", "1:v", "-c:v:0", "libx264", "-pix_fmt:v:0", "yuv420p", "-c:v:1", "mjpeg", "-pix_fmt:v:1", "yuvj420p", file);
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "color=red:size=160x90:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=blue:size=640x360:rate=30",
+    "-t",
+    "1",
+    "-map",
+    "0:v",
+    "-map",
+    "1:v",
+    "-c:v:0",
+    "libx264",
+    "-pix_fmt:v:0",
+    "yuv420p",
+    "-c:v:1",
+    "mjpeg",
+    "-pix_fmt:v:1",
+    "yuvj420p",
+    file,
+  );
   const q = queueWith(spawnRunner);
   const { result } = await doneResult(q, target(file, "m-picture", { kind: "video", hasAudio: undefined }));
   assert.deepEqual(result, { hasAudio: false });
@@ -242,13 +313,24 @@ test("cancel mid-job: ffmpeg is killed, the job says cancelled, nothing is left 
   q.cancel(r.job!.id);
   assert.deepEqual(await r.done, { state: "cancelled" });
   assert.equal(q.job(r.job!.id)!.phase, "cancelled");
-  assert.ok(jobs.at(-1)!.some((j) => j.id === r.job!.id && j.phase === "cancelled" && j.finishedAt), "the change was published");
+  assert.ok(
+    jobs.at(-1)!.some((j) => j.id === r.job!.id && j.phase === "cancelled" && j.finishedAt),
+    "the change was published",
+  );
   for (let i = 0; i < 20 && kids(); i++) await sleep(50);
   assert.equal(kids(), "", "the process is gone");
   const fp = await fingerprint(file);
-  assert.deepEqual(filesUnder(analysisDir(project)).filter((f) => f.includes(fp)), [], "no folder or file for it");
+  assert.deepEqual(
+    filesUnder(analysisDir(project)).filter((f) => f.includes(fp)),
+    [],
+    "no folder or file for it",
+  );
   assert.ok(!existsSync(cacheFile(project, fp, "loudness")));
-  assert.deepEqual(filesUnder(analysisDir(project)).filter((f) => /tmp/.test(f)), [], "no temp files anywhere");
+  assert.deepEqual(
+    filesUnder(analysisDir(project)).filter((f) => /tmp/.test(f)),
+    [],
+    "no temp files anywhere",
+  );
 
   // Cancelling a waiting job is immediate, and it never runs.
   const calls: Array<ReadonlyArray<string>> = [];
@@ -282,7 +364,10 @@ test("analysis waits while an export is busy, then runs; an equal request joins 
   const outcome = await r.done;
   assert.equal(outcome.state, "done");
   assert.equal(calls.length, 1);
-  const states = jobs.map((list) => list.find((j) => j.id === r.job!.id)).filter(Boolean).map((j) => `${j!.phase}${j!.waiting ? `:${j!.waiting}` : ""}`);
+  const states = jobs
+    .map((list) => list.find((j) => j.id === r.job!.id))
+    .filter(Boolean)
+    .map((j) => `${j!.phase}${j!.waiting ? `:${j!.waiting}` : ""}`);
   assert.deepEqual([...new Set(states)], ["queued:export", "queued", "running", "done"]);
 });
 
@@ -338,33 +423,40 @@ test("a cancel after ffmpeg finished, before the result is kept, leaves nothing"
   assert.deepEqual(await r.done, { state: "cancelled" });
   assert.equal(q.job(jobId)!.phase, "cancelled");
   const fp = await fingerprint(file);
-  assert.deepEqual(filesUnder(analysisDir(project)).filter((f) => f.includes(fp)), []);
+  assert.deepEqual(
+    filesUnder(analysisDir(project)).filter((f) => f.includes(fp)),
+    [],
+  );
 });
 
-test("joining: a relinked media id (another path) gets its own job; the same content under another id joins and lists both ids", { skip, timeout: 60000 }, async () => {
-  const a = join(root, "join-a.wav");
-  const b = join(root, "join-b.wav");
-  copyFileSync(join(root, "gaps.wav"), a);
-  appendFileSync(a, Buffer.alloc(14));
-  copyFileSync(join(root, "level.wav"), b);
-  appendFileSync(b, Buffer.alloc(14));
-  const copy = join(root, "join-a-copy.wav");
-  copyFileSync(a, copy);
-  const calls: Array<ReadonlyArray<string>> = [];
-  let exporting = true;
-  const q = new AnalysisQueue({ ffmpeg: async () => ffmpegPath, runner: counting(calls), exportBusy: () => exporting });
-  const first = await q.request(target(a, "m-x"), "loudness");
-  assert.equal(first.job!.waiting, "export", "the synchronous export check holds it back");
-  const relinked = await q.request(target(b, "m-x"), "loudness");
-  assert.notEqual(relinked.job!.id, first.job!.id, "m-x now points at another file: not the stale job");
-  const twin = await q.request(target(copy, "m-twin"), "loudness");
-  assert.equal(twin.job!.id, first.job!.id, "same content joins");
-  assert.deepEqual(q.job(first.job!.id)!.mediaIds, ["m-x", "m-twin"]);
-  await sleep(300);
-  assert.equal(calls.length, 0, "nothing runs while the export is busy");
-  exporting = false;
-  q.setExportBusy(false);
-  assert.equal((await first.done).state, "done");
-  assert.equal((await relinked.done).state, "done");
-  assert.equal(calls.length, 2);
-});
+test(
+  "joining: a relinked media id (another path) gets its own job; the same content under another id joins and lists both ids",
+  { skip, timeout: 60000 },
+  async () => {
+    const a = join(root, "join-a.wav");
+    const b = join(root, "join-b.wav");
+    copyFileSync(join(root, "gaps.wav"), a);
+    appendFileSync(a, Buffer.alloc(14));
+    copyFileSync(join(root, "level.wav"), b);
+    appendFileSync(b, Buffer.alloc(14));
+    const copy = join(root, "join-a-copy.wav");
+    copyFileSync(a, copy);
+    const calls: Array<ReadonlyArray<string>> = [];
+    let exporting = true;
+    const q = new AnalysisQueue({ ffmpeg: async () => ffmpegPath, runner: counting(calls), exportBusy: () => exporting });
+    const first = await q.request(target(a, "m-x"), "loudness");
+    assert.equal(first.job!.waiting, "export", "the synchronous export check holds it back");
+    const relinked = await q.request(target(b, "m-x"), "loudness");
+    assert.notEqual(relinked.job!.id, first.job!.id, "m-x now points at another file: not the stale job");
+    const twin = await q.request(target(copy, "m-twin"), "loudness");
+    assert.equal(twin.job!.id, first.job!.id, "same content joins");
+    assert.deepEqual(q.job(first.job!.id)!.mediaIds, ["m-x", "m-twin"]);
+    await sleep(300);
+    assert.equal(calls.length, 0, "nothing runs while the export is busy");
+    exporting = false;
+    q.setExportBusy(false);
+    assert.equal((await first.done).state, "done");
+    assert.equal((await relinked.done).state, "done");
+    assert.equal(calls.length, 2);
+  },
+);

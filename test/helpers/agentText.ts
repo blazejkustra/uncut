@@ -4,7 +4,8 @@ import { ALL_DOCS, mcpTools, SYSTEM_PROMPT } from "../../apps/server/src/agent/a
 
 const descriptions = (value: unknown, out: Array<string>): Array<string> => {
   if (Array.isArray(value)) for (const v of value) descriptions(v, out);
-  else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) (k === "description" && typeof v === "string" ? out.push(v) : descriptions(v, out));
+  else if (value && typeof value === "object")
+    for (const [k, v] of Object.entries(value)) k === "description" && typeof v === "string" ? out.push(v) : descriptions(v, out);
   return out;
 };
 

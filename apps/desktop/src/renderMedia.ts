@@ -10,7 +10,10 @@ import type { Protocol } from "electron";
 
 export const MEDIA_SCHEME = "uncut-media";
 /** For protocol.registerSchemesAsPrivileged: fetchable from a graphic's (opaque-origin) page. */
-export const MEDIA_SCHEME_PRIVILEGES = { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } } as const;
+export const MEDIA_SCHEME_PRIVILEGES = {
+  scheme: MEDIA_SCHEME,
+  privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+} as const;
 /** Whether a request may go out (the session's network filter): only this scheme's media URLs. */
 export const isMediaUrl = (url: string) => url.startsWith(`${MEDIA_SCHEME}://media/`);
 

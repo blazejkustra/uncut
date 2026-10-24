@@ -55,10 +55,10 @@ export class ShaderCanvas {
     // Where it got to (data-state on the canvas: starting, no-picture, compiling, error, drawn).
     const state = (s: string) => (this.canvas.dataset.state = s);
     const runner = previewRunner();
-    if (!runner || "problem" in runner || runner.lost) return state("starting"), (this.drawn = false);
+    if (!runner || "problem" in runner || runner.lost) return (state("starting"), (this.drawn = false));
     const sw = source instanceof HTMLVideoElement ? source.videoWidth : source instanceof HTMLImageElement ? source.naturalWidth : source.width;
     const sh = source instanceof HTMLVideoElement ? source.videoHeight : source instanceof HTMLImageElement ? source.naturalHeight : source.height;
-    if (!sw || !sh) return state("no-picture"), (this.drawn = false);
+    if (!sw || !sh) return (state("no-picture"), (this.drawn = false));
     const code = shaderModuleCode(use.def);
     const pipeline = runner.pipelineNow(code, this.format);
     if (pipeline === undefined) {
@@ -73,7 +73,12 @@ export class ShaderCanvas {
       return (this.drawn = false);
     }
     // D221: a scrub canvas names the frame it holds.
-    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : source instanceof HTMLImageElement ? `i${source.currentSrc}` : `c${source.dataset.scrub}|${source.dataset.sample}`;
+    const frame =
+      source instanceof HTMLVideoElement
+        ? `v${source.currentTime}`
+        : source instanceof HTMLImageElement
+          ? `i${source.currentSrc}`
+          : `c${source.dataset.scrub}|${source.dataset.sample}`;
     const sig = `${code}|${JSON.stringify(use.values)}|${frame}|${w}x${h}|${t}`;
     if (sig === this.last && this.drawn) return true;
     if (this.canvas.width !== w) this.canvas.width = w;
@@ -85,7 +90,12 @@ export class ShaderCanvas {
       this.configured = runner.device;
     }
     try {
-      runner.drawToCanvas(pipeline, { kind: "external", source, width: sw, height: sh }, { code, frame: shaderFrameBytes(w, h, t, true), params: shaderParamBytes(use.def.params, use.values), width: w, height: h }, this.context);
+      runner.drawToCanvas(
+        pipeline,
+        { kind: "external", source, width: sw, height: sh },
+        { code, frame: shaderFrameBytes(w, h, t, true), params: shaderParamBytes(use.def.params, use.values), width: w, height: h },
+        this.context,
+      );
     } catch (error) {
       // A source it can't read yet (not decoded) or a lost device: the plain picture shows.
       this.canvas.dataset.error = String((error as Error).message).slice(0, 300);

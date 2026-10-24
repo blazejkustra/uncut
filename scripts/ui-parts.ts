@@ -68,11 +68,26 @@ async function capture(shots: string | undefined): Promise<Capture> {
     writeFileSync(main, MAIN);
     const extract = join(tmp, "extract.js");
     const { stripTypeScriptTypes } = await import("node:module");
-    writeFileSync(extract, stripTypeScriptTypes(readFileSync(join(ROOT, "apps/web/src/uiparts/extract.ts"), "utf8")).replace(/^export /m, "").replace(/;\s*$/, ""));
+    writeFileSync(
+      extract,
+      stripTypeScriptTypes(readFileSync(join(ROOT, "apps/web/src/uiparts/extract.ts"), "utf8"))
+        .replace(/^export /m, "")
+        .replace(/;\s*$/, ""),
+    );
     const out = join(tmp, "capture.json");
     if (shots) mkdirSync(shots, { recursive: true });
     const electron = createRequire(import.meta.url)("electron") as unknown as string;
-    const env: NodeJS.ProcessEnv = { ...process.env, UNCUT_UIPARTS: JSON.stringify({ url: `file://${join(dist, "uiparts.html")}`, ...WINDOW, out, shots: shots && resolve(shots), profile: join(tmp, "profile"), extract }) };
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      UNCUT_UIPARTS: JSON.stringify({
+        url: `file://${join(dist, "uiparts.html")}`,
+        ...WINDOW,
+        out,
+        shots: shots && resolve(shots),
+        profile: join(tmp, "profile"),
+        extract,
+      }),
+    };
     delete env.ELECTRON_RUN_AS_NODE;
     const child = spawn(electron, [main], { env, stdio: ["ignore", "inherit", "inherit"] });
     const code = await new Promise<number | null>((done) => child.on("exit", done));

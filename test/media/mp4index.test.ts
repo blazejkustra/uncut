@@ -43,7 +43,14 @@ async function indexOf(file: string) {
 
 type Packet = { pts: number; pos: number; size: number; key: boolean };
 const packets = (file: string): Array<Packet> =>
-  (JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,pos,size,flags", "-of", "json", file], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })).packets as Array<{ pts_time: string; pos: string; size: string; flags: string }>).map((p) => ({
+  (
+    JSON.parse(
+      execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,pos,size,flags", "-of", "json", file], {
+        encoding: "utf8",
+        maxBuffer: 256 * 1024 * 1024,
+      }),
+    ).packets as Array<{ pts_time: string; pos: string; size: string; flags: string }>
+  ).map((p) => ({
     pts: Number(p.pts_time),
     pos: Number(p.pos),
     size: Number(p.size),
@@ -65,7 +72,14 @@ function matchesFfprobe(index: Mp4Index, file: string) {
 
 /** The frames ffmpeg decodes, in presentation order (best_effort pts). */
 const framePts = (file: string) =>
-  (JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "json", file], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })).frames as Array<{ pts_time: string }>).map((f) => Number(f.pts_time));
+  (
+    JSON.parse(
+      execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "json", file], {
+        encoding: "utf8",
+        maxBuffer: 256 * 1024 * 1024,
+      }),
+    ).frames as Array<{ pts_time: string }>
+  ).map((f) => Number(f.pts_time));
 
 test("D221: H.264 with B-frames: offsets, sizes, keyframes and pts match ffprobe; sampleAt picks the shown frame", { skip }, async () => {
   const file = join(dir, "bframes.mp4");
@@ -92,8 +106,32 @@ test("D221: H.264 with B-frames: offsets, sizes, keyframes and pts match ffprobe
 
 test("D221: HEVC long-GOP (hvc1), a moov after the mdat, and a .mov are indexed like ffprobe reads them", { skip }, async () => {
   const hevc = join(dir, "hevc.mp4");
-  const hevcEncoder = /\bhevc_videotoolbox\b/.test(encoders) ? ["-c:v", "hevc_videotoolbox", "-b:v", "6M"] : ["-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error"];
-  ff("-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "5", ...hevcEncoder, "-g", "60", "-tag:v", "hvc1", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", hevc);
+  const hevcEncoder = /\bhevc_videotoolbox\b/.test(encoders)
+    ? ["-c:v", "hevc_videotoolbox", "-b:v", "6M"]
+    : ["-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error"];
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=1280x720:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000",
+    "-t",
+    "5",
+    ...hevcEncoder,
+    "-g",
+    "60",
+    "-tag:v",
+    "hvc1",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    hevc,
+  );
   const h = (await indexOf(hevc))!;
   assert.ok(h, "HEVC indexed");
   assert.match(h.codec, /^hvc1\.1\.6\.L\d+/, `HEVC Main codec string: ${h.codec}`);
@@ -121,14 +159,23 @@ test("D221: a turned track (phone footage) records its clockwise turn, as ffprob
     const file = join(dir, `turned-${turn}.mp4`);
     // -display_rotation is counter-clockwise (ffprobe's "rotation"); a phone held upright is -90 there, 90 clockwise.
     ff("-display_rotation", String(-turn), "-i", flat, "-c", "copy", file);
-    const side = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream_side_data=rotation", "-of", "csv=p=0", file], { encoding: "utf8" }).trim();
-    assert.equal((((-Number(side)) % 360) + 360) % 360, turn, `ffprobe reads ${side}`);
+    const side = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream_side_data=rotation", "-of", "csv=p=0", file], {
+      encoding: "utf8",
+    }).trim();
+    assert.equal(((-Number(side) % 360) + 360) % 360, turn, `ffprobe reads ${side}`);
     assert.equal((await indexOf(file))!.rotation, turn, `${turn}° clockwise`);
   }
 });
 
 /** ffprobe's colour fields of the first video stream. */
-const ffColour = (file: string) => JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_primaries,color_transfer,color_range", "-of", "json", file], { encoding: "utf8" })).streams[0] as { color_space?: string; color_primaries?: string; color_transfer?: string; color_range?: string };
+const ffColour = (file: string) =>
+  JSON.parse(
+    execFileSync(
+      "ffprobe",
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_primaries,color_transfer,color_range", "-of", "json", file],
+      { encoding: "utf8" },
+    ),
+  ).streams[0] as { color_space?: string; color_primaries?: string; color_transfer?: string; color_range?: string };
 const MATRIX: Record<number, string> = { 0: "gbr", 1: "bt709", 5: "bt470bg", 6: "smpte170m", 9: "bt2020nc" };
 const PRIMARIES: Record<number, string> = { 1: "bt709", 5: "bt470bg", 6: "smpte170m", 9: "bt2020" };
 const TRANSFER: Record<number, string> = { 1: "bt709", 6: "smpte170m", 13: "iec61966-2-1", 16: "smpte2084", 18: "arib-std-b67", 14: "bt2020-10" };
@@ -151,9 +198,36 @@ test("D221: the colour description (colr box, else the SPS's VUI) matches ffprob
     ["bt709.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"]],
     ["full.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_range", "pc"]],
     ["bt470bg.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-colorspace", "bt470bg", "-color_primaries", "bt470bg", "-color_trc", "smpte170m"]],
-    ["high10-scaling.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p10le", "-x264-params", "cqm=jvt", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"]],
-    ["hevc709.mp4", [...(/\blibx265\b/.test(encoders) ? ["-c:v", "libx265", "-x265-params", "log-level=error"] : ["-c:v", "hevc_videotoolbox"]), "-tag:v", "hvc1", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"]],
-    ["hevc-untagged.mp4", [...(/\blibx265\b/.test(encoders) ? ["-c:v", "libx265", "-x265-params", "log-level=error"] : ["-c:v", "hevc_videotoolbox"]), "-tag:v", "hvc1", "-pix_fmt", "yuv420p"]],
+    [
+      "high10-scaling.mp4",
+      ["-c:v", "libx264", "-pix_fmt", "yuv420p10le", "-x264-params", "cqm=jvt", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"],
+    ],
+    [
+      "hevc709.mp4",
+      [
+        ...(/\blibx265\b/.test(encoders) ? ["-c:v", "libx265", "-x265-params", "log-level=error"] : ["-c:v", "hevc_videotoolbox"]),
+        "-tag:v",
+        "hvc1",
+        "-pix_fmt",
+        "yuv420p",
+        "-colorspace",
+        "bt709",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+      ],
+    ],
+    [
+      "hevc-untagged.mp4",
+      [
+        ...(/\blibx265\b/.test(encoders) ? ["-c:v", "libx265", "-x265-params", "log-level=error"] : ["-c:v", "hevc_videotoolbox"]),
+        "-tag:v",
+        "hvc1",
+        "-pix_fmt",
+        "yuv420p",
+      ],
+    ],
   ];
   for (const [name, args] of cases) {
     const file = join(dir, name);
@@ -163,7 +237,21 @@ test("D221: the colour description (colr box, else the SPS's VUI) matches ffprob
   assert.deepEqual((await indexOf(join(dir, "untagged.mp4")))!.colour, {}, "says nothing");
   // Tags only in the container (a colr box over an untagged stream): the container's count.
   const boxed = join(dir, "boxed.mov");
-  ff("-i", join(dir, "untagged.mp4"), "-c", "copy", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-movflags", "+write_colr", boxed);
+  ff(
+    "-i",
+    join(dir, "untagged.mp4"),
+    "-c",
+    "copy",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-movflags",
+    "+write_colr",
+    boxed,
+  );
   const b = (await indexOf(boxed))!;
   assert.equal(b.colour?.matrix, 1, `colr read: ${JSON.stringify(b.colour)}`);
   sameColour(b, boxed, "boxed.mov");
@@ -195,10 +283,14 @@ test("D221: codec strings from avcC and hvcC records", () => {
   assert.equal(hevcCodec(main10, "hev1"), "hev1.2.4.H153.B0");
 });
 
-test("D221: the DJI 4K60 HEVC drone clip (read-only) matches ffprobe", { skip: !hasFfmpeg ? "needs ffmpeg" : existsSync(DRONE) ? false : footageMissing(DRONE) }, async () => {
-  const index = (await indexOf(DRONE))!;
-  assert.ok(index, "indexed");
-  assert.match(index.codec, /^hvc1\.2\./, `Main 10: ${index.codec}`);
-  matchesFfprobe(index, DRONE);
-  sameColour(index, DRONE, "drone");
-});
+test(
+  "D221: the DJI 4K60 HEVC drone clip (read-only) matches ffprobe",
+  { skip: !hasFfmpeg ? "needs ffmpeg" : existsSync(DRONE) ? false : footageMissing(DRONE) },
+  async () => {
+    const index = (await indexOf(DRONE))!;
+    assert.ok(index, "indexed");
+    assert.match(index.codec, /^hvc1\.2\./, `Main 10: ${index.codec}`);
+    matchesFfprobe(index, DRONE);
+    sameColour(index, DRONE, "drone");
+  },
+);

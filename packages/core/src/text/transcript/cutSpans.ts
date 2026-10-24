@@ -28,7 +28,12 @@ export const wordIds = (ids: ReadonlyArray<number>) => `w${ids[0]}${ids.length >
 
 /** An id nothing in the project (or `taken`) uses yet: base-1, base-2, … */
 export function freeId(project: Project, base: string, taken: Set<string>) {
-  const ids = new Set([...taken, ...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)]);
+  const ids = new Set([
+    ...taken,
+    ...project.media.map((m) => m.id),
+    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+    ...(project.scenes ?? []).map((s) => s.id),
+  ]);
   for (let n = 1; ; n++) {
     const id = `${base}-${n}`;
     if (!ids.has(id)) {
@@ -61,7 +66,18 @@ export function runsOf(ids: Iterable<number>): Array<Array<number>> {
  * the gap), keeping tailFrames after a kept word and handleFrames before one (none next to one that goes). Edge pauses
  * (before the first word, after the last) run to the media's start or end.
  */
-export function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, fillerWords: ReadonlySet<number>, kept: (i: number) => boolean, sliver: (i: number) => boolean, pauses: ReadonlyArray<Pause>, fps: number, length: number, tight: Set<number>, measured: { readonly endMeasured: ReadonlyArray<boolean>; readonly startMeasured: ReadonlyArray<boolean> } = { endMeasured: [], startMeasured: [] }): Array<Span> {
+export function spansFor(
+  words: ReadonlyArray<CutWord>,
+  removed: ReadonlySet<number>,
+  fillerWords: ReadonlySet<number>,
+  kept: (i: number) => boolean,
+  sliver: (i: number) => boolean,
+  pauses: ReadonlyArray<Pause>,
+  fps: number,
+  length: number,
+  tight: Set<number>,
+  measured: { readonly endMeasured: ReadonlyArray<boolean>; readonly startMeasured: ReadonlyArray<boolean> } = { endMeasured: [], startMeasured: [] },
+): Array<Span> {
   const n = words.length;
   // Kept after a kept word (its tail) and before one (its head), D74.
   const T = tailFrames(fps);
@@ -175,7 +191,11 @@ export function fitPiece(item: Item): Op | undefined {
 }
 
 /** Where each kept part of an item cut at `ranges` (local, sorted, merged) ends up: its id and local start (planTextCut's split order). */
-export function keptPieces(item: Item, ranges: ReadonlyArray<[number, number]>, newIds: ReadonlyArray<string>): Array<{ id: string; from: number; to: number }> {
+export function keptPieces(
+  item: Item,
+  ranges: ReadonlyArray<[number, number]>,
+  newIds: ReadonlyArray<string>,
+): Array<{ id: string; from: number; to: number }> {
   const out: Array<{ id: string; from: number; to: number }> = [];
   let at = 0;
   let id = item.id;

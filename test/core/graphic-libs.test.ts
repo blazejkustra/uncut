@@ -11,7 +11,22 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 
-import { GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, graphicDocument, graphicLibsUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, resolveGraphicLibs, SPRING_NAMES, SPRING_PRESETS, springAt, springEase, springSettleTime, springState, type Project } from "../../packages/core/src/index.ts";
+import {
+  GRAPHIC_LIBS,
+  GRAPHIC_LIBS_DOC,
+  graphicDocument,
+  graphicLibsUsed,
+  MAX_GRAPHIC_BYTES,
+  MAX_GRAPHIC_DOC_BYTES,
+  resolveGraphicLibs,
+  SPRING_NAMES,
+  SPRING_PRESETS,
+  springAt,
+  springEase,
+  springSettleTime,
+  springState,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { readGraphics } from "../../apps/server/src/export/exporter.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
 
@@ -29,8 +44,15 @@ test("markers: known libraries are inlined, unknown ones become a comment, the r
   const out = resolveGraphicLibs(html, libs);
   assert.equal(out.split("window.THREE = { ok: 1 };").length - 1, 1, "a library is inlined once");
   assert.match(out, /<!-- uncut:lib\/three\.js is already loaded above -->/, "a repeated marker is a comment");
-  assert.match(out, /<script>\/\* uncut:lib\/spring\.js \*\/\nwindow\.uncutSpring = 1; var s = '<\\\/script>';\n<\/script>/, "a </script inside a library can't close its tag");
-  assert.match(out, /<!-- uncut:lib\/nope\.js is not a bundled library \(bundled: three\.js, confetti\.js, globe\.js, spring\.js, random\.js, motion\.js, ui\.js\) -->/);
+  assert.match(
+    out,
+    /<script>\/\* uncut:lib\/spring\.js \*\/\nwindow\.uncutSpring = 1; var s = '<\\\/script>';\n<\/script>/,
+    "a </script inside a library can't close its tag",
+  );
+  assert.match(
+    out,
+    /<!-- uncut:lib\/nope\.js is not a bundled library \(bundled: three\.js, confetti\.js, globe\.js, spring\.js, random\.js, motion\.js, ui\.js\) -->/,
+  );
   assert.ok(out.startsWith('<canvas id="c"></canvas>\n'));
   assert.ok(out.endsWith('<script>const label = "uncut:lib/three.js"; window.render = (t) => {};</script>'), "a marker-like string in the author's code stays");
   assert.ok(!/src="uncut:lib/.test(out.replace('"uncut:lib/three.js";', "")), "no marker left");
@@ -59,7 +81,16 @@ test("readGraphics: the cap is on the author's file; markers resolve with the bu
     assert.ok(Buffer.byteLength(big) <= MAX_GRAPHIC_BYTES);
     writeFileSync(join(tmp, "graphics", "big.html"), big);
     writeFileSync(join(tmp, "graphics", "over.html"), `${all}${"y".repeat(MAX_GRAPHIC_BYTES)}`);
-    const project = { tracks: [{ items: [{ type: "graphic", src: "graphics/big.html" }, { type: "graphic", src: "graphics/over.html" }] }] } as unknown as Project;
+    const project = {
+      tracks: [
+        {
+          items: [
+            { type: "graphic", src: "graphics/big.html" },
+            { type: "graphic", src: "graphics/over.html" },
+          ],
+        },
+      ],
+    } as unknown as Project;
     const read = await readGraphics(tmp, project, libs);
     assert.equal(read.has("graphics/over.html"), false, "an author's file over the cap isn't read");
     const html = read.get("graphics/big.html")!;
@@ -125,7 +156,9 @@ test("confetti: a pure function of t and its seed", () => {
   // One particle goes up, then gravity brings it down.
   const ys: Array<number> = [];
   for (let t = 0.05; t < 6; t += 0.05) {
-    const line = draw(t, { seed: 3, count: 1, origin: { x: 0.5, y: 0.5 }, life: 10 }).log.split("\n").find((l) => l.startsWith("translate("));
+    const line = draw(t, { seed: 3, count: 1, origin: { x: 0.5, y: 0.5 }, life: 10 })
+      .log.split("\n")
+      .find((l) => l.startsWith("translate("));
     if (line) ys.push(Number(line.slice(10, -1).split(",")[1]));
   }
   const top = Math.min(...ys);
@@ -133,8 +166,21 @@ test("confetti: a pure function of t and its seed", () => {
 });
 
 test("globe: a pure function of t; it turns; markers project where they're drawn", () => {
-  const { uncutGlobe } = load("globe.js") as { uncutGlobe: { draw: (ctx: unknown, t: number, o?: unknown) => void; project: (ctx: unknown, t: number, lat: number, lon: number, o?: unknown) => { x: number; y: number; visible: boolean }; isLand: (lat: number, lon: number) => boolean } };
-  const options = { dots: 3000, speed: 30, markers: [{ lat: 52.2, lon: 21 }, { lat: 40.7, lon: -74 }] };
+  const { uncutGlobe } = load("globe.js") as {
+    uncutGlobe: {
+      draw: (ctx: unknown, t: number, o?: unknown) => void;
+      project: (ctx: unknown, t: number, lat: number, lon: number, o?: unknown) => { x: number; y: number; visible: boolean };
+      isLand: (lat: number, lon: number) => boolean;
+    };
+  };
+  const options = {
+    dots: 3000,
+    speed: 30,
+    markers: [
+      { lat: 52.2, lon: 21 },
+      { lat: 40.7, lon: -74 },
+    ],
+  };
   const draw = (t: number, o: Record<string, unknown> = options) => {
     const { ctx, log } = recorder();
     uncutGlobe.draw(ctx, t, o);
@@ -160,7 +206,14 @@ test("globe: a pure function of t; it turns; markers project where they're drawn
 });
 
 test("random: seeded, repeatable, and spread over [0, 1)", () => {
-  const { uncutRandom } = load("random.js") as { uncutRandom: ((seed: unknown) => (() => number) & { range: (a: number, b: number) => number; int: (a: number, b: number) => number; pick: <T>(l: Array<T>) => T; normal: () => number }) & { at: (seed: unknown, i: number) => number; noise: (seed: unknown, x: number) => number } };
+  const { uncutRandom } = load("random.js") as {
+    uncutRandom: ((seed: unknown) => (() => number) & {
+      range: (a: number, b: number) => number;
+      int: (a: number, b: number) => number;
+      pick: <T>(l: Array<T>) => T;
+      normal: () => number;
+    }) & { at: (seed: unknown, i: number) => number; noise: (seed: unknown, x: number) => number };
+  };
   const take = (seed: unknown, n = 1000) => {
     const r = uncutRandom(seed);
     return Array.from({ length: n }, () => r());
@@ -187,9 +240,21 @@ test("random: seeded, repeatable, and spread over [0, 1)", () => {
 });
 
 test("spring.js is core's spring, value for value", () => {
-  const { uncutSpring } = load("spring.js") as { uncutSpring: ((t: number, s: unknown) => number) & { state: (t: number, s: unknown) => { value: number; velocity: number }; settle: (s: unknown) => number; ease: (s: unknown) => (p: number) => number; presets: Record<string, unknown> } };
+  const { uncutSpring } = load("spring.js") as {
+    uncutSpring: ((t: number, s: unknown) => number) & {
+      state: (t: number, s: unknown) => { value: number; velocity: number };
+      settle: (s: unknown) => number;
+      ease: (s: unknown) => (p: number) => number;
+      presets: Record<string, unknown>;
+    };
+  };
   assert.deepEqual(Object.keys(uncutSpring.presets).sort(), [...SPRING_NAMES].sort());
-  const params = [...SPRING_NAMES, { stiffness: 100, damping: 20 }, { stiffness: 100, damping: 50, mass: 2, velocity: 1 }, { stiffness: 80, damping: 6, velocity: -3 }];
+  const params = [
+    ...SPRING_NAMES,
+    { stiffness: 100, damping: 20 },
+    { stiffness: 100, damping: 50, mass: 2, velocity: 1 },
+    { stiffness: 80, damping: 6, velocity: -3 },
+  ];
   for (const p of params) {
     for (let t = -0.1; t < 3; t += 0.037) {
       assert.equal(uncutSpring(t, p), springAt(p, t), `${JSON.stringify(p)} at ${t}`);
@@ -211,7 +276,21 @@ test("libraries: no clocks, no Math.random, no timers, nothing that closes an in
     assert.doesNotMatch(s, /<\/script|<!--/i, n);
   }
   assert.doesNotMatch(source("three.js"), /<\/script|<!--/i);
-  for (const word of ["render(t", "requestAnimationFrame", "Date.now", "Math.random", "uncutRandom(seed)", "preserveDrawingBuffer: true", "info.width", 'src="uncut:lib/three.js"', "uncutConfetti.draw", "uncutGlobe.draw", "uncutSpring(", "renderer.render"]) assert.ok(GRAPHIC_LIBS_DOC.includes(word), word);
+  for (const word of [
+    "render(t",
+    "requestAnimationFrame",
+    "Date.now",
+    "Math.random",
+    "uncutRandom(seed)",
+    "preserveDrawingBuffer: true",
+    "info.width",
+    'src="uncut:lib/three.js"',
+    "uncutConfetti.draw",
+    "uncutGlobe.draw",
+    "uncutSpring(",
+    "renderer.render",
+  ])
+    assert.ok(GRAPHIC_LIBS_DOC.includes(word), word);
   for (const n of GRAPHIC_LIBS) assert.ok(GRAPHIC_LIBS_DOC.includes(`uncut:lib/${n}`), n);
   assert.doesNotMatch(GRAPHIC_LIBS_DOC, /[·•*]/);
 });

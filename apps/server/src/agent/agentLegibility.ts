@@ -44,7 +44,12 @@ const frames = (list: ReadonlyArray<CensusFrame>) => list.filter((f) => f.small?
 export function softNote(list: ReadonlyArray<CensusFrame>, max = 3): string {
   const soft = list.filter((f) => f.soft?.length);
   if (!soft.length) return "";
-  return `Words big enough to read but softened (the census skips them as unreadable): ${soft.slice(0, max).map((f) => `frame ${f.frame}: ${softList(f.soft!, 2)}`).join("; ")}${soft.length > max ? `; ${soft.length - max} more frames` : ""}. Fine for a stage or a passing swap; not on a frame where that word is the moment's subject.`;
+  return `Words big enough to read but softened (the census skips them as unreadable): ${soft
+    .slice(0, max)
+    .map((f) => `frame ${f.frame}: ${softList(f.soft!, 2)}`)
+    .join(
+      "; ",
+    )}${soft.length > max ? `; ${soft.length - max} more frames` : ""}. Fine for a stage or a passing swap; not on a frame where that word is the moment's subject.`;
 }
 
 /** render_frames' note: each frame's words under the floor, then the fix; undefined when none (or no census). */
@@ -79,8 +84,13 @@ export function legibilityFacts(list: ReadonlyArray<CensusFrame>, fps: number): 
   if (!measured.length) return blind ? [`Words on the graphics weren't measured in the contact sheet (${UNSEEN}).`] : [];
   const small = frames(measured);
   const head = `Words measured on the graphics (DOM text on screen, not faded or blurred; letters' height as % of the frame's height; ${SMALL_TEXT * 100} % is the floor for words a viewer must read; ${UNSEEN})`;
-  if (!small.length) return [`${head}: none under ${SMALL_TEXT * 100} % among the DOM words of the ${measured.length} contact-sheet frames measured${blind ? ` (${blind} frames also show canvases, images or unmeasured graphics: their words are unknown)` : ""}.`];
-  return [`${head}: ${small.map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`).join("; ")}. Small labels and chrome around the moment's subject are texture; the line the moment is about isn't.`];
+  if (!small.length)
+    return [
+      `${head}: none under ${SMALL_TEXT * 100} % among the DOM words of the ${measured.length} contact-sheet frames measured${blind ? ` (${blind} frames also show canvases, images or unmeasured graphics: their words are unknown)` : ""}.`,
+    ];
+  return [
+    `${head}: ${small.map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`).join("; ")}. Small labels and chrome around the moment's subject are texture; the line the moment is about isn't.`,
+  ];
 }
 
 /** review_submit's finding for the agent (never a blocker): every sheet frame with small words at once, and the fix. */
@@ -88,5 +98,16 @@ export function legibilityFindings(list: ReadonlyArray<CensusFrame>, fps: number
   const small = frames(list);
   if (!small.length) return [];
   const first = small[0]!.frame;
-  return [{ rule: "legibility", key: `legibility:${first}`, frame: first, hard: false, message: `Small text in ${small.length} of the contact sheet's frames (letters under ${SMALL_TEXT * 100} % of the height, measured on the graphics' words): ${small.slice(0, 8).map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`).join("; ")}. Where one of them is the line the moment is about, fix them all in this round, not one per round: ${legibleFix(height)}` }];
+  return [
+    {
+      rule: "legibility",
+      key: `legibility:${first}`,
+      frame: first,
+      hard: false,
+      message: `Small text in ${small.length} of the contact sheet's frames (letters under ${SMALL_TEXT * 100} % of the height, measured on the graphics' words): ${small
+        .slice(0, 8)
+        .map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`)
+        .join("; ")}. Where one of them is the line the moment is about, fix them all in this round, not one per round: ${legibleFix(height)}`,
+    },
+  ];
 }

@@ -45,7 +45,11 @@ interface Item {
 }
 
 /** The words of a text item, without Uncut's [[accent]] and **bold** markers. */
-const wordsOf = (s: string) => s.replace(/\[\[|\]\]|\*\*/g, " ").split(/\s+/).filter(Boolean);
+const wordsOf = (s: string) =>
+  s
+    .replace(/\[\[|\]\]|\*\*/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
 
 /**
  * One tool: Uncut passes the open project's folder in the call (capability "project:read").

@@ -41,15 +41,10 @@ export interface Connection {
 /** Transport failures: the call may or may not have reached the server. */
 export const isTransportError = (error: CallError) => ["RpcClientError", "Timeout", "NotConnected"].includes(error._tag);
 
-export function connect(
-  { url, token }: ServerConnection,
-  hooks: { readonly onConnect: () => void; readonly onDisconnect: () => void },
-): Connection {
+export function connect({ url, token }: ServerConnection, hooks: { readonly onConnect: () => void; readonly onDisconnect: () => void }): Connection {
   const socketUrl = new URL(url);
   socketUrl.searchParams.set(TOKEN_QUERY_PARAM, token);
-  const socket = Socket.layerWebSocket(socketUrl.href, { openTimeout: Duration.seconds(3) }).pipe(
-    Layer.provide(Socket.layerWebSocketConstructorGlobal),
-  );
+  const socket = Socket.layerWebSocket(socketUrl.href, { openTimeout: Duration.seconds(3) }).pipe(Layer.provide(Socket.layerWebSocketConstructorGlobal));
   const protocol = RpcClient.layerProtocolSocket({
     // Pings every 2 s; 6 s of silence counts as a dropped connection.
     pingInterval: Duration.seconds(2),
@@ -73,7 +68,10 @@ export function connect(
     call: async (f, timeoutMs) => {
       const exit = await runtime.runPromiseExit(
         WsClient.use(f).pipe(
-          Effect.timeoutOrElse({ duration: timeoutMs ? Duration.millis(timeoutMs) : CALL_TIMEOUT, orElse: () => Effect.fail({ _tag: "Timeout", message: "The server didn't answer" }) }),
+          Effect.timeoutOrElse({
+            duration: timeoutMs ? Duration.millis(timeoutMs) : CALL_TIMEOUT,
+            orElse: () => Effect.fail({ _tag: "Timeout", message: "The server didn't answer" }),
+          }),
         ),
       );
       if (Exit.isSuccess(exit)) return { ok: true, value: exit.value };
@@ -84,9 +82,7 @@ export function connect(
       return { ok: false, error: { ...error, _tag: tag, message } };
     },
     subscribe: (f, onValue) => {
-      const fiber = runtime.runFork(
-        WsClient.use((client) => Stream.runForEach(f(client), (value) => Effect.sync(() => onValue(value)))).pipe(Effect.ignore),
-      );
+      const fiber = runtime.runFork(WsClient.use((client) => Stream.runForEach(f(client), (value) => Effect.sync(() => onValue(value)))).pipe(Effect.ignore));
       return () => void runtime.runFork(Fiber.interrupt(fiber));
     },
   };

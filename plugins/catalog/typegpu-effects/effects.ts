@@ -18,7 +18,10 @@ import tgpu from "typegpu";
 import * as d from "typegpu/data";
 
 /** Water ripples from the centre, rolling outwards over time. */
-export const ripple = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ amplitude: d.f32, wavelength: d.f32, speed: d.f32, centerX: d.f32, centerY: d.f32 })], d.vec4f)`(uv, t, size, p) {
+export const ripple = tgpu.fn(
+  [d.vec2f, d.f32, d.vec2f, d.struct({ amplitude: d.f32, wavelength: d.f32, speed: d.f32, centerX: d.f32, centerY: d.f32 })],
+  d.vec4f,
+)`(uv, t, size, p) {
   let aspect = vec2f(size.x / size.y, 1.0);
   let away = (uv - vec2f(p.centerX, p.centerY)) * aspect;
   let dist = length(away);
@@ -42,7 +45,10 @@ export const rgbShift = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ amount: d.f
 }`;
 
 /** Print-style halftone: ink dots on paper, sized by how dark each cell is, on a turned grid. */
-export const halftone = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ cell: d.f32, angle: d.f32, ink: d.vec3f, paper: d.vec3f, color: d.f32 })], d.vec4f)`(uv, t, size, p) {
+export const halftone = tgpu.fn(
+  [d.vec2f, d.f32, d.vec2f, d.struct({ cell: d.f32, angle: d.f32, ink: d.vec3f, paper: d.vec3f, color: d.f32 })],
+  d.vec4f,
+)`(uv, t, size, p) {
   let a = radians(p.angle);
   let rot = mat2x2f(cos(a), -sin(a), sin(a), cos(a));
   let px = rot * (uv * size);
@@ -58,7 +64,10 @@ export const halftone = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ cell: d.f32
 }`;
 
 /** An old CRT: rolling scanlines, a slight barrel curve, RGB mask and a soft flicker. */
-export const crt = tgpu.fn([d.vec2f, d.f32, d.vec2f, d.struct({ lines: d.f32, strength: d.f32, curve: d.f32, flicker: d.f32, glow: d.vec3f })], d.vec4f)`(uv, t, size, p) {
+export const crt = tgpu.fn(
+  [d.vec2f, d.f32, d.vec2f, d.struct({ lines: d.f32, strength: d.f32, curve: d.f32, flicker: d.f32, glow: d.vec3f })],
+  d.vec4f,
+)`(uv, t, size, p) {
   let q = uv * 2.0 - 1.0;
   let bent = q * (1.0 + p.curve * dot(q, q) * 0.25);
   let at = bent * 0.5 + 0.5;

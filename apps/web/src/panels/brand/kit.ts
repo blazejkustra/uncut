@@ -62,10 +62,28 @@ export const draftOfKit = (k: BrandKit): KitDraft => ({
   donts: k.donts.join("\n"),
   examples: [...k.examples],
 });
-export const emptyKit = (id: string, name: string, scope: BrandScope): BrandKit => ({ id, name, scope, logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] });
+export const emptyKit = (id: string, name: string, scope: BrandScope): BrandKit => ({
+  id,
+  name,
+  scope,
+  logos: {},
+  colors: [],
+  fonts: [],
+  tone: "",
+  taglines: [],
+  urls: [],
+  dos: [],
+  donts: [],
+  examples: [],
+});
 
 export type View =
   | { readonly kind: "list" }
   | { readonly kind: "kit"; readonly id: string; readonly scope: BrandScope; readonly draft: KitDraft }
   | { readonly kind: "builtin"; readonly id: string }
-  | { readonly kind: "skill"; readonly id: string | undefined; readonly scope: BrandScope; readonly draft: { readonly name: string; readonly scope: BrandScope; readonly description: string; readonly body: string } };
+  | {
+      readonly kind: "skill";
+      readonly id: string | undefined;
+      readonly scope: BrandScope;
+      readonly draft: { readonly name: string; readonly scope: BrandScope; readonly description: string; readonly body: string };
+    };

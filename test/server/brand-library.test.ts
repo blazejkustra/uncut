@@ -50,14 +50,31 @@ const dirs = (): Required<Omit<BrandDirs, "skills">> => {
   mkdirSync(join(base, "project"), { recursive: true });
   return { dataDir: join(base, "data"), projectDir: join(base, "project") };
 };
-const kit = (id: string, scope: BrandKit["scope"], extra: Partial<BrandKit> = {}): BrandKit => ({ id, name: id, scope, logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [], ...extra });
+const kit = (id: string, scope: BrandKit["scope"], extra: Partial<BrandKit> = {}): BrandKit => ({
+  id,
+  name: id,
+  scope,
+  logos: {},
+  colors: [],
+  fonts: [],
+  tone: "",
+  taglines: [],
+  urls: [],
+  dos: [],
+  donts: [],
+  examples: [],
+  ...extra,
+});
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10" fill="#0b1d3a"/></svg>`;
 
 test("a kit made in a project before D198 is copied into the library once (with its files); the project's copy keeps winning there; a pinned one stays", async () => {
   const d = dirs();
   const old = join(d.projectDir, "brand", "kits", "argent");
   mkdirSync(old, { recursive: true });
-  writeFileSync(join(old, "kit.json"), JSON.stringify({ id: "argent", name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }], logos: { light: "logo.svg" } }));
+  writeFileSync(
+    join(old, "kit.json"),
+    JSON.stringify({ id: "argent", name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }], logos: { light: "logo.svg" } }),
+  );
   writeFileSync(join(old, "logo.svg"), SVG);
   // A kit pinned to the project since (saved with scope project) isn't copied.
   await saveKit(d, kit("pinned", "project"));
@@ -74,7 +91,10 @@ test("a kit made in a project before D198 is copied into the library once (with 
   const other = { dataDir: d.dataDir, projectDir: join(root, `other-${n}`) };
   mkdirSync(other.projectDir, { recursive: true });
   const seen = await readBrand(other);
-  assert.deepEqual(seen.kits.map((k) => [k.id, k.scope]), [["argent", "global"]]);
+  assert.deepEqual(
+    seen.kits.map((k) => [k.id, k.scope]),
+    [["argent", "global"]],
+  );
   assert.match(seen.files.argent!["logo.svg"]!, /data\/brand\/kits\/argent\/logo\.svg$/);
 
   // Deleted from the library by the user: not brought back.
@@ -84,8 +104,22 @@ test("a kit made in a project before D198 is copied into the library once (with 
 });
 
 test("a kit font keeps its file (a kit file name of a font type); anything else is dropped", () => {
-  const k = normKit({ id: "x", fonts: [{ family: "Kit Mono", role: "body", file: "KitMono.woff2" }, { family: "Bad", role: "body", file: "../x.woff2" }, { family: "Pic", role: "body", file: "logo.png" }] }, "global")!;
-  assert.deepEqual(k.fonts, [{ family: "Kit Mono", role: "body", file: "KitMono.woff2" }, { family: "Bad", role: "body" }, { family: "Pic", role: "body" }]);
+  const k = normKit(
+    {
+      id: "x",
+      fonts: [
+        { family: "Kit Mono", role: "body", file: "KitMono.woff2" },
+        { family: "Bad", role: "body", file: "../x.woff2" },
+        { family: "Pic", role: "body", file: "logo.png" },
+      ],
+    },
+    "global",
+  )!;
+  assert.deepEqual(k.fonts, [
+    { family: "Kit Mono", role: "body", file: "KitMono.woff2" },
+    { family: "Bad", role: "body" },
+    { family: "Pic", role: "body" },
+  ]);
 });
 
 test("logo slots and font families from file names", () => {
@@ -98,7 +132,13 @@ test("logo slots and font families from file names", () => {
   assert.equal(fontFamilyOf("Inter-SemiBold.woff2"), "Inter");
   assert.equal(fontFamilyOf("DMSans-Variable.ttf"), "DM Sans");
   assert.equal(fontFamilyOf("space_grotesk_regular.otf"), "Space Grotesk");
-  assert.deepEqual(fillLogos({ light: "a.svg" }, [{ name: "b.svg", kind: "logo", slot: "light" }, { name: "w.svg", kind: "logo", slot: "dark" }]), { light: "a.svg", dark: "w.svg" });
+  assert.deepEqual(
+    fillLogos({ light: "a.svg" }, [
+      { name: "b.svg", kind: "logo", slot: "light" },
+      { name: "w.svg", kind: "logo", slot: "dark" },
+    ]),
+    { light: "a.svg", dark: "w.svg" },
+  );
 });
 
 test("importing into a kit: a file with ~, a folder (logos and fonts, not hidden files), a web address through the guard; an SVG with a script and a web page are refused", async () => {
@@ -109,7 +149,10 @@ test("importing into a kit: a file with ~, a folder (logos and fonts, not hidden
   mkdirSync(brand, { recursive: true });
   writeFileSync(join(brand, "acme-logo.svg"), SVG);
   writeFileSync(join(brand, "acme-logo-white.svg"), SVG.replace("#0b1d3a", "#ffffff"));
-  writeFileSync(join(brand, "acme-mark.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"));
+  writeFileSync(
+    join(brand, "acme-mark.png"),
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"),
+  );
   writeFileSync(join(brand, "AcmeSans-Bold.woff2"), readFileSync(resolve("assets/fonts/DMMono-Medium.woff2")));
   writeFileSync(join(brand, ".hidden.svg"), SVG);
   writeFileSync(join(brand, "notes.txt"), "x");
@@ -149,13 +192,49 @@ test("importing into a kit: a file with ~, a folder (logos and fonts, not hidden
 });
 
 test("brand_write's merge: a font keeps its file unless another is given; colour and font changes listed before and after, a field the kit had nothing in isn't one", () => {
-  const base = kit("acme", "global", { colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#f5a623", role: "accent" }], fonts: [{ family: "Acme Sans", role: "headline", file: "AcmeSans.woff2" }] });
-  const merged = mergeKit(base, { fonts: [{ family: "Acme Sans", role: "headline" }, { family: "Acme Mono", role: "mono", file: "~/x.woff2" }] });
+  const base = kit("acme", "global", {
+    colors: [
+      { hex: "#0b1d3a", role: "background" },
+      { hex: "#f5a623", role: "accent" },
+    ],
+    fonts: [{ family: "Acme Sans", role: "headline", file: "AcmeSans.woff2" }],
+  });
+  const merged = mergeKit(base, {
+    fonts: [
+      { family: "Acme Sans", role: "headline" },
+      { family: "Acme Mono", role: "mono", file: "~/x.woff2" },
+    ],
+  });
   assert.ok(!("problem" in merged));
-  assert.deepEqual(merged.fonts, [{ family: "Acme Sans", role: "headline", file: "AcmeSans.woff2" }, { family: "Acme Mono", role: "mono", file: "~/x.woff2" }]);
-  const reference = mergeKit(base, { colors: [{ hex: "#e5484d", role: "error" }, { hex: "#0b1d3a", role: "background" }] }) as BrandKit;
-  assert.deepEqual(kitChanges(base, reference), [{ field: "Colours", before: ["#0b1d3a background", "#f5a623 accent"], after: ["#e5484d error", "#0b1d3a background"] }]);
-  assert.deepEqual(kitChanges(base, { ...base, fonts: [{ family: "Acme Sans", role: "headline", file: "Other.woff2" }] }), [], "a file for the same font isn't a change");
-  assert.deepEqual(kitChanges(kit("empty", "global"), { ...kit("empty", "global"), colors: [{ hex: "#000000", role: "text" }] }), [], "a first colour isn't a change");
-  assert.deepEqual(kitChanges(base, mergeKit(base, { style: { palette: [{ hex: "#e5484d" }], type: "", shotLengths: "", transitions: "", camera: "", grain: "" } }) as BrandKit), [], "a style guide never changes the kit");
+  assert.deepEqual(merged.fonts, [
+    { family: "Acme Sans", role: "headline", file: "AcmeSans.woff2" },
+    { family: "Acme Mono", role: "mono", file: "~/x.woff2" },
+  ]);
+  const reference = mergeKit(base, {
+    colors: [
+      { hex: "#e5484d", role: "error" },
+      { hex: "#0b1d3a", role: "background" },
+    ],
+  }) as BrandKit;
+  assert.deepEqual(kitChanges(base, reference), [
+    { field: "Colours", before: ["#0b1d3a background", "#f5a623 accent"], after: ["#e5484d error", "#0b1d3a background"] },
+  ]);
+  assert.deepEqual(
+    kitChanges(base, { ...base, fonts: [{ family: "Acme Sans", role: "headline", file: "Other.woff2" }] }),
+    [],
+    "a file for the same font isn't a change",
+  );
+  assert.deepEqual(
+    kitChanges(kit("empty", "global"), { ...kit("empty", "global"), colors: [{ hex: "#000000", role: "text" }] }),
+    [],
+    "a first colour isn't a change",
+  );
+  assert.deepEqual(
+    kitChanges(
+      base,
+      mergeKit(base, { style: { palette: [{ hex: "#e5484d" }], type: "", shotLengths: "", transitions: "", camera: "", grain: "" } }) as BrandKit,
+    ),
+    [],
+    "a style guide never changes the kit",
+  );
 });

@@ -47,11 +47,13 @@ const fullScreen = tgpu.vertexFn({ in: { vi: d.builtin.vertexIndex }, out: { pos
 }`;
 
 /** Bindings of both passes (group 0): the params, the texture read, its sampler. */
-export const layout = tgpu.bindGroupLayout({
-  params: { uniform: Params },
-  tex: { texture: d.texture2d(d.f32) },
-  samp: { sampler: "filtering" },
-}).$idx(0);
+export const layout = tgpu
+  .bindGroupLayout({
+    params: { uniform: Params },
+    tex: { texture: d.texture2d(d.f32) },
+    samp: { sampler: "filtering" },
+  })
+  .$idx(0);
 
 // The layout's typed slots, for the WGSL bodies' externals. TypeGPU 0.12 keeps them in an internal
 // array in entry order (layout.$ only works inside a 'use gpu' function at draw time).

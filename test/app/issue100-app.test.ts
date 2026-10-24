@@ -34,7 +34,12 @@ const layout = (page: Page) =>
     const rows = [...document.querySelectorAll("[data-testid=plugins] .plugin-row")].map((row) => {
       const sub = row.querySelector<HTMLElement>(".plugin-summary")!;
       const status = row.querySelector(".plugin-status")!;
-      return { id: row.getAttribute("data-testid"), summaryLines: Math.round(sub.getBoundingClientRect().height / parseFloat(getComputedStyle(sub).lineHeight || "16")), statusRight: r(status).right, rowRight: r(row).right };
+      return {
+        id: row.getAttribute("data-testid"),
+        summaryLines: Math.round(sub.getBoundingClientRect().height / parseFloat(getComputedStyle(sub).lineHeight || "16")),
+        statusRight: r(status).right,
+        rowRight: r(row).right,
+      };
     });
     const card = r(document.querySelector("[data-testid=plugins]"));
     return { title, buttons, rows, card, overflow: [...head.querySelectorAll("*")].some((el) => r(el).right > card.right + 0.5) };
@@ -45,7 +50,10 @@ const checkLayout = async (page: Page, size: string) => {
   for (const b of m.buttons) {
     assert.ok(b.left >= m.title.right, `${size}: a button starts before the heading ends`);
     const mid = (b.top + b.bottom) / 2;
-    assert.ok(mid > m.title.top && mid < m.title.bottom, `${size}: buttons centred on the heading row (button ${b.top}-${b.bottom}, heading ${m.title.top}-${m.title.bottom})`);
+    assert.ok(
+      mid > m.title.top && mid < m.title.bottom,
+      `${size}: buttons centred on the heading row (button ${b.top}-${b.bottom}, heading ${m.title.top}-${m.title.bottom})`,
+    );
   }
   assert.equal(m.overflow, false, `${size}: nothing in the heading row past the section's edge`);
   assert.ok(m.rows.length >= 2, `${size}: plugin rows listed`);
@@ -68,7 +76,11 @@ after(async () => {
 });
 
 test("the wizard's Plugins section: one heading row, one-line summaries, aligned statuses, details on demand", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, firstLaunch: true, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) } });
+  app = await launchApp({
+    command: APP,
+    firstLaunch: true,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]) },
+  });
   const { page } = app;
   try {
     await waitFor(page, "[data-testid=onboarding]");
@@ -87,10 +99,20 @@ test("the wizard's Plugins section: one heading row, one-line summaries, aligned
     assert.match(skills, /^11 editing skills/);
     assert.doesNotMatch(skills, /\/launch-promo/);
     const summaries = await page.$$eval("[data-testid=plugins] .plugin-summary", (els) => els.map((e) => (e as HTMLElement).innerText));
-    assert.ok(summaries.every((s) => !/argent_|[·•*]/.test(s)), `summaries: ${summaries.join(" | ")}`);
-    assert.ok(summaries.some((s) => /^Records iOS simulators/.test(s)), `Argent's line: ${summaries.join(" | ")}`);
+    assert.ok(
+      summaries.every((s) => !/argent_|[·•*]/.test(s)),
+      `summaries: ${summaries.join(" | ")}`,
+    );
+    assert.ok(
+      summaries.some((s) => s.startsWith("Records iOS simulators")),
+      `Argent's line: ${summaries.join(" | ")}`,
+    );
     // The version is there, smaller and dimmer than the name.
-    const ver = await page.$eval(`${SKILLS} .plugin-version`, (el) => ({ text: el.textContent, size: parseFloat(getComputedStyle(el).fontSize), name: parseFloat(getComputedStyle(el.parentElement!).fontSize) }));
+    const ver = await page.$eval(`${SKILLS} .plugin-version`, (el) => ({
+      text: el.textContent,
+      size: parseFloat(getComputedStyle(el).fontSize),
+      name: parseFloat(getComputedStyle(el.parentElement!).fontSize),
+    }));
     assert.equal(ver.text, "1.0.0");
     assert.ok(ver.size < ver.name, "version smaller than the name");
 

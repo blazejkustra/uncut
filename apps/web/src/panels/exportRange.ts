@@ -7,7 +7,10 @@ export interface FrameSpan {
   readonly to: number;
 }
 
-export function effectiveRange(kind: RangeKind, available: { readonly marks?: FrameSpan | undefined; readonly selection?: FrameSpan | undefined; readonly custom: FrameSpan }): { readonly kind: RangeKind; readonly range?: FrameSpan; readonly fellBack?: "marks" | "selection" } {
+export function effectiveRange(
+  kind: RangeKind,
+  available: { readonly marks?: FrameSpan | undefined; readonly selection?: FrameSpan | undefined; readonly custom: FrameSpan },
+): { readonly kind: RangeKind; readonly range?: FrameSpan; readonly fellBack?: "marks" | "selection" } {
   if (kind === "marks") return available.marks ? { kind, range: available.marks } : { kind: "all", fellBack: "marks" };
   if (kind === "selection") return available.selection ? { kind, range: available.selection } : { kind: "all", fellBack: "selection" };
   if (kind === "custom") return { kind, range: available.custom };

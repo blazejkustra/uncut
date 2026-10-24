@@ -133,7 +133,8 @@ export function keyStore(options: { readonly file: string; readonly crypter: Cry
     try {
       const parsed = JSON.parse(await readFile(options.file, "utf8")) as { keys?: unknown };
       const keys: Partial<Record<KeyProvider, string>> = {};
-      if (parsed.keys && typeof parsed.keys === "object") for (const [k, v] of Object.entries(parsed.keys)) if (isProvider(k) && typeof v === "string" && v) keys[k] = v;
+      if (parsed.keys && typeof parsed.keys === "object")
+        for (const [k, v] of Object.entries(parsed.keys)) if (isProvider(k) && typeof v === "string" && v) keys[k] = v;
       return { version: 1, keys };
     } catch {
       return { version: 1, keys: {} };
@@ -142,7 +143,14 @@ export function keyStore(options: { readonly file: string; readonly crypter: Cry
   const storage = options.crypter ? ("keychain" as const) : ("memory" as const);
   const list = async (): Promise<Array<KeyInfo>> => {
     const stored = options.crypter ? (await readFileKeys()).keys : undefined;
-    return PROVIDERS.map((p) => ({ provider: p.id, name: p.name, set: stored ? Boolean(stored[p.id]) : memory.has(p.id), storage, usedBy: [...p.usedBy], ...(p.note ? { note: p.note } : {}) }));
+    return PROVIDERS.map((p) => ({
+      provider: p.id,
+      name: p.name,
+      set: stored ? Boolean(stored[p.id]) : memory.has(p.id),
+      storage,
+      usedBy: [...p.usedBy],
+      ...(p.note ? { note: p.note } : {}),
+    }));
   };
   return {
     storage,
@@ -184,7 +192,8 @@ export interface KeysShape {
 
 export class Keys extends Context.Service<Keys, KeysShape>()("uncut/Keys") {}
 
-const failed = (what: string) => (error: unknown) => new GenerateError({ reason: "keys-unavailable", message: `${what}: ${error instanceof Error ? error.message : "the Keychain refused"}` });
+const failed = (what: string) => (error: unknown) =>
+  new GenerateError({ reason: "keys-unavailable", message: `${what}: ${error instanceof Error ? error.message : "the Keychain refused"}` });
 
 export const layer = Layer.effect(
   Keys,

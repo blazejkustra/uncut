@@ -35,7 +35,14 @@ const sameBox = (a: BoxProps, b: BoxProps) => {
     const x = a[key];
     const y = b[key];
     if (x === y || (typeof x === "function" && typeof y === "function")) continue;
-    if (key === "data" && x && y && Object.keys(x).length === Object.keys(y).length && Object.entries(x as object).every(([k, v]) => (y as Record<string, unknown>)[k] === v)) continue;
+    if (
+      key === "data" &&
+      x &&
+      y &&
+      Object.keys(x).length === Object.keys(y).length &&
+      Object.entries(x as object).every(([k, v]) => (y as Record<string, unknown>)[k] === v)
+    )
+      continue;
     return false;
   }
   return true;
@@ -126,16 +133,34 @@ function ItemBoxView({
       {cards && (
         <div className="caption-cards" data-testid="caption-cards" data-count={cards.length}>
           {cards.map((c) => (
-            <div key={`${c.from}-${c.words[0]!.index}`} className="caption-card" data-testid="caption-card" data-from={c.from} data-to={c.to} title={c.words.map((w) => w.text).join(" ")} style={{ left: (c.from - start) * ppf, width: Math.max(2, (c.to - c.from) * ppf - 1) }}>
+            <div
+              key={`${c.from}-${c.words[0]!.index}`}
+              className="caption-card"
+              data-testid="caption-card"
+              data-from={c.from}
+              data-to={c.to}
+              title={c.words.map((w) => w.text).join(" ")}
+              style={{ left: (c.from - start) * ppf, width: Math.max(2, (c.to - c.from) * ppf - 1) }}
+            >
               {c.words.map((w) => w.text).join(" ")}
             </div>
           ))}
         </div>
       )}
-      {item.type === "component" && item.component === SOLID && <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />}
+      {item.type === "component" && item.component === SOLID && (
+        <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />
+      )}
       {sound && <ItemWaveform item={item} media={sound} fps={project.canvas.fps} width={px} compact={item.type !== "audio"} />}
       {ticks.length > 0 && (
-        <svg className="beat-ticks" data-testid="beat-ticks" data-media={sound!.id} data-count={ticks.length} data-first={Math.round(start + ticks[0]!)} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none">
+        <svg
+          className="beat-ticks"
+          data-testid="beat-ticks"
+          data-media={sound!.id}
+          data-count={ticks.length}
+          data-first={Math.round(start + ticks[0]!)}
+          viewBox={`0 0 ${px} 100`}
+          preserveAspectRatio="none"
+        >
           <path d={ticks.map((f) => `M${(f * ppf).toFixed(1)} 0V22M${(f * ppf).toFixed(1)} 78V100`).join("")} />
         </svg>
       )}
@@ -169,7 +194,15 @@ function ItemBoxView({
         </div>
       )}
       <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
-        {renaming ? <RenameField testId="item-rename" value={label} onDone={(name) => (name !== undefined && name !== label && void actions.renameItem(item.id, name), onRenamed?.())} /> : label}
+        {renaming ? (
+          <RenameField
+            testId="item-rename"
+            value={label}
+            onDone={(name) => (name !== undefined && name !== label && void actions.renameItem(item.id, name), onRenamed?.())}
+          />
+        ) : (
+          label
+        )}
       </span>
       {(item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
         <span className="clip-badge" data-testid="clip-badge">
@@ -187,8 +220,20 @@ function ItemBoxView({
       {edges && sound && (
         <>
           {/* F27 (D169): 12 px squares (a wider hit area), clear of the 6 px trim edges. */}
-          <div className="fade-handle in" data-fade="in" data-testid="fade-in-handle" title="Drag to fade in" style={{ left: Math.min(px - 13, Math.max(13, fadeIn)) }} />
-          <div className="fade-handle out" data-fade="out" data-testid="fade-out-handle" title="Drag to fade out" style={{ right: Math.min(px - 13, Math.max(13, fadeOut)) }} />
+          <div
+            className="fade-handle in"
+            data-fade="in"
+            data-testid="fade-in-handle"
+            title="Drag to fade in"
+            style={{ left: Math.min(px - 13, Math.max(13, fadeIn)) }}
+          />
+          <div
+            className="fade-handle out"
+            data-fade="out"
+            data-testid="fade-out-handle"
+            title="Drag to fade out"
+            style={{ right: Math.min(px - 13, Math.max(13, fadeOut)) }}
+          />
         </>
       )}
     </div>
@@ -206,7 +251,23 @@ function ItemBoxView({
  * in frame order. The trim edges and fade handles sit above the line, so they keep their presses.
  */
 const ENVELOPE_MIN_PX = 40;
-function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { project: ProjectModel; item: Item; px: number; ppf: number; edit: boolean; duck?: ReadonlyArray<DuckKey> | undefined; start: number }) {
+function Envelope({
+  project,
+  item,
+  px,
+  ppf,
+  edit: editable,
+  duck,
+  start,
+}: {
+  project: ProjectModel;
+  item: Item;
+  px: number;
+  ppf: number;
+  edit: boolean;
+  duck?: ReadonlyArray<DuckKey> | undefined;
+  start: number;
+}) {
   const edit = editable && px >= ENVELOPE_MIN_PX;
   const selectedKey = usePlayback((s) => (s.selected === item.id ? s.gainKey : undefined));
   // While a key is dragged: the item as it would be (from the plan's gainKeys).
@@ -244,7 +305,11 @@ function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { pro
   /** Frame (from the item's start) and the item's dB at a pointer position. */
   const at = (ev: { clientX: number; clientY: number }) => {
     const r = ref.current!.getBoundingClientRect();
-    return { frame: Math.max(0, Math.min(item.duration, Math.round((ev.clientX - r.left) / ppf))), db: yLevel((ev.clientY - r.top) / r.height), height: r.height };
+    return {
+      frame: Math.max(0, Math.min(item.duration, Math.round((ev.clientX - r.left) / ppf))),
+      db: yLevel((ev.clientY - r.top) / r.height),
+      height: r.height,
+    };
   };
   /**
    * A press on the line (`key` undefined) or on a key: plan from the pointer on every move (draft
@@ -317,7 +382,9 @@ function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { pro
     e.stopPropagation();
     const now = getState().snapshot;
     if (!now) return;
-    void actions.timelineEdit(planRemoveGainKey(projectOf(now), item.id, index), { baseRevision: now.revision, dir: now.dir }).then((ok) => ok && playback.selectGainKey(item.id, undefined));
+    void actions
+      .timelineEdit(planRemoveGainKey(projectOf(now), item.id, index), { baseRevision: now.revision, dir: now.dir })
+      .then((ok) => ok && playback.selectGainKey(item.id, undefined));
   };
   return (
     <>

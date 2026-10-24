@@ -27,7 +27,15 @@ let root: string, app: LaunchedApp;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const waitFor = (page: Page, selector: string, timeout = 20000) => page.waitForSelector(selector, { timeout });
 const shot = (name: string) => app.page.screenshot({ path: `test-output/library-${name}.png` });
-const tiles = () => app.page.$$eval("[data-testid=media-tile]", (els) => (els as Array<HTMLElement>).map((e) => ({ id: e.dataset.id, name: e.querySelector("[data-testid=tile-name]")!.textContent, meta: e.querySelector("[data-testid=tile-meta]")!.textContent, dur: e.querySelector("[data-testid=duration]")?.textContent ?? null })));
+const tiles = () =>
+  app.page.$$eval("[data-testid=media-tile]", (els) =>
+    (els as Array<HTMLElement>).map((e) => ({
+      id: e.dataset.id,
+      name: e.querySelector("[data-testid=tile-name]")!.textContent,
+      meta: e.querySelector("[data-testid=tile-meta]")!.textContent,
+      dur: e.querySelector("[data-testid=duration]")?.textContent ?? null,
+    })),
+  );
 
 before(async () => {
   if (skip) return;
@@ -46,7 +54,10 @@ after(async () => {
 });
 
 test("import the drone clips, drop an image, see tiles with thumbnails, undo", { skip, timeout: 180000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects"), [DJI, FIRST]]) } });
+  app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects"), [DJI, FIRST]]) },
+  });
   const { page } = app;
   await page.click("[data-testid=new-project]");
   await page.click("[data-testid=choose-folder]");
@@ -66,26 +77,36 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   });
   const cdpEarly = await page.target().createCDPSession();
   const early = { items: [], files: [join(root, "queued.png")], dragOperationsMask: 1 };
-  for (const type of ["dragEnter", "dragOver", "drop"] as const) await cdpEarly.send("Input.dispatchDragEvent", { type, x: dropBox.x, y: dropBox.y, data: early });
+  for (const type of ["dragEnter", "dragOver", "drop"] as const)
+    await cdpEarly.send("Input.dispatchDragEvent", { type, x: dropBox.x, y: dropBox.y, data: early });
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 3, { timeout: 60000 });
   await page.waitForFunction(() => !document.querySelector("[data-testid=import-progress]"), { timeout: 60000 });
   await page.click("[data-testid=undo]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
   // The panel sorts newest first by default (F26); compare the tiles, not their order.
-  assert.deepEqual((await tiles()).sort((a, b) => String(a.id).localeCompare(String(b.id))), [
-    { id: "m-dji-0005", name: "DJI 0005", meta: "3840×2160, 59.94 fps", dur: "05:35" },
-    { id: "m-first-flight", name: "first-flight.mp4", meta: "1920×1080, 30 fps", dur: "00:51" },
-  ]);
+  assert.deepEqual(
+    (await tiles()).sort((a, b) => String(a.id).localeCompare(String(b.id))),
+    [
+      { id: "m-dji-0005", name: "DJI 0005", meta: "3840×2160, 59.94 fps", dur: "05:35" },
+      { id: "m-first-flight", name: "first-flight.mp4", meta: "1920×1080, 30 fps", dur: "00:51" },
+    ],
+  );
   // Thumbnails load from the server (not file://) and are real images.
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 2, { timeout: 60000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 2,
+    { timeout: 60000 },
+  );
   const srcs = await page.$$eval("[data-testid=thumb]", (imgs) => (imgs as Array<HTMLImageElement>).map((i) => i.src));
   for (const src of srcs) assert.match(src, /^http:\/\/127\.0\.0\.1:\d+\/media\/thumb\/m-[a-z0-9-]+\?token=/);
   const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   const media = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).media;
-  assert.deepEqual(media.map((m: any) => [m.path, m.probe.frames, m.probe.width, m.probe.height]), [
-    [DJI, Math.floor(335.6186166 * 30), 3840, 2160],
-    [FIRST, 51 * 30, 1920, 1080],
-  ]);
+  assert.deepEqual(
+    media.map((m: any) => [m.path, m.probe.frames, m.probe.width, m.probe.height]),
+    [
+      [DJI, Math.floor(335.6186166 * 30), 3840, 2160],
+      [FIRST, 51 * 30, 1920, 1080],
+    ],
+  );
   await shot("imported");
 
   // Drop a file onto the library: a real drag through Chromium carrying a file path.
@@ -97,8 +118,14 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   const data = { items: [], files: [join(root, "dropped.png")], dragOperationsMask: 1 };
   for (const type of ["dragEnter", "dragOver", "drop"] as const) await cdp.send("Input.dispatchDragEvent", { type, x: box.x, y: box.y, data });
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 3, { timeout: 30000 });
-  assert.deepEqual((await tiles()).find((t) => t.id === "m-dropped"), { id: "m-dropped", name: "dropped.png", meta: "1280×720", dur: null });
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 3, { timeout: 30000 });
+  assert.deepEqual(
+    (await tiles()).find((t) => t.id === "m-dropped"),
+    { id: "m-dropped", name: "dropped.png", meta: "1280×720", dur: null },
+  );
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 3,
+    { timeout: 30000 },
+  );
   await shot("dropped");
 
   // A dropped folder gets a plain answer.

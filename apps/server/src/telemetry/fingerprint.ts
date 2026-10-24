@@ -13,11 +13,19 @@ export function frameOf(line: string): string | undefined {
   const gecko = v8 ? undefined : /^\s*([^@\s]*)@(\S+)$/.exec(line);
   const m = v8 ?? gecko;
   if (!m) return undefined;
-  const fn = (m[1] ?? "").replace(/^async\s+/, "").replace(/[^\w.$<>[\]-]/g, "").slice(0, 80);
+  const fn = (m[1] ?? "")
+    .replace(/^async\s+/, "")
+    .replace(/[^\w.$<>[\]-]/g, "")
+    .slice(0, 80);
   const where = m[2] ?? "";
   // file:line:col, possibly a URL with a query or hash; keep the base name and the position.
   const pos = /^(.*?)(?::(\d+))?(?::(\d+))?$/.exec(where.replace(/[?#][^:]*/, ""));
-  const file = (pos?.[1] ?? "").split(/[\\/]/).pop()?.replace(/[^\w.-]/g, "").slice(0, 80) ?? "";
+  const file =
+    (pos?.[1] ?? "")
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/[^\w.-]/g, "")
+      .slice(0, 80) ?? "";
   if (!fn && !file) return undefined;
   return `${fn}@${file}:${pos?.[2] ?? ""}:${pos?.[3] ?? ""}`;
 }
@@ -32,7 +40,10 @@ export function crashFingerprint(name: string, stack: string | undefined): strin
     .map(frameOf)
     .filter((f): f is string => f !== undefined)
     .slice(0, FRAMES);
-  return createHash("sha256").update([name, ...frames].join("\n")).digest("hex").slice(0, 16);
+  return createHash("sha256")
+    .update([name, ...frames].join("\n"))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 /** An error's class name, safe to send: the constructor's name if it is a plain identifier, else "Error". */

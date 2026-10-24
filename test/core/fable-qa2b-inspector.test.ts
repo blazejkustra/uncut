@@ -4,7 +4,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applyEdit, clipFx, createSession, fxWords, loadModules, needsPicturePass, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  clipFx,
+  createSession,
+  fxWords,
+  loadModules,
+  needsPicturePass,
+  validateProject,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { planAdjust, planEffect, planEffectBypass, planSetLook } from "../../packages/core/src/visual/fx.ts";
 import { exportCommand, planExport, planLuts } from "../../apps/server/src/export/exportPlan.ts";
 import { mainTextParam } from "../../apps/web/src/inspector/component/schema.ts";
@@ -29,7 +39,14 @@ const graphOf = (p: Project) => {
   const plan = planExport(p, { mediaPath: (m) => m.path, width: 640, height: 360 });
   assert.ok(!("problem" in plan));
   const luts = new Map(planLuts(plan).map((l) => [l.key, `/tmp/${l.key}.cube`] as const));
-  return exportCommand(plan, { background: "/tmp/bg.png", rasters: new Map(), caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 }, quality: "draft", output: "/tmp/o.mp4", luts }).graph;
+  return exportCommand(plan, {
+    background: "/tmp/bg.png",
+    rasters: new Map(),
+    caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 },
+    quality: "draft",
+    output: "/tmp/o.mp4",
+    luts,
+  }).graph;
 };
 
 test("F18 (D161): an effect turned off isn't drawn by the preview's or the export's definition; on again it is", () => {
@@ -44,7 +61,14 @@ test("F18 (D161): an effect turned off isn't drawn by the preview's or the expor
   assert.equal(off.summary, "Turn posterize on a.mp4 off");
   assert.equal(off.ops.length, 1, "one edit");
   p = apply(p, off);
-  assert.deepEqual(clip(p).effects?.map((e) => [e.module, e.bypass === true]), [["effect.posterize", true], ["effect.mirror", false]], "kept in place, marked off");
+  assert.deepEqual(
+    clip(p).effects?.map((e) => [e.module, e.bypass === true]),
+    [
+      ["effect.posterize", true],
+      ["effect.mirror", false],
+    ],
+    "kept in place, marked off",
+  );
   assert.equal(clipFx(clip(p))?.posterize, undefined, "core skips it");
   assert.equal(clipFx(clip(p))?.mirror, true, "the other one still draws");
   assert.doesNotMatch(graphOf(p), /lutrgb=r='floor/, "not in the export chain");
@@ -55,7 +79,7 @@ test("F18 (D161): an effect turned off isn't drawn by the preview's or the expor
   // Changing an off effect's settings keeps it off.
   p = apply(p, planEffect(p, "a", "effect.posterize", { levels: 6 }));
   assert.equal(clip(p).effects?.[0]?.bypass, true);
-  assert.equal((clip(p).effects?.[0]?.params as { levels: number }).levels, 6);
+  assert.equal((clip(p).effects?.[0]?.params as { levels: number } | undefined)?.levels, 6);
 
   p = apply(p, planEffectBypass(p, "a", "effect.posterize", true));
   assert.equal(clip(p).effects?.[0]?.bypass, undefined, "on again: no bypass field left");

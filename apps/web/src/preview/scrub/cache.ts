@@ -27,7 +27,10 @@ export class ScrubCache {
 
   constructor(onFrame: () => void) {
     this.onFrame = onFrame;
-    (globalThis as { __uncutScrub?: unknown }).__uncutScrub = { stats: () => this.stats(), setBudget: (bytes: number) => this.lru.setBudget(bytes), keep: (on: boolean) => {
+    (globalThis as { __uncutScrub?: unknown }).__uncutScrub = {
+      stats: () => this.stats(),
+      setBudget: (bytes: number) => this.lru.setBudget(bytes),
+      keep: (on: boolean) => {
         this.keep = on;
         this.changed();
       },
@@ -40,7 +43,13 @@ export class ScrubCache {
       budget: this.lru.budget,
       frames: this.lru.size,
       misses: [...this.misses],
-      sources: [...this.sources.values()].map((s) => ({ url: s.url.replace(/[?&]token=[^&]*/, ""), state: s.state, reason: s.reason, colour: s.colour, colourIn: s.colourIn })),
+      sources: [...this.sources.values()].map((s) => ({
+        url: s.url.replace(/[?&]token=[^&]*/, ""),
+        state: s.state,
+        reason: s.reason,
+        colour: s.colour,
+        colourIn: s.colourIn,
+      })),
     };
   }
 

@@ -36,7 +36,22 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue66-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-t", "10", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "Shot.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=640x360:rate=30",
+    "-t",
+    "10",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "Shot.mp4"),
+  ]);
   dir = join(root, "Issue66.uncut");
   mkdirSync(dir);
   writeFileSync(
@@ -46,10 +61,34 @@ before(async () => {
       name: "Issue66",
       canvas: { width: 1920, height: 1080, fps: 30 },
       textLooks: 1,
-      media: [{ id: "m-shot", kind: "video", name: "Shot.mp4", path: join(root, "Shot.mp4"), probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false } }],
+      media: [
+        {
+          id: "m-shot",
+          kind: "video",
+          name: "Shot.mp4",
+          path: join(root, "Shot.mp4"),
+          probe: { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false },
+        },
+      ],
       tracks: [
         // Locked, so splitting the title is refused with an error toast.
-        { id: "text", kind: "text", name: "Text", locked: true, items: [{ id: "t1", type: "text", start: 0, duration: 120, text: "Launch day", transform: { x: 160, y: 440 }, style: { preset: "text.title", size: 140, weight: 700 } }] },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          locked: true,
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 120,
+              text: "Launch day",
+              transform: { x: 160, y: 440 },
+              style: { preset: "text.title", size: 140, weight: 700 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "a", type: "clip", media: "m-shot", in: 0, duration: 300 }] },
       ],
     }),
@@ -146,10 +185,13 @@ test("issue #66: an overlay scrollbar under the error toast is drawn below it", 
     });
   };
   await page.waitForFunction(`(${ours.toString()})() !== undefined`, { timeout: 3000 });
-  const thumb = await page.evaluate(`(${ours.toString()})().querySelector("[data-testid=scrollbar-thumb]").getBoundingClientRect().toJSON()`) as DOMRect;
+  const thumb = (await page.evaluate(`(${ours.toString()})().querySelector("[data-testid=scrollbar-thumb]").getBoundingClientRect().toJSON()`)) as DOMRect;
   const y = toast.top + toast.height / 2;
   assert.ok(thumb.top <= y && thumb.bottom >= y, "the thumb crosses the toast");
-  await page.screenshot({ path: out("scrollbar-under-toast"), clip: { x: toast.left - 10, y: toast.top - 30, width: toast.width + 20, height: toast.height + 120 } });
+  await page.screenshot({
+    path: out("scrollbar-under-toast"),
+    clip: { x: toast.left - 10, y: toast.top - 30, width: toast.width + 20, height: toast.height + 120 },
+  });
   // Hit-test with the bars made hittable: what's on top at the thumb, inside the toast, is the toast.
   const top = await page.evaluate(
     (x, yy, s) => {
@@ -158,7 +200,11 @@ test("issue #66: an overlay scrollbar under the error toast is drawn below it", 
       document.head.append(style);
       const el = document.elementFromPoint(x, yy);
       style.remove();
-      const stack = document.elementsFromPoint(x, yy).slice(0, 6).map((e) => `${e.tagName}.${String(e.className)} z=${getComputedStyle(e).zIndex}`).join(" | ");
+      const stack = document
+        .elementsFromPoint(x, yy)
+        .slice(0, 6)
+        .map((e) => `${e.tagName}.${String(e.className)} z=${getComputedStyle(e).zIndex}`)
+        .join(" | ");
       return { inToast: !!el?.closest(s), what: `${String(el?.className ?? "")} [${stack}] x=${x} y=${yy}` };
     },
     thumb.left + thumb.width / 2,

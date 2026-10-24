@@ -99,7 +99,14 @@ export class ScrubSource {
       if (!index) return this.fail("not an indexable MP4/MOV with H.264 or HEVC");
       const colorSpace = decoderColour(index.colour, index.codedHeight);
       this.colourIn = JSON.stringify({ stream: index.colour ?? "unknown", config: colorSpace ?? "webcodecs" });
-      const config: VideoDecoderConfig = { codec: index.codec, description: index.description, codedWidth: index.codedWidth, codedHeight: index.codedHeight, optimizeForLatency: true, ...(colorSpace ? { colorSpace } : {}) };
+      const config: VideoDecoderConfig = {
+        codec: index.codec,
+        description: index.description,
+        codedWidth: index.codedWidth,
+        codedHeight: index.codedHeight,
+        optimizeForLatency: true,
+        ...(colorSpace ? { colorSpace } : {}),
+      };
       const support = await VideoDecoder.isConfigSupported(config).catch(() => undefined);
       if (!support?.supported) return this.fail(`${index.codec} isn't decodable here`);
       if (this.state === "broken") return;
@@ -206,7 +213,7 @@ export class ScrubSource {
       const decoder = this.ensureDecoder();
       // Batches of samples read with one range request each; the next batch is read while this one decodes.
       const batches: Array<{ first: number; last: number; start: number; end: number }> = [];
-      for (let s = job.from; s <= job.upTo; ) {
+      for (let s = job.from; s <= job.upTo;) {
         const start = index.offsets[s]!;
         let end = start + index.sizes[s]!;
         let last = s;
@@ -236,7 +243,14 @@ export class ScrubSource {
             if (job.gen !== this.gen) return;
           }
           const at = index.offsets[i]! - batch.start;
-          decoder.decode(new EncodedVideoChunk({ type: index.key[i] ? "key" : "delta", timestamp: Math.round(index.pts[i]! * 1e6), duration: Math.round(index.durations[i]! * 1e6), data: bytes.subarray(at, at + index.sizes[i]!) }));
+          decoder.decode(
+            new EncodedVideoChunk({
+              type: index.key[i] ? "key" : "delta",
+              timestamp: Math.round(index.pts[i]! * 1e6),
+              duration: Math.round(index.durations[i]! * 1e6),
+              data: bytes.subarray(at, at + index.sizes[i]!),
+            }),
+          );
           job.fed = i;
         }
       }

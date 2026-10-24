@@ -7,7 +7,18 @@
 import { keyDbAt, MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import { dbWords, panWords } from "@uncut/core/edit-log";
 import { DUCK_DEFAULTS, duckSettings } from "@uncut/core/ducking";
-import { DEFAULT_TARGET_LUFS, DUCK, effectName, effectSummary, LIMITER, LIMITER_CEILING_DB, projectTargetLufs, TARGET_LUFS_RANGE, targetWords, VOICE_PRESET } from "@uncut/core/effects";
+import {
+  DEFAULT_TARGET_LUFS,
+  DUCK,
+  effectName,
+  effectSummary,
+  LIMITER,
+  LIMITER_CEILING_DB,
+  projectTargetLufs,
+  TARGET_LUFS_RANGE,
+  targetWords,
+  VOICE_PRESET,
+} from "@uncut/core/effects";
 import type { ModuleUse } from "@uncut/core/types";
 
 import type { Plan } from "../timeline/edit.ts";
@@ -54,7 +65,12 @@ export function planFade(project: ProjectModel, itemId: string, edge: "in" | "ou
   if (next === (item[key] ?? 0)) return { ops: [], summary: "" };
   const secs = (next / project.canvas.fps).toFixed(1);
   const name = itemLabel(project, item);
-  return planUpdate(project, itemId, { [key]: next === 0 ? null : next }, next === 0 ? `Remove the fade ${edge} on ${name}` : `Fade ${edge} ${name} over ${secs} s`);
+  return planUpdate(
+    project,
+    itemId,
+    { [key]: next === 0 ? null : next },
+    next === 0 ? `Remove the fade ${edge} on ${name}` : `Fade ${edge} ${name} over ${secs} s`,
+  );
 }
 
 /** A track's volume in dB (the mixer is replaced whole, so mute and the rest are kept). */
@@ -65,11 +81,15 @@ export function planTrackGain(project: ProjectModel, trackId: string, db: number
   if (next === (track.mixer?.gainDb ?? 0)) return { ops: [], summary: "" };
   const { gainDb: _, ...rest } = track.mixer ?? {};
   const mixer = next === 0 ? rest : { ...rest, gainDb: next };
-  return { ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }], summary: `Set volume of track ${track.name} to ${dbWords(next)}` };
+  return {
+    ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }],
+    summary: `Set volume of track ${track.name} to ${dbWords(next)}`,
+  };
 }
 
 /** Tracks whose items can sound: audio tracks, and video tracks holding a clip with sound. */
-export const soundTrack = (project: ProjectModel, track: Track) => track.kind === "audio" || (track.kind === "video" && track.items.some((i) => hasSound(project, i)));
+export const soundTrack = (project: ProjectModel, track: Track) =>
+  track.kind === "audio" || (track.kind === "video" && track.items.some((i) => hasSound(project, i)));
 
 /** The volume slider's position for a dB value and back: −60 shows as −∞. */
 export const dbLabel = (db: number) => (db <= SILENCE_DB ? "−∞" : `${db > 0 ? "+" : db < 0 ? "−" : ""}${Math.abs(Math.round(db * 10) / 10)}`);
@@ -92,7 +112,10 @@ export function planTrackPan(project: ProjectModel, trackId: string, pan: number
   if (next === (track.mixer?.pan ?? 0)) return { ops: [], summary: "" };
   const { pan: _, ...rest } = track.mixer ?? {};
   const mixer = next === 0 ? rest : { ...rest, pan: next };
-  return { ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }], summary: `Pan ${track.name} ${panWords(next)}` };
+  return {
+    ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }],
+    summary: `Pan ${track.name} ${panWords(next)}`,
+  };
 }
 
 /** The master volume (project master.gainDb, after the track sum). 0 dB removes the field; loudness and the rest are kept. */
@@ -105,7 +128,8 @@ export function planMasterGain(project: ProjectModel, db: number): Plan | Proble
 }
 
 /** Why the master volume may not change the export's level (D83): loudness targets normalise after it. */
-export const MASTER_EXPORT_NOTE = "The master volume changes what you hear here and an export set to As mixed. Normal and Quieter even the loudness out afterwards, so there it only matters for the balance into the normaliser; at −∞ the export is silent.";
+export const MASTER_EXPORT_NOTE =
+  "The master volume changes what you hear here and an export set to As mixed. Normal and Quieter even the loudness out afterwards, so there it only matters for the balance into the normaliser; at −∞ the export is silent.";
 
 // ---- volume keys on the timeline (D83) ----
 
@@ -145,7 +169,12 @@ export function planAddGainKey(project: ProjectModel, itemId: string, frame: num
   keys.push({ frame: f, db: keyDb });
   keys.sort((a, b) => a.frame - b.frame);
   const fps = project.canvas.fps;
-  return planUpdate(project, itemId, { gainKeys: keys }, `Add volume key at ${secsOf(f, fps)}${db === undefined ? "" : ` (${dbWords((item.gainDb ?? 0) + keyDb)})`}`);
+  return planUpdate(
+    project,
+    itemId,
+    { gainKeys: keys },
+    `Add volume key at ${secsOf(f, fps)}${db === undefined ? "" : ` (${dbWords((item.gainDb ?? 0) + keyDb)})`}`,
+  );
 }
 
 /**
@@ -181,7 +210,8 @@ export function planRemoveGainKey(project: ProjectModel, itemId: string, index: 
 }
 
 /** The index (in frame order) of the key at `frame` in a plan's gainKeys, for selecting the key an edit made. */
-export const keyIndexAt = (keys: ReadonlyArray<GainKey> | null | undefined, frame: number) => (keys ? [...keys].sort((a, b) => a.frame - b.frame).findIndex((k) => k.frame === frame) : -1);
+export const keyIndexAt = (keys: ReadonlyArray<GainKey> | null | undefined, frame: number) =>
+  keys ? [...keys].sort((a, b) => a.frame - b.frame).findIndex((k) => k.frame === frame) : -1;
 
 // ---- track effects, ducking, the master limiter and loudness target (D84–D88) ----
 
@@ -224,7 +254,13 @@ export function planRemoveEffect(project: ProjectModel, trackId: string, index: 
   const fx = slotAt(track, index, module);
   if (!track) return GONE;
   if (!fx) return NO_SLOT;
-  return { ops: withEffects(track, track.mixer!.effects!.filter((_, i) => i !== index)), summary: `Remove ${effectName(fx.module)} from ${track.name}` };
+  return {
+    ops: withEffects(
+      track,
+      track.mixer!.effects!.filter((_, i) => i !== index),
+    ),
+    summary: `Remove ${effectName(fx.module)} from ${track.name}`,
+  };
 }
 
 /** Move the effect at `index` one place earlier (−1) or later (+1) in the chain, past slots the strip doesn't list (ducking). */
@@ -251,7 +287,13 @@ export function planBypassEffect(project: ProjectModel, trackId: string, index: 
   if ((fx.bypass === true) === bypass) return { ops: [], summary: "" };
   const { bypass: _, ...rest } = fx;
   const next: ModuleUse = bypass ? { ...rest, bypass: true } : rest;
-  return { ops: withEffects(track, track.mixer!.effects!.map((e, i) => (i === index ? next : e))), summary: `${bypass ? "Bypass" : "Turn on"} ${effectName(fx.module)} on ${track.name}` };
+  return {
+    ops: withEffects(
+      track,
+      track.mixer!.effects!.map((e, i) => (i === index ? next : e)),
+    ),
+    summary: `${bypass ? "Bypass" : "Turn on"} ${effectName(fx.module)} on ${track.name}`,
+  };
 }
 
 /** Change some params of the effect at `index` (a null removes one: back to its default). */
@@ -260,7 +302,7 @@ export function planEffectParams(project: ProjectModel, trackId: string, index: 
   const fx = slotAt(track, index, module);
   if (!track) return GONE;
   if (!fx) return NO_SLOT;
-  const params: Record<string, unknown> = { ...(fx.params ?? {}) };
+  const params: Record<string, unknown> = { ...fx.params };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined) delete params[k];
     else params[k] = typeof v === "number" ? Math.round(v * 100) / 100 : v;
@@ -269,21 +311,37 @@ export function planEffectParams(project: ProjectModel, trackId: string, index: 
   const { params: _, ...rest } = fx;
   const next: ModuleUse = Object.keys(params).length ? { ...rest, params } : rest;
   const label = (id: string) => project.tracks.find((t) => t.id === id)?.name ?? id;
-  return { ops: withEffects(track, track.mixer!.effects!.map((e, i) => (i === index ? next : e))), summary: `Set ${effectName(fx.module)} on ${track.name}: ${effectSummary(next, label)}` };
+  return {
+    ops: withEffects(
+      track,
+      track.mixer!.effects!.map((e, i) => (i === index ? next : e)),
+    ),
+    summary: `Set ${effectName(fx.module)} on ${track.name}: ${effectSummary(next, label)}`,
+  };
 }
 
 /**
  * Ducking (D85): duck a track under key tracks by amountDb with attack / release (and an optional
  * threshold); null stops it. One duck entry per track (it replaces the one there).
  */
-export function planDuck(project: ProjectModel, trackId: string, settings: { under: ReadonlyArray<string>; amountDb?: number; attackMs?: number; releaseMs?: number; thresholdDb?: number | null } | null): Plan | Problem {
+export function planDuck(
+  project: ProjectModel,
+  trackId: string,
+  settings: { under: ReadonlyArray<string>; amountDb?: number; attackMs?: number; releaseMs?: number; thresholdDb?: number | null } | null,
+): Plan | Problem {
   const track = trackOf(project, trackId);
   if (!track) return GONE;
   const list = track.mixer?.effects ?? [];
   const at = list.findIndex((fx) => fx.module === DUCK);
   if (!settings) {
     if (at < 0) return { ops: [], summary: "" };
-    return { ops: withEffects(track, list.filter((_, i) => i !== at)), summary: `Stop ducking ${track.name}` };
+    return {
+      ops: withEffects(
+        track,
+        list.filter((_, i) => i !== at),
+      ),
+      summary: `Stop ducking ${track.name}`,
+    };
   }
   const under = settings.under.filter((id) => id !== trackId && project.tracks.some((t) => t.id === id));
   if (!under.length) return { problem: "Choose a track to duck under." };
@@ -301,20 +359,30 @@ export function planDuck(project: ProjectModel, trackId: string, settings: { und
   const fx: ModuleUse = at >= 0 && list[at]!.bypass ? { module: DUCK, params, bypass: true } : { module: DUCK, params };
   if (at >= 0 && JSON.stringify(list[at]) === JSON.stringify(fx)) return { ops: [], summary: "" };
   const names = under.map((id) => project.tracks.find((t) => t.id === id)!.name).join(", ");
-  return { ops: withEffects(track, at >= 0 ? list.map((e, i) => (i === at ? fx : e)) : [...list, fx]), summary: `Duck ${track.name} under ${names} by ${dbWords(params.amountDb as number)}` };
+  return {
+    ops: withEffects(track, at >= 0 ? list.map((e, i) => (i === at ? fx : e)) : [...list, fx]),
+    summary: `Duck ${track.name} under ${names} by ${dbWords(params.amountDb as number)}`,
+  };
 }
 
 /** The master limiter (D86): on at `ceilingDb` (−1 dBTP, the default, removes the entry), or bypassed. */
 export function planMasterLimiter(project: ProjectModel, on: boolean, ceilingDb = LIMITER_CEILING_DB): Plan | Problem {
   const ceiling = Math.round(Math.min(0, Math.max(-12, ceilingDb)) * 10) / 10;
   const others = (project.master?.effects ?? []).filter((fx) => fx.module !== LIMITER);
-  const entry: ModuleUse | undefined = !on ? { module: LIMITER, bypass: true } : ceiling === LIMITER_CEILING_DB ? undefined : { module: LIMITER, params: { ceilingDb: ceiling } };
+  const entry: ModuleUse | undefined = !on
+    ? { module: LIMITER, bypass: true }
+    : ceiling === LIMITER_CEILING_DB
+      ? undefined
+      : { module: LIMITER, params: { ceilingDb: ceiling } };
   const effects = entry ? [...others, entry] : others;
   if (JSON.stringify(effects) === JSON.stringify(project.master?.effects ?? [])) return { ops: [], summary: "" };
   const { effects: _, ...rest } = project.master ?? {};
   const master = effects.length ? { ...rest, effects } : rest;
   const words = `${ceiling < 0 ? "−" : ""}${Math.abs(ceiling)} dBTP`;
-  return { ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }], summary: on ? `Set the master limiter to ${words}` : "Turn off the master limiter" };
+  return {
+    ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }],
+    summary: on ? `Set the master limiter to ${words}` : "Turn off the master limiter",
+  };
 }
 
 /** The project's loudness target (D87): master.loudness.targetLufs, which the export dialog starts from. −14 (the default) removes it. */
@@ -323,5 +391,8 @@ export function planLoudnessTarget(project: ProjectModel, lufs: number): Plan | 
   if (next === projectTargetLufs(project) && (next !== DEFAULT_TARGET_LUFS || !project.master?.loudness)) return { ops: [], summary: "" };
   const { loudness: _, ...rest } = project.master ?? {};
   const master = next === DEFAULT_TARGET_LUFS ? rest : { ...rest, loudness: { targetLufs: next } };
-  return { ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }], summary: `Set the loudness target to ${targetWords(next)}` };
+  return {
+    ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }],
+    summary: `Set the loudness target to ${targetWords(next)}`,
+  };
 }

@@ -26,10 +26,21 @@ export function BackgroundEditor({ project, item, locked }: { project: ProjectMo
     send((p) => planBackground(p, item.id, patch), d);
   };
   const setFill = (next: Fill) =>
-    commit(next === "solid" ? { to: null } : { to: props.to ?? "#3B1E54", gradient: next === "radial" ? "radial" : null, angle: next === "linear" ? (props.angle ?? 160) : null });
+    commit(
+      next === "solid"
+        ? { to: null }
+        : { to: props.to ?? "#3B1E54", gradient: next === "radial" ? "radial" : null, angle: next === "linear" ? (props.angle ?? 160) : null },
+    );
   const stop = (key: "color" | "via" | "to", label: string, testId: string, fallback: string, remove?: () => void) => (
     <Prop label={label} onReset={remove} testId={`${testId}-row`}>
-      <SettledColorField project={project} testId={testId} value={props[key] ?? fallback} disabled={locked} onPreview={(c) => preview({ [key]: c })} onCommit={(c) => commit({ [key]: c })} />
+      <SettledColorField
+        project={project}
+        testId={testId}
+        value={props[key] ?? fallback}
+        disabled={locked}
+        onPreview={(c) => preview({ [key]: c })}
+        onCommit={(c) => commit({ [key]: c })}
+      />
     </Prop>
   );
   return (
@@ -64,13 +75,31 @@ export function BackgroundEditor({ project, item, locked }: { project: ProjectMo
         )}
         {fill === "linear" && (
           <Prop label="Angle">
-            <SliderNum testId="bg-angle" value={props.angle ?? 180} min={0} max={360} unit="°" disabled={locked} onPreview={(v) => preview({ angle: v })} onCommit={(v) => commit({ angle: v })} />
+            <SliderNum
+              testId="bg-angle"
+              value={props.angle ?? 180}
+              min={0}
+              max={360}
+              unit="°"
+              disabled={locked}
+              onPreview={(v) => preview({ angle: v })}
+              onCommit={(v) => commit({ angle: v })}
+            />
           </Prop>
         )}
       </Section>
       <Section title="Grain" testId="bg-sec-grain">
         <Prop label="Amount" onReset={props.noise ? () => commit({ noise: null }) : undefined}>
-          <SliderNum testId="bg-noise" value={Math.round((props.noise ?? 0) * 100)} min={0} max={100} unit="%" disabled={locked} onPreview={(v) => preview({ noise: v / 100 })} onCommit={(v) => commit({ noise: v / 100 })} />
+          <SliderNum
+            testId="bg-noise"
+            value={Math.round((props.noise ?? 0) * 100)}
+            min={0}
+            max={100}
+            unit="%"
+            disabled={locked}
+            onPreview={(v) => preview({ noise: v / 100 })}
+            onCommit={(v) => commit({ noise: v / 100 })}
+          />
         </Prop>
       </Section>
     </div>

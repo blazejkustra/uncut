@@ -58,7 +58,8 @@ test("#81: every Uncut tool the prompt or the docs name is served", () => {
   // Full names (mcp__uncut__x).
   for (const [, name] of text.matchAll(/mcp__uncut__([a-z_]+)/g)) assert.ok(served.has(name!), `mcp__uncut__${name} isn't served`);
   // Short names: every tool the spec defines that the prompt mentions.
-  for (const t of toolsSpec.tools) if (new RegExp(`\\b${t.name}\\b`).test(text)) assert.ok(served.has(t.name), `the prompt names ${t.name}, which isn't served`);
+  for (const t of toolsSpec.tools)
+    if (new RegExp(`\\b${t.name}\\b`).test(text)) assert.ok(served.has(t.name), `the prompt names ${t.name}, which isn't served`);
 });
 
 test("#81: the prompt's example end card names no real product", () => {
@@ -71,8 +72,14 @@ test("#84: the gate holds only the turn that is planning; later small edits go a
   const sb = (status: "proposed" | "approved" | "declined") => ({ summary: "s", beats: [], status, ...(status === "declined" ? { note: "more logo" } : {}) });
   // This turn wrote the brief (or proposed the storyboard): refused until approved.
   assert.match(gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false, true))!, /no storyboard yet/);
-  assert.match(gateRefusal({ brief, storyboard: sb("declined"), reviews: [] }, gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false, true))!, /more logo/);
-  assert.match(gateRefusal({ brief, storyboard: sb("proposed"), reviews: [] }, gateOf({ brief, storyboard: sb("proposed"), reviews: [] }, false, true))!, /waiting for the user's approval/);
+  assert.match(
+    gateRefusal({ brief, storyboard: sb("declined"), reviews: [] }, gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false, true))!,
+    /more logo/,
+  );
+  assert.match(
+    gateRefusal({ brief, storyboard: sb("proposed"), reviews: [] }, gateOf({ brief, storyboard: sb("proposed"), reviews: [] }, false, true))!,
+    /waiting for the user's approval/,
+  );
   // A later turn (a small edit): never refused, pending or declined.
   for (const status of ["proposed", "declined"] as const) {
     const plan = { brief, storyboard: sb(status), reviews: [] };
@@ -89,7 +96,10 @@ test("#84: the gate holds only the turn that is planning; later small edits go a
     assert.equal(gateRefusal(plan, gateOf(plan, false, false), [{ op: "update_item", item: "t1", set: { style: { size: 140 } } }]), undefined);
     assert.equal(gateRefusal(plan, gateOf(plan, false, false), scene.slice(0, 2)), undefined, "a title and its background");
   }
-  assert.match(gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false), [...scene, { op: "insert_text", text: "x" }])!, /no storyboard yet[\s\S]*adds 4 items/);
+  assert.match(
+    gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false), [...scene, { op: "insert_text", text: "x" }])!,
+    /no storyboard yet[\s\S]*adds 4 items/,
+  );
   const ok = { brief, storyboard: sb("approved"), reviews: [] };
   assert.equal(gateRefusal(ok, gateOf(ok, false, false), scene), undefined, "approved: build away");
   assert.equal(gateRefusal({ reviews: [] }, gateOf({ reviews: [] }, false), scene), undefined, "no brief: no gate");
@@ -98,8 +108,15 @@ test("#84: the gate holds only the turn that is planning; later small edits go a
   assert.equal(gateOf({ brief, reviews: [] }, true, true).closed, false);
   assert.equal(gateOf({ reviews: [] }, false, true).closed, false);
   // The message's <plan> tells the agent small edits go ahead.
-  const ctx = planContext({ files: {}, skills: [], others: [] }, { brief, storyboard: sb("declined"), reviews: [] }, gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false));
-  assert.match(ctx, /The storyboard isn't approved: a small edit the user asks for goes ahead \(at most 2 new items per timeline_edit\); building the planned video waits/);
+  const ctx = planContext(
+    { files: {}, skills: [], others: [] },
+    { brief, storyboard: sb("declined"), reviews: [] },
+    gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false),
+  );
+  assert.match(
+    ctx,
+    /The storyboard isn't approved: a small edit the user asks for goes ahead \(at most 2 new items per timeline_edit\); building the planned video waits/,
+  );
   assert.ok(!/The build waits for/.test(ctx));
 });
 

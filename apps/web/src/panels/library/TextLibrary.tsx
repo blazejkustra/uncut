@@ -23,7 +23,11 @@ function TextThumb({ preset, project }: { preset: TextPreset; project: Project }
   // Tiles show text as new projects draw it (D80: no soft shadow by default).
   const target = { canvas: THUMB_CANVAS, theme: project.theme, textLooks: 1 };
   const empty = { canvas: THUMB_CANVAS, theme: project.theme, media: [], tracks: [] };
-  const plan = planInsertText(empty, { look: preset.module, text: preset.text, start: 0, duration: 90, animation: null }, preset.look ? { [preset.module]: preset.look } : {});
+  const plan = planInsertText(
+    empty,
+    { look: preset.module, text: preset.text, start: 0, duration: 90, animation: null },
+    preset.look ? { [preset.module]: preset.look } : {},
+  );
   const items = "ops" in plan ? plan.ops.flatMap((op) => (op.op === "insert_item" ? [op.item as Item] : [])) : [];
   // Renamed (class tt-text, no data-item) so the preview's text queries never find a tile's.
   const html = items.map((item) => textHtml(item, target).replace(/^<div class="pv-text" data-item="[^"]*"/, '<div class="tt-text"')).join("");
@@ -45,7 +49,12 @@ function TextThumb({ preset, project }: { preset: TextPreset; project: Project }
         const cs = getComputedStyle(t);
         const padX = cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? parseFloat(cs.paddingLeft) || 0 : 0;
         const padY = cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? parseFloat(cs.paddingTop) || 0 : 0;
-        return { l: (r.left - origin.left) / scale - padX, t: (r.top - origin.top) / scale - padY, r: (r.right - origin.left) / scale + padX, b: (r.bottom - origin.top) / scale + padY };
+        return {
+          l: (r.left - origin.left) / scale - padX,
+          t: (r.top - origin.top) / scale - padY,
+          r: (r.right - origin.left) / scale + padX,
+          b: (r.bottom - origin.top) / scale + padY,
+        };
       });
       const left = Math.min(...rects.map((r) => r.l));
       const top = Math.min(...rects.map((r) => r.t));

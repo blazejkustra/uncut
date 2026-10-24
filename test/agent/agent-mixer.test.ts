@@ -9,7 +9,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { panGains } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
@@ -27,7 +26,12 @@ const which = (name: string) => {
 };
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
-const skip = !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) || !existsSync(DESKTOP) ? "server bundle, desktop or media core not built (run pnpm build)" : !FFMPEG || !FFPROBE ? "ffmpeg isn't installed" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MCP) || !existsSync(MEDIA) || !existsSync(DESKTOP)
+    ? "server bundle, desktop or media core not built (run pnpm build)"
+    : !FFMPEG || !FFPROBE
+      ? "ffmpeg isn't installed"
+      : false;
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type Client = Awaited<ReturnType<typeof connect>>;
@@ -65,7 +69,14 @@ before(async () => {
   writeFileSync(join(root, "prompts.jsonl"), "");
   writeFileSync(resultLog(), "");
   server = await startServer({
-    env: { PATH: `${shimDir}:/usr/bin:/bin`, UNCUT_DATA_DIR: join(root, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_RESULT_LOG: resultLog() },
+    env: {
+      PATH: `${shimDir}:/usr/bin:/bin`,
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan(),
+      FAKE_PROMPT_LOG: join(root, "prompts.jsonl"),
+      FAKE_RESULT_LOG: resultLog(),
+    },
   });
   client = await connect(server.ready.port, server.ready.token);
   agent = client.subscribe("agent.subscribe");
@@ -119,13 +130,23 @@ test("the agent pans the music, solos the voice and sets the master volume; the 
   assert.deepEqual(p.tracks.find((t: any) => t.id === "music").mixer, { gainDb: -6, pan: -0.4 });
   assert.deepEqual(p.tracks.find((t: any) => t.id === "voice").mixer, { solo: true });
   assert.deepEqual(p.master, { gainDb: -3 });
-  assert.deepEqual(turn.edits[0].lines, ["Set volume of track music to −6 dB, panned 40 % left", "Set mixer of track voice: soloed", "Set master volume to −3 dB"]);
+  assert.deepEqual(turn.edits[0].lines, [
+    "Set volume of track music to −6 dB, panned 40 % left",
+    "Set mixer of track voice: soloed",
+    "Set master volume to −3 dB",
+  ]);
   // The export of this project: only the soloed voice, at the master volume; the music would be panned.
   const exported = planExport(p, { mediaPath: (m) => join(dir, m.path), width: 640, height: 360 });
   assert.ok(!("problem" in exported));
-  assert.deepEqual(exported.audio.map((a) => a.item.id), ["v"]);
+  assert.deepEqual(
+    exported.audio.map((a) => a.item.id),
+    ["v"],
+  );
   assert.ok(Math.abs(exported.masterGain - 10 ** (-3 / 20)) < 1e-9);
-  const unsolo = planExport({ ...p, tracks: p.tracks.map((t: any) => (t.id === "voice" ? { ...t, mixer: undefined } : t)) }, { mediaPath: (m) => m.path, width: 640, height: 360 });
+  const unsolo = planExport(
+    { ...p, tracks: p.tracks.map((t: any) => (t.id === "voice" ? { ...t, mixer: undefined } : t)) },
+    { mediaPath: (m) => m.path, width: 640, height: 360 },
+  );
   assert.ok(!("problem" in unsolo));
   assert.deepEqual(unsolo.audio.find((a) => a.item.id === "s")!.pan, panGains(-0.4));
 
@@ -135,7 +156,10 @@ test("the agent pans the music, solos the voice and sets the master volume; the 
     { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Too far", ops: [{ op: "update_track", track: "music", set: { mixer: { pan: -2 } } }] } },
   ]);
   assert.equal(bad.status, "done");
-  const results = readFileSync(resultLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l).result);
+  const results = readFileSync(resultLog(), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l).result);
   const lastResult = results.at(-1);
   // project_read shows the mix and says what the solo leaves audible.
   const summary = JSON.parse(results.at(-2).content[0].text);
@@ -158,7 +182,10 @@ test("the system prompt: pan, solo and the master volume are heard, with an exam
   assert.match(AGENT_TEXT, /mixer\.pan from -1 \(left\)/);
   assert.match(AGENT_TEXT, /mixer\.solo \(if any track is soloed, only soloed tracks sound, in the preview and the export/);
   assert.match(AGENT_TEXT, /"op":"update_project","set":\{"master":\{"gainDb":-3\}\}/);
-  assert.match(AGENT_TEXT, /track volume, pan, mute and solo, track effects \(EQ, compressor, voice, noise removal\), ducking, the master volume and the master limiter/);
+  assert.match(
+    AGENT_TEXT,
+    /track volume, pan, mute and solo, track effects \(EQ, compressor, voice, noise removal\), ducking, the master volume and the master limiter/,
+  );
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
   assert.match(prompt.system ?? "", /docs_read \{topic\}[^\n]*sound/, "the CLI is told where the sound reference is");
 });

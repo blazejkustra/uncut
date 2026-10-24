@@ -25,7 +25,11 @@ import type { TranscriptCtx } from "./transcript.ts";
  * zone already. A kit folder that is a symlink out of the kits folder sanctions nothing, so a link
  * can't open up any folder it points at.
  */
-export const sanctionedDirs = (config: { readonly dataDir: string; readonly graphicLibsDir: string }, projectDir: string, kit: string | null): Array<string> => {
+export const sanctionedDirs = (
+  config: { readonly dataDir: string; readonly graphicLibsDir: string },
+  projectDir: string,
+  kit: string | null,
+): Array<string> => {
   const dirs = [realPath(config.graphicLibsDir, projectDir)];
   if (kit && BRAND_ID.test(kit)) {
     const kits = join(globalBrandDir(config.dataDir), "kits");
@@ -44,20 +48,39 @@ const FONT_DOWNLOAD_TYPES = Object.fromEntries(Object.entries(BRAND_DOWNLOAD_TYP
  * family name it doesn't take. A taken name gets a numbered weightless style (Geist-2.woff2), so the
  * family stays the one reported.
  */
-export async function intoFonts(path: string, projectDir: string, name: string | undefined): Promise<{ readonly path: string; readonly family: string } | { readonly problem: string }> {
+export async function intoFonts(
+  path: string,
+  projectDir: string,
+  name: string | undefined,
+): Promise<{ readonly path: string; readonly family: string } | { readonly problem: string }> {
   const refuse = async (problem: string) => (await rm(path, { force: true }), { problem });
-  const size = await stat(path).then((x) => x.size, () => 0);
-  if (size > MAX_KIT_FONT_BYTES) return refuse(`the font file is ${(size / 1024 / 1024).toFixed(1)} MB; fonts over ${MAX_KIT_FONT_BYTES / 1024 / 1024} MB aren't used.`);
+  const size = await stat(path).then(
+    (x) => x.size,
+    () => 0,
+  );
+  if (size > MAX_KIT_FONT_BYTES)
+    return refuse(`the font file is ${(size / 1024 / 1024).toFixed(1)} MB; fonts over ${MAX_KIT_FONT_BYTES / 1024 / 1024} MB aren't used.`);
   const ext = extname(path).toLowerCase();
   const stem = (name ? safeName(name) : basename(path, extname(path))).replace(/ \d+$/, "");
   // The family as projectFontSources reads it: the file's own name table (TTF, OTF), else its name before the first dash.
   const own = ext === ".ttf" || ext === ".otf" ? (await fontFileFamilies(path))[0] : undefined;
   const family = (own ?? stem.split("-")[0]!.replace(/_+/g, " ")).trim();
-  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(family)) return refuse(`"${family.slice(0, 100)}" isn't a family name fonts are used by (letters, digits, spaces, _ . -; up to 80). Name the download after the family, e.g. "Geist".`);
+  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(family))
+    return refuse(
+      `"${family.slice(0, 100)}" isn't a family name fonts are used by (letters, digits, spaces, _ . -; up to 80). Name the download after the family, e.g. "Geist".`,
+    );
   const dir = projectFontsDir(projectDir);
   await mkdir(dir, { recursive: true });
   let target = join(dir, `${stem}${ext}`);
-  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = join(dir, `${stem}-${n}${ext}`);
+  for (
+    let n = 2;
+    await stat(target).then(
+      () => true,
+      () => false,
+    );
+    n++
+  )
+    target = join(dir, `${stem}-${n}${ext}`);
   await rename(path, target);
   return { path: target, family };
 }
@@ -80,9 +103,11 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     let select: string | undefined;
     if (args.select !== undefined) {
       const ids = Array.isArray(args.select) ? args.select : typeof args.select === "string" ? [args.select] : [];
-      if (ids.length !== 1 || typeof ids[0] !== "string") return textResult("select takes one item id, e.g. [\"clip-1\"] (the editor selects one item at a time).", true);
+      if (ids.length !== 1 || typeof ids[0] !== "string")
+        return textResult('select takes one item id, e.g. ["clip-1"] (the editor selects one item at a time).', true);
       const id = ids[0];
-      if (!project.tracks.some((t) => t.items.some((i) => i.id === id))) return textResult(`There's no timeline item "${id}". project_read lists the items.`, true);
+      if (!project.tracks.some((t) => t.items.some((i) => i.id === id)))
+        return textResult(`There's no timeline item "${id}". project_read lists the items.`, true);
       select = id;
       said.push(id);
     }
@@ -92,22 +117,58 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       panel = args.panel as AgentUiPanel;
     }
     if (!said.length && !panel) return textResult("Pass frame, select or panel.", true);
-    r.owner.ui = { id: `${r.turn.id}-${++uiCount}`, revision: v.session.revision, ...(frame !== undefined ? { frame } : {}), ...(select ? { select } : {}), ...(panel ? { panel } : {}) };
+    r.owner.ui = {
+      id: `${r.turn.id}-${++uiCount}`,
+      revision: v.session.revision,
+      ...(frame !== undefined ? { frame } : {}),
+      ...(select ? { select } : {}),
+      ...(panel ? { panel } : {}),
+    };
     publish();
     // D235 (issue #64): the editor never moves the user's playhead or selection for the agent.
-    const shown = [...(said.length ? [`a pill over the preview points the user at ${said.join(" and ")} (a click jumps there; their playhead and selection stay put)`] : []), ...(panel ? [`the ${panel} panel is open`] : [])];
+    const shown = [
+      ...(said.length ? [`a pill over the preview points the user at ${said.join(" and ")} (a click jumps there; their playhead and selection stay put)`] : []),
+      ...(panel ? [`the ${panel} panel is open`] : []),
+    ];
     return textResult(`Shown: ${shown.join(", ")}.`);
   };
 
   /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-  const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"]; readonly brand?: AgentApproval["brand"]; readonly boot?: AgentApproval["boot"] }) =>
+  const askUser = (
+    r: Running,
+    text: string,
+    estimate: number,
+    screen?: AgentApproval["screen"],
+    onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void,
+    edit?: AgentApproval["edit"],
+    more?: {
+      readonly question?: AgentQuestion;
+      readonly storyboard?: Storyboard;
+      readonly permission?: AgentApproval["permission"];
+      readonly brand?: AgentApproval["brand"];
+      readonly boot?: AgentApproval["boot"];
+    },
+  ) =>
     Effect.promise(
       () =>
         new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
           // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
           const long = !!(more?.question || more?.storyboard);
           const ms = long && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : long ? QUESTION_MS : approvalMs();
-          const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}), ...(more?.brand ? { brand: more.brand } : {}), ...(more?.boot ? { boot: more.boot } : {}) };
+          const card: AgentApproval = {
+            id: randomUUID(),
+            turnId: r.turn.id,
+            text,
+            estimate,
+            until: new Date(Date.now() + ms).toISOString(),
+            ...(screen ? { screen } : {}),
+            ...(edit ? { edit } : {}),
+            ...(more?.question ? { question: more.question } : {}),
+            ...(more?.storyboard ? { storyboard: more.storyboard } : {}),
+            ...(more?.permission ? { permission: more.permission } : {}),
+            ...(more?.brand ? { brand: more.brand } : {}),
+            ...(more?.boot ? { boot: more.boot } : {}),
+          };
           let settled = false;
           const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => {
             if (settled) return;
@@ -145,7 +206,9 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       r.downloads.count++;
       // A font file (WOFF2, WOFF, TTF, OTF) goes to the project's fonts folder, where every drawer
       // finds it by family (export/fonts.ts projectFontSources), not into Media.
-      const got = yield* Effect.promise(() => downloadToFolder(url, join(v.dir, "media", "downloads"), name, r.abort.signal, left, { ...DOWNLOAD_TYPES, ...FONT_DOWNLOAD_TYPES }));
+      const got = yield* Effect.promise(() =>
+        downloadToFolder(url, join(v.dir, "media", "downloads"), name, r.abort.signal, left, { ...DOWNLOAD_TYPES, ...FONT_DOWNLOAD_TYPES }),
+      );
       if (!("problem" in got)) r.downloads.bytes += got.bytes;
       if ("problem" in got) return textResult(`Not downloaded: ${got.problem}`, true);
       if (FONT_FORMATS[extname(got.path).toLowerCase()]) {
@@ -159,7 +222,8 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const out = yield* mediaImport(r, v, { path: got.path, ...(name ? { name } : {}) });
       const source = { url: got.url, bytes: got.bytes, type: got.type, file: shownPath(got.path, v.dir) };
       const first = out.content[0];
-      if (out.isError || first?.type !== "text") return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ downloaded: source }) }] };
+      if (out.isError || first?.type !== "text")
+        return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ downloaded: source }) }] };
       try {
         return { ...out, content: [{ type: "text" as const, text: JSON.stringify({ ...JSON.parse(first.text), source }) }, ...out.content.slice(1)] };
       } catch {
@@ -183,7 +247,9 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       if (s.closed || !s.child?.stdin) return;
       const response = answer.allow ? { behavior: "allow", updatedInput: answer.input } : { behavior: "deny", message: answer.message };
       try {
-        s.child.stdin.write(`${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: { ...response, ...(toolUseId ? { toolUseID: toolUseId } : {}) } } })}\n`);
+        s.child.stdin.write(
+          `${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: { ...response, ...(toolUseId ? { toolUseID: toolUseId } : {}) } } })}\n`,
+        );
       } catch {}
     });
   };
@@ -193,7 +259,13 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
    * (claude's can_use_tool, a Codex approval request named as claude's tool: Bash, Write). `respond`
    * is called once, except when the CLI gives up on the request (s.prompts.get(key)).
    */
-  const permit = (s: ClaudeSession, requestId: string, tool: string, input: Record<string, unknown>, respond: (answer: { allow: true; input: Record<string, unknown> } | { allow: false; message: string }) => void) => {
+  const permit = (
+    s: ClaudeSession,
+    requestId: string,
+    tool: string,
+    input: Record<string, unknown>,
+    respond: (answer: { allow: true; input: Record<string, unknown> } | { allow: false; message: string }) => void,
+  ) => {
     let answered = false;
     const reply = (answer: Parameters<typeof respond>[0]) => {
       if (answered) return;
@@ -206,19 +278,36 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     const r = s.turn;
     if (!r || r.turn.status !== "running" || r.cancelled) return deny("Not done: no turn is running in Uncut.");
     // D194: approvals can't be trusted without the handshake: fail closed.
-    if (s.initFailed) return deny("Not done: Uncut couldn't set up approvals with Claude Code (it didn't answer initialize), so nothing that needs the user's OK runs in this session. Say what you would do.");
+    if (s.initFailed)
+      return deny(
+        "Not done: Uncut couldn't set up approvals with Claude Code (it didn't answer initialize), so nothing that needs the user's OK runs in this session. Say what you would do.",
+      );
     const project = realPath(r.owner.dir, r.owner.dir);
     // D296: the active kit's folder (the user's, or the project's own) and the bundled graphic
     // libraries are read without a card: Uncut points the agent at them.
     let sanctioned: ReadonlyArray<string> = [];
-    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted, dataDir: config.dataDir, claudeConfig: claudeConfigDirs() });
+    const ctx = () => ({
+      access: r.access,
+      project,
+      roots: r.owner.dirs,
+      sanctioned,
+      candidates: r.owner.mentioned,
+      grants: r.owner.grants,
+      webUsed: r.owner.webUsed,
+      tainted: r.owner.tainted,
+      dataDir: config.dataDir,
+      claudeConfig: claudeConfigDirs(),
+    });
     // claude may give up on it while the kit is looked up: then it's not answered at all.
     s.prompts.set(requestId, () => {
       answered = true;
       s.prompts.delete(requestId);
     });
     void readActive(r.owner.dir)
-      .then((active) => (sanctioned = sanctionedDirs(config, r.owner.dir, active.kit)), () => {})
+      .then(
+        (active) => (sanctioned = sanctionedDirs(config, r.owner.dir, active.kit)),
+        () => {},
+      )
       .then(() => decideFirst())
       .catch((error) => {
         // Always answered: a decision that failed is a no.
@@ -254,9 +343,17 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         let always = false;
         showing = true;
         const answer = await Effect.runPromise(
-          askUser(r, d.title, 0, undefined, (_card, _a, _source, extra) => {
-            always = extra?.always === true && !!d.grant;
-          }, undefined, { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } }),
+          askUser(
+            r,
+            d.title,
+            0,
+            undefined,
+            (_card, _a, _source, extra) => {
+              always = extra?.always === true && !!d.grant;
+            },
+            undefined,
+            { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } },
+          ),
         ).finally(() => (showing = false));
         if (answered) return;
         if (answer === "allow") {
@@ -268,7 +365,9 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
           return allow(d.updatedInput);
         }
         if (answer === "stopped") return deny("Not done: the turn was stopped.");
-        return deny(`Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`);
+        return deny(
+          `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`,
+        );
       };
       r.permissionQueue = r.permissionQueue.then(ask, ask).catch((error) => {
         console.error(`[uncut] permission prompt for ${tool} failed: ${(error as Error).message}`);

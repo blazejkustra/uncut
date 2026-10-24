@@ -25,7 +25,13 @@ export const crashOf = (process: string, error: unknown, fatal?: boolean): Spool
   const error_name = errorNameOf(error);
   const code = errorCodeOf(error);
   const stack = (error as { stack?: unknown } | null)?.stack;
-  return { process, error_name, crash_fingerprint: crashFingerprint(error_name, typeof stack === "string" ? stack : undefined), ...(code ? { code } : {}), ...(fatal !== undefined ? { fatal } : {}) };
+  return {
+    process,
+    error_name,
+    crash_fingerprint: crashFingerprint(error_name, typeof stack === "string" ? stack : undefined),
+    ...(code ? { code } : {}),
+    ...(fatal !== undefined ? { fatal } : {}),
+  };
 };
 
 /** Appends one crash (synchronously: the process may be about to die). Never throws. */

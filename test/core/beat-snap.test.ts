@@ -6,7 +6,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Project } from "../../packages/core/src/index.ts";
-import { beatsInItem, beatTargets, MIN_BEAT_PX, planMove, planTrim, snapPlayhead, snapTargets, trimSnapTargets, visibleBeats, type BeatMap } from "../../apps/web/src/timeline/edit.ts";
+import {
+  beatsInItem,
+  beatTargets,
+  MIN_BEAT_PX,
+  planMove,
+  planTrim,
+  snapPlayhead,
+  snapTargets,
+  trimSnapTargets,
+  visibleBeats,
+  type BeatMap,
+} from "../../apps/web/src/timeline/edit.ts";
 
 const FPS = 30;
 // Beats every half second from 1 s: media frames 30, 45, 60, … of m-song (20 s long).
@@ -66,7 +77,10 @@ test("a beat's place on the timeline: (t·fps − in) / speed from the item's st
   // A looped 2 s file (60 frames) over 150 frames: its four beats, again every 60 frames.
   assert.deepEqual(beatsInItem(project, item("drums"), LOOP), [0, 15, 30, 45, 60, 75, 90, 105, 120, 135]);
   // A clip with sound has beats; one without, or text, has none.
-  assert.deepEqual(beatsInItem(project, item("cam"), [2.2, 3.3]).map((f) => Math.round(f * 1000) / 1000), [36, 69]);
+  assert.deepEqual(
+    beatsInItem(project, item("cam"), [2.2, 3.3]).map((f) => Math.round(f * 1000) / 1000),
+    [36, 69],
+  );
   assert.deepEqual(beatsInItem(project, item("mute"), [2, 3]), []);
   assert.deepEqual(beatsInItem(project, item("title"), [2, 3]), []);
 });

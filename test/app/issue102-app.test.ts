@@ -31,14 +31,26 @@ const ZIP = Buffer.concat([Buffer.from("PK\u0003\u0004"), Buffer.alloc(200_000, 
 const ZIP_NAME = "Uncut-99.0.0-arm64-mac.zip";
 const sha = (b: Buffer) => createHash("sha512").update(b).digest("base64");
 
-let root: string, feed: Server | undefined, feedUrl = "";
+let root: string,
+  feed: Server | undefined,
+  feedUrl = "";
 // What the feed answers: the version it offers, or a 404 (the private repository).
 let offer: string | "404" = VERSION;
 const requests: Array<{ url: string; staging: string | undefined }> = [];
 const apps = new Set<LaunchedApp>();
 
 const yml = (version: string) =>
-  [`version: ${version}`, "files:", `  - url: ${ZIP_NAME}`, `    sha512: ${sha(ZIP)}`, `    size: ${ZIP.length}`, `path: ${ZIP_NAME}`, `sha512: ${sha(ZIP)}`, `releaseDate: '2026-10-16T00:00:00.000Z'`, ""].join("\n");
+  [
+    `version: ${version}`,
+    "files:",
+    `  - url: ${ZIP_NAME}`,
+    `    sha512: ${sha(ZIP)}`,
+    `    size: ${ZIP.length}`,
+    `path: ${ZIP_NAME}`,
+    `sha512: ${sha(ZIP)}`,
+    `releaseDate: '2026-10-16T00:00:00.000Z'`,
+    "",
+  ].join("\n");
 
 const launch = async (env: NodeJS.ProcessEnv) => {
   const data = join(root, `data-${apps.size}-${Date.now()}`);
@@ -53,9 +65,20 @@ const close = async (app: LaunchedApp) => {
 };
 const until = async (check: () => boolean, ms: number, what: string, app?: LaunchedApp) => {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) if (check()) return;
-  assert.fail(`timed out: ${what}${app ? `\n${app.output().split("\n").filter((l) => l.includes("[updater]")).join("\n")}` : ""}`);
+  assert.fail(
+    `timed out: ${what}${
+      app
+        ? `\n${app
+            .output()
+            .split("\n")
+            .filter((l) => l.includes("[updater]"))
+            .join("\n")}`
+        : ""
+    }`,
+  );
 };
-const toast = (page: Page) => page.$eval("[data-testid=update-toast]", (el) => ({ kind: el.getAttribute("data-kind"), text: el.textContent ?? "" })).catch(() => undefined);
+const toast = (page: Page) =>
+  page.$eval("[data-testid=update-toast]", (el) => ({ kind: el.getAttribute("data-kind"), text: el.textContent ?? "" })).catch(() => undefined);
 
 before(async () => {
   if (skip) return;
@@ -121,7 +144,10 @@ test("Check for Updates…: up to date, then a newer version downloads: 'Uncut 9
   assert.match(ready, /Restart to update/);
   assert.match(ready, /Later/);
   await app.page.screenshot({ path: "test-output/issue102-ready.png" });
-  assert.ok(requests.some((r) => r.url === `/feed/${ZIP_NAME}`), "the zip came from the local feed");
+  assert.ok(
+    requests.some((r) => r.url === `/feed/${ZIP_NAME}`),
+    "the zip came from the local feed",
+  );
   // No per-install id with the requests: the same fixed one for everyone (D223).
   assert.ok(requests.length > 0 && requests.every((r) => r.staging === undefined || r.staging === NO_STAGING_ID), JSON.stringify(requests));
   // The update is cached under UNCUT_DATA_DIR, not the user's ~/Library/Caches.

@@ -78,7 +78,14 @@ const decide = (path: string, steps: Array<unknown>) => {
   writeFileSync(`${path}.tmp`, JSON.stringify(steps));
   renameSync(`${path}.tmp`, path);
 };
-const results = (): Array<Result> => (existsSync(resultLog()) ? readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+const results = (): Array<Result> =>
+  existsSync(resultLog())
+    ? readFileSync(resultLog(), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 const textOf = (r: Result["result"]) => r.content.find((c) => c.type === "text")!.text!;
 const jsonOf = (r: Result["result"]) => JSON.parse(textOf(r));
 /** The n-th result of `tool` from the start of the log (waits for it). */
@@ -97,7 +104,8 @@ async function resultOf(tool: string, nth = 0, timeout = 180000) {
 const waitFor = (selector: string, timeout = 20000) => page.waitForSelector(selector, { timeout });
 let dir = "";
 const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-const mainOf = (project: any) => project.tracks.find((t: any) => t.role === "main").items as Array<{ id: string; media: string; in?: number; duration: number }>;
+const mainOf = (project: any) =>
+  project.tracks.find((t: any) => t.role === "main").items as Array<{ id: string; media: string; in?: number; duration: number }>;
 const until = async (check: () => boolean, what: string, timeout = 15000) => {
   const end = Date.now() + timeout;
   while (!check()) {
@@ -132,10 +140,18 @@ async function send(prompt: string) {
 /** The n-th turn card (1-based). */
 const turnCard = async (n: number) => (await page.$$("[data-testid=agent-turn]"))[n - 1]!;
 const turnDone = (n: number, timeout: number) =>
-  page.waitForFunction((k) => ["done", "failed", "cancelled"].includes(document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? ""), { timeout }, n);
+  page.waitForFunction(
+    (k) => ["done", "failed", "cancelled"].includes(document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? ""),
+    { timeout },
+    n,
+  );
 const turnStatus = async (n: number) => (await turnCard(n)).evaluate((el) => [(el as HTMLElement).dataset.status, (el as HTMLElement).innerText] as const);
 const ssim = (a: string, b: string) => {
-  const r = spawnSync(FFMPEG!, ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=640:360,format=gray[a];[1]scale=640:360,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    FFMPEG!,
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=640:360,format=gray[a];[1]scale=640:360,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
 };
 const frameOf = (file: string, n: number, png: string) => {
@@ -194,8 +210,12 @@ test("phase 5 exit: the agent cuts a talk from its transcript and appends the cl
   } catch (error) {
     const panel = await page?.$eval("[data-testid=agent-panel]", (e) => (e as HTMLElement).innerText).catch(() => "(no agent panel)");
     await page?.screenshot({ path: out("phase5-failure.png") }).catch(() => {});
-    const log = results().map((r) => `${r.tool}: ${textOf(r.result).slice(0, 400)}`).join("\n");
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}` });
+    const log = results()
+      .map((r) => `${r.tool}: ${textOf(r.result).slice(0, 400)}`)
+      .join("\n");
+    throw Object.assign(error as Error, {
+      message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}`,
+    });
   }
   console.log(`exit check took ${((Date.now() - started) / 1000).toFixed(1)} s (plus making the footage)`);
 });
@@ -237,12 +257,20 @@ async function exitCheck() {
   awaited.add(cutSteps).add(appendSteps);
   nextTurn([
     { tool: "project_read" },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Put the talk on the timeline", ops: [{ op: "insert_item", track: "main", item: { id: "talk-1", type: "clip", media: "m-talk", in: 0, duration: talkFrames } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Put the talk on the timeline",
+        ops: [{ op: "insert_item", track: "main", item: { id: "talk-1", type: "clip", media: "m-talk", in: 0, duration: talkFrames } }],
+      },
+    },
     { tool: "media_analyze", args: { media: "m-talk", analyzers: ["loudness", "transcript"] } },
     { tool: "transcript_read", args: { media: "m-talk", format: "words" } },
     { await: cutSteps },
   ]);
-  const prompt = "Cut the talk tight from its transcript: remove fillers, long pauses and the sentence about deleting a take. Then append the cleanest drone take.";
+  const prompt =
+    "Cut the talk tight from its transcript: remove fillers, long pauses and the sentence about deleting a take. Then append the cleanest drone take.";
   const t2 = await send(prompt);
 
   const analyzed = await resultOf("media_analyze");
@@ -258,11 +286,20 @@ async function exitCheck() {
   assert.ok(to > from);
   if (!WHISPER_IT) {
     assert.equal(words.length, transcript.words.length);
-    assert.deepEqual(read.fillers.map((f: any) => [f.text, f.kind]), [["um", "hesitation"], ["uh", "hesitation"]]);
+    assert.deepEqual(
+      read.fillers.map((f: any) => [f.text, f.kind]),
+      [
+        ["um", "hesitation"],
+        ["uh", "hesitation"],
+      ],
+    );
     assert.equal(to - from + 1, target.length);
   }
   decide(cutSteps, [
-    { tool: "transcript_edit", args: { media: "m-talk", remove: [{ from: `w${words[from]!.i}`, to: `w${words[to]!.i}` }], fillers: true, pauses: { min: 0.5 } } },
+    {
+      tool: "transcript_edit",
+      args: { media: "m-talk", remove: [{ from: `w${words[from]!.i}`, to: `w${words[to]!.i}` }], fillers: true, pauses: { min: 0.5 } },
+    },
     { tool: "media_rank", args: { media: ["m-smooth", "m-jittered", "m-blurred"] } },
     { await: appendSteps },
   ]);
@@ -278,7 +315,14 @@ async function exitCheck() {
   const takeStart = cutMain.reduce((s, i) => s + i.duration, 0);
   decide(appendSteps, [
     { tool: "project_read" },
-    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Append the cleanest take", ops: [{ op: "insert_item", track: "main", item: { id: "take-1", type: "clip", media: top, in: 0, duration: byId.get(top)!.frames } }] } },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Append the cleanest take",
+        ops: [{ op: "insert_item", track: "main", item: { id: "take-1", type: "clip", media: top, in: 0, duration: byId.get(top)!.frames } }],
+      },
+    },
     { tool: "ui_show", args: { frame: takeStart, select: ["take-1"] } },
     { text: `Cut the talk to ${(takeStart / FPS).toFixed(1)} s and appended ${top}, the steadiest and sharpest take.` },
   ]);
@@ -290,15 +334,24 @@ async function exitCheck() {
   const main = mainOf(p2);
   const talk = main.slice(0, -1);
   assert.deepEqual([main.at(-1)!.id, main.at(-1)!.media, main.at(-1)!.in ?? 0, main.at(-1)!.duration], ["take-1", "m-smooth", 0, byId.get("m-smooth")!.frames]);
-  assert.ok(talk.every((i) => i.media === "m-talk"), JSON.stringify(main));
-  assert.ok(main.every((i) => i.duration >= 3), `no sliver under 3 frames: ${JSON.stringify(main.map((i) => i.duration))}`);
-  for (let k = 1; k < talk.length; k++) assert.ok((talk[k]!.in ?? 0) > (talk[k - 1]!.in ?? 0) + talk[k - 1]!.duration, "pieces in order with a cut between each");
+  assert.ok(
+    talk.every((i) => i.media === "m-talk"),
+    JSON.stringify(main),
+  );
+  assert.ok(
+    main.every((i) => i.duration >= 3),
+    `no sliver under 3 frames: ${JSON.stringify(main.map((i) => i.duration))}`,
+  );
+  for (let k = 1; k < talk.length; k++)
+    assert.ok((talk[k]!.in ?? 0) > (talk[k - 1]!.in ?? 0) + talk[k - 1]!.duration, "pieces in order with a cut between each");
   const kept = talk.reduce((s, i) => s + i.duration, 0);
   const removed = talkFrames - kept;
   const cuts = expectedCuts(fixture, { frames: talkFrames });
   const expectedRemoved = cuts.reduce((s, [a, b]) => s + b - a, 0);
   const sentence = fixture.layout.find((p) => p.text === CUT_SENTENCE)!;
-  console.log(`talk ${talkFrames} → ${kept} frames: removed ${removed} (${(removed / FPS).toFixed(2)} s; from the layout ${expectedRemoved}) in ${talk.length} pieces; the sentence alone is ${((sentence.end - sentence.start) * FPS).toFixed(1)} frames`);
+  console.log(
+    `talk ${talkFrames} → ${kept} frames: removed ${removed} (${(removed / FPS).toFixed(2)} s; from the layout ${expectedRemoved}) in ${talk.length} pieces; the sentence alone is ${((sentence.end - sentence.start) * FPS).toFixed(1)} frames`,
+  );
   console.log(`  pieces [in, duration]: ${JSON.stringify(talk.map((i) => [i.in ?? 0, i.duration]))}`);
   console.log(`  expected cuts [from, to): ${JSON.stringify(cuts)}`);
   if (!WHISPER_IT) {
@@ -327,13 +380,20 @@ async function exitCheck() {
   } else {
     // Real whisper: its word times and fillers vary, so: the sentence and the long pauses went.
     const longPauses = fixture.layout.filter((p) => p.kind === "silence" && p.end - p.start >= 0.5).reduce((s, p) => s + (p.end - p.start) * FPS, 0);
-    assert.ok(removed >= ((sentence.end - sentence.start) * FPS + longPauses) * 0.7 && removed <= expectedRemoved * 1.4, `removed ${removed}, expected about ${expectedRemoved}`);
+    assert.ok(
+      removed >= ((sentence.end - sentence.start) * FPS + longPauses) * 0.7 && removed <= expectedRemoved * 1.4,
+      `removed ${removed}, expected about ${expectedRemoved}`,
+    );
   }
 
   // The turn: three edits as one, Undo turn available, ui_show's pill (D235) jumps to the take and selects it.
   await page.waitForSelector(`[data-testid=agent-change][data-from="${takeStart}"] [data-testid=agent-change-jump]`, { timeout: 10000 });
   await page.click("[data-testid=agent-change-jump]");
-  await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === f, { timeout: 10000 }, takeStart);
+  await page.waitForFunction(
+    (f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === f,
+    { timeout: 10000 },
+    takeStart,
+  );
   await page.waitForFunction(() => document.querySelector("[data-testid=timeline-item][data-item=take-1]")?.classList.contains("selected"), { timeout: 10000 });
   const card = await turnCard(t2);
   const steps = await card.$$eval("[data-testid=agent-step]", (els) => els.map((e) => e.textContent));
@@ -371,21 +431,44 @@ async function exitCheck() {
   await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "Talk cut.mp4");
   const e0 = Date.now();
   await page.click("[data-testid=export-start]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), { timeout: 300000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), {
+    timeout: 300000,
+  });
   assert.match(await page.$eval("[data-testid=export-status]", (el) => el.textContent ?? ""), /Saved/);
   console.log(`export (${total} frames, Draft): ${((Date.now() - e0) / 1000).toFixed(1)} s`);
   await page.keyboard.press("Escape");
-  const probe = JSON.parse(execFileSync(FFPROBE!, ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=width,height,nb_read_packets:format=duration", "-of", "json", saveAs], { encoding: "utf8" }));
+  const probe = JSON.parse(
+    execFileSync(
+      FFPROBE!,
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-count_packets",
+        "-show_entries",
+        "stream=width,height,nb_read_packets:format=duration",
+        "-of",
+        "json",
+        saveAs,
+      ],
+      { encoding: "utf8" },
+    ),
+  );
   const stream = probe.streams[0];
   assert.deepEqual([stream.width, stream.height], [1280, 720]);
   assert.equal(Number(stream.nb_read_packets), total, "one frame per timeline frame");
   assert.ok(Math.abs(Number(probe.format.duration) - total / FPS) < 0.1, `duration ${probe.format.duration} vs ${total / FPS}`);
   // Frames well into the take (at frame 0 the jitter is 0, so the jittered take matches there too).
   const shift = (n: number) => Math.hypot(3 * Math.sin(n * 2.7) + 2 * Math.sin(n * 5.3), 2 * Math.sin(n * 3.1) + 2 * Math.sin(n * 7.7));
-  const probes = Array.from({ length: 170 }, (_, k) => k + 5).filter((n) => shift(n) >= 3).slice(0, 3);
+  const probes = Array.from({ length: 170 }, (_, k) => k + 5)
+    .filter((n) => shift(n) >= 3)
+    .slice(0, 3);
   for (const n of probes) {
     const exported = frameOf(saveAs, takeStart + n, out(`phase5-export-take-${n}.png`));
-    const scores = Object.fromEntries((["smooth", "jittered", "blurred"] as const).map((k) => [k, ssim(exported, frameOf(fixture.takes[k], n, join(root, `${k}-${n}.png`)))]));
+    const scores = Object.fromEntries(
+      (["smooth", "jittered", "blurred"] as const).map((k) => [k, ssim(exported, frameOf(fixture.takes[k], n, join(root, `${k}-${n}.png`)))]),
+    );
     console.log(`  exported frame ${takeStart + n} (take frame ${n}, jitter ${shift(n).toFixed(1)} px) SSIM: ${JSON.stringify(scores)}`);
     // The test pattern's flat areas keep every SSIM high, so compare how unlike each one is: the
     // smooth take at least 2.5× closer than either other take (measured ~5× locally with ffmpeg 8;

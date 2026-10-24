@@ -68,7 +68,12 @@ export function makeScrubMarquee(ctx: ScrubMarqueeCtx) {
     }
     const hit = (m: Marquee) => {
       const r = lanes.getBoundingClientRect();
-      const box = { left: Math.min(m.x0, m.x1) + r.left, right: Math.max(m.x0, m.x1) + r.left, top: Math.min(m.y0, m.y1) + r.top, bottom: Math.max(m.y0, m.y1) + r.top };
+      const box = {
+        left: Math.min(m.x0, m.x1) + r.left,
+        right: Math.max(m.x0, m.x1) + r.left,
+        top: Math.min(m.y0, m.y1) + r.top,
+        bottom: Math.max(m.y0, m.y1) + r.top,
+      };
       const ids = [...lanes.querySelectorAll<HTMLElement>("[data-testid=timeline-item]")]
         .filter((el) => el.dataset.type !== "captions")
         .filter((el) => {

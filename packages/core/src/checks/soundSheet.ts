@@ -67,12 +67,15 @@ export function soundProfileText(p: SoundProfile): string {
   if (p === "off") return "off: no limits on sound effects";
   const l = SOUND_LIMITS[p];
   const level = l.underDb > 0 ? `${l.underDb} dB under the music` : `up to ${-l.underDb} dB over the music`;
-  if (p === "music") return "music only (the user's request): no sound effects; the sound is the music, judged on its tempo fitting the cutting and the cuts and big moments landing on its beats; an added effect is a finding, a press or a move without one never is";
-  if (p === "ui") return `ui: one soft effect per real cursor press, drag or morph (at most ${l.per10s} in any 10 s), ${level}, no meme sounds; a finding, never a blocker`;
+  if (p === "music")
+    return "music only (the user's request): no sound effects; the sound is the music, judged on its tempo fitting the cutting and the cuts and big moments landing on its beats; an added effect is a finding, a press or a move without one never is";
+  if (p === "ui")
+    return `ui: one soft effect per real cursor press, drag or morph (at most ${l.per10s} in any 10 s), ${level}, no meme sounds; a finding, never a blocker`;
   return `${p}: at most ${l.per10s} effects in any 10 s, ${level}${p === "strict" ? "; too many or too loud fails a review" : "; too many or too loud is a finding"}`;
 }
 
-const SFX_NAME = /\b(sfx|fx|whoosh|swoosh|swish|whip|click|tap|pop|boom|hit|impact|riser|rise|ding|chime|glitch|notification|swipe|thud|stinger|sting|blip|beep|typing|keyboard)\b/i;
+const SFX_NAME =
+  /\b(sfx|fx|whoosh|swoosh|swish|whip|click|tap|pop|boom|hit|impact|riser|rise|ding|chime|glitch|notification|swipe|thud|stinger|sting|blip|beep|typing|keyboard)\b/i;
 const SFX_TRACK = /\b(sfx|fx|effects?|sound effects?)\b/i;
 const MEME_NAME = /\b(bruh|airhorn|air horn|scratch|trombone|crickets|laugh|laughter|applause|vine|fahh?|oof|meme)\b/i;
 const HIT_NAME = /\b(boom|impact|hit|thud|slam|bass drop)\b/i;
@@ -103,10 +106,19 @@ function sfxKind(m: Media): SfxKind {
   const c = b?.category;
   const name = `${fileName(m)} ${m.name}`;
   if (c === "meme" || c === "crowd" || MEME_NAME.test(name)) return c === "meme" && b?.id === "dramatic-boom" ? "hit" : "meme";
-  if (c === "whoosh" || c === "transition" || c === "swipe" || c === "glitch" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name)) return "whoosh";
+  if (c === "whoosh" || c === "transition" || c === "swipe" || c === "glitch" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name))
+    return "whoosh";
   if (c === "riser" || /riser|rise|build/i.test(name)) return "riser";
   if (c === "impact" || HIT_NAME.test(name)) return "hit";
-  if (c === "ui" || c === "notification" || c === "pop" || c === "success" || c === "typing" || /click|tap|pop|ding|chime|blip|beep|notification|typing|keyboard/i.test(name)) return "ui";
+  if (
+    c === "ui" ||
+    c === "notification" ||
+    c === "pop" ||
+    c === "success" ||
+    c === "typing" ||
+    /click|tap|pop|ding|chime|blip|beep|notification|typing|keyboard/i.test(name)
+  )
+    return "ui";
   return "other";
 }
 
@@ -117,7 +129,10 @@ function sfxKind(m: Media): SfxKind {
  */
 export const keyboardSound = (s: Pick<PlacedSfx, "media">) => {
   const b = bundledSfxOf(s.media);
-  return b?.category === "typing" || /\b(typing|keyboard|keys|keystrokes?|key ?(press|stroke)e?s?|typewriter)\b/i.test(`${fileName(s.media)} ${s.media.name}`.replace(/[-_.]/g, " "));
+  return (
+    b?.category === "typing" ||
+    /\b(typing|keyboard|keys|keystrokes?|key ?(press|stroke)e?s?|typewriter)\b/i.test(`${fileName(s.media)} ${s.media.name}`.replace(/[-_.]/g, " "))
+  );
 };
 
 export const trackGain = (t: Track) => t.mixer?.gainDb ?? 0;
@@ -141,7 +156,8 @@ export function musicItems(ctx: CheckContext) {
       // D296: a long sound on a plain audio track ("Audio", a file named after its song) is music too,
       // unless it's named like an effect (and anything over 15 s: no effect is that long); before, a song not called "music" was neither music nor an effect.
       const effectNamed = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
-      if (MUSIC_NAME.test(fileName(m)) || ((musicTrack || !effectNamed) && item.duration > 6 * ctx.fps) || item.duration > 15 * ctx.fps) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: bpmInName(m) });
+      if (MUSIC_NAME.test(fileName(m)) || ((musicTrack || !effectNamed) && item.duration > 6 * ctx.fps) || item.duration > 15 * ctx.fps)
+        out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: bpmInName(m) });
     }
   }
   return out;
@@ -159,7 +175,17 @@ export function sfxItems(ctx: CheckContext): Array<PlacedSfx> {
       const bundled = bundledSfxOf(m);
       const named = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
       if (!bundled && !named && item.duration > 3 * ctx.fps) continue;
-      out.push({ item, track, start: startOf(ctx, item), media: m, label: bundled?.id ?? m.name, sound: bundled?.id ?? m.path, kind: sfxKind(m), gain: (item.gainDb ?? 0) + trackGain(track), bundled: !!bundled });
+      out.push({
+        item,
+        track,
+        start: startOf(ctx, item),
+        media: m,
+        label: bundled?.id ?? m.name,
+        sound: bundled?.id ?? m.path,
+        kind: sfxKind(m),
+        gain: (item.gainDb ?? 0) + trackGain(track),
+        bundled: !!bundled,
+      });
     }
   }
   return out.sort((a, b) => a.start - b.start);
@@ -189,7 +215,13 @@ export function visualEvents(ctx: CheckContext): Array<VisualEvent> {
       const name = item.type === "text" ? `"${textLabel(item.text)}"` : (item.name ?? item.id);
       const text = item.type === "text";
       if (s > 0) out.push({ frame: s, what: track.role === "main" ? `the cut to ${name}` : `${name} appearing`, text });
-      if (item.type === "component" || item.type === "graphic") out.push({ frame: s, until: item.type === "graphic" ? s + item.duration : s + Math.min(item.duration, ctx.fps), what: `${name}'s own animation`, text: false });
+      if (item.type === "component" || item.type === "graphic")
+        out.push({
+          frame: s,
+          until: item.type === "graphic" ? s + item.duration : s + Math.min(item.duration, ctx.fps),
+          what: `${name}'s own animation`,
+          text: false,
+        });
       if (item.animation?.in?.duration) out.push({ frame: s + item.animation.in.duration, what: `${name} landing`, text });
       for (const k of item.keys ?? []) if (k.frame > 0) out.push({ frame: s + k.frame, what: `${name}'s move at its key`, text: false });
       const end = s + item.duration;
@@ -204,7 +236,12 @@ export function hitsOf(ctx: CheckContext, s: PlacedSfx, events: ReadonlyArray<Vi
   const before = Math.round(SFX_SYNC_BEFORE_S * ctx.fps);
   const after = Math.max(2, Math.round(SFX_SYNC_AFTER_S * ctx.fps));
   const end = s.start + s.item.duration;
-  const [a, b] = s.kind === "whoosh" ? [s.start - before, s.start + Math.min(s.item.duration, ctx.fps)] : s.kind === "riser" ? [end - Math.round(0.4 * ctx.fps), end + after] : [s.start - before, s.start + after];
+  const [a, b] =
+    s.kind === "whoosh"
+      ? [s.start - before, s.start + Math.min(s.item.duration, ctx.fps)]
+      : s.kind === "riser"
+        ? [end - Math.round(0.4 * ctx.fps), end + after]
+        : [s.start - before, s.start + after];
   return events.filter((e) => (e.until !== undefined ? e.frame <= b && e.until >= a : e.frame >= a && e.frame <= b));
 }
 
@@ -219,7 +256,8 @@ export function busiest(starts: ReadonlyArray<number>, window: number) {
 }
 
 /** The music playing at a frame (the loudest, if several). */
-export const musicAt = (music: ReturnType<typeof musicItems>, frame: number) => music.filter((m) => frame >= m.start && frame < m.start + m.item.duration).sort((a, b) => b.gain - a.gain)[0];
+export const musicAt = (music: ReturnType<typeof musicItems>, frame: number) =>
+  music.filter((m) => frame >= m.start && frame < m.start + m.item.duration).sort((a, b) => b.gain - a.gain)[0];
 
 export const dbText = (db: number) => `${db > 0 ? "+" : db < 0 ? "−" : ""}${Math.abs(Math.round(db * 10) / 10)} dB`;
 
@@ -232,22 +270,38 @@ export function soundSheet(project: Project, options: { readonly speechMedia?: I
   const fps = ctx.fps;
   const lines: Array<string> = [];
   const music = musicItems(ctx);
-  for (const m of music) lines.push(`music ${secs(m.start, fps)} to ${secs(m.start + m.item.duration, fps)}: ${m.media.name}${m.bpm ? `, ${m.bpm} BPM` : m.bpm === null ? ", no steady beat" : ""}, at ${dbText(m.gain)}${m.item.fadeIn ? ", fades in" : ""}${m.item.fadeOut ? ", fades out" : ""}${duckEntry(m.track) ? ", ducked under the voice" : ""}`);
+  for (const m of music)
+    lines.push(
+      `music ${secs(m.start, fps)} to ${secs(m.start + m.item.duration, fps)}: ${m.media.name}${m.bpm ? `, ${m.bpm} BPM` : m.bpm === null ? ", no steady beat" : ""}, at ${dbText(m.gain)}${m.item.fadeIn ? ", fades in" : ""}${m.item.fadeOut ? ", fades out" : ""}${duckEntry(m.track) ? ", ducked under the voice" : ""}`,
+    );
   for (const track of ctx.project.tracks) {
     if (!isSpeechTrack(ctx, track) || !audible(ctx, track)) continue;
     const spoken = track.items.filter((i) => soundOf(ctx, i));
-    if (spoken.length) lines.push(`voice on ${track.name}: ${spoken.map((i) => `${secs(startOf(ctx, i), fps)} to ${secs(startOf(ctx, i) + i.duration, fps)}`).join(", ")}`);
+    if (spoken.length)
+      lines.push(`voice on ${track.name}: ${spoken.map((i) => `${secs(startOf(ctx, i), fps)} to ${secs(startOf(ctx, i) + i.duration, fps)}`).join(", ")}`);
   }
   const sfx = sfxItems(ctx);
   const events = visualEvents(ctx);
   for (const s of sfx) {
     const hits = hitsOf(ctx, s, events);
     const under = musicAt(music, s.start);
-    lines.push(`sound effect ${secs(s.start, fps)} (f ${s.start}): ${s.label} (${s.kind}), ${secs(s.item.duration, fps)}, at ${dbText(s.gain)}${under ? ` (${dbText(s.gain - under.gain)} against the music)` : ""}; ${hits.length ? `lands on ${hits.slice(0, 2).map((e) => `${e.what} (f ${e.frame})`).join(" and ")}` : "lands on nothing that changes on screen"}`);
+    lines.push(
+      `sound effect ${secs(s.start, fps)} (f ${s.start}): ${s.label} (${s.kind}), ${secs(s.item.duration, fps)}, at ${dbText(s.gain)}${under ? ` (${dbText(s.gain - under.gain)} against the music)` : ""}; ${
+        hits.length
+          ? `lands on ${hits
+              .slice(0, 2)
+              .map((e) => `${e.what} (f ${e.frame})`)
+              .join(" and ")}`
+          : "lands on nothing that changes on screen"
+      }`,
+    );
   }
   const length = Math.max(1, ctx.end);
   if (!music.length && !sfx.length) lines.push("No music and no sound effects.");
-  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; ${ctx.sound === "off" ? "no limit for this video" : ctx.sound === "music" ? "the user asked for the music only, so none are wanted" : `the bar is at most ${SOUND_LIMITS[ctx.sound].per10s}`}), ${new Set(sfx.map((s) => s.sound)).size} different`);
+  else
+    lines.push(
+      `${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; ${ctx.sound === "off" ? "no limit for this video" : ctx.sound === "music" ? "the user asked for the music only, so none are wanted" : `the bar is at most ${SOUND_LIMITS[ctx.sound].per10s}`}), ${new Set(sfx.map((s) => s.sound)).size} different`,
+    );
   lines.push(`Sound profile ${soundProfileText(ctx.sound)}.`);
   return lines;
 }

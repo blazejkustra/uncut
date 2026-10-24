@@ -68,7 +68,8 @@ async function load(dir: string, mediaId: string) {
 }
 
 /** The media with sound used on the timeline. */
-const soundMediaIds = (project: ProjectModel) => [...new Set(project.tracks.flatMap((t) => t.items.filter((i) => i.media && hasSound(project, i)).map((i) => i.media!)))].sort();
+const soundMediaIds = (project: ProjectModel) =>
+  [...new Set(project.tracks.flatMap((t) => t.items.filter((i) => i.media && hasSound(project, i)).map((i) => i.media!)))].sort();
 
 /** Keeps the beats of the timeline's media loaded for the open project. */
 export function useBeatsLoading(project: ProjectModel, dir: string) {

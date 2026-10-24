@@ -133,7 +133,16 @@ export function ShortcutSettings() {
             {a.keys.map((k) => (
               <kbd key={k}>{k}</kbd>
             ))}
-            <span className="shortcut-lock" title={a.fixed === "menu" ? "Set by the menu: can't be changed" : a.fixed === "pointer" ? "A mouse or trackpad gesture" : "Only in the full-screen preview"}>
+            <span
+              className="shortcut-lock"
+              title={
+                a.fixed === "menu"
+                  ? "Set by the menu: can't be changed"
+                  : a.fixed === "pointer"
+                    ? "A mouse or trackpad gesture"
+                    : "Only in the full-screen preview"
+              }
+            >
               <Lock />
             </span>
           </span>
@@ -164,7 +173,12 @@ export function ShortcutSettings() {
                     {k}
                   </button>
                   <Tooltip label={`Remove ${k}`}>
-                    <button className="shortcut-remove" data-testid="shortcut-remove" aria-label={`Remove ${k}`} onClick={() => (setPending(undefined), keymap.set(removeKey(keymap.get(), id, i)))}>
+                    <button
+                      className="shortcut-remove"
+                      data-testid="shortcut-remove"
+                      aria-label={`Remove ${k}`}
+                      onClick={() => (setPending(undefined), keymap.set(removeKey(keymap.get(), id, i)))}
+                    >
                       <X />
                     </button>
                   </Tooltip>
@@ -182,11 +196,22 @@ export function ShortcutSettings() {
                 </button>
               </Tooltip>
             )}
-            <button className="link-btn shortcut-clear" data-testid="shortcut-clear" disabled={!keys.length} onClick={() => (setPending(undefined), keymap.set(clearAction(keymap.get(), id)))}>
+            <button
+              className="link-btn shortcut-clear"
+              data-testid="shortcut-clear"
+              disabled={!keys.length}
+              onClick={() => (setPending(undefined), keymap.set(clearAction(keymap.get(), id)))}
+            >
               Clear
             </button>
             <Tooltip label={`Back to ${base[id].join(", ") || "no key"}`}>
-              <button className="icon-btn shortcut-reset" data-testid="shortcut-reset" disabled={!changed} aria-label="Reset" onClick={() => (setPending(undefined), keymap.set(resetAction(keymap.get(), id)))}>
+              <button
+                className="icon-btn shortcut-reset"
+                data-testid="shortcut-reset"
+                disabled={!changed}
+                aria-label="Reset"
+                onClick={() => (setPending(undefined), keymap.set(resetAction(keymap.get(), id)))}
+              >
                 <RotateCcw />
               </button>
             </Tooltip>
@@ -213,11 +238,21 @@ export function ShortcutSettings() {
                   <kbd>{pending.key}</kbd> is already {does(pending.check.by)}.
                 </span>
                 {pending.slot !== undefined && keys[pending.slot] !== undefined && (
-                  <button className="btn" data-testid="shortcut-swap" title={`${does(pending.check.by)} gets ${keys[pending.slot]}`} onClick={() => resolve("swap")}>
+                  <button
+                    className="btn"
+                    data-testid="shortcut-swap"
+                    title={`${does(pending.check.by)} gets ${keys[pending.slot]}`}
+                    onClick={() => resolve("swap")}
+                  >
                     Swap
                   </button>
                 )}
-                <button className="btn primary" data-testid="shortcut-replace" title={`${does(pending.check.by)} loses ${pending.key}`} onClick={() => resolve("replace")}>
+                <button
+                  className="btn primary"
+                  data-testid="shortcut-replace"
+                  title={`${does(pending.check.by)} loses ${pending.key}`}
+                  onClick={() => resolve("replace")}
+                >
                   Replace
                 </button>
                 <button className="btn" data-testid="shortcut-cancel" onClick={() => setPending(undefined)}>
@@ -244,13 +279,25 @@ export function ShortcutSettings() {
             ))}
           </select>
         </label>
-        {customised && <span className="muted small" data-testid="shortcut-customised">Customised</span>}
+        {customised && (
+          <span className="muted small" data-testid="shortcut-customised">
+            Customised
+          </span>
+        )}
         <span className="grow" />
-        <button className="btn" data-testid="shortcuts-reset-all" disabled={!customised} title="Drop your changes and use the preset's keys" onClick={() => choose(state.preset, true)}>
+        <button
+          className="btn"
+          data-testid="shortcuts-reset-all"
+          disabled={!customised}
+          title="Drop your changes and use the preset's keys"
+          onClick={() => choose(state.preset, true)}
+        >
           Reset all
         </button>
       </div>
-      <p className="shortcut-lead">Choosing a preset replaces your changes (it asks first). Actions the preset has no key for keep Uncut's. Keys set by the menu can't be changed.</p>
+      <p className="shortcut-lead">
+        Choosing a preset replaces your changes (it asks first). Actions the preset has no key for keep Uncut's. Keys set by the menu can't be changed.
+      </p>
       {clashes.length > 0 && (
         <div className="shortcut-clashes" data-testid="shortcut-conflicts" role="status">
           {clashes.map((c) => (
@@ -288,7 +335,19 @@ export function ShortcutSettings() {
  * D273: in the app (like Remove media's, F8), not a system dialog. Esc or a click outside cancels;
  * while it's open, Esc is its own (Settings under it stays open).
  */
-function PresetConfirm({ label, reset, changes, onCancel, onReplace }: { label: string; reset: boolean; changes: number; onCancel: () => void; onReplace: () => void }) {
+function PresetConfirm({
+  label,
+  reset,
+  changes,
+  onCancel,
+  onReplace,
+}: {
+  label: string;
+  reset: boolean;
+  changes: number;
+  onCancel: () => void;
+  onReplace: () => void;
+}) {
   useEffect(() => {
     setRecordingKey(true);
     const onKey = (e: KeyboardEvent) => {

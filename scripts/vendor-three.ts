@@ -32,7 +32,11 @@ const tmp = mkdtempSync(join(tmpdir(), "uncut-three-"));
 let minified: string;
 try {
   writeFileSync(join(tmp, "in.js"), wrapped);
-  execFileSync(esbuild, [join(tmp, "in.js"), `--outfile=${join(tmp, "out.js")}`, "--minify", "--legal-comments=inline", "--target=es2020", "--log-level=warning"], { stdio: ["ignore", "inherit", "inherit"] });
+  execFileSync(
+    esbuild,
+    [join(tmp, "in.js"), `--outfile=${join(tmp, "out.js")}`, "--minify", "--legal-comments=inline", "--target=es2020", "--log-level=warning"],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
   minified = readFileSync(join(tmp, "out.js"), "utf8");
 } finally {
   rmSync(tmp, { recursive: true, force: true });

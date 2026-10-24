@@ -20,7 +20,12 @@ export const SILENCES_WAIT_MS = 20_000;
 const MAX_SILENCES = 400;
 
 /** The loudness analyzer's result as media_analyze returns it: silences in project frames of the media too. */
-export function loudnessOut(result: LoudnessResult, cached: boolean, frames: (seconds: number, round: (x: number) => number) => number, range: { start: number; end: number } | undefined) {
+export function loudnessOut(
+  result: LoudnessResult,
+  cached: boolean,
+  frames: (seconds: number, round: (x: number) => number) => number,
+  range: { start: number; end: number } | undefined,
+) {
   if (!result.hasAudio) return { state: "done", cached, hasAudio: false, note: "This media has no sound, so there's nothing to measure." };
   const all = (result.silence?.ranges ?? [])
     .map((r) => ({ start: frames(r.start, Math.ceil), end: frames(r.end, Math.floor), startSeconds: r.start, endSeconds: r.end }))
@@ -45,6 +50,6 @@ export function loudnessOut(result: LoudnessResult, cached: boolean, frames: (se
 }
 
 /** contact_sheet: when the asked-for columns didn't fit the sheet, say what was used instead. */
-export const columnsNote = (asked: number | undefined, used: number) => (asked !== undefined && asked !== used ? `${asked} columns didn't fit the sheet's size, so it has ${used}.` : "");
-const timecode = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
+export const columnsNote = (asked: number | undefined, used: number) =>
+  asked !== undefined && asked !== used ? `${asked} columns didn't fit the sheet's size, so it has ${used}.` : "";
 export const realOr = (path: string, dir: string) => realpath(isAbsolute(path) ? path : resolve(dir, path)).catch(() => path);

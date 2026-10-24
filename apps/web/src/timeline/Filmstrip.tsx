@@ -99,7 +99,21 @@ function shownSpan(el: HTMLElement): { left: number; right: number; height: numb
  * The picture of a video clip `width` px wide (its `duration` frames at `ppf`): a filmstrip once
  * it's made, the poster (`poster`, repeated) until then.
  */
-export function ClipFilmstrip({ item, media, fps, duration, ppf, poster }: { item: Item; media: MediaItem; fps: number; duration: number; ppf: number; poster: string | undefined }) {
+export function ClipFilmstrip({
+  item,
+  media,
+  fps,
+  duration,
+  ppf,
+  poster,
+}: {
+  item: Item;
+  media: MediaItem;
+  fps: number;
+  duration: number;
+  ppf: number;
+  poster: string | undefined;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [span, setSpan] = useState<{ left: number; right: number; height: number } | undefined>(undefined);
   const strip = useStrip(media, span !== undefined);
@@ -153,14 +167,31 @@ export function ClipFilmstrip({ item, media, fps, duration, ppf, poster }: { ite
 
   const width = duration * ppf;
   if (!strip || !span || span.height <= 0) {
-    return <div ref={ref} className="strip filmstrip" data-testid="filmstrip" data-media={media.id} data-ready="false" style={poster ? { backgroundImage: `url("${poster}")` } : undefined} />;
+    return (
+      <div
+        ref={ref}
+        className="strip filmstrip"
+        data-testid="filmstrip"
+        data-media={media.id}
+        data-ready="false"
+        style={poster ? { backgroundImage: `url("${poster}")` } : undefined}
+      />
+    );
   }
   const { layout, src } = strip;
   const { width: cell, cells } = visibleCells(item, fps, layout, width, span.height, span.left, span.right);
   const scale = span.height / layout.tileHeight;
   const size = `${layout.cols * layout.tileWidth * scale}px ${layout.rows * layout.tileHeight * scale}px`;
   return (
-    <div ref={ref} className="strip filmstrip" data-testid="filmstrip" data-media={media.id} data-ready="true" data-interval={layout.interval} data-tiles={cells.map((c) => c.tile).join(",")}>
+    <div
+      ref={ref}
+      className="strip filmstrip"
+      data-testid="filmstrip"
+      data-media={media.id}
+      data-ready="true"
+      data-interval={layout.interval}
+      data-tiles={cells.map((c) => c.tile).join(",")}
+    >
       {cells.map((c) => (
         <div
           key={c.index}

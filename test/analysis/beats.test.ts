@@ -13,7 +13,17 @@ import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtemp
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { AnalysisQueue, analysisDir, cacheFile, fingerprint, parseAnalyzers, readCached, spawnRunner, type AnalysisTarget, type Runner } from "../../apps/server/src/analysis/analysis.ts";
+import {
+  AnalysisQueue,
+  analysisDir,
+  cacheFile,
+  fingerprint,
+  parseAnalyzers,
+  readCached,
+  spawnRunner,
+  type AnalysisTarget,
+  type Runner,
+} from "../../apps/server/src/analysis/analysis.ts";
 import { beatsOut, FIRST_BEATS } from "../../apps/server/src/agent/agentBeats.ts";
 import { framesFor } from "../../apps/server/src/agent/agentVideo.ts";
 import { clickTrack, drums, noise, pop, RATE, waltz, writeWav as wav } from "../helpers/beats-audio.ts";
@@ -48,7 +58,9 @@ function compare(found: ReadonlyArray<number>, truth: ReadonlyArray<number>, tol
 }
 
 const target = (path: string, mediaId: string): AnalysisTarget => ({ dir: project, mediaId, path, kind: "audio", hasAudio: true });
-const counting = (calls: Array<ReadonlyArray<string>>): Runner => (bin, args, options) => (calls.push(args), spawnRunner(bin, args, options));
+const counting =
+  (calls: Array<ReadonlyArray<string>>): Runner =>
+  (bin, args, options) => (calls.push(args), spawnRunner(bin, args, options));
 
 before(() => {
   if (skip) return;
@@ -76,7 +88,9 @@ for (const track of TRACKS) {
     assert.ok(Math.abs(r.seconds! - 30) < 0.01, `seconds ${r.seconds}`);
     assert.ok(r.bpm !== null && Math.abs(r.bpm! - track.bpm) <= 1, `bpm ${r.bpm}, wanted ${track.bpm}`);
     const c = compare(r.beats!, truth);
-    t.diagnostic(`${track.name}: bpm ${r.bpm} (truth ${track.bpm}), confidence ${r.confidence}, ${r.beats!.length}/${truth.length} beats, mean error ${c.meanMs} ms, max ${c.maxMs} ms, ${r.onsets!.length} onsets`);
+    t.diagnostic(
+      `${track.name}: bpm ${r.bpm} (truth ${track.bpm}), confidence ${r.confidence}, ${r.beats!.length}/${truth.length} beats, mean error ${c.meanMs} ms, max ${c.maxMs} ms, ${r.onsets!.length} onsets`,
+    );
     assert.deepEqual(c.missed, [], "every true beat found");
     assert.deepEqual(c.extra, [], "no extra beats");
     assert.ok(c.maxMs <= 30, `max error ${c.maxMs} ms`);
@@ -106,7 +120,9 @@ for (const track of HARD) {
     const { buf, truth } = track.make();
     const r = beatsFromSamples(buf);
     const c = compare(r.beats ?? [], truth);
-    t.diagnostic(`${track.name}: bpm ${r.bpm} (truth ${track.bpm}), confidence ${r.confidence}, ${r.beats!.length}/${truth.length} beats, mean error ${c.meanMs} ms, max ${c.maxMs} ms`);
+    t.diagnostic(
+      `${track.name}: bpm ${r.bpm} (truth ${track.bpm}), confidence ${r.confidence}, ${r.beats!.length}/${truth.length} beats, mean error ${c.meanMs} ms, max ${c.maxMs} ms`,
+    );
     assert.ok(r.bpm !== null && Math.abs(r.bpm! - track.bpm) <= 1, `bpm ${r.bpm}, wanted ${track.bpm}`);
     assert.deepEqual(c.missed, []);
     assert.deepEqual(c.extra, []);
@@ -114,7 +130,9 @@ for (const track of HARD) {
 }
 
 test("beats.ts can be the first module imported (no import cycle through the HTTP side)", () => {
-  const r = spawnSync(process.execPath, ["-e", "import('./apps/server/src/analysis/beats.ts').then((m) => console.log(m.BEATS_VERSION))"], { encoding: "utf8" });
+  const r = spawnSync(process.execPath, ["-e", "import('./apps/server/src/analysis/beats.ts').then((m) => console.log(m.BEATS_VERSION))"], {
+    encoding: "utf8",
+  });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), "2", "D296: beatLevels");
 });
@@ -142,7 +160,9 @@ test("speed: a 4-minute track, the DSP alone and ffmpeg + DSP end to end", { ski
   t0 = performance.now();
   const full = await analyzeBeats(ffmpegPath!, file, { signal: new AbortController().signal });
   const fullMs = Math.round(performance.now() - t0);
-  t.diagnostic(`4-minute track: DSP ${dspMs} ms (${Math.round(240000 / dspMs)}× realtime), ffmpeg decode + DSP ${fullMs} ms (${Math.round(240000 / fullMs)}× realtime), bpm ${full.bpm}, ${full.beats!.length} beats, ${full.onsets!.length} onsets`);
+  t.diagnostic(
+    `4-minute track: DSP ${dspMs} ms (${Math.round(240000 / dspMs)}× realtime), ffmpeg decode + DSP ${fullMs} ms (${Math.round(240000 / fullMs)}× realtime), bpm ${full.bpm}, ${full.beats!.length} beats, ${full.onsets!.length} onsets`,
+  );
   assert.ok(Math.abs(full.bpm! - 128) <= 1);
   assert.ok(fullMs < 24000, `at least 10× realtime end to end (${fullMs} ms)`);
   assert.ok(dspMs < 6000, `the DSP at least 40× realtime (${dspMs} ms)`);
@@ -175,7 +195,10 @@ test("the queue: a cached re-ask spawns nothing; the args decode the first audio
   assert.deepEqual(await silent.done, { state: "done", result: { hasAudio: false }, cached: false });
   assert.equal(calls.length, 1);
   // A cache file of the wrong shape is a miss (and is redone).
-  writeFileSync(cacheFile(project, fp, "beats"), JSON.stringify({ format: "uncut.analysis/0", analyzer: "beats", version: 1, fingerprint: fp, createdAt: "", result: { hasAudio: true, bpm: "fast" } }));
+  writeFileSync(
+    cacheFile(project, fp, "beats"),
+    JSON.stringify({ format: "uncut.analysis/0", analyzer: "beats", version: 1, fingerprint: fp, createdAt: "", result: { hasAudio: true, bpm: "fast" } }),
+  );
   assert.equal(await readCached(project, fp, "beats"), undefined);
 });
 
@@ -200,7 +223,11 @@ test("cancel mid-job: ffmpeg is killed, the job says cancelled, nothing is left 
   for (let i = 0; i < 20 && kids(); i++) await sleep(50);
   assert.equal(kids(), "", "the process is gone");
   const fp = await fingerprint(file);
-  assert.deepEqual(filesUnder(analysisDir(project)).filter((f) => f.includes(fp)), [], "no folder or file for it");
+  assert.deepEqual(
+    filesUnder(analysisDir(project)).filter((f) => f.includes(fp)),
+    [],
+    "no folder or file for it",
+  );
   // The same file analysed for real afterwards (a copy, so the cancelled one stays uncached).
   const copy = join(root, "cancel-copy.wav");
   copyFileSync(file, copy);
@@ -231,5 +258,10 @@ test("names: beats, rhythm, onsets and tempo are one job; the agent's view is in
   const none = beatsOut({ ...result, bpm: null, beats: [] }, false, frames, undefined, 30) as Record<string, any>;
   assert.equal(none.beatCount, 0);
   assert.match(none.note, /No steady beat/);
-  assert.deepEqual(beatsOut({ hasAudio: false }, false, frames, undefined, 30), { state: "done", cached: false, hasAudio: false, note: "This media has no sound, so there are no beats." });
+  assert.deepEqual(beatsOut({ hasAudio: false }, false, frames, undefined, 30), {
+    state: "done",
+    cached: false,
+    hasAudio: false,
+    note: "This media has no sound, so there are no beats.",
+  });
 });

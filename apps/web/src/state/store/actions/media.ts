@@ -24,7 +24,7 @@ export const mediaActions = {
   },
   /** The user's sound folders (D208), indexed again with rescan; the error in words. */
   async soundFolders(rescan = false): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string }> {
-    const result = await call((c) => c["library.folders"]({ ...(rescan ? { rescan: true } : {}) }));
+    const result = await call((c) => c["library.folders"](rescan ? { rescan: true } : {}));
     return result.ok ? result.value : { error: plainError(result.error) };
   },
   /** Add a folder of sounds (the native dialog; the server's disk on a remote); undefined when cancelled. */
@@ -49,7 +49,17 @@ export const mediaActions = {
   },
   /** An online search (D134): the result, or the error in words. */
   async searchLibrary(query: LibraryQuery): Promise<LibrarySearchResult | { readonly error: string }> {
-    const result = await call((c) => c["library.search"]({ kind: query.kind, query: query.query, ...(query.source ? { source: query.source } : {}), ...(query.license ? { license: query.license } : {}), ...(query.length ? { length: query.length } : {}), ...(query.songs ? { songs: true } : {}), ...(query.page ? { page: query.page } : {}) }));
+    const result = await call((c) =>
+      c["library.search"]({
+        kind: query.kind,
+        query: query.query,
+        ...(query.source ? { source: query.source } : {}),
+        ...(query.license ? { license: query.license } : {}),
+        ...(query.length ? { length: query.length } : {}),
+        ...(query.songs ? { songs: true } : {}),
+        ...(query.page ? { page: query.page } : {}),
+      }),
+    );
     return result.ok ? result.value : { error: plainError(result.error) };
   },
   /**
@@ -63,7 +73,12 @@ export const mediaActions = {
     set({ libraryAdding: id });
     try {
       const existing = libraryMediaOf(projectOf(state.snapshot), id);
-      let sound = { libraryId: id, name: existing?.name ?? name, seconds: (existing?.probe?.frames ?? 0) / projectOf(state.snapshot).canvas.fps, music } as Parameters<typeof planAddLibrarySound>[1];
+      let sound = {
+        libraryId: id,
+        name: existing?.name ?? name,
+        seconds: (existing?.probe?.frames ?? 0) / projectOf(state.snapshot).canvas.fps,
+        music,
+      } as Parameters<typeof planAddLibrarySound>[1];
       if (!existing) {
         const result = await call((c) => c["library.add"]({ id }));
         if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });

@@ -85,10 +85,15 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           onClick={(e) => {
             if (!linkImport) return void actions.importMedia();
             const r = e.currentTarget.getBoundingClientRect();
-            openMenu(r.left, r.bottom + 4, [
-              { id: "import-files", label: "Import files…", run: () => void actions.importMedia() },
-              { id: "import-link", label: "Import from link…", run: () => openLinkImport() },
-            ], "Import");
+            openMenu(
+              r.left,
+              r.bottom + 4,
+              [
+                { id: "import-files", label: "Import files…", run: () => void actions.importMedia() },
+                { id: "import-link", label: "Import from link…", run: () => openLinkImport() },
+              ],
+              "Import",
+            );
           }}
         >
           {importing || linkJobs.length ? <RefreshCw className="spin" /> : <Plus />}
@@ -123,7 +128,12 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
             <span style={{ width: `${Math.round((job.progress ?? 0) * 100)}%` }} />
           </div>
           {job.phase === "running" && (
-            <button className="link-btn link-cancel" data-testid="link-progress-cancel" disabled={!online} onClick={() => void call((c) => c["link.cancel"]({ jobId: job.id }))}>
+            <button
+              className="link-btn link-cancel"
+              data-testid="link-progress-cancel"
+              disabled={!online}
+              onClick={() => void call((c) => c["link.cancel"]({ jobId: job.id }))}
+            >
               Cancel
             </button>
           )}
@@ -152,7 +162,14 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           <div className="lib-label media-bar">
             <span>In this project</span>
             <span className="media-bar-tools">
-              <select className="media-sort" data-testid="media-sort" value={view.sort} title="Sort by" aria-label="Sort by" onChange={(e) => setMediaSort(e.target.value as MediaSort)}>
+              <select
+                className="media-sort"
+                data-testid="media-sort"
+                value={view.sort}
+                title="Sort by"
+                aria-label="Sort by"
+                onChange={(e) => setMediaSort(e.target.value as MediaSort)}
+              >
                 {MEDIA_SORTS.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.label}
@@ -160,12 +177,22 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
                 ))}
               </select>
               <Tooltip label="Grid">
-                <button className={`icon-btn${view.mode === "grid" ? " active" : ""}`} data-testid="media-view-grid" aria-pressed={view.mode === "grid"} onClick={() => setMediaMode("grid")}>
+                <button
+                  className={`icon-btn${view.mode === "grid" ? " active" : ""}`}
+                  data-testid="media-view-grid"
+                  aria-pressed={view.mode === "grid"}
+                  onClick={() => setMediaMode("grid")}
+                >
                   <LayoutGrid />
                 </button>
               </Tooltip>
               <Tooltip label="List">
-                <button className={`icon-btn${view.mode === "list" ? " active" : ""}`} data-testid="media-view-list" aria-pressed={view.mode === "list"} onClick={() => setMediaMode("list")}>
+                <button
+                  className={`icon-btn${view.mode === "list" ? " active" : ""}`}
+                  data-testid="media-view-list"
+                  aria-pressed={view.mode === "list"}
+                  onClick={() => setMediaMode("list")}
+                >
                   <List />
                 </button>
               </Tooltip>
@@ -173,12 +200,29 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           </div>
           <div className={view.mode === "list" ? "media-list" : "grid2"} data-testid="media-grid" data-view={view.mode} data-sort={view.sort}>
             {media.map((m) => (
-              <MediaTile key={m.id} item={m} fps={project.canvas.fps} online={online} used={used.has(m.id)} selected={selected === m.id} onSelect={() => setSelected(m.id)} onRemove={() => remove(m)} />
+              <MediaTile
+                key={m.id}
+                item={m}
+                fps={project.canvas.fps}
+                online={online}
+                used={used.has(m.id)}
+                selected={selected === m.id}
+                onSelect={() => setSelected(m.id)}
+                onRemove={() => remove(m)}
+              />
             ))}
           </div>
         </div>
       ) : null}
-      <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} mode={view.mode} used={used} selected={selected} onSelect={setSelected} onRemove={remove} />
+      <GeneratedSection
+        project={project}
+        {...(onEdit ? { onEdit } : {})}
+        mode={view.mode}
+        used={used}
+        selected={selected}
+        onSelect={setSelected}
+        onRemove={remove}
+      />
       <RecentSection project={project} />
       {dragging && <div className="drop-hint">Drop to import</div>}
       {confirm && (
@@ -240,4 +284,10 @@ function progressText(job: ImportJob) {
   }
 }
 const progressFraction = (job: ImportJob) =>
-  job.phase === "posters" ? 0.8 + 0.2 * (job.postersTotal ? job.postersDone / job.postersTotal : 1) : job.phase === "probing" ? 0.75 * (job.probed / Math.max(1, job.total)) : job.phase === "adding" ? 0.78 : 0;
+  job.phase === "posters"
+    ? 0.8 + 0.2 * (job.postersTotal ? job.postersDone / job.postersTotal : 1)
+    : job.phase === "probing"
+      ? 0.75 * (job.probed / Math.max(1, job.total))
+      : job.phase === "adding"
+        ? 0.78
+        : 0;

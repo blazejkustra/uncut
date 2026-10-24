@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
-const skip = !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
+const skip =
+  !existsSync(BUNDLE) || !existsSync(MEDIA) ? "server or media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg to make test media" : false;
 const T = { skip, timeout: 60000 };
 
 let root = "";
@@ -23,7 +24,24 @@ before(async () => {
   if (skip) return;
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-mediafile-")));
   clip = join(root, "Clip One.MP4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mp4", clip]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x240:rate=30",
+    "-t",
+    "2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-f",
+    "mp4",
+    clip,
+  ]);
   writeFileSync(join(root, "secret.txt"), "not media");
   server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
   client = await connect(server.ready.port, server.ready.token);
@@ -44,7 +62,12 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   assert.equal((await get("/media/file/m-clip-one")).status, 404, "nothing open yet");
   const created = (await client!.ok("project.create", { parentDir: root, name: "Files" })) as { dir: string };
   await client!.ok("project.edit", {
-    ops: [{ op: "add_media", media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } } }],
+    ops: [
+      {
+        op: "add_media",
+        media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } },
+      },
+    ],
   });
   const bytes = readFileSync(clip);
 
@@ -82,7 +105,15 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   // The token is required, and only media ids of the open project resolve.
   assert.equal((await get("/media/file/m-clip-one", { auth: null })).status, 401);
   assert.equal((await get("/media/file/m-clip-one", { auth: "wrong" })).status, 401);
-  for (const path of ["/media/file/m-nope", "/media/file/", "/media/file/..%2Fsecret.txt", "/media/file/../secret.txt", "/media/file/%2Fetc%2Fpasswd", "/media/file/%", "/media/file/M-CLIP-ONE"]) {
+  for (const path of [
+    "/media/file/m-nope",
+    "/media/file/",
+    "/media/file/..%2Fsecret.txt",
+    "/media/file/../secret.txt",
+    "/media/file/%2Fetc%2Fpasswd",
+    "/media/file/%",
+    "/media/file/M-CLIP-ONE",
+  ]) {
     assert.equal((await get(path)).status, 404, path);
   }
 
@@ -90,7 +121,14 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   const longId = `m-${"x".repeat(120)}`;
   const copy = join(root, "copy.mp4");
   copyFileSync(clip, copy);
-  await client!.ok("project.edit", { ops: [{ op: "add_media", media: { id: longId, kind: "video", name: "copy.mp4", path: copy, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } } }] });
+  await client!.ok("project.edit", {
+    ops: [
+      {
+        op: "add_media",
+        media: { id: longId, kind: "video", name: "copy.mp4", path: copy, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } },
+      },
+    ],
+  });
   const long = await get(`/media/file/${longId}`);
   assert.equal(long.status, 200);
   assert.equal((await long.arrayBuffer()).byteLength, bytes.length);
@@ -112,7 +150,14 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   // Another opening of the project only serves what it lists.
   await client!.ok("project.open", { dir: created.dir });
   assert.equal((await get("/media/file/m-clip-one")).status, 404, "not listed by this opening");
-  await client!.ok("project.edit", { ops: [{ op: "add_media", media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } } }] });
+  await client!.ok("project.edit", {
+    ops: [
+      {
+        op: "add_media",
+        media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } },
+      },
+    ],
+  });
   // An empty file is served as empty (a range on it can't be satisfied).
   writeFileSync(clip, "");
   const empty = await get("/media/file/m-clip-one");

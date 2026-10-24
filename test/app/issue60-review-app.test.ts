@@ -27,7 +27,16 @@ before(async () => {
   const skill = (name: string, title: string) => ({ name, title, description: `When ${name} fits.`, instructions: `Do ${name}.` });
   writeFileSync(
     join(root, "plugins", "acme", "uncut.module.json"),
-    JSON.stringify({ manifest: "uncut.module/0", apiVersion: "uncut.module/1", id: "acme.pack", kind: "pack", name: "Acme skills", version: "1.0.0", runtime: { type: "data" }, contributes: { skills: [skill("cold-open", "Cold open"), skill("end-card", "end-card")] } }),
+    JSON.stringify({
+      manifest: "uncut.module/0",
+      apiVersion: "uncut.module/1",
+      id: "acme.pack",
+      kind: "pack",
+      name: "Acme skills",
+      version: "1.0.0",
+      runtime: { type: "data" },
+      contributes: { skills: [skill("cold-open", "Cold open"), skill("end-card", "end-card")] },
+    }),
   );
 });
 after(async () => {
@@ -49,7 +58,10 @@ test("allowing a plugin with skills says the agent follows them and lists them; 
     assert.match(await text(page, row), /2 editing skills/);
     await page.click("[data-testid='plugin-more-acme.pack']");
     assert.match(await text(page, "[data-testid='plugin-details-acme.pack']"), /Cold open\s+\/cold-open\s+\/end-card/);
-    assert.match(await text(page, "[data-testid='plugin-detail-acme.pack']"), /adds 2 skills\. Its skills are instructions the agent follows when they fit, without asking you first/);
+    assert.match(
+      await text(page, "[data-testid='plugin-detail-acme.pack']"),
+      /adds 2 skills\. Its skills are instructions the agent follows when they fit, without asking you first/,
+    );
 
     await page.click("[data-testid='plugin-allow-acme.pack']");
     await waitFor(page, "[data-testid=plugin-dialog]");

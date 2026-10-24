@@ -46,7 +46,11 @@ const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(sele
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
 async function savedAfter(after: number) {
-  await page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r, { timeout: 20000 }, after);
+  await page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1] ?? -1) > r,
+    { timeout: 20000 },
+    after,
+  );
   return revision();
 }
 const rows = (selector: string) => page.$$eval(selector, (els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
@@ -57,7 +61,20 @@ before(async () => {
   await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue69-70-app-")));
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=6", "-c:a", "libmp3lame", "-b:a", "96k", join(root, "tone.mp3")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:duration=6",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "96k",
+    join(root, "tone.mp3"),
+  ]);
   mp3 = readFileSync(join(root, "tone.mp3"));
   // A folder of the user's own music.
   folder = join(root, "My Music");
@@ -69,15 +86,37 @@ before(async () => {
   const songs = join(root, "Songs");
   mkdirSync(join(musicHome, "Music"), { recursive: true });
   mkdirSync(songs, { recursive: true });
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=5", "-c:a", "aac", "-b:a", "96k", join(songs, "Yellow Sky.m4a")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=5",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    join(songs, "Yellow Sky.m4a"),
+  ]);
   writeFileSync(join(songs, "Second Song.mp3"), mp3);
   const loc = (f: string) => pathToFileURL(join(songs, f)).href.replace("file:///", "file://localhost/");
   const entry = (i: number, fields: Record<string, string | number | boolean>) =>
-    `<key>${i}</key><dict>${Object.entries(fields).map(([k, v]) => `<key>${k}</key>${typeof v === "boolean" ? `<${v}/>` : typeof v === "number" ? `<integer>${v}</integer>` : `<string>${v}</string>`}`).join("")}</dict>`;
+    `<key>${i}</key><dict>${Object.entries(fields)
+      .map(([k, v]) => `<key>${k}</key>${typeof v === "boolean" ? `<${v}/>` : typeof v === "number" ? `<integer>${v}</integer>` : `<string>${v}</string>`}`)
+      .join("")}</dict>`;
   writeFileSync(
     join(musicHome, "Music", "Library.xml"),
     `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Tracks</key><dict>${[
-      entry(1, { Name: "Yellow Sky", Artist: "The Parachutes", Album: "Blue", Kind: "Purchased AAC audio file", "Track Type": "File", Location: loc("Yellow Sky.m4a") }),
+      entry(1, {
+        Name: "Yellow Sky",
+        Artist: "The Parachutes",
+        Album: "Blue",
+        Kind: "Purchased AAC audio file",
+        "Track Type": "File",
+        Location: loc("Yellow Sky.m4a"),
+      }),
       entry(2, { Name: "Second Song", Artist: "Home Band", Album: "Demos", Kind: "MPEG audio file", "Track Type": "File", Location: loc("Second Song.mp3") }),
       entry(3, { Name: "Chart Hit", Artist: "Big Star", Kind: "Apple Music AAC audio file", "Apple Music": true, "Track Type": "Remote" }),
       entry(4, { Name: "Old Purchase", Artist: "Someone", Kind: "Protected AAC audio file", Protected: true, "Track Type": "File", Location: loc("Old.m4p") }),
@@ -105,7 +144,13 @@ before(async () => {
     canvas: { width: 1280, height: 720, fps: 30 },
     media: [],
     tracks: [
-      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#202840" } }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [{ id: "bg", type: "component", component: "component.solid", duration: 300, props: { color: "#202840" } }],
+      },
       { id: "audio", kind: "audio", name: "Audio", items: [] },
     ],
   };
@@ -119,130 +164,161 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("issues #69 and #70: the Audio tab's sources, the Music library, the grown pack and Generate a sound effect (D249, D250)", { skip, timeout: 300000 }, async () => {
-  app = await launchApp({
-    command: APP,
-    env: {
-      UNCUT_DATA_DIR: join(root, "data"),
-      UNCUT_TEST_DIALOG: JSON.stringify([dir, folder]),
-      UNCUT_CLAUDE: FAKE,
-      // Keys go through the stand-in crypter, never the Keychain.
-      UNCUT_TEST_KEYS: "standin",
-      UNCUT_MUSIC_LIBRARY_DIR: musicHome,
-      UNCUT_ELEVENLABS_BASE: base,
-      UNCUT_OPENVERSE_BASE: "http://127.0.0.1:9",
-      UNCUT_FREESOUND_BASE: "http://127.0.0.1:9",
-      UNCUT_OPENAI_BASE: "http://127.0.0.1:9",
-      UNCUT_GOOGLE_BASE: "http://127.0.0.1:9",
-    },
-  });
-  page = app.page;
-  const external: Array<string> = [];
-  page.on("request", (r) => {
-    const u = new URL(r.url());
-    if (/^https?:$/.test(u.protocol) && !["127.0.0.1", "localhost"].includes(u.hostname)) external.push(r.url());
-  });
-  await waitForWelcome(page);
-  await page.click("[data-testid=open-project]");
-  await waitFor("[data-testid=editor]");
-  let rev = await revision();
+test(
+  "issues #69 and #70: the Audio tab's sources, the Music library, the grown pack and Generate a sound effect (D249, D250)",
+  { skip, timeout: 300000 },
+  async () => {
+    app = await launchApp({
+      command: APP,
+      env: {
+        UNCUT_DATA_DIR: join(root, "data"),
+        UNCUT_TEST_DIALOG: JSON.stringify([dir, folder]),
+        UNCUT_CLAUDE: FAKE,
+        // Keys go through the stand-in crypter, never the Keychain.
+        UNCUT_TEST_KEYS: "standin",
+        UNCUT_MUSIC_LIBRARY_DIR: musicHome,
+        UNCUT_ELEVENLABS_BASE: base,
+        UNCUT_OPENVERSE_BASE: "http://127.0.0.1:9",
+        UNCUT_FREESOUND_BASE: "http://127.0.0.1:9",
+        UNCUT_OPENAI_BASE: "http://127.0.0.1:9",
+        UNCUT_GOOGLE_BASE: "http://127.0.0.1:9",
+      },
+    });
+    page = app.page;
+    const external: Array<string> = [];
+    page.on("request", (r) => {
+      const u = new URL(r.url());
+      if (/^https?:$/.test(u.protocol) && !["127.0.0.1", "localhost"].includes(u.hostname)) external.push(r.url());
+    });
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await waitFor("[data-testid=editor]");
+    let rev = await revision();
 
-  // ---- #69 Audio: one field, one source select, no project list, no Included, no pills ----
-  await page.click("[data-testid=rail-audio]");
-  await waitFor("[data-testid=music-browser][data-view=openverse]");
-  assert.equal(await page.$("[data-testid=audio-list]"), null, "no In this project");
-  assert.equal(await page.$("[data-testid=audio-empty]"), null);
-  assert.equal(await page.$("[data-testid=library-view-included]"), null, "no Included");
-  assert.equal(await page.$$eval("[data-testid=audio-library] .music-chip", (els) => els.length), 0, "no pills");
-  const options = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => [(e as HTMLOptionElement).textContent, (e as HTMLOptionElement).disabled]));
-  assert.deepEqual(options, [["Your folders", false], ["Music library", false], ["Openverse", false]]);
-  assert.equal(await page.$("[data-testid=epidemic-soon]"), null, "D277: no Epidemic Sound coming soon");
+    // ---- #69 Audio: one field, one source select, no project list, no Included, no pills ----
+    await page.click("[data-testid=rail-audio]");
+    await waitFor("[data-testid=music-browser][data-view=openverse]");
+    assert.equal(await page.$("[data-testid=audio-list]"), null, "no In this project");
+    assert.equal(await page.$("[data-testid=audio-empty]"), null);
+    assert.equal(await page.$("[data-testid=library-view-included]"), null, "no Included");
+    assert.equal(await page.$$eval("[data-testid=audio-library] .music-chip", (els) => els.length), 0, "no pills");
+    const options = await page.$$eval("[data-testid=library-source] option", (els) =>
+      els.map((e) => [(e as HTMLOptionElement).textContent, (e as HTMLOptionElement).disabled]),
+    );
+    assert.deepEqual(options, [
+      ["Your folders", false],
+      ["Music library", false],
+      ["Openverse", false],
+    ]);
+    assert.equal(await page.$("[data-testid=epidemic-soon]"), null, "D277: no Epidemic Sound coming soon");
 
-  // Music library: asked for, then its DRM-free songs; + copies one into media/.
-  await page.click("[data-testid=music-search]", { clickCount: 3 });
-  await page.keyboard.press("Backspace");
-  await page.select("[data-testid=library-source]", "music-app");
-  await waitFor("[data-testid=music-app-connect]");
-  await page.click("[data-testid=music-app-connect]");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 2, { timeout: 15000 });
-  assert.equal(await page.$eval("[data-testid=music-app-summary]", (el) => (el as HTMLElement).dataset.skipped), "2");
-  assert.match(await text("[data-testid=music-app-summary]"), /2 songs, 2 Apple Music or protected left out/);
-  await page.click("[data-testid=music-search]", { clickCount: 3 });
-  await page.type("[data-testid=music-search]", "parachutes");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 1);
-  assert.match(await text("[data-testid=folder-row]"), /Yellow Sky[\s\S]*The Parachutes, Blue, m4a/);
-  await sleep(200);
-  await page.screenshot({ path: out("issue69-music-library.png") });
-  await page.click("[data-testid=folder-row] [data-testid=folder-add-sound]");
-  rev = await savedAfter(rev);
-  const yellow = onDisk().media.find((m) => m.path === "media/yellow-sky.m4a")!;
-  assert.ok(yellow, JSON.stringify(onDisk().media));
-  assert.equal((yellow.source as Record<string, unknown>).folder, "Music library");
+    // Music library: asked for, then its DRM-free songs; + copies one into media/.
+    await page.click("[data-testid=music-search]", { clickCount: 3 });
+    await page.keyboard.press("Backspace");
+    await page.select("[data-testid=library-source]", "music-app");
+    await waitFor("[data-testid=music-app-connect]");
+    await page.click("[data-testid=music-app-connect]");
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 2, { timeout: 15000 });
+    assert.equal(await page.$eval("[data-testid=music-app-summary]", (el) => (el as HTMLElement).dataset.skipped), "2");
+    assert.match(await text("[data-testid=music-app-summary]"), /2 songs, 2 Apple Music or protected left out/);
+    await page.click("[data-testid=music-search]", { clickCount: 3 });
+    await page.type("[data-testid=music-search]", "parachutes");
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 1);
+    assert.match(await text("[data-testid=folder-row]"), /Yellow Sky[\s\S]*The Parachutes, Blue, m4a/);
+    await sleep(200);
+    await page.screenshot({ path: out("issue69-music-library.png") });
+    await page.click("[data-testid=folder-row] [data-testid=folder-add-sound]");
+    rev = await savedAfter(rev);
+    const yellow = onDisk().media.find((m) => m.path === "media/yellow-sky.m4a")!;
+    assert.ok(yellow, JSON.stringify(onDisk().media));
+    assert.equal((yellow.source as Record<string, unknown>).folder, "Music library");
 
-  // Your folders: Add a folder; the folder is a plain row (name, count, ×), its songs below.
-  await page.click("[data-testid=music-search]", { clickCount: 3 });
-  await page.keyboard.press("Backspace");
-  await page.select("[data-testid=library-source]", "folders");
-  await waitFor("[data-testid=folder-empty]");
-  await page.click("[data-testid=folder-add]");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 2, { timeout: 15000 });
-  assert.deepEqual(await page.$$eval("[data-testid=sound-folder]", (els) => els.map((e) => (e as HTMLElement).innerText.replace(/\s+/g, " ").trim())), ["My Music 2"]);
-  assert.equal(await page.$$eval("[data-testid=sound-folder]", (els) => els.filter((e) => (e as HTMLElement).classList.contains("lib-folder")).length), 1, "a list row, not a pill");
-  // The row lines up with the panel: its left edge sits on the add button's.
-  const [rowLeft, addLeft] = await page.$$eval("[data-testid=sound-folder], [data-testid=folder-add]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
-  assert.ok(Math.abs(rowLeft! - addLeft!) <= 1, `aligned: ${rowLeft} vs ${addLeft}`);
-  await sleep(200);
-  await page.screenshot({ path: out("issue69-folders.png") });
+    // Your folders: Add a folder; the folder is a plain row (name, count, ×), its songs below.
+    await page.click("[data-testid=music-search]", { clickCount: 3 });
+    await page.keyboard.press("Backspace");
+    await page.select("[data-testid=library-source]", "folders");
+    await waitFor("[data-testid=folder-empty]");
+    await page.click("[data-testid=folder-add]");
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 2, { timeout: 15000 });
+    assert.deepEqual(await page.$$eval("[data-testid=sound-folder]", (els) => els.map((e) => (e as HTMLElement).innerText.replace(/\s+/g, " ").trim())), [
+      "My Music 2",
+    ]);
+    assert.equal(
+      await page.$$eval("[data-testid=sound-folder]", (els) => els.filter((e) => (e as HTMLElement).classList.contains("lib-folder")).length),
+      1,
+      "a list row, not a pill",
+    );
+    // The row lines up with the panel: its left edge sits on the add button's.
+    const [rowLeft, addLeft] = await page.$$eval("[data-testid=sound-folder], [data-testid=folder-add]", (els) =>
+      els.map((e) => Math.round(e.getBoundingClientRect().left)),
+    );
+    assert.ok(Math.abs(rowLeft! - addLeft!) <= 1, `aligned: ${rowLeft} vs ${addLeft}`);
+    await sleep(200);
+    await page.screenshot({ path: out("issue69-folders.png") });
 
-  // ---- #70 Sounds: the pack first; "fahh" finds the original sound-alike first ----
-  await page.click("[data-testid=rail-sfx]");
-  await waitFor("[data-testid=sfx-browser][data-view=pack]");
-  await page.type("[data-testid=sfx-search]", "fahh");
-  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === "exaggerated-shout");
-  assert.deepEqual((await rows("[data-testid=sfx-row]")).slice(0, 2), ["exaggerated-shout", "frustrated-yell"]);
-  assert.match(await page.$eval('[data-testid=sfx-row][data-id="exaggerated-shout"]', (el) => (el as HTMLElement).title), /made by Uncut, CC0/);
-  await page.click('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play]');
-  await waitFor('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play][data-playing="true"]');
-  await sleep(150);
-  await page.screenshot({ path: out("issue70-sounds-fahh.png") });
-  await page.click('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play]');
-  for (const [words, first] of [["dramatic boom", "dramatic-boom"], ["dramatic bong", "deep-bong"], ["record scratch", "record-scratch"], ["bonk", "bonk"], ["riser", ""]] as const) {
+    // ---- #70 Sounds: the pack first; "fahh" finds the original sound-alike first ----
+    await page.click("[data-testid=rail-sfx]");
+    await waitFor("[data-testid=sfx-browser][data-view=pack]");
+    await page.type("[data-testid=sfx-search]", "fahh");
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === "exaggerated-shout");
+    assert.deepEqual((await rows("[data-testid=sfx-row]")).slice(0, 2), ["exaggerated-shout", "frustrated-yell"]);
+    assert.match(await page.$eval('[data-testid=sfx-row][data-id="exaggerated-shout"]', (el) => (el as HTMLElement).title), /made by Uncut, CC0/);
+    await page.click('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play]');
+    await waitFor('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play][data-playing="true"]');
+    await sleep(150);
+    await page.screenshot({ path: out("issue70-sounds-fahh.png") });
+    await page.click('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play]');
+    for (const [words, first] of [
+      ["dramatic boom", "dramatic-boom"],
+      ["dramatic bong", "deep-bong"],
+      ["record scratch", "record-scratch"],
+      ["bonk", "bonk"],
+      ["riser", ""],
+    ] as const) {
+      await page.click("[data-testid=sfx-search]", { clickCount: 3 });
+      await page.type("[data-testid=sfx-search]", words);
+      if (first) await page.waitForFunction((id) => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === id, {}, first);
+    }
+    // Risers: the pack's and Uncut's own.
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=sfx-row]").length >= 6);
+
+    // Generate a sound effect: an ElevenLabs key first, then a description and a length; the stub answers.
     await page.click("[data-testid=sfx-search]", { clickCount: 3 });
-    await page.type("[data-testid=sfx-search]", words);
-    if (first) await page.waitForFunction((id) => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === id, {}, first);
-  }
-  // Risers: the pack's and Uncut's own.
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=sfx-row]").length >= 6);
+    await page.type("[data-testid=sfx-search]", "soft whoosh into a hit");
+    await page.click("[data-testid=sfx-generate-toggle]");
+    await waitFor("[data-testid=key-needed-elevenlabs]", 20000);
+    assert.equal(generated.length, 0);
+    await page.type("[data-testid=lib-key-input-elevenlabs]", ELEVEN);
+    await page.click("[data-testid=lib-key-save-elevenlabs]");
+    await waitFor("[data-testid=sfx-generate-prompt]", 20000);
+    assert.equal(
+      await page.$eval("[data-testid=sfx-generate-prompt]", (el) => (el as HTMLTextAreaElement).value),
+      "soft whoosh into a hit",
+      "the search words to start with",
+    );
+    assert.match(await text("[data-testid=sfx-generate-cost]"), /about \$0\.02 for 2 s/);
+    await page.select("[data-testid=sfx-generate-seconds]", "5");
+    await page.click("[data-testid=sfx-generate-run]");
+    await waitFor("[data-testid=sfx-generate-done]", 30000);
+    assert.equal(generated.length, 1, "one request to the (stubbed) API");
+    assert.equal(generated[0]!.key, ELEVEN);
+    assert.equal(generated[0]!.body.text, "soft whoosh into a hit");
+    assert.equal(generated[0]!.body.duration_seconds, 5);
+    const madeId = await page.$eval("[data-testid=sfx-generate-done]", (el) => (el as HTMLElement).dataset.media!);
+    const made = onDisk().media.find((m) => m.id === madeId)!;
+    assert.ok(made && made.kind === "audio" && (made.source as Record<string, unknown>).module === "generate.sound", JSON.stringify(made));
+    await sleep(200);
+    await page.screenshot({ path: out("issue70-generate.png") });
+    rev = await revision();
+    await page.click("[data-testid=sfx-generate-add]");
+    rev = await savedAfter(rev);
+    assert.ok(
+      onDisk().tracks.some((t) => t.items.some((i) => i.type === "audio" && i.media === madeId)),
+      "on the timeline",
+    );
 
-  // Generate a sound effect: an ElevenLabs key first, then a description and a length; the stub answers.
-  await page.click("[data-testid=sfx-search]", { clickCount: 3 });
-  await page.type("[data-testid=sfx-search]", "soft whoosh into a hit");
-  await page.click("[data-testid=sfx-generate-toggle]");
-  await waitFor("[data-testid=key-needed-elevenlabs]", 20000);
-  assert.equal(generated.length, 0);
-  await page.type("[data-testid=lib-key-input-elevenlabs]", ELEVEN);
-  await page.click("[data-testid=lib-key-save-elevenlabs]");
-  await waitFor("[data-testid=sfx-generate-prompt]", 20000);
-  assert.equal(await page.$eval("[data-testid=sfx-generate-prompt]", (el) => (el as HTMLTextAreaElement).value), "soft whoosh into a hit", "the search words to start with");
-  assert.match(await text("[data-testid=sfx-generate-cost]"), /about \$0\.02 for 2 s/);
-  await page.select("[data-testid=sfx-generate-seconds]", "5");
-  await page.click("[data-testid=sfx-generate-run]");
-  await waitFor("[data-testid=sfx-generate-done]", 30000);
-  assert.equal(generated.length, 1, "one request to the (stubbed) API");
-  assert.equal(generated[0]!.key, ELEVEN);
-  assert.equal(generated[0]!.body.text, "soft whoosh into a hit");
-  assert.equal(generated[0]!.body.duration_seconds, 5);
-  const madeId = await page.$eval("[data-testid=sfx-generate-done]", (el) => (el as HTMLElement).dataset.media!);
-  const made = onDisk().media.find((m) => m.id === madeId)!;
-  assert.ok(made && made.kind === "audio" && (made.source as Record<string, unknown>).module === "generate.sound", JSON.stringify(made));
-  await sleep(200);
-  await page.screenshot({ path: out("issue70-generate.png") });
-  rev = await revision();
-  await page.click("[data-testid=sfx-generate-add]");
-  rev = await savedAfter(rev);
-  assert.ok(onDisk().tracks.some((t) => t.items.some((i) => i.type === "audio" && i.media === madeId)), "on the timeline");
-
-  assert.ok(!/[·•∙⋅*]/.test(await text("[data-testid=sfx-library]")), "no dots or stars between words");
-  assert.deepEqual(external, [], "the renderer never left this machine");
-  assert.deepEqual(app.errors, []);
-});
+    assert.ok(!/[·•∙⋅*]/.test(await text("[data-testid=sfx-library]")), "no dots or stars between words");
+    assert.deepEqual(external, [], "the renderer never left this machine");
+    assert.deepEqual(app.errors, []);
+  },
+);

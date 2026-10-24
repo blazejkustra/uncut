@@ -52,7 +52,7 @@ export function TextSelection({ layer, project }: { layer: React.RefObject<HTMLD
     const measure = () => {
       const el = selected === undefined ? null : layer.current?.querySelector<HTMLElement>(`.pv-text.sel-box[data-item="${CSS.escape(selected)}"]`);
       const next = el && el.offsetWidth > 0 ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : undefined;
-      setBox((prev) => (prev && next && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h) || (!prev && !next) ? prev : next);
+      setBox((prev) => ((prev && next && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h) || (!prev && !next) ? prev : next));
     };
     measure();
     // The text layer is redrawn after this render: measure again once it has been.
@@ -71,7 +71,15 @@ export function TextSelection({ layer, project }: { layer: React.RefObject<HTMLD
   return (
     <>
       {corners.map(([c, cx, cy]) => (
-        <div key={c} className="pv-handle text" data-testid="text-handle" data-item={selected} data-corner={c} data-text-handle={resizable ? c : undefined} style={{ left: cx, top: cy }} />
+        <div
+          key={c}
+          className="pv-handle text"
+          data-testid="text-handle"
+          data-item={selected}
+          data-corner={c}
+          data-text-handle={resizable ? c : undefined}
+          style={{ left: cx, top: cy }}
+        />
       ))}
     </>
   );

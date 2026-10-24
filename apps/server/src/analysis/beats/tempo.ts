@@ -76,7 +76,8 @@ export function estimateTempo(env: Float32Array): { period: number; clarity: num
   // after the floored log stay under it).
   const distance = (lag: number) => Math.abs(Math.log2((60 * FRAME_RATE) / lag / PRIOR_BPM));
   const half = peakNear(period / 2);
-  if ((60 * FRAME_RATE) / half.where <= MAX_BPM && distance(half.where) < distance(period) && half.top >= HALF_PULSE * peakNear(period).top) period = half.where;
+  if ((60 * FRAME_RATE) / half.where <= MAX_BPM && distance(half.where) < distance(period) && half.top >= HALF_PULSE * peakNear(period).top)
+    period = half.where;
   // Pulse clarity at the period itself.
   const peak = Math.max(peakNear(period).top, at(ac, period));
   return { period, clarity: Math.max(0, Math.min(1, peak / ac[0]!)) };
@@ -141,7 +142,10 @@ export function trackBeats(env: Float32Array, period: number): Array<number> {
   const maxima: Array<number> = [];
   for (let i = 1; i < n - 1; i++) if (cum[i]! > cum[i - 1]! && cum[i]! >= cum[i + 1]!) maxima.push(i);
   if (!maxima.length) return [];
-  const med = quantile(maxima.map((i) => cum[i]!), 0.5);
+  const med = quantile(
+    maxima.map((i) => cum[i]!),
+    0.5,
+  );
   let last = maxima[maxima.length - 1]!;
   for (let k = maxima.length - 1; k >= 0; k--) {
     if (cum[maxima[k]!]! >= 0.5 * med) {

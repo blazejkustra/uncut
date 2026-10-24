@@ -50,7 +50,31 @@ export function denyRules(dataDir?: string, claudeConfig: ReadonlyArray<string> 
   for (const tool of ["Read", "Edit"]) rules.push(`${tool}(//**/.env)`, `${tool}(//**/.env.*)`);
   rules.push("Bash(* .env*)", "Bash(*/.env*)");
   // A backstop under Uncut's own allowlist: claude refuses these before anyone is asked.
-  for (const prefix of ["rm", "rmdir", "shred", "sudo", "su", "doas", "git push", "scp", "sftp", "ssh", "nc", "ncat", "telnet", "dd", "mkfs", "diskutil", "launchctl", "osascript", "chown", "crontab", "defaults write", "security"]) rules.push(`Bash(${prefix}:*)`);
+  for (const prefix of [
+    "rm",
+    "rmdir",
+    "shred",
+    "sudo",
+    "su",
+    "doas",
+    "git push",
+    "scp",
+    "sftp",
+    "ssh",
+    "nc",
+    "ncat",
+    "telnet",
+    "dd",
+    "mkfs",
+    "diskutil",
+    "launchctl",
+    "osascript",
+    "chown",
+    "crontab",
+    "defaults write",
+    "security",
+  ])
+    rules.push(`Bash(${prefix}:*)`);
   for (const flag of [" -d ", " --data", " -F ", " --form", " -T ", " --upload-file", " --json"]) rules.push(`Bash(curl*${flag}*)`);
   rules.push(...appDataRules(dataDir));
   return rules;
@@ -86,7 +110,8 @@ export function appDataAskRules(dataDir?: string, claudeConfig: ReadonlyArray<st
   const dir = dataDir?.replace(/\/+$/, "");
   // A data folder elsewhere (UNCUT_DATA_DIR) isn't caught by the Application Support rules.
   // (The folder itself, not a sibling that starts with its name.)
-  if (dir && !/\/Library\/Application Support(\/|$)/.test(dir)) rules.push(...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`);
+  if (dir && !/\/Library\/Application Support(\/|$)/.test(dir))
+    rules.push(...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`);
   return rules;
 }
 
@@ -130,10 +155,22 @@ export function autoAskRules(): Array<string> {
  * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
  * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
  */
-export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly claudeConfig?: ReadonlyArray<string> | undefined } = {}): string {
+export function sessionSettings(
+  o: {
+    readonly access?: Access | undefined;
+    readonly projects?: ReadonlyArray<string> | undefined;
+    readonly dataDir?: string | undefined;
+    readonly claudeConfig?: ReadonlyArray<string> | undefined;
+  } = {},
+): string {
   const cc = o.claudeConfig ?? [];
   if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
-  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])], ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()] } });
+  return JSON.stringify({
+    permissions: {
+      deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])],
+      ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],
+    },
+  });
 }
 
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */

@@ -60,7 +60,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const plan = () => join(root, "plan.json");
 const awaitPath = () => join(root, "place.json");
 const resultLog = () => join(root, "results.jsonl");
-const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+const lines = (file: string) =>
+  existsSync(file)
+    ? readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 const results = (): Array<Result> => lines(resultLog());
 const textOf = (r: Result["result"]) => r.content.find((c) => c.type === "text")!.text!;
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
@@ -110,7 +117,27 @@ before(async () => {
   for (const f of [resultLog(), join(root, "prompts.jsonl"), join(root, "tools.jsonl")]) writeFileSync(f, "");
   // A flat 3 s clip, so the headline's pixels are easy to tell from the footage's.
   clip = join(root, "files", "backdrop.mp4");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x1E2A44:s=1920x1080:r=30:d=3", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x1E2A44:s=1920x1080:r=30:d=3",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:sample_rate=48000:duration=3",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-shortest",
+    clip,
+  ]);
 });
 after(async () => {
   sockets?.stop();
@@ -168,22 +195,32 @@ async function exportTo(name: string) {
   await page.click("[data-testid=export-change]");
   await page.waitForFunction((n: string) => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === n, {}, name);
   await page.click("[data-testid=export-start]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), { timeout: 300000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), {
+    timeout: 300000,
+  });
   assert.match(await text("[data-testid=export-status]"), /Saved/);
   await page.keyboard.press("Escape");
 }
 
-test("phase 8 exit: plugin:new, plugin:check, install and allow it, enable a catalog plugin; the agent uses both; remove both and the project opens and exports the same; nothing leaves the machine", { skip, timeout: 600000 }, async () => {
-  const started = Date.now();
-  try {
-    await exitCheck();
-  } catch (error) {
-    await page?.screenshot({ path: "test-output/phase8-exit-failure.png" }).catch(() => {});
-    const log = results().map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`).join("\n");
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}` });
-  }
-  console.log(`phase 8 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
-});
+test(
+  "phase 8 exit: plugin:new, plugin:check, install and allow it, enable a catalog plugin; the agent uses both; remove both and the project opens and exports the same; nothing leaves the machine",
+  { skip, timeout: 600000 },
+  async () => {
+    const started = Date.now();
+    try {
+      await exitCheck();
+    } catch (error) {
+      await page?.screenshot({ path: "test-output/phase8-exit-failure.png" }).catch(() => {});
+      const log = results()
+        .map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`)
+        .join("\n");
+      throw Object.assign(error as Error, {
+        message: `${(error as Error).message}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}`,
+      });
+    }
+    console.log(`phase 8 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  },
+);
 
 async function exitCheck() {
   t0 = Date.now();
@@ -197,7 +234,9 @@ async function exitCheck() {
   const manifestFile = join(pluginDir, "uncut.module.json");
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
   manifest.description = "Acme's house style: a headline look, a short-lines rule and a word count for the agent.";
-  manifest.contributes.rules = [{ id: RULE, title: "Short lines", description: "At most 5 words on screen at once.", severity: "warn", rule: { type: "max-words", max: 5 } }];
+  manifest.contributes.rules = [
+    { id: RULE, title: "Short lines", description: "At most 5 words on screen at once.", severity: "warn", rule: { type: "max-words", max: 5 } },
+  ];
   writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
   assert.match(execFileSync(process.execPath, [resolve("scripts/plugin-check.ts"), pluginDir], { encoding: "utf8" }), /acme\.promo passes/);
   assert.ok(!existsSync(resolve("plugins/catalog/acme-promo")), "nothing written into the repo");
@@ -265,7 +304,10 @@ async function exitCheck() {
       { text: "Placed the headline; the house style flags the hype word and the long line." },
     ]),
   );
-  await page.waitForFunction(() => ["done", "failed", "cancelled"].includes(document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status ?? ""), { timeout: 120000 });
+  await page.waitForFunction(
+    () => ["done", "failed", "cancelled"].includes(document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status ?? ""),
+    { timeout: 120000 },
+  );
   assert.equal(await page.$eval("[data-testid=agent-turn]", (el) => (el as HTMLElement).dataset.status), "done", await text("[data-testid=agent-turn]"));
   for (const r of results()) assert.ok(!r.result.isError, `${r.tool}: ${textOf(r.result)}`);
   assert.ok(lines(join(root, "tools.jsonl"))[0].includes(TOOL), "the agent sees the new plugin's tool");
@@ -316,7 +358,11 @@ async function exitCheck() {
   await waitFor(`${entry}[data-enabled=false]`);
   await page.waitForFunction(() => !document.querySelector("[data-testid='plugin-taste.extra']"));
   await page.keyboard.press("Escape");
-  assert.deepEqual(readdirSync(join(root, "data", "plugins")).filter((n) => !n.startsWith(".")), [], "both copies removed");
+  assert.deepEqual(
+    readdirSync(join(root, "data", "plugins")).filter((n) => !n.startsWith(".")),
+    [],
+    "both copies removed",
+  );
   const after = JSON.parse(readFileSync(join(root, "data", "settings.json"), "utf8"));
   assert.equal(after.pluginInstalls?.[ID], undefined);
   assert.equal(after.pluginApprovals?.["taste.extra"], undefined);
@@ -352,7 +398,11 @@ async function exitCheck() {
 
   // 7. The repo's plugins/ is as it was; nothing left the machine.
   assert.deepEqual(snapshot(resolve("plugins")), repoPlugins, "the repo's plugins/ is unchanged");
-  assert.deepEqual(rendererRequests.filter((u) => !isLocalUrl(u)), [], "the renderer only talked to this machine");
+  assert.deepEqual(
+    rendererRequests.filter((u) => !isLocalUrl(u)),
+    [],
+    "the renderer only talked to this machine",
+  );
   assert.deepEqual(remoteSockets, [], "no process of the app had a connection off this machine");
   console.log(`  renderer requests: ${rendererRequests.length} (all local); socket samples clean`);
 }

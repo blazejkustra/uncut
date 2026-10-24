@@ -1,11 +1,26 @@
 // The Inspector's clip box editor (D75): fit, position, size, keys.
 import type { Item } from "@uncut/core/types";
-import { ChevronLeft, ChevronRight, Diamond, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Diamond, RotateCcw } from "lucide-react";
 import type { Fit, KeyProp } from "@uncut/core/box";
 import { useRef } from "react";
 
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
-import { clipState, EASE_NAMES, keyEase, keyFrames, keyState, nearbyKey, planClipBox, planHold, planKeyEase, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "../timeline/clip.ts";
+import {
+  clipState,
+  EASE_NAMES,
+  keyEase,
+  keyFrames,
+  keyState,
+  nearbyKey,
+  planClipBox,
+  planHold,
+  planKeyEase,
+  planLoop,
+  planResetBox,
+  planToggleKey,
+  PROP_NAMES,
+  type BoxPatch,
+} from "../timeline/clip.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { showDraft, send, NumberField, Slider, Group } from "./fields.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
@@ -17,9 +32,26 @@ const FITS: ReadonlyArray<readonly [Fit, string, string]> = [
 ];
 
 /** A keyframe diamond (D75): filled with a key at the playhead, outlined when the property has keys elsewhere. */
-function KeyButton({ project, item, prop, local, inside, disabled }: { project: ProjectModel; item: Item; prop: KeyProp; local: number; inside: boolean; disabled: boolean }) {
+function KeyButton({
+  item,
+  prop,
+  local,
+  inside,
+  disabled,
+}: {
+  project: ProjectModel;
+  item: Item;
+  prop: KeyProp;
+  local: number;
+  inside: boolean;
+  disabled: boolean;
+}) {
   const state = keyState(item, prop, local);
-  const title = !inside ? "Move the playhead over the clip to add a key" : state === "on" ? `Remove the ${PROP_NAMES[prop]} key at the playhead` : `Add a ${PROP_NAMES[prop]} key at the playhead`;
+  const title = !inside
+    ? "Move the playhead over the clip to add a key"
+    : state === "on"
+      ? `Remove the ${PROP_NAMES[prop]} key at the playhead`
+      : `Add a ${PROP_NAMES[prop]} key at the playhead`;
   return (
     <Tooltip label={title}>
       <button
@@ -70,7 +102,15 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
         {!component && (
           <div className="seg fit" role="group">
             {FITS.map(([fit, label, title]) => (
-              <button key={fit} className={box.fit === fit ? "active" : ""} data-testid="insp-fit" data-fit={fit} title={title} disabled={locked} onClick={() => edit({ fit })}>
+              <button
+                key={fit}
+                className={box.fit === fit ? "active" : ""}
+                data-testid="insp-fit"
+                data-fit={fit}
+                title={title}
+                disabled={locked}
+                onClick={() => edit({ fit })}
+              >
                 {label}
               </button>
             ))}
@@ -79,24 +119,32 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
       </Group>
       <Group label={component ? "Opacity" : "Scale and opacity"}>
         {!component && (
-        <div className="slider-row key-row">
-          <Slider
-            testId="insp-scale"
-            value={Math.round(box.scale * 100)}
-            min={10}
-            max={400}
-            title="Zoom inside the box"
-            disabled={locked}
-            onPreview={(v) => (scaleDraft.current = showDraft(project, planClipBox(project, item.id, { scale: v / 100 }, frame)) ?? scaleDraft.current)}
-            onCommit={(v) => {
-              const d = scaleDraft.current;
-              scaleDraft.current = undefined;
-              edit({ scale: v / 100 }, undefined, d);
-            }}
-          />
-          <NumberField label="Scale %" testId="insp-scale-num" value={Math.round(box.scale * 100)} min={5} max={2000} disabled={locked} onCommit={(v) => v !== undefined && edit({ scale: v / 100 })} />
-          {key("scale")}
-        </div>
+          <div className="slider-row key-row">
+            <Slider
+              testId="insp-scale"
+              value={Math.round(box.scale * 100)}
+              min={10}
+              max={400}
+              title="Zoom inside the box"
+              disabled={locked}
+              onPreview={(v) => (scaleDraft.current = showDraft(project, planClipBox(project, item.id, { scale: v / 100 }, frame)) ?? scaleDraft.current)}
+              onCommit={(v) => {
+                const d = scaleDraft.current;
+                scaleDraft.current = undefined;
+                edit({ scale: v / 100 }, undefined, d);
+              }}
+            />
+            <NumberField
+              label="Scale %"
+              testId="insp-scale-num"
+              value={Math.round(box.scale * 100)}
+              min={5}
+              max={2000}
+              disabled={locked}
+              onCommit={(v) => v !== undefined && edit({ scale: v / 100 })}
+            />
+            {key("scale")}
+          </div>
         )}
         <div className="slider-row key-row">
           <Slider
@@ -112,7 +160,15 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
               edit({ opacity: v / 100 }, undefined, d);
             }}
           />
-          <NumberField label="Opacity %" testId="insp-opacity-num" value={Math.round(box.opacity * 100)} min={0} max={100} disabled={locked} onCommit={(v) => v !== undefined && edit({ opacity: v / 100 })} />
+          <NumberField
+            label="Opacity %"
+            testId="insp-opacity-num"
+            value={Math.round(box.opacity * 100)}
+            min={0}
+            max={100}
+            disabled={locked}
+            onCommit={(v) => v !== undefined && edit({ opacity: v / 100 })}
+          />
           {key("opacity")}
         </div>
         {!component && (
@@ -125,23 +181,40 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
       <div className="group">
         {media?.kind === "video" && (
           <label className="check-row">
-            <input type="checkbox" data-testid="insp-loop" checked={item.loop === true} disabled={locked} onChange={(e) => {
+            <input
+              type="checkbox"
+              data-testid="insp-loop"
+              checked={item.loop === true}
+              disabled={locked}
+              onChange={(e) => {
                 const on = e.target.checked;
                 send((p) => planLoop(p, item.id, on));
-              }} />
+              }}
+            />
             Loop the footage when the clip is longer
           </label>
         )}
         {media?.kind === "video" && (
           <label className="check-row">
-            <input type="checkbox" data-testid="insp-hold" checked={item.hold === true} disabled={locked || item.loop === true} onChange={(e) => {
+            <input
+              type="checkbox"
+              data-testid="insp-hold"
+              checked={item.hold === true}
+              disabled={locked || item.loop === true}
+              onChange={(e) => {
                 const on = e.target.checked;
                 send((p) => planHold(p, item.id, on));
-              }} />
+              }}
+            />
             Hold the last frame when the clip is longer
           </label>
         )}
-        <button className="btn" data-testid="insp-box-reset" disabled={locked || (!item.transform && !item.keys)} onClick={() => send((p) => planResetBox(p, item.id))}>
+        <button
+          className="btn"
+          data-testid="insp-box-reset"
+          disabled={locked || (!item.transform && !item.keys)}
+          onClick={() => send((p) => planResetBox(p, item.id))}
+        >
           <RotateCcw />
           Reset position and size
         </button>
@@ -161,7 +234,7 @@ function KeysGroup({ project, item, local, inside, locked }: { project: ProjectM
     const to = nearbyKey(project, getPlayback().frame, dir, [item.id]);
     if (to !== undefined) (playback.pause(), playback.seek(to));
   };
-  const start = (clipState(project, item.id, getPlayback().frame)?.start ?? 0);
+  const start = clipState(project, item.id, getPlayback().frame)?.start ?? 0;
   const at = start + local;
   return (
     <Group label={`Keys (${frames.length})`}>
@@ -171,7 +244,9 @@ function KeysGroup({ project, item, local, inside, locked }: { project: ProjectM
             <ChevronLeft />
           </button>
         </Tooltip>
-        <span className="mono small" data-testid="insp-key-at">{ease ? `Key at ${(local / project.canvas.fps).toFixed(2)} s` : "Between keys"}</span>
+        <span className="mono small" data-testid="insp-key-at">
+          {ease ? `Key at ${(local / project.canvas.fps).toFixed(2)} s` : "Between keys"}
+        </span>
         <Tooltip label="Next key" shortcut="nextKey">
           <button className="icon-btn" data-testid="insp-key-next" disabled={!frames.some((f) => start + f > at)} onClick={() => go(1)}>
             <ChevronRight />
@@ -181,7 +256,15 @@ function KeysGroup({ project, item, local, inside, locked }: { project: ProjectM
       {ease && (
         <div className="seg ease" role="group" aria-label="Ease to the next key" data-testid="insp-key-ease" data-ease={ease}>
           {EASE_NAMES.map(([e, label]) => (
-            <button key={e} className={ease === e ? "active" : ""} data-testid="insp-ease" data-ease={e} title={`${label} to the next key`} disabled={locked} onClick={() => send((p) => planKeyEase(p, item.id, local, e))}>
+            <button
+              key={e}
+              className={ease === e ? "active" : ""}
+              data-testid="insp-ease"
+              data-ease={e}
+              title={`${label} to the next key`}
+              disabled={locked}
+              onClick={() => send((p) => planKeyEase(p, item.id, local, e))}
+            >
               {label}
             </button>
           ))}

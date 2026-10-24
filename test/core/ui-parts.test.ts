@@ -17,9 +17,34 @@ import { librarySignatures } from "../../apps/server/src/agent/agentDocs.ts";
 
 const ROOT = resolve(".");
 const LIB = readFileSync(resolve("assets/graphic-libs/ui.js"), "utf8");
-const PARTS = ["editor", "topbar", "agent", "message", "turn", "review", "timeline", "preview", "composer", "storyboard", "export", "exportProgress", "inspector", "effects", "menu"];
+const PARTS = [
+  "editor",
+  "topbar",
+  "agent",
+  "message",
+  "turn",
+  "review",
+  "timeline",
+  "preview",
+  "composer",
+  "storyboard",
+  "export",
+  "exportProgress",
+  "inspector",
+  "effects",
+  "menu",
+];
 
-type Ui = { parts(): Array<string>; size(n: string): { width: number; height: number }; css(): string; mount: unknown; find: unknown; findAll: unknown; cursor: unknown; timecode(s: number, fps?: number): string };
+type Ui = {
+  parts(): Array<string>;
+  size(n: string): { width: number; height: number };
+  css(): string;
+  mount: unknown;
+  find: unknown;
+  findAll: unknown;
+  cursor: unknown;
+  timecode(s: number, fps?: number): string;
+};
 const load = () => {
   const window: Record<string, unknown> = {};
   runInNewContext(LIB, { window });
@@ -29,8 +54,18 @@ const load = () => {
 test("ui.js is generated from the app as it is now (else run: node scripts/ui-parts.ts)", () => {
   const inputs = uiPartsInputs(ROOT);
   // The harness's whole import closure: a helper or component outside the parts' folders changes the editor part too.
-  for (const f of ["apps/web/src/ui/Tooltip.tsx", "apps/web/src/state/format.ts", "apps/web/src/editor/App.tsx", "apps/web/package.json"]) assert.ok(inputs.includes(f), f);
-  for (const f of ["apps/web/src/styles.css", "apps/web/src/panels/Composer.tsx", "apps/web/src/timeline/ItemBox.tsx", "apps/web/src/panels/ExportDialog.tsx", "apps/web/src/uiparts/fixture.ts", "apps/web/src/uiparts/runtime.ts", "apps/web/src/uiparts/extract.ts"]) assert.ok(inputs.includes(f), f);
+  for (const f of ["apps/web/src/ui/Tooltip.tsx", "apps/web/src/state/format.ts", "apps/web/src/editor/App.tsx", "apps/web/package.json"])
+    assert.ok(inputs.includes(f), f);
+  for (const f of [
+    "apps/web/src/styles.css",
+    "apps/web/src/panels/Composer.tsx",
+    "apps/web/src/timeline/ItemBox.tsx",
+    "apps/web/src/panels/ExportDialog.tsx",
+    "apps/web/src/uiparts/fixture.ts",
+    "apps/web/src/uiparts/runtime.ts",
+    "apps/web/src/uiparts/extract.ts",
+  ])
+    assert.ok(inputs.includes(f), f);
   assert.equal(libInputHash(LIB), uiPartsInputHash(ROOT), "assets/graphic-libs/ui.js is stale: regenerate it with node scripts/ui-parts.ts");
   assert.ok(LIB.startsWith(UI_HEADER), "the header is the generator's");
   assert.ok(LIB.includes(runtimeJs(readFileSync(resolve("apps/web/src/uiparts/runtime.ts"), "utf8"))), "the runtime is runtime.ts, types stripped");
@@ -61,7 +96,20 @@ test("it's a bundled library: loads in a VM with only window, every part with it
   assert.match(GRAPHIC_LIBS_DOC, /uncut:lib\/ui\.js/);
   assert.match(GRAPHIC_LIBS_DOC, /For a film about Uncut itself, build from these parts instead of redrawing its panels/);
   // Round 6: a worked example of the stage story (mount, the hero composer flying in on Send, clips flying to the lane, the camera), so it is the easy path.
-  for (const want of [/The default story for a film about Uncut is the live stage/, /uncutUI\.mount\(ed, "editor"/, /uncutUI\.fly\(fx, t, \{ id: "composer", at: send/, /\.tl-lane\.main \.clip/, /uncutMotion\.camera\(t, keys\)/, /blur and dim ease to 0/, /pushes in on the lane until the clip names read/, /the cursor drags the Warm amount/, /the cursor clicks Export/, /a wide shot only as a brief pull-back/, /never steps floating over an editor left blurred/]) assert.match(GRAPHIC_LIBS_DOC, want);
+  for (const want of [
+    /The default story for a film about Uncut is the live stage/,
+    /uncutUI\.mount\(ed, "editor"/,
+    /uncutUI\.fly\(fx, t, \{ id: "composer", at: send/,
+    /\.tl-lane\.main \.clip/,
+    /uncutMotion\.camera\(t, keys\)/,
+    /blur and dim ease to 0/,
+    /pushes in on the lane until the clip names read/,
+    /the cursor drags the Warm amount/,
+    /the cursor clicks Export/,
+    /a wide shot only as a brief pull-back/,
+    /never steps floating over an editor left blurred/,
+  ])
+    assert.match(GRAPHIC_LIBS_DOC, want);
   const ui = load();
   assert.deepEqual([...ui.parts()].sort(), [...PARTS].sort());
   for (const n of PARTS) {
@@ -109,7 +157,9 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
     assert.doesNotMatch(p.html, /http:\/\/127\.0\.0\.1|src="http/, `${n}: nothing points at the server`);
     for (const m of p.html.matchAll(/\u0001(\d+)\u0002/g)) assert.ok(Number(m[1]) < data.pool.length, n);
   }
-  const { parts, pool } = pooled({ a: { html: '<i><svg a="1"></svg><svg a="1"></svg><img src="data:image/png;base64,AAAA"></i>', width: 1, height: 1, ancestors: [] } });
+  const { parts, pool } = pooled({
+    a: { html: '<i><svg a="1"></svg><svg a="1"></svg><img src="data:image/png;base64,AAAA"></i>', width: 1, height: 1, ancestors: [] },
+  });
   assert.deepEqual(pool, ['<svg a="1"></svg>', "data:image/png;base64,AAAA"]);
   assert.equal(parts.a!.html, '<i>\u00010\u0002\u00010\u0002<img src="\u00011\u0002"></i>');
   // The pieces runtime and the Effects tab's look thumbnails (JPEG) brought it near 300 KB; the whole document with every library stays under MAX_GRAPHIC_DOC_BYTES (graphic-libs.test.ts).
@@ -122,11 +172,32 @@ test("Add to chat: the menu part is the app's item menu on a Main clip (Add to c
   const data = JSON.parse(/var DATA = (\{.*\});\n/.exec(LIB)![1]!) as { css: string; parts: Record<string, { html: string; width: number; height: number }> };
   const menu = data.parts.menu!;
   const labels = [...menu.html.matchAll(/class="ctx-label">([^<]*)</g)].map((m) => m[1]);
-  assert.deepEqual(labels, ["Add to chat", "Split", "Copy", "Paste", "Duplicate", "Delete", "Ripple delete", "Speed", "Rename", "Replace media", "Show in Media", "Reveal in Finder", "Lock"]);
+  assert.deepEqual(labels, [
+    "Add to chat",
+    "Split",
+    "Copy",
+    "Paste",
+    "Duplicate",
+    "Delete",
+    "Ripple delete",
+    "Speed",
+    "Rename",
+    "Replace media",
+    "Show in Media",
+    "Reveal in Finder",
+    "Lock",
+  ]);
   assert.match(menu.html, /data-testid="menu-add-to-chat" class="ctx-item active ?"[^>]*>.*?class="ctx-key">⌘L</);
   assert.doesNotMatch(menu.html.slice(0, menu.html.indexOf(">")), /left:|top:/, "no pointer position of its own");
   assert.ok(menu.width >= 220 && menu.height > 200, `${menu.width} x ${menu.height}`);
-  for (const want of [".uncut-ui .ctx-menu", ".uncut-ui .ctx-item.active", ".uncut-ui .ctx-key", ".uncut-ui .composer-hl mark.chip", ".uncut-ui .msg-user mark.chip"]) assert.ok(data.css.includes(want), want);
+  for (const want of [
+    ".uncut-ui .ctx-menu",
+    ".uncut-ui .ctx-item.active",
+    ".uncut-ui .ctx-key",
+    ".uncut-ui .composer-hl mark.chip",
+    ".uncut-ui .msg-user mark.chip",
+  ])
+    assert.ok(data.css.includes(want), want);
   // The thread's sent prompt in the menu scene is the fixture's: only the menu is lifted from there.
   for (const [n, p] of Object.entries(data.parts)) assert.doesNotMatch(p.html, /slow motion/, n);
   const ui = load() as Ui & { slots(n: string): Array<string> };
@@ -137,7 +208,10 @@ test("Add to chat: the menu part is the app's item menu on a Main clip (Add to c
 test("runtimeJs drops whole-line comments only: code after a leading /* */ stays, a multi-line template literal can't be cut", () => {
   assert.equal(runtimeJs("/* a */ const x = 1;\nconst y = 2; /* b */\nconst z = 3;"), "/* a */ const x = 1;\nconst y = 2; /* b */\nconst z = 3;");
   assert.equal(runtimeJs("  /* lead */ go();\nkeep();\n  /** doc\n   * more */\n// gone\nend();"), "/* lead */ go();\nkeep();\n\nend();");
-  assert.equal(runtimeJs('const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;'), 'const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;');
+  assert.equal(
+    runtimeJs('const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;'),
+    'const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;',
+  );
   assert.throws(() => runtimeJs("const s = `line\n// not a comment\nend`;"), /multi-line template literal/);
   assert.equal(runtimeJs("const s = `one\ntwo`;"), "const s = `one\ntwo`;");
 });

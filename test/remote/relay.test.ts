@@ -65,7 +65,11 @@ test("the relay: its token becomes the remote's Bearer header; Origin, cookies a
   assert.equal(pre.status, 204);
   assert.equal(pre.headers.get("access-control-allow-origin"), "*");
   // A POST body goes through (the renderer's upload).
-  await fetch(`${relay.httpBase}/api/upload?name=a.mp4&token=${relay.token}`, { method: "POST", body: "bytes", headers: { "content-type": "application/octet-stream" } });
+  await fetch(`${relay.httpBase}/api/upload?name=a.mp4&token=${relay.token}`, {
+    method: "POST",
+    body: "bytes",
+    headers: { "content-type": "application/octet-stream" },
+  });
   assert.equal(up.seen.at(-1)!.body, "bytes");
   assert.equal(up.seen.at(-1)!.url, "/api/upload?name=a.mp4");
   // A refused token, then the remote gone: the relay says why.
@@ -149,11 +153,22 @@ test("Connect over SSH: the commands, quoted, never run", () => {
   const c = sshCommands({ target: "me@studio.local", remotePort: 8790, localPort: 9790 });
   assert.equal(c.tunnel, "ssh -N -L 9790:127.0.0.1:8790 me@studio.local");
   assert.equal(c.url, "http://127.0.0.1:9790");
-  assert.match(c.start, /^ssh me@studio\.local 'ELECTRON_RUN_AS_NODE=1 .*Uncut\.app\/Contents\/MacOS\/Uncut.*server\.mjs.* --port 8790 --data-dir "\$HOME\/Library\/Application Support\/Uncut Server"'$/);
+  assert.match(
+    c.start,
+    /^ssh me@studio\.local 'ELECTRON_RUN_AS_NODE=1 .*Uncut\.app\/Contents\/MacOS\/Uncut.*server\.mjs.* --port 8790 --data-dir "\$HOME\/Library\/Application Support\/Uncut Server"'$/,
+  );
 });
-
 
 test("Not encrypted: plain http beyond loopback and Tailscale", () => {
   for (const u of ["http://192.168.1.20:8790", "studio.local:8790", "uncut://pair?url=http%3A%2F%2F10.0.0.5%3A8790&token=abc"]) assert.ok(notEncrypted(u), u);
-  for (const u of ["http://127.0.0.1:8790", "localhost:8790", "https://studio.example.com", "http://100.101.102.103:8790", "http://studio.tail1234.ts.net:8790", "uncut://pair?url=http%3A%2F%2F127.0.0.1%3A8790&token=abc", ""]) assert.ok(!notEncrypted(u), u);
+  for (const u of [
+    "http://127.0.0.1:8790",
+    "localhost:8790",
+    "https://studio.example.com",
+    "http://100.101.102.103:8790",
+    "http://studio.tail1234.ts.net:8790",
+    "uncut://pair?url=http%3A%2F%2F127.0.0.1%3A8790&token=abc",
+    "",
+  ])
+    assert.ok(!notEncrypted(u), u);
 });

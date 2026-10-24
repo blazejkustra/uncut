@@ -68,23 +68,38 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     // The picker: three types, at the top, each with its own models, prompt hint and button.
     const types = await page.$$eval("[data-testid=generate-types] [role=radio]", (els) => els.map((e) => (e as HTMLElement).innerText.trim()));
     assert.deepEqual(types, ["Picture", "Video", "Sound"]);
-    assert.equal(await page.$eval("[data-testid=generate-library] .gen-form > *", (e) => (e as HTMLElement).dataset.testid), "generate-types", "the picker comes first");
+    assert.equal(
+      await page.$eval("[data-testid=generate-library] .gen-form > *", (e) => (e as HTMLElement).dataset.testid),
+      "generate-types",
+      "the picker comes first",
+    );
     const ui = () =>
       page.evaluate(() => ({
         type: document.querySelector<HTMLElement>("[data-testid=generate-library] .gen-form")!.dataset.type,
         checked: document.querySelector<HTMLElement>("[data-testid=generate-types] [aria-checked=true]")!.innerText.trim(),
-        models: [...document.querySelectorAll<HTMLElement>("[data-testid=generator]")].map((e) => ({ id: e.dataset.id!, soon: e.dataset.soon === "true", brand: e.querySelector<HTMLElement>("[data-testid=generator-mark]")?.dataset.brand })),
+        models: [...document.querySelectorAll<HTMLElement>("[data-testid=generator]")].map((e) => ({
+          id: e.dataset.id!,
+          soon: e.dataset.soon === "true",
+          brand: e.querySelector<HTMLElement>("[data-testid=generator-mark]")?.dataset.brand,
+        })),
         placeholder: document.querySelector<HTMLTextAreaElement>("[data-testid=generate-prompt]")!.placeholder,
         button: document.querySelector<HTMLElement>("[data-testid=generate-run]")!.innerText.trim(),
         all: document.querySelector<HTMLElement>("[data-testid=generate-library]")!.innerText,
       }));
     const seen: Record<string, Awaited<ReturnType<typeof ui>>> = {};
-    for (const [id, label] of [["image", "Picture"], ["video", "Video"], ["audio", "Sound"]] as const) {
+    for (const [id, label] of [
+      ["image", "Picture"],
+      ["video", "Video"],
+      ["audio", "Sound"],
+    ] as const) {
       await page.click(`[data-testid=generate-type-${id}]`);
       await page.waitForFunction((t: string) => document.querySelector<HTMLElement>("[data-testid=generate-library] .gen-form")!.dataset.type === t, {}, id);
       const now = await ui();
       assert.equal(now.checked, label);
-      assert.ok(now.models.every((m) => m.brand), `every model has a mark (${id})`);
+      assert.ok(
+        now.models.every((m) => m.brand),
+        `every model has a mark (${id})`,
+      );
       seen[id] = now;
       await page.screenshot({ path: `test-output/issue63-${id === "image" ? "picture" : id === "audio" ? "sound" : "video"}.png` });
     }
@@ -95,7 +110,10 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     // D277 (#103): no brand-named coming-soon models; #107, #108: Sound's ElevenLabs ones are wired now.
     assert.deepEqual([ids("image", true), ids("video", true), ids("audio", true)], [[], [], []]);
     assert.notEqual(seen.image!.placeholder, seen.video!.placeholder);
-    assert.deepEqual([seen.image!.button, seen.video!.button, seen.audio!.button].map((b) => b.replace(/\s*⌘↩$/, "")), ["Generate picture", "Generate video", "Generate sound"]);
+    assert.deepEqual(
+      [seen.image!.button, seen.video!.button, seen.audio!.button].map((b) => b.replace(/\s*⌘↩$/, "")),
+      ["Generate picture", "Generate video", "Generate sound"],
+    );
     const brand = (id: string) => seen.video!.models.find((m) => m.id === id)!.brand;
     assert.deepEqual([brand("generate.svg"), brand("generate.veo")], ["claude", "google"]);
     await page.click("[data-testid=generate-type-video]");
@@ -132,7 +150,19 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     assert.equal(voice.run, true, "Generate waits for the key");
     assert.equal(voice.estimate, "Under $0.01, billed to your ElevenLabs key");
     // D263: the options (selects, not chips) fit the panel: nothing scrolls sideways.
-    const wide = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generate-library], [data-testid=generate-library] *"), ...(() => { const up: Array<HTMLElement> = []; for (let el = document.querySelector<HTMLElement>("[data-testid=generate-library]")?.parentElement; el && el !== document.body; el = el.parentElement) up.push(el); return up; })()].filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1).map((el) => el.className));
+    const wide = await page.evaluate(() =>
+      [
+        ...document.querySelectorAll<HTMLElement>("[data-testid=generate-library], [data-testid=generate-library] *"),
+        ...(() => {
+          const up: Array<HTMLElement> = [];
+          for (let el = document.querySelector<HTMLElement>("[data-testid=generate-library]")?.parentElement; el && el !== document.body; el = el.parentElement)
+            up.push(el);
+          return up;
+        })(),
+      ]
+        .filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.className),
+    );
     assert.deepEqual(wide, [], "no sideways scrolling in the Generate panel");
     await page.screenshot({ path: "test-output/issue63-voiceover.png" });
     // Every coming-soon model, in every type: disabled options, Generate off.
@@ -143,7 +173,11 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
         await page.waitForFunction((m: string) => document.querySelector<HTMLElement>("[data-testid=generate-options]")?.dataset.model === m, {}, id);
         const state = await page.evaluate(() => ({
           run: document.querySelector<HTMLButtonElement>("[data-testid=generate-run]")!.disabled,
-          controls: [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("[data-testid=generate-options] button, [data-testid=generate-options] input, [data-testid=generate-options] select")].map((c) => c.disabled),
+          controls: [
+            ...document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+              "[data-testid=generate-options] button, [data-testid=generate-options] input, [data-testid=generate-options] select",
+            ),
+          ].map((c) => c.disabled),
           all: document.querySelector<HTMLElement>("[data-testid=generate-library]")!.innerText,
         }));
         assert.equal(state.run, true, `${id}: Generate disabled`);
@@ -153,7 +187,8 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     }
 
     // No "free" wording: the subscription is used, never "free".
-    for (const t of ["image", "video", "audio"]) assert.ok(!FREE.test(seen[t]!.all), `no "free" in ${t}: ${seen[t]!.all.match(/.{0,30}\bfree\b.{0,30}/i)?.[0]}`);
+    for (const t of ["image", "video", "audio"])
+      assert.ok(!FREE.test(seen[t]!.all), `no "free" in ${t}: ${seen[t]!.all.match(/.{0,30}\bfree\b.{0,30}/i)?.[0]}`);
     await page.click("[data-testid=generate-type-image]");
     await page.click("[data-testid=generator][data-id='generate.svg']");
     assert.equal(await text(page, "[data-testid=generate-estimate]"), "Uses your Claude Code");
@@ -173,12 +208,21 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     await waitFor(page, "[data-testid=library] [data-testid=generated-item]");
     const item = await page.evaluate(() => {
       const el = document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated-item]")!;
-      return { badge: !!el.querySelector("[data-testid=generated-badge]"), prompt: el.title.split("\n")[1], by: el.querySelector<HTMLElement>(".gen-by")!.innerText.trim(), section: document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated] .lib-label")!.innerText.trim() };
+      return {
+        badge: !!el.querySelector("[data-testid=generated-badge]"),
+        prompt: el.title.split("\n")[1],
+        by: el.querySelector<HTMLElement>(".gen-by")!.innerText.trim(),
+        section: document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated] .lib-label")!.innerText.trim(),
+      };
     });
     assert.deepEqual(item, { badge: true, prompt: "A red kite on a pale sky", by: "Made with Claude Code", section: "Generated" });
     assert.ok(!FREE.test(await text(page, "[data-testid=library]")), "no free wording in Media");
     await page.screenshot({ path: "test-output/issue63-media.png" });
-    const dir = join(root, "projects", readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!);
+    const dir = join(
+      root,
+      "projects",
+      readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!,
+    );
     let media = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).media;
     for (let i = 0; i < 50 && media.length === 0; i++) {
       await new Promise((r) => setTimeout(r, 200));
@@ -188,7 +232,10 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     assert.equal(media[0].source.module, "generate.svg");
 
     // Only Claude's stand-in ran; no key was stored.
-    const runs = readFileSync(join(root, "prompts.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const runs = readFileSync(join(root, "prompts.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
     assert.equal(runs.filter((r) => r.oneshot).length, 1);
     assert.ok(!existsSync(join(root, "data", "keys.json")));
     assert.deepEqual(app.errors, []);

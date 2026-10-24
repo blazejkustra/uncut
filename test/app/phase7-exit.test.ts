@@ -67,8 +67,22 @@ const awaitPath = () => join(root, "place.json");
 const resultLog = () => join(root, "results.jsonl");
 const argentLog = () => join(root, "argent.jsonl");
 const whisperLog = () => join(root, "whisper.jsonl");
-const results = (): Array<Result> => (existsSync(resultLog()) ? readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
-const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+const results = (): Array<Result> =>
+  existsSync(resultLog())
+    ? readFileSync(resultLog(), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
+const lines = (file: string) =>
+  existsSync(file)
+    ? readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+    : [];
 const textOf = (r: Result["result"]) => r.content.find((c) => c.type === "text")!.text!;
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const waitFor = (selector: string, timeout = 20000) => page.waitForSelector(selector, { timeout });
@@ -93,7 +107,13 @@ const turnCard = async (n: number) => (await page.$$("[data-testid=agent-turn]")
 async function turnDone(n: number, timeout: number) {
   const end = Date.now() + timeout;
   for (;;) {
-    const status = await page.evaluate((k) => (document.querySelector("[data-testid=agent-panel]") ? (document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? "") : "hidden"), n);
+    const status = await page.evaluate(
+      (k) =>
+        document.querySelector("[data-testid=agent-panel]")
+          ? (document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[k - 1]?.dataset.status ?? "")
+          : "hidden",
+      n,
+    );
     if (["done", "failed", "cancelled"].includes(status)) return;
     if (status === "hidden") await page.click("[data-testid=tab-agent]");
     if (Date.now() > end) throw new Error(`turn ${n} didn't end within ${timeout / 1000} s (status ${status})`);
@@ -128,7 +148,9 @@ async function sampleSockets(rootPid: number) {
   sampling = true;
   while (sampling) {
     const pids = treeOf(rootPid);
-    const listing = await new Promise<string>((done) => execFile("lsof", ["-nP", "-a", "-i", "-p", pids.join(",")], { encoding: "utf8" }, (_e, stdout) => done(stdout ?? "")));
+    const listing = await new Promise<string>((done) =>
+      execFile("lsof", ["-nP", "-a", "-i", "-p", pids.join(",")], { encoding: "utf8" }, (_e, stdout) => done(stdout ?? "")),
+    );
     for (const line of listing.split("\n").slice(1)) {
       const m = /->(\S+)/.exec(line);
       if (!m) continue;
@@ -167,7 +189,12 @@ before(async () => {
     let body = "";
     req.on("data", (d) => (body += d));
     req.on("end", () => {
-      stubRequests.push({ method: req.method ?? "", url: req.url ?? "", host: req.headers.host ?? "", auth: req.headers.authorization === `Bearer ${OPENAI_KEY}` });
+      stubRequests.push({
+        method: req.method ?? "",
+        url: req.url ?? "",
+        host: req.headers.host ?? "",
+        auth: req.headers.authorization === `Bearer ${OPENAI_KEY}`,
+      });
       if (req.url === "/v1/images/generations" && JSON.parse(body || "{}").prompt === PICTURE_PROMPT) {
         res.writeHead(200, { "content-type": "application/json" });
         return void res.end(JSON.stringify({ data: [{ b64_json: pngB64 }], usage: { input_tokens: 12, output_tokens: 1584 } }));
@@ -220,18 +247,26 @@ async function launch(dialogs: Array<string> = []) {
   void sampleSockets(app.proc.pid!);
 }
 
-test("phase 7 exit: a take from the Capture tab, the agent records a flow, generates a card and a keyed picture, places all, transcribes through the Whisper plugin; export, undo, reopen; nothing leaves the machine", { skip, timeout: 600000 }, async () => {
-  const started = Date.now();
-  try {
-    await exitCheck();
-  } catch (error) {
-    const panel = await page?.$eval("[data-testid=agent-panel]", (e) => (e as HTMLElement).innerText).catch(() => "(no agent panel)");
-    await page?.screenshot({ path: out("phase7-exit-failure.png") }).catch(() => {});
-    const log = results().map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`).join("\n");
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}` });
-  }
-  console.log(`phase 7 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
-});
+test(
+  "phase 7 exit: a take from the Capture tab, the agent records a flow, generates a card and a keyed picture, places all, transcribes through the Whisper plugin; export, undo, reopen; nothing leaves the machine",
+  { skip, timeout: 600000 },
+  async () => {
+    const started = Date.now();
+    try {
+      await exitCheck();
+    } catch (error) {
+      const panel = await page?.$eval("[data-testid=agent-panel]", (e) => (e as HTMLElement).innerText).catch(() => "(no agent panel)");
+      await page?.screenshot({ path: out("phase7-exit-failure.png") }).catch(() => {});
+      const log = results()
+        .map((r) => `${r.tool}${r.result.isError ? " (error)" : ""}: ${textOf(r.result).slice(0, 400)}`)
+        .join("\n");
+      throw Object.assign(error as Error, {
+        message: `${(error as Error).message}\n--- agent tab ---\n${panel}\n--- tool results ---\n${log}\n--- app output ---\n${app?.output().slice(-4000)}`,
+      });
+    }
+    console.log(`phase 7 exit check took ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  },
+);
 
 async function exitCheck() {
   t0 = Date.now();
@@ -277,7 +312,9 @@ async function exitCheck() {
   await page.keyboard.press("Escape");
   const keysFile = readFileSync(join(root, "data", "keys.json"), "utf8");
   assert.ok(!keysFile.includes(OPENAI_KEY), "keys.json holds only the wrapped key");
-  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=generator][data-id='generate.gpt-image']")?.dataset.ready === "true", { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=generator][data-id='generate.gpt-image']")?.dataset.ready === "true", {
+    timeout: 10000,
+  });
   step("OpenAI key saved");
 
   // 3. The agent's turn, first half: record the flow, generate the card and the picture, import the voice.
@@ -306,7 +343,20 @@ async function exitCheck() {
   const gen = first.filter((r) => r.tool === "generate_media").map((r) => JSON.parse(textOf(r.result)));
   assert.equal(gen[0].estimatedCost, 0, "the SVG card is free");
   assert.ok(gen[1].estimatedCost > 0 && gen[1].estimatedCost < 1, `the picture is cheap (${gen[1].estimatedCost}), so no approval card`);
-  writeFileSync(awaitPath(), JSON.stringify(placeSteps({ capture: capture.id, captureFrames: capture.probe!.frames!, demo: demo.id, demoFrames: demo.probe!.frames!, card: card.id, picture: picture.id, voice: voice.id })));
+  writeFileSync(
+    awaitPath(),
+    JSON.stringify(
+      placeSteps({
+        capture: capture.id,
+        captureFrames: capture.probe!.frames!,
+        demo: demo.id,
+        demoFrames: demo.probe!.frames!,
+        card: card.id,
+        picture: picture.id,
+        voice: voice.id,
+      }),
+    ),
+  );
   await turnDone(1, 180000);
   assert.equal((await turnStatus(1))[0], "done", (await turnStatus(1))[1]);
   step("turn done");
@@ -314,7 +364,11 @@ async function exitCheck() {
   for (const r of r1) assert.ok(!r.result.isError, `${r.tool}: ${textOf(r.result)}`);
   const p1 = onDisk();
   const items = p1.tracks.flatMap((t) => t.items);
-  assert.deepEqual(p1.tracks.find((t) => t.role === "main")!.items.map((i) => i.media), [card.id, capture.id, demo.id, picture.id], "everything placed on main in order");
+  assert.deepEqual(
+    p1.tracks.find((t) => t.role === "main")!.items.map((i) => i.media),
+    [card.id, capture.id, demo.id, picture.id],
+    "everything placed on main in order",
+  );
   assert.equal(items.find((i) => i.id === "voice")!.media, voice.id);
 
   // 4. The transcript, through the Whisper plugin: the words, and whisper started by the plugin (no UNCUT_* in its env).
@@ -349,7 +403,9 @@ async function exitCheck() {
   await page.click("[data-testid=export-change]");
   await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=export-name]")!.value === "Phase 7.mp4");
   await page.click("[data-testid=export-start]");
-  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), { timeout: 300000 });
+  await page.waitForFunction(() => ["done", "failed"].includes(document.querySelector<HTMLElement>("[data-testid=export-job]")?.dataset.phase ?? ""), {
+    timeout: 300000,
+  });
   assert.match(await text("[data-testid=export-status]"), /Saved/);
   await page.keyboard.press("Escape");
   const p = probe(saveAs);
@@ -359,7 +415,20 @@ async function exitCheck() {
   assert.equal(p.audio, "aac");
   // Two frames a second, tiled 4 wide, as many rows as it takes.
   const tiles = Math.ceil(p.duration * 2);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `fps=2,scale=480:-2,tile=4x${Math.ceil(tiles / 4)}`, "-frames:v", "1", "-update", "1", out("phase7-exit-sheet.jpg")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    saveAs,
+    "-vf",
+    `fps=2,scale=480:-2,tile=4x${Math.ceil(tiles / 4)}`,
+    "-frames:v",
+    "1",
+    "-update",
+    "1",
+    out("phase7-exit-sheet.jpg"),
+  ]);
   step("exported");
 
   // 7. Quit, start again, Recents: ⌘Z takes the turn back, ⇧⌘Z redoes it, Undo turn restores the project before it.
@@ -394,18 +463,36 @@ async function exitCheck() {
   // 8. Argent was never asked to stop its server, stop all simulators or boot anything.
   const argent = lines(argentLog());
   assert.ok(argent.length > 0);
-  assert.deepEqual(argent.filter((e) => e.forbidden || /^(server|stop-all-simulator-servers|stop-simulator-server|boot-device|shutdown)$/.test(e.argv[1] ?? e.argv[0] ?? "")), []);
+  assert.deepEqual(
+    argent.filter((e) => e.forbidden || /^(server|stop-all-simulator-servers|stop-simulator-server|boot-device|shutdown)$/.test(e.argv[1] ?? e.argv[0] ?? "")),
+    [],
+  );
   assert.equal(argent.filter((e) => e.argv[1] === "screen-recording-start").length, 2, "two takes");
   assert.equal(argent.filter((e) => e.argv[0] === "flow" && e.argv[1] === "run").length, 1, "one flow replayed");
 
   // 9. No request left the machine.
-  assert.deepEqual(stubRequests.map((r) => [r.method, r.url, r.host, r.auth]), [["POST", "/v1/images/generations", `127.0.0.1:${stubPort}`, true]], "one keyed request, to the stub");
-  assert.deepEqual(rendererRequests.filter((u) => !isLocalUrl(u)), [], "the renderer only talked to this machine");
+  assert.deepEqual(
+    stubRequests.map((r) => [r.method, r.url, r.host, r.auth]),
+    [["POST", "/v1/images/generations", `127.0.0.1:${stubPort}`, true]],
+    "one keyed request, to the stub",
+  );
+  assert.deepEqual(
+    rendererRequests.filter((u) => !isLocalUrl(u)),
+    [],
+    "the renderer only talked to this machine",
+  );
   assert.deepEqual(remoteSockets, [], "no process of the app had a connection off this machine");
   assert.equal(readFileSync(join(root, "data", "models", MODEL_FILE), "utf8"), MODEL_BYTES, "the speech model wasn't downloaded again");
   assert.deepEqual(readdirSync(join(root, "data", "models")), [MODEL_FILE], "no partial download");
   const claudeEnvs: Array<string> = lines(join(root, "prompts.jsonl")).flatMap((e) => e.env ?? []);
-  assert.deepEqual(claudeEnvs.filter((k) => /^(OPENAI|GOOGLE|GEMINI|ELEVENLABS)_API_KEY$/.test(k)), [], "no generator key variable in claude's environment (D99)");
-  assert.ok(!readFileSync(join(root, "prompts.jsonl"), "utf8").includes(OPENAI_KEY) && !readFileSync(resultLog(), "utf8").includes(OPENAI_KEY), "the key never reached the agent");
+  assert.deepEqual(
+    claudeEnvs.filter((k) => /^(OPENAI|GOOGLE|GEMINI|ELEVENLABS)_API_KEY$/.test(k)),
+    [],
+    "no generator key variable in claude's environment (D99)",
+  );
+  assert.ok(
+    !readFileSync(join(root, "prompts.jsonl"), "utf8").includes(OPENAI_KEY) && !readFileSync(resultLog(), "utf8").includes(OPENAI_KEY),
+    "the key never reached the agent",
+  );
   console.log(`  renderer requests: ${rendererRequests.length} (all local); socket samples clean`);
 }

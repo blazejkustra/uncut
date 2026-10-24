@@ -82,7 +82,10 @@ function lookFn(def: LookDef): (c: Px) => void {
   const mixer = def.mixer && def.mixer.length === 9 && def.mixer.every(Number.isFinite) ? def.mixer : undefined;
   const mono = num(def.mono, 0, 1, 0);
   const fade = num(def.fade, 0, 0.5, 0);
-  const tint = (t: LookDef["shadowTint"]) => (t && Array.isArray(t.color) && t.color.length === 3 ? { color: t.color.map((v) => num(v, 0, 1, 0)) as unknown as Rgb3, amount: num(t.amount, 0, 1, 0) } : undefined);
+  const tint = (t: LookDef["shadowTint"]) =>
+    t && Array.isArray(t.color) && t.color.length === 3
+      ? { color: t.color.map((v) => num(v, 0, 1, 0)) as unknown as Rgb3, amount: num(t.amount, 0, 1, 0) }
+      : undefined;
   const lo = tint(def.shadowTint);
   const hi = tint(def.highlightTint);
   return (c) => {

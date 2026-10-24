@@ -31,7 +31,8 @@ const out = new URL("../build/", import.meta.url).pathname;
  */
 export function arrowPath(): string {
   const { app, applications: apps } = DMG_ICONS;
-  const gapL = app.x + 64, gapR = apps.x - 64; // the icons' edges
+  const gapL = app.x + 64,
+    gapR = apps.x - 64; // the icons' edges
   const margin = (gapR - gapL - 100) / 2; // a 100 pt arrow, centred
   const p0 = { x: gapL + margin, y: app.y - 6 };
   const p1 = { x: gapR - margin, y: app.y - 8 };
@@ -39,9 +40,11 @@ export function arrowPath(): string {
   const c2 = { x: p1.x - 34, y: p1.y - 16 };
   // End tangent of a cubic: p1 − c2.
   const t = Math.atan2(p1.y - c2.y, p1.x - c2.x);
-  const HEAD = 11, SPREAD = (32 * Math.PI) / 180;
+  const HEAD = 11,
+    SPREAD = (32 * Math.PI) / 180;
   const barb = (a: number) => ({ x: p1.x - HEAD * Math.cos(t + a), y: p1.y - HEAD * Math.sin(t + a) });
-  const b1 = barb(SPREAD), b2 = barb(-SPREAD);
+  const b1 = barb(SPREAD),
+    b2 = barb(-SPREAD);
   const f = (n: number) => n.toFixed(2);
   return `M${f(p0.x)} ${f(p0.y)} C${f(c1.x)} ${f(c1.y)} ${f(c2.x)} ${f(c2.y)} ${f(p1.x)} ${f(p1.y)} M${f(b1.x)} ${f(b1.y)} L${f(p1.x)} ${f(p1.y)} L${f(b2.x)} ${f(b2.y)}`;
 }
@@ -49,7 +52,6 @@ export function arrowPath(): string {
 /** The page as one SVG (DMG_WINDOW points), with DM Sans embedded. */
 export function backgroundSvg(fontWoff2Base64: string): string {
   const { width: w, height: h } = DMG_WINDOW;
-  const { app, applications: apps } = DMG_ICONS;
   const arrow = arrowPath();
   // The Uncut mark: the icon's U with its cut (as apps/web/src/editor/Wordmark.tsx), 1024 grid.
   const mark = `
@@ -112,7 +114,11 @@ if (import.meta.main) {
     const { width: w, height: h } = DMG_WINDOW;
     for (const scale of [1, 2]) {
       const file = `${out}background${scale === 2 ? "@2x" : ""}.png`;
-      execFileSync(join(repo, "node_modules/.bin/electron"), [`--force-device-scale-factor=${scale}`, join(work, "main.cjs"), svg, String(scale), file, String(w), String(h)], { stdio: "inherit" });
+      execFileSync(
+        join(repo, "node_modules/.bin/electron"),
+        [`--force-device-scale-factor=${scale}`, join(work, "main.cjs"), svg, String(scale), file, String(w), String(h)],
+        { stdio: "inherit" },
+      );
       const png = readFileSync(file);
       const size = `${png.readUInt32BE(16)}×${png.readUInt32BE(20)}`;
       if (size !== `${w * scale}×${h * scale}`) throw new Error(`${file} is ${size}, expected ${w * scale}×${h * scale}`);

@@ -46,7 +46,23 @@ before(async () => {
   mkdirSync(join(dir, "media"), { recursive: true });
   const seconds = "14";
   const make = (size: string, file: string, codec: Array<string>, sound: boolean) =>
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `testsrc2=size=${size}:rate=${FPS}`, ...(sound ? ["-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000"] : []), "-t", seconds, ...codec, "-pix_fmt", "yuv420p", ...(sound ? ["-c:a", "aac", "-b:a", "128k", "-shortest"] : []), join(root, file)]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc2=size=${size}:rate=${FPS}`,
+      ...(sound ? ["-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000"] : []),
+      "-t",
+      seconds,
+      ...codec,
+      "-pix_fmt",
+      "yuv420p",
+      ...(sound ? ["-c:a", "aac", "-b:a", "128k", "-shortest"] : []),
+      join(root, file),
+    ]);
   const h264 = (g: number) => ["-c:v", "libx264", "-preset", "veryfast", "-g", String(g)];
   make("1920x1080", "HD.mp4", h264(60), true);
   make("3840x2160", "UHD.mp4", ["-c:v", "hevc_videotoolbox", "-b:v", "40M", "-g", "60", "-tag:v", "hvc1"], true);
@@ -68,12 +84,28 @@ before(async () => {
     ["m-hd", 150],
     ["m-uhd", 10],
   ];
-  const items = plan.map(([m, inF, look], i) => ({ id: `c${i}`, type: "clip", media: m, in: inF, duration: CLIP, ...(look ? { effects: [{ module: "effect.look", params: { look: "warm", intensity: 1 } }] } : {}) }));
+  const items = plan.map(([m, inF, look], i) => ({
+    id: `c${i}`,
+    type: "clip",
+    media: m,
+    in: inF,
+    duration: CLIP,
+    ...(look ? { effects: [{ module: "effect.look", params: { look: "warm", intensity: 1 } }] } : {}),
+  }));
   items.forEach((it, i) => {
     layers.push({ id: it.id, kind: "video", track: 0, start: i * CLIP, duration: CLIP, in: it.in, ...(it.effects ? { fx: true } : {}) });
     if (i) cuts.push(i * CLIP);
   });
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Cuts", canvas: { width: 1920, height: 1080, fps: FPS }, media, tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Cuts",
+      canvas: { width: 1920, height: 1080, fps: FPS },
+      media,
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items }],
+    }),
+  );
 });
 after(async () => {
   await app?.close();
@@ -88,7 +120,10 @@ async function clickAt(f: number) {
   await page.mouse.click(ruler.x + 0.5 + f * ppf - scroll, ruler.y + ruler.height / 2);
 }
 
-const ready = () => page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), { timeout: 20000 });
+const ready = () =>
+  page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), {
+    timeout: 20000,
+  });
 
 async function setPreview(scrub: boolean, gpu: boolean) {
   await page.keyboard.down("Meta");
@@ -96,7 +131,10 @@ async function setPreview(scrub: boolean, gpu: boolean) {
   await page.keyboard.up("Meta");
   await waitFor("[data-testid=settings]");
   await page.click("[data-testid=settings-nav-app]");
-  for (const [id, on] of [["settings-scrub-cache", scrub], ["settings-gpu-compositor", gpu]] as const) {
+  for (const [id, on] of [
+    ["settings-scrub-cache", scrub],
+    ["settings-gpu-compositor", gpu],
+  ] as const) {
     await waitFor(`[data-testid=${id}]`);
     const checked = await page.$eval(`[data-testid=${id}]`, (el) => (el as HTMLInputElement).checked);
     if (checked !== on) await page.click(`[data-testid=${id}]`);
@@ -122,7 +160,10 @@ async function play(label: string, from: number, ms: number) {
     void cdp.send("Page.screencastFrameAck", { sessionId: e.sessionId }).catch(() => {});
   });
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 70, maxWidth: 900, maxHeight: 700, everyNthFrame: 1 });
-  await startGlitchProbe(page, layers.map((l) => l.id));
+  await startGlitchProbe(
+    page,
+    layers.map((l) => l.id),
+  );
   await page.keyboard.press("Space");
   await sleep(ms);
   await page.keyboard.press("Space");
@@ -133,7 +174,7 @@ async function play(label: string, from: number, ms: number) {
   const origin = await page.evaluate(() => performance.timeOrigin);
   // D241: renders where the GPU compositor kept the last frame up (a layer had nothing to draw yet).
   const held = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuHeld ?? 0));
-  const heldBy = await page.evaluate(() => document.querySelector<HTMLElement>("canvas[data-gpu-compositor=\"0\"]")?.dataset.heldBy ?? "");
+  const heldBy = await page.evaluate(() => document.querySelector<HTMLElement>('canvas[data-gpu-compositor="0"]')?.dataset.heldBy ?? "");
   const rect = await page.$eval("[data-testid=preview-frame]", (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x / innerWidth, y: r.y / innerHeight, w: r.width / innerWidth, h: r.height / innerHeight };
@@ -180,10 +221,16 @@ async function play(label: string, from: number, ms: number) {
   const blacks = shots
     .map((s, i) => ({ i, dark: dark[i]!, at: s.at, sample: frameAt(s.at) }))
     .filter((b) => b.dark > 0.6 && b.sample?.playing)
-    .map((b) => ({ ...b, frame: b.sample!.frame, cut: cuts.reduce((best, c) => (Math.abs(c - b.sample!.frame) < Math.abs(best - b.sample!.frame) ? c : best), cuts[0]!) }));
+    .map((b) => ({
+      ...b,
+      frame: b.sample!.frame,
+      cut: cuts.reduce((best, c) => (Math.abs(c - b.sample!.frame) < Math.abs(best - b.sample!.frame) ? c : best), cuts[0]!),
+    }));
   const playingShots = shots.filter((s) => frameAt(s.at)?.playing).length;
   const c = countGlitches(probe.samples, layers, { fps: FPS, lateMs: 1000, longMs: 150 });
-  console.log(`# issue82 ${label}: ${shots.length} screen frames (${playingShots} while playing), black ${blacks.length}${blacks.length ? ` at playhead frames [${blacks.map((b) => `${b.frame} (cut ${b.cut}${b.frame >= b.cut ? "+" : ""}${b.frame - b.cut})`).join(", ")}]` : ""}; probe: flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, worst frame ${c.worstFrameMs.toFixed(0)} ms; gpu held renders so far ${held}${heldBy ? ` (last by ${heldBy})` : ""}; stats ${JSON.stringify(probe.stats)}`);
+  console.log(
+    `# issue82 ${label}: ${shots.length} screen frames (${playingShots} while playing), black ${blacks.length}${blacks.length ? ` at playhead frames [${blacks.map((b) => `${b.frame} (cut ${b.cut}${b.frame >= b.cut ? "+" : ""}${b.frame - b.cut})`).join(", ")}]` : ""}; probe: flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, worst frame ${c.worstFrameMs.toFixed(0)} ms; gpu held renders so far ${held}${heldBy ? ` (last by ${heldBy})` : ""}; stats ${JSON.stringify(probe.stats)}`,
+  );
   // Each black frame: what the probe saw of the layers around it (drawn, seeking, media time, frames presented).
   for (const b of blacks.slice(0, 3)) console.log(`# issue82 ${label} black f${b.frame}: ${JSON.stringify(b.sample?.layers)}`);
   if (c.details.length) console.log(`# issue82 ${label} details: ${c.details.slice(0, 40).join("; ")}`);
@@ -198,28 +245,32 @@ async function play(label: string, from: number, ms: number) {
   return { blacks, flash: c.flash, playingShots };
 }
 
-test("issue #82: playback across 6 cuts (4K HEVC among them) shows no black frame, scrub cache and GPU compositor on and off", { skip, timeout: 900000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
-  page = app.page;
-  await waitForWelcome(page);
-  await page.click("[data-testid=open-project]");
-  await waitFor("[data-testid=editor]");
-  await page.click("[data-testid=bottom-timeline]");
-  const runs: Record<string, Awaited<ReturnType<typeof play>>> = {};
-  for (const [scrub, gpu] of [
-    [true, true],
-    [true, false],
-    [false, true],
-    [false, false],
-  ] as const) {
-    await setPreview(scrub, gpu);
-    const label = `scrub ${scrub ? "on" : "off"}, gpu ${gpu ? "on" : "off"}`;
-    runs[label] = await play(label, CLIP - 15, (cuts.at(-1)! - CLIP + 45) * (1000 / FPS));
-  }
-  for (const [label, r] of Object.entries(runs)) {
-    assert.ok(r.playingShots > 100, `${label}: the screencast saw the playback (${r.playingShots} frames)`);
-    check(NO_REAL_GPU, r.blacks.length === 0, `${label}: black frames while playing at ${r.blacks.map((b) => b.frame).join(", ")}`);
-    assert.equal(r.flash, 0, `${label}: a layer blanked after showing`);
-  }
-  assert.deepEqual(app.errors, []);
-});
+test(
+  "issue #82: playback across 6 cuts (4K HEVC among them) shows no black frame, scrub cache and GPU compositor on and off",
+  { skip, timeout: 900000 },
+  async () => {
+    app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
+    page = app.page;
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await waitFor("[data-testid=editor]");
+    await page.click("[data-testid=bottom-timeline]");
+    const runs: Record<string, Awaited<ReturnType<typeof play>>> = {};
+    for (const [scrub, gpu] of [
+      [true, true],
+      [true, false],
+      [false, true],
+      [false, false],
+    ] as const) {
+      await setPreview(scrub, gpu);
+      const label = `scrub ${scrub ? "on" : "off"}, gpu ${gpu ? "on" : "off"}`;
+      runs[label] = await play(label, CLIP - 15, (cuts.at(-1)! - CLIP + 45) * (1000 / FPS));
+    }
+    for (const [label, r] of Object.entries(runs)) {
+      assert.ok(r.playingShots > 100, `${label}: the screencast saw the playback (${r.playingShots} frames)`);
+      check(NO_REAL_GPU, r.blacks.length === 0, `${label}: black frames while playing at ${r.blacks.map((b) => b.frame).join(", ")}`);
+      assert.equal(r.flash, 0, `${label}: a layer blanked after showing`);
+    }
+    assert.deepEqual(app.errors, []);
+  },
+);

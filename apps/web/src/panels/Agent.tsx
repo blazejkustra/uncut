@@ -37,7 +37,13 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   const [showEarlier, setShowEarlier] = useState(false);
   const newChat = (
     <Tooltip label={running !== null ? "Wait for the agent to finish to start a new chat" : "New chat: the agent starts a fresh conversation"}>
-      <button className="icon-btn agent-new-chat" data-testid="agent-new-chat" aria-label="New chat" disabled={!online || running !== null || turns.length === 0} onClick={() => (setShowEarlier(false), void actions.agentNewThread())}>
+      <button
+        className="icon-btn agent-new-chat"
+        data-testid="agent-new-chat"
+        aria-label="New chat"
+        disabled={!online || running !== null || turns.length === 0}
+        onClick={() => (setShowEarlier(false), void actions.agentNewThread())}
+      >
         <SquarePen />
       </button>
     </Tooltip>
@@ -82,83 +88,95 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
 
   return (
     <ProjectContext.Provider value={project}>
-    <div className="agent" data-testid="agent-panel">
-      {agent?.warning && (
-        <p className="err agent-warning" data-testid="agent-warning">
-          <TriangleAlert />
-          {agent.warning}
-        </p>
-      )}
-      {/* An empty plan and no turns: no strip (it left a bare rule above the empty state). */}
-      {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
-        <div className="plan-strip agent-strip" data-testid="agent-strip">
-          {newChat}
-          <span className="spacer" />
-          {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && <PlanChip plan={agent.plan} />}
-        </div>
-      )}
-      <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
-        {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
-        {earlier.length > 0 && (
-          <button className="link-btn agent-earlier" data-testid="agent-earlier" aria-expanded={showEarlier} onClick={() => setShowEarlier(!showEarlier)}>
-            {showEarlier ? <ChevronDown /> : <ChevronRight />}
-            {showEarlier ? "Hide earlier chat" : `Earlier chat, ${earlier.length === 1 ? "1 turn" : `${earlier.length} turns`}`}
-          </button>
+      <div className="agent" data-testid="agent-panel">
+        {agent?.warning && (
+          <p className="err agent-warning" data-testid="agent-warning">
+            <TriangleAlert />
+            {agent.warning}
+          </p>
         )}
-        {showEarlier && earlier.length > 0 && (
-          <>
-            {earlier.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={undefined} latest={latest} live={live} />)}
-            <div className="agent-thread-divider" data-testid="agent-thread-divider">
-              <span>New chat</span>
-            </div>
-          </>
-        )}
-        {turns.length === 0 ? (
-          <>
-            <AgentEmpty name={project.name} />
-            {canRestage && dir && (
-              <button
-                className="link-btn agent-stage-back"
-                data-testid="agent-stage-reopen"
-                title="Show the agent in the middle of the window"
-                onClick={() => {
-                  panels.focus(false);
-                  stage.reopen(dir);
-                }}
-              >
-                <Maximize2 />
-                Open in the middle
-              </button>
-            )}
-          </>
-        ) : (
-          turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} latest={latest} live={live} />)
-        )}
-        <AgentTakeLine />
-        {sessionSpend > 0 && (
-          <div className="agent-spend small muted" data-testid="agent-session-spend">
-            About ${sessionSpend.toFixed(2)} billed to your API keys in this project so far (estimates).
+        {/* An empty plan and no turns: no strip (it left a bare rule above the empty state). */}
+        {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
+          <div className="plan-strip agent-strip" data-testid="agent-strip">
+            {newChat}
+            <span className="spacer" />
+            {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && <PlanChip plan={agent.plan} />}
           </div>
         )}
-      </div>
-      {away && turns.length > 0 && (
-        <button className="agent-latest" data-testid="agent-latest" onClick={toLatest}>
-          <ChevronDown />
-          {agent?.approval ? "Waiting for your answer below" : "Latest"}
-        </button>
-      )}
-      {agentError && (
-        <div className="agent-error inline-error small" data-testid="agent-error">
-          <span>{agentError}</span>
-          <Tooltip label="Dismiss">
-            <button className="icon-btn" onClick={actions.dismissAgentError}>
-              <X />
+        <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
+          {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
+          {earlier.length > 0 && (
+            <button className="link-btn agent-earlier" data-testid="agent-earlier" aria-expanded={showEarlier} onClick={() => setShowEarlier(!showEarlier)}>
+              {showEarlier ? <ChevronDown /> : <ChevronRight />}
+              {showEarlier ? "Hide earlier chat" : `Earlier chat, ${earlier.length === 1 ? "1 turn" : `${earlier.length} turns`}`}
             </button>
-          </Tooltip>
+          )}
+          {showEarlier && earlier.length > 0 && (
+            <>
+              {earlier.map((t) => (
+                <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={undefined} latest={latest} live={live} />
+              ))}
+              <div className="agent-thread-divider" data-testid="agent-thread-divider">
+                <span>New chat</span>
+              </div>
+            </>
+          )}
+          {turns.length === 0 ? (
+            <>
+              <AgentEmpty name={project.name} />
+              {canRestage && dir && (
+                <button
+                  className="link-btn agent-stage-back"
+                  data-testid="agent-stage-reopen"
+                  title="Show the agent in the middle of the window"
+                  onClick={() => {
+                    panels.focus(false);
+                    stage.reopen(dir);
+                  }}
+                >
+                  <Maximize2 />
+                  Open in the middle
+                </button>
+              )}
+            </>
+          ) : (
+            turns.map((t) => (
+              <TurnCard
+                key={t.id}
+                turn={t}
+                busy={running !== null}
+                online={online}
+                approval={agent?.approval?.turnId === t.id ? agent.approval : undefined}
+                latest={latest}
+                live={live}
+              />
+            ))
+          )}
+          <AgentTakeLine />
+          {sessionSpend > 0 && (
+            <div className="agent-spend small muted" data-testid="agent-session-spend">
+              About ${sessionSpend.toFixed(2)} billed to your API keys in this project so far (estimates).
+            </div>
+          )}
         </div>
-      )}
-      <Composer project={project} online={online} blocked={blocked} turns={allTurns} running={running} provider={agent?.provider ?? "Claude Code"} />
-    </div>
+        {away && turns.length > 0 && (
+          <button className="agent-latest" data-testid="agent-latest" onClick={toLatest}>
+            <ChevronDown />
+            {agent?.approval ? "Waiting for your answer below" : "Latest"}
+          </button>
+        )}
+        {agentError && (
+          <div className="agent-error inline-error small" data-testid="agent-error">
+            <span>{agentError}</span>
+            <Tooltip label="Dismiss">
+              <button className="icon-btn" onClick={actions.dismissAgentError}>
+                <X />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+        <Composer project={project} online={online} blocked={blocked} turns={allTurns} running={running} provider={agent?.provider ?? "Claude Code"} />
+      </div>
     </ProjectContext.Provider>
   );
 }

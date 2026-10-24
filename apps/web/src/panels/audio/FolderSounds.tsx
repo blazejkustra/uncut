@@ -16,7 +16,21 @@ type Result = ReadonlyArray<SoundFolderInfo> | { readonly error: string } | unde
  * with its count and ×) and their sound files; "music" lists the Music app's library (its DRM-free
  * songs), once they ask for it. The files stay where they are; + copies one into the project.
  */
-export function FolderSounds({ kind, mode, project, online, query, preview }: { kind: LibraryKind; mode: "folders" | "music"; project: Project; online: boolean; query: string; preview: Preview }) {
+export function FolderSounds({
+  kind,
+  mode,
+  project,
+  online,
+  query,
+  preview,
+}: {
+  kind: LibraryKind;
+  mode: "folders" | "music";
+  project: Project;
+  online: boolean;
+  query: string;
+  preview: Preview;
+}) {
   const app = useApp();
   const [all, setAll] = useState<ReadonlyArray<SoundFolderInfo> | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -58,7 +72,10 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
         folders &&
         !library && (
           <div className="lib-explain" data-testid="music-app-empty">
-            <p>List the songs in your Music app library that are plain files on this Mac: songs you bought or imported. Apple Music songs can't be used in a video, so they're left out.</p>
+            <p>
+              List the songs in your Music app library that are plain files on this Mac: songs you bought or imported. Apple Music songs can't be used in a
+              video, so they're left out.
+            </p>
             <button className="btn" data-testid="music-app-connect" disabled={!online || busy} onClick={() => void run(() => actions.addMusicLibrary())}>
               <Library /> Show my Music library
             </button>
@@ -72,13 +89,21 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
       )}
       {mode === "folders" && folders && folders.length === 0 && (
         <div className="muted small" data-testid="folder-empty">
-          Add a folder of your own {kind === "music" ? "music" : "sounds"}. Uncut lists its sound files here and copies one into the project only when you add it.
+          Add a folder of your own {kind === "music" ? "music" : "sounds"}. Uncut lists its sound files here and copies one into the project only when you add
+          it.
         </div>
       )}
       {mode === "folders" && !!folders?.length && (
         <div className="lib-folder-list" data-testid="sound-folders">
           {folders.map((f) => (
-            <div key={f.id} className="lib-folder" data-testid="sound-folder" data-id={f.id} data-missing={!!f.missing} title={f.missing ? `${f.path} can't be opened` : f.path}>
+            <div
+              key={f.id}
+              className="lib-folder"
+              data-testid="sound-folder"
+              data-id={f.id}
+              data-missing={!!f.missing}
+              title={f.missing ? `${f.path} can't be opened` : f.path}
+            >
               <Folder />
               <span className="lib-folder-name">{f.name}</span>
               <span className="lib-folder-count">{f.missing ? "missing" : `${f.sounds.length}${f.truncated ? "+" : ""}`}</span>
@@ -86,7 +111,7 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
                 <button
                   className="icon-btn"
                   data-testid="sound-folder-remove"
-                 
+
                   onClick={() => void run(() => actions.removeSoundFolder(f.id))}
                 >
                   <X />
@@ -97,7 +122,13 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
         </div>
       )}
       {library && (
-        <div className="lib-folder-list" data-testid="music-app-summary" data-missing={!!library.missing} data-count={library.sounds.length} data-skipped={library.skipped ?? 0}>
+        <div
+          className="lib-folder-list"
+          data-testid="music-app-summary"
+          data-missing={!!library.missing}
+          data-count={library.sounds.length}
+          data-skipped={library.skipped ?? 0}
+        >
           <div className="lib-folder" title={library.path}>
             <Library />
             <span className="lib-folder-name">
@@ -138,7 +169,13 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
           const artist = mode === "music" ? f.rel.split("/").slice(0, -1).join(", ") : f.folderName;
           return (
             <div key={f.id} className="music-row" data-testid="folder-row" data-id={f.id} title={f.rel}>
-              <button className={`icon-btn${playing ? " playing" : ""}`} data-testid="folder-play" data-playing={playing} title={playing ? "Stop" : "Listen"} onClick={() => preview.toggle(key, url, f.bytes < 20 * 1024 * 1024)}>
+              <button
+                className={`icon-btn${playing ? " playing" : ""}`}
+                data-testid="folder-play"
+                data-playing={playing}
+                title={playing ? "Stop" : "Listen"}
+                onClick={() => preview.toggle(key, url, f.bytes < 20 * 1024 * 1024)}
+              >
                 {playing ? <Square /> : <Play />}
               </button>
               <span className="music-text">

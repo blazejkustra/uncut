@@ -61,7 +61,27 @@ interface Services {
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies, links }: Services) => {
+const handlersLayer = ({
+  config,
+  mediaCore,
+  projects,
+  recents,
+  setup,
+  settings,
+  library,
+  agent,
+  exporter,
+  analysis,
+  whisper,
+  plugins,
+  capture,
+  generator,
+  keys,
+  sounds,
+  mediaIndex,
+  proxies,
+  links,
+}: Services) => {
   const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow);
   const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
   return WsRpcGroup.toLayer({
@@ -146,8 +166,23 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         if (!entry) return yield* new ProjectError({ reason: "missing", message: "That file isn't in the media index any more.", details: [] });
         const open = yield* projects.current;
         if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
-        const target = yield* Effect.tryPromise({ try: () => importablePath(entry.path, open.dir), catch: (e) => new ProjectError({ reason: "io", message: `Couldn't copy ${entry.name}: ${(e as Error).message}`, details: [] }) });
-        const imported = yield* library.importCapture({ openId: open.openId, dir: open.dir, path: target.path, name: entry.name, source: { module: "media.reuse", origin: entry.origin, from: entry.project.name, ...(entry.device ? { device: entry.device } : {}), ...(entry.app ? { app: entry.app } : {}) } });
+        const target = yield* Effect.tryPromise({
+          try: () => importablePath(entry.path, open.dir),
+          catch: (e) => new ProjectError({ reason: "io", message: `Couldn't copy ${entry.name}: ${(e as Error).message}`, details: [] }),
+        });
+        const imported = yield* library.importCapture({
+          openId: open.openId,
+          dir: open.dir,
+          path: target.path,
+          name: entry.name,
+          source: {
+            module: "media.reuse",
+            origin: entry.origin,
+            from: entry.project.name,
+            ...(entry.device ? { device: entry.device } : {}),
+            ...(entry.app ? { app: entry.app } : {}),
+          },
+        });
         return { ...(imported.entries[0] ? { mediaId: imported.entries[0].id } : {}), name: entry.name, copied: target.copied };
       }),
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
@@ -174,11 +209,27 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.pluginsContributions]: () =>
       Effect.map(Effect.andThen(plugins.refresh, plugins.contributions), (c) => ({
         looks: c.looks,
-        components: c.components.map(({ id, name, description, plugin, pluginName, params, defaults }) => ({ id, name, description, plugin, pluginName, params, defaults })),
+        components: c.components.map(({ id, name, description, plugin, pluginName, params, defaults }) => ({
+          id,
+          name,
+          description,
+          plugin,
+          pluginName,
+          params,
+          defaults,
+        })),
         rules: c.rules,
         // D136 colour looks and D213 shader effects (their WGSL and typed params: data the renderer draws).
         filters: c.filters.map(({ id, name, description, plugin, pluginName, look }) => ({ id, name, description, plugin, pluginName, look })),
-        shaders: (c.shaders ?? []).map(({ id, name, description, plugin, pluginName, params, wgsl }) => ({ id, name, description, plugin, pluginName, params, wgsl })),
+        shaders: (c.shaders ?? []).map(({ id, name, description, plugin, pluginName, params, wgsl }) => ({
+          id,
+          name,
+          description,
+          plugin,
+          pluginName,
+          params,
+          wgsl,
+        })),
       })),
     [RPC_METHODS.pluginsCheck]: () =>
       Effect.gen(function* () {
@@ -192,7 +243,10 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         if (!component) return yield* new PluginError({ reason: "unknown-plugin", message: `There's no component ${id} from an allowed plugin.` });
         const open = yield* projects.current;
         if (!open) return yield* new PluginError({ reason: "io", message: "Open a project first." });
-        const copied = yield* Effect.tryPromise({ try: () => copyComponent(open.dir, component), catch: (error) => new PluginError({ reason: "io", message: `Couldn't copy ${component.name} into the project: ${(error as Error).message}` }) });
+        const copied = yield* Effect.tryPromise({
+          try: () => copyComponent(open.dir, component),
+          catch: (error) => new PluginError({ reason: "io", message: `Couldn't copy ${component.name} into the project: ${(error as Error).message}` }),
+        });
         if ("problem" in copied) return yield* new PluginError({ reason: "io", message: copied.problem });
         return { src: copied.src, name: component.name, props: component.defaults };
       }),
@@ -243,9 +297,27 @@ export const layer = Layer.unwrap(
     const mediaIndex = yield* MediaIndex;
     const proxies = yield* Proxies;
     const links = yield* LinkImport;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies, links }).pipe(
-      Layer.provideMerge(RpcSerialization.layerJson),
-    );
+    const rpcLayer = handlersLayer({
+      config,
+      mediaCore,
+      projects,
+      recents,
+      setup,
+      settings,
+      library,
+      agent,
+      exporter,
+      analysis,
+      whisper,
+      plugins,
+      capture,
+      generator,
+      keys,
+      sounds,
+      mediaIndex,
+      proxies,
+      links,
+    }).pipe(Layer.provideMerge(RpcSerialization.layerJson));
 
     return HttpRouter.add(
       "GET",

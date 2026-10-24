@@ -29,7 +29,12 @@ const server = serve({
   fallback: async (args, { name }) => {
     switch (name.slice(name.lastIndexOf("_") + 1)) {
       case "echo":
-        return { content: [{ type: "text", text: `${name}: ${String(args.text ?? "")}` }, { type: "image", data: PNG, mimeType: "image/png" }] };
+        return {
+          content: [
+            { type: "text", text: `${name}: ${String(args.text ?? "")}` },
+            { type: "image", data: PNG, mimeType: "image/png" },
+          ],
+        };
       case "env":
         return json(facts());
       case "check": {
@@ -37,7 +42,16 @@ const server = serve({
         // own and one without a message (both dropped by Uncut); a project named "Slow…" never answers.
         const project = (args.project ?? {}) as { name?: string; tracks?: Array<unknown> };
         if (String(project.name).startsWith("Slow")) return never();
-        return { content: [{ type: "text", text: "findings" }], structuredContent: { findings: [{ rule: "proc.checks.house", message: `${project.tracks?.length ?? 0} tracks, checked by the house rule.`, frame: 0, hint: "Keep it." }, { rule: "taste.extra.end-card", message: "Not this plugin's rule." }, { rule: "proc.checks.house" }] } };
+        return {
+          content: [{ type: "text", text: "findings" }],
+          structuredContent: {
+            findings: [
+              { rule: "proc.checks.house", message: `${project.tracks?.length ?? 0} tracks, checked by the house rule.`, frame: 0, hint: "Keep it." },
+              { rule: "taste.extra.end-card", message: "Not this plugin's rule." },
+              { rule: "proc.checks.house" },
+            ],
+          },
+        };
       }
       case "crash":
         process.exit(3);

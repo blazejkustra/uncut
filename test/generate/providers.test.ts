@@ -10,13 +10,29 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { allowBaseOverrides, followRedirects, gptImage, guardedFetch, inTestContext, isTestRun, keySafe, MAX_REDIRECTS, providerBase, sound, veo, type KeyedGenerator } from "../../apps/server/src/generate/providers.ts";
+import {
+  allowBaseOverrides,
+  followRedirects,
+  gptImage,
+  guardedFetch,
+  inTestContext,
+  isTestRun,
+  keySafe,
+  MAX_REDIRECTS,
+  providerBase,
+  sound,
+  veo,
+  type KeyedGenerator,
+} from "../../apps/server/src/generate/providers.ts";
 import { cleanKey, keyStore, type Crypter } from "../../apps/server/src/generate/keys.ts";
 import { extractMarkup, markupKind, svgPixels } from "../../apps/server/src/generate/svg.ts";
 import { fileBase } from "../../apps/server/src/generate/generate.ts";
 
 const KEY = "sk-test-not-a-real-key-0123456789";
-const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a00000000049454e44ae426082", "hex");
+const PNG = Buffer.from(
+  "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a00000000049454e44ae426082",
+  "hex",
+);
 
 interface Seen {
   method: string;
@@ -118,7 +134,10 @@ test("errors say what went wrong without the key, even when the reply echoes it"
   // A reply without a picture.
   handler = (_r, res) => json(res, 200, { data: [] });
   await assert.rejects(gptImage.generate({ kind: "image", prompt: "x" }, ctx()), /no picture in it/);
-  assert.deepEqual(leftovers().filter((f) => !existsSync(join(root, f)) || statSync(join(root, f)).size === 0), []);
+  assert.deepEqual(
+    leftovers().filter((f) => !existsSync(join(root, f)) || statSync(join(root, f)).size === 0),
+    [],
+  );
 });
 
 test("Sound effects: POST /v1/sound-generation with xi-api-key, the length and model, the MP3 saved", async () => {
@@ -149,10 +168,21 @@ test("Veo: predictLongRunning with x-goog-api-key, polls the operation until don
   let polls = 0;
   const mp4 = Buffer.alloc(10_000, 3);
   handler = (r, res) => {
-    if (r.url === "/v1beta/models/veo-3.1-generate-preview:predictLongRunning") return json(res, 200, { name: "models/veo-3.1-generate-preview/operations/op123" });
+    if (r.url === "/v1beta/models/veo-3.1-generate-preview:predictLongRunning")
+      return json(res, 200, { name: "models/veo-3.1-generate-preview/operations/op123" });
     if (r.url === "/v1beta/models/veo-3.1-generate-preview/operations/op123") {
       polls++;
-      return json(res, 200, polls < 3 ? { name: "x", done: false } : { name: "x", done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `http://127.0.0.1:${port}/download/v.mp4?alt=media` } }] } } });
+      return json(
+        res,
+        200,
+        polls < 3
+          ? { name: "x", done: false }
+          : {
+              name: "x",
+              done: true,
+              response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `http://127.0.0.1:${port}/download/v.mp4?alt=media` } }] } },
+            },
+      );
     }
     if (r.url === "/download/v.mp4?alt=media") {
       res.writeHead(200, { "content-type": "video/mp4" });
@@ -163,7 +193,10 @@ test("Veo: predictLongRunning with x-goog-api-key, polls the operation until don
   const c = ctx();
   const out = await veo.generate({ kind: "video", prompt: "a drone shot over a lake", size: "9:16", seconds: 6 }, c);
   assert.equal(seen[0]!.method, "POST");
-  assert.deepEqual(JSON.parse(seen[0]!.body), { instances: [{ prompt: "a drone shot over a lake" }], parameters: { aspectRatio: "9:16", durationSeconds: 6, resolution: "720p" } });
+  assert.deepEqual(JSON.parse(seen[0]!.body), {
+    instances: [{ prompt: "a drone shot over a lake" }],
+    parameters: { aspectRatio: "9:16", durationSeconds: 6, resolution: "720p" },
+  });
   for (const s of seen) assert.equal(s.headers["x-goog-api-key"], KEY, s.url);
   assert.equal(polls, 3);
   assert.equal(seen.at(-1)!.url, "/download/v.mp4?alt=media");
@@ -173,7 +206,10 @@ test("Veo: predictLongRunning with x-goog-api-key, polls the operation until don
   assert.equal(veo.estimate({ kind: "video", prompt: "x" }), 1.6);
   assert.ok(c.statuses.some((t) => /Veo is making the video/.test(t)));
   // The operation's own error.
-  handler = (r, res) => (r.url.endsWith(":predictLongRunning") ? json(res, 200, { name: "models/m/operations/bad", done: true, error: { message: `blocked ${KEY}` } }) : json(res, 404, {}));
+  handler = (r, res) =>
+    r.url.endsWith(":predictLongRunning")
+      ? json(res, 200, { name: "models/m/operations/bad", done: true, error: { message: `blocked ${KEY}` } })
+      : json(res, 404, {});
   await assert.rejects(veo.generate({ kind: "video", prompt: "x" }, ctx()), (e: Error) => /Veo couldn't make it: blocked \[key\]/.test(e.message));
   // A link to another host gets no key.
   seen = [];
@@ -184,7 +220,14 @@ test("Veo: predictLongRunning with x-goog-api-key, polls the operation until don
   });
   await new Promise<void>((r) => other.listen(0, "localhost", r));
   const otherPort = (other.address() as { port: number }).port;
-  handler = (r, res) => (r.url.endsWith(":predictLongRunning") ? json(res, 200, { name: "models/m/operations/ok", done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `https://localhost:${otherPort}/v.mp4` } }] } } }) : json(res, 404, {}));
+  handler = (r, res) =>
+    r.url.endsWith(":predictLongRunning")
+      ? json(res, 200, {
+          name: "models/m/operations/ok",
+          done: true,
+          response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `https://localhost:${otherPort}/v.mp4` } }] } },
+        })
+      : json(res, 404, {});
   // https to a plain-http stub fails to connect: the point is no key went anywhere but the API.
   await assert.rejects(veo.generate({ kind: "video", prompt: "x" }, ctx()));
   other.close();
@@ -224,7 +267,10 @@ test("review fixes: base URLs only in test runs, keys never over plain http, red
   // Outside a test run an override that's set fails closed (never the real host instead); unset, the real host.
   allowBaseOverrides(false);
   try {
-    assert.throws(() => providerBase("UNCUT_OPENAI_BASE", "https://api.openai.com"), /UNCUT_OPENAI_BASE is set, but base-URL overrides only count in test runs/);
+    assert.throws(
+      () => providerBase("UNCUT_OPENAI_BASE", "https://api.openai.com"),
+      /UNCUT_OPENAI_BASE is set, but base-URL overrides only count in test runs/,
+    );
     await assert.rejects(gptImage.generate({ kind: "image", prompt: "x" }, ctx()), /only count in test runs; nothing was sent/);
     assert.equal(providerBase("UNCUT_NOT_SET_BASE", "https://api.openai.com"), "https://api.openai.com");
   } finally {
@@ -235,7 +281,12 @@ test("review fixes: base URLs only in test runs, keys never over plain http, red
   assert.equal(inTestContext({}), false);
   assert.equal(inTestContext({ UNCUT_TEST_BACKGROUND: "1" }), true);
   assert.equal(inTestContext({ UNCUT_CDP: "9222" }), true);
-  for (const url of ["https://api.openai.com/v1/images/generations", "https://generativelanguage.googleapis.com/v1beta/x", "https://api.elevenlabs.io/v1/sound-generation", "http://192.0.2.1/x"]) {
+  for (const url of [
+    "https://api.openai.com/v1/images/generations",
+    "https://generativelanguage.googleapis.com/v1beta/x",
+    "https://api.elevenlabs.io/v1/sound-generation",
+    "http://192.0.2.1/x",
+  ]) {
     await assert.rejects(guardedFetch(url, {}), /Refused in a test run: .* isn't this machine/, url);
   }
   assert.equal(providerBase("UNCUT_OPENAI_BASE", "https://api.openai.com"), `http://127.0.0.1:${port}`);
@@ -274,7 +325,14 @@ test("review fixes: base URLs only in test runs, keys never over plain http, red
       }
       json(res, 404, {});
     };
-    const res = await followRedirects("Google", new URL(`http://127.0.0.1:${port}/files/start.mp4`), `http://127.0.0.1:${port}`, { "x-goog-api-key": KEY }, new AbortController().signal, KEY);
+    const res = await followRedirects(
+      "Google",
+      new URL(`http://127.0.0.1:${port}/files/start.mp4`),
+      `http://127.0.0.1:${port}`,
+      { "x-goog-api-key": KEY },
+      new AbortController().signal,
+      KEY,
+    );
     assert.deepEqual(Buffer.from(await res.arrayBuffer()), mp4);
     assert.equal(seen[0]!.headers["x-goog-api-key"], KEY, "the API's own origin gets the key");
     assert.equal(seen[1]!.url, "other:/v.mp4");
@@ -292,8 +350,22 @@ test("review fixes: base URLs only in test runs, keys never over plain http, red
       }
       json(res, 404, {});
     };
-    await followRedirects("Google", new URL(`http://127.0.0.1:${port}/files/hop.mp4`), `http://127.0.0.1:${port}`, { "x-goog-api-key": KEY }, new AbortController().signal, KEY);
-    assert.deepEqual(seen.map((x) => [x.url, x.headers["x-goog-api-key"] ?? null]), [["/files/hop.mp4", KEY], ["other:/back", null], ["/files/final.mp4", KEY]]);
+    await followRedirects(
+      "Google",
+      new URL(`http://127.0.0.1:${port}/files/hop.mp4`),
+      `http://127.0.0.1:${port}`,
+      { "x-goog-api-key": KEY },
+      new AbortController().signal,
+      KEY,
+    );
+    assert.deepEqual(
+      seen.map((x) => [x.url, x.headers["x-goog-api-key"] ?? null]),
+      [
+        ["/files/hop.mp4", KEY],
+        ["other:/back", null],
+        ["/files/final.mp4", KEY],
+      ],
+    );
     // More than MAX_REDIRECTS hops: refused.
     let hops = 0;
     handler = (_r, res) => {
@@ -301,14 +373,20 @@ test("review fixes: base URLs only in test runs, keys never over plain http, red
       res.writeHead(302, { location: `/files/loop-${hops}.mp4` });
       res.end();
     };
-    await assert.rejects(followRedirects("Google", new URL(`http://127.0.0.1:${port}/files/loop.mp4`), `http://127.0.0.1:${port}`, {}, new AbortController().signal, KEY), /redirected more than 5 times/);
+    await assert.rejects(
+      followRedirects("Google", new URL(`http://127.0.0.1:${port}/files/loop.mp4`), `http://127.0.0.1:${port}`, {}, new AbortController().signal, KEY),
+      /redirected more than 5 times/,
+    );
     assert.equal(hops, MAX_REDIRECTS + 1);
     // A redirect to plain http elsewhere: refused before any request.
     handler = (_r, res) => {
       res.writeHead(302, { location: "http://example.com/v.mp4" });
       res.end();
     };
-    await assert.rejects(followRedirects("Google", new URL(`http://127.0.0.1:${port}/x`), `http://127.0.0.1:${port}`, {}, new AbortController().signal, KEY), /isn't https/);
+    await assert.rejects(
+      followRedirects("Google", new URL(`http://127.0.0.1:${port}/x`), `http://127.0.0.1:${port}`, {}, new AbortController().signal, KEY),
+      /isn't https/,
+    );
   } finally {
     other.closeAllConnections();
     other.close();
@@ -354,7 +432,15 @@ test("the key store: ciphertext only in keys.json (0600) through safeStorage's s
   };
   const file = join(root, "data", "keys.json");
   const store = keyStore({ file, crypter });
-  assert.deepEqual((await store.list()).map((k) => [k.provider, k.set, k.storage]), [["openai", false, "keychain"], ["google", false, "keychain"], ["elevenlabs", false, "keychain"], ["freesound", false, "keychain"]]);
+  assert.deepEqual(
+    (await store.list()).map((k) => [k.provider, k.set, k.storage]),
+    [
+      ["openai", false, "keychain"],
+      ["google", false, "keychain"],
+      ["elevenlabs", false, "keychain"],
+      ["freesound", false, "keychain"],
+    ],
+  );
   await store.set("openai", KEY);
   await store.set("elevenlabs", "el-key-123");
   const text = readFileSync(file, "utf8");
@@ -374,7 +460,10 @@ test("the key store: ciphertext only in keys.json (0600) through safeStorage's s
   assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, "utf8")).keys), ["elevenlabs"]);
   assert.deepEqual(readdirSync(join(root, "data")), ["keys.json"], "no temp files left");
   // A refusing Keychain is an error, and nothing is written.
-  const refusing = keyStore({ file: join(root, "data2", "keys.json"), crypter: { encrypt: async () => Promise.reject(new Error("denied")), decrypt: async () => "" } });
+  const refusing = keyStore({
+    file: join(root, "data2", "keys.json"),
+    crypter: { encrypt: async () => Promise.reject(new Error("denied")), decrypt: async () => "" },
+  });
   await assert.rejects(refusing.set("google", "g-key"), /denied/);
   assert.equal(existsSync(join(root, "data2", "keys.json")), false);
   // Without the desktop: memory only, nothing on disk.

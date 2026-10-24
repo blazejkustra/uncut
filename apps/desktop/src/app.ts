@@ -1,8 +1,66 @@
 import * as path from "node:path";
 
-import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, Menu, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  Menu,
+  screen,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebFrameMain,
+} from "electron";
 
-import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState, UPDATE_BUSY_CHANNEL, UPDATE_CHECK_CHANNEL, UPDATE_INSTALL_CHANNEL, UPDATE_STATUS_CHANNEL, type UpdateStatus } from "./ipc.ts";
+import {
+  APP_INFO_CHANNEL,
+  APP_STATE_CHANNEL,
+  ASK_MEDIA_ACCESS_CHANNEL,
+  CAPTURE_SOURCES_CHANNEL,
+  CHOOSE_DISPLAY_SOURCE_CHANNEL,
+  SYSTEM_AUDIO_CHANNEL,
+  CHOOSE_FOLDER_CHANNEL,
+  CHOOSE_MEDIA_CHANNEL,
+  CHOOSE_SAVE_PATH_CHANNEL,
+  CLOSE_ANSWER_CHANNEL,
+  CLOSE_REQUEST_CHANNEL,
+  COPY_TEXT_CHANNEL,
+  CLIPBOARD_PATHS_CHANNEL,
+  DOWNLOAD_EXPORT_CHANNEL,
+  ENVIRONMENT_ADD_CHANNEL,
+  ENVIRONMENT_REMOVE_CHANNEL,
+  ENVIRONMENT_RENAME_CHANNEL,
+  ENVIRONMENT_STATUS_CHANNEL,
+  ENVIRONMENT_SWITCH_CHANNEL,
+  ENVIRONMENT_TEST_CHANNEL,
+  ENVIRONMENTS_CHANNEL,
+  MEDIA_ACCESS_CHANNEL,
+  MENU_COMMAND_CHANNEL,
+  OPEN_PRIVACY_SETTINGS_CHANNEL,
+  SERVER_CONNECTION_CHANNEL,
+  SERVER_EXIT_CHANNEL,
+  SHOW_IN_FOLDER_CHANNEL,
+  SILENT_AUDIO_CHANNEL,
+  type AppInfo,
+  type AppState,
+  type CloseAnswer,
+  type EnvironmentTest,
+  type FolderPurpose,
+  type MenuCommand,
+  WINDOW_MODE_CHANNEL,
+  MINI_RECORDER_ACTION_CHANNEL,
+  MINI_RECORDER_CHANNEL,
+  type MiniRecorderAction,
+  type MiniRecorderState,
+  UPDATE_BUSY_CHANNEL,
+  UPDATE_CHECK_CHANNEL,
+  UPDATE_INSTALL_CHANNEL,
+  UPDATE_STATUS_CHANNEL,
+  type UpdateStatus,
+} from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
 import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
 import { setAppMenu, setUpdateMenu } from "./menu.ts";
@@ -43,7 +101,10 @@ if (!app.requestSingleInstanceLock()) {
 // A ShipIt install of this bundle still under way (Restart to update, then reopened before ShipIt
 // swapped the new version in): step aside so it can finish (it reopens the app), or, after a few
 // tries, open without the updater so this run can't re-stage the update and break the install.
-const pendingUpdate = app.isPackaged && process.platform === "darwin" && !process.env.UNCUT_CDP ? checkPendingInstall(process.env.UNCUT_DATA_DIR || app.getPath("userData")) : "none";
+const pendingUpdate =
+  app.isPackaged && process.platform === "darwin" && !process.env.UNCUT_CDP
+    ? checkPendingInstall(process.env.UNCUT_DATA_DIR || app.getPath("userData"))
+    : "none";
 if (pendingUpdate === "step-aside") app.exit(0);
 if (testBackground) {
   app.dock?.hide();
@@ -182,30 +243,32 @@ function createWindow() {
   windowMode = "welcome";
   const remembered = windowSizes.welcome;
   const start = { ...remembered, ...testWindowAt(remembered) };
-  setWin(new BrowserWindow({
-    width: start.width,
-    height: start.height,
-    useContentSize: true,
-    ...(start.x !== undefined && start.y !== undefined ? { x: start.x, y: start.y } : {}),
-    // D209: compact while no project is open; setWindowMode switches to the editor's size.
-    minWidth: WINDOW_MODES.welcome.minWidth,
-    minHeight: WINDOW_MODES.welcome.minHeight,
-    // Tests (UNCUT_CDP) get the window size they ask for even on a small screen (#89: GitHub's
-    // macOS runners have a 1280×800-ish display, which clamped the editor and pushed the timeline's
-    // lower tracks off the window). A release user's window stays within the screen.
-    enableLargerThanScreen: Boolean(process.env.UNCUT_CDP),
-    title: "Uncut",
-    titleBarStyle: "hiddenInset",
-    backgroundColor: "#0a0a0a",
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      sandbox: true,
-      // A background test window is inactive and transparent: keep its timers and frames running.
-      backgroundThrottling: !testBackground,
-    },
-  }));
+  setWin(
+    new BrowserWindow({
+      width: start.width,
+      height: start.height,
+      useContentSize: true,
+      ...(start.x !== undefined && start.y !== undefined ? { x: start.x, y: start.y } : {}),
+      // D209: compact while no project is open; setWindowMode switches to the editor's size.
+      minWidth: WINDOW_MODES.welcome.minWidth,
+      minHeight: WINDOW_MODES.welcome.minHeight,
+      // Tests (UNCUT_CDP) get the window size they ask for even on a small screen (#89: GitHub's
+      // macOS runners have a 1280×800-ish display, which clamped the editor and pushed the timeline's
+      // lower tracks off the window). A release user's window stays within the screen.
+      enableLargerThanScreen: Boolean(process.env.UNCUT_CDP),
+      title: "Uncut",
+      titleBarStyle: "hiddenInset",
+      backgroundColor: "#0a0a0a",
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        sandbox: true,
+        // A background test window is inactive and transparent: keep its timers and frames running.
+        backgroundThrottling: !testBackground,
+      },
+    }),
+  );
   if (!win) return;
   const contents = win.webContents;
   // The window only ever shows the app. Web links open in the default browser.
@@ -234,7 +297,8 @@ function createWindow() {
   contents.on("context-menu", (_event, params) => {
     const items = textMenu(params);
     if (!items || !win) return;
-    if (process.env.UNCUT_CDP) return void console.log(`[test] text menu ${items.map((i) => ("role" in i ? `${i.role}${i.enabled ? "" : ":off"}` : "-")).join(",")}`);
+    if (process.env.UNCUT_CDP)
+      return void console.log(`[test] text menu ${items.map((i) => ("role" in i ? `${i.role}${i.enabled ? "" : ":off"}` : "-")).join(",")}`);
     Menu.buildFromTemplate(items.map((i) => ({ ...i }))).popup({ window: win });
   });
   // The only downloads are the ones downloadExport asked for (D109); anything else is cancelled.
@@ -243,7 +307,13 @@ function createWindow() {
     if (!wanted) return item.cancel();
     downloads.delete(item.getURL());
     item.setSavePath(wanted.path);
-    item.once("done", (_e, state) => wanted.done(state === "completed" ? { path: wanted.path } : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." }));
+    item.once("done", (_e, state) =>
+      wanted.done(
+        state === "completed"
+          ? { path: wanted.path }
+          : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." },
+      ),
+    );
   });
   // Camera, microphone and screen (D114), and the few other permissions the app uses (D219,
   // permissions.ts), only for the app's own top-level page: a graphic's sandboxed iframe (D78) or
@@ -253,7 +323,10 @@ function createWindow() {
     callback(allowPermission(permission, requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? "")));
   });
   session.setPermissionCheckHandler((requester, permission, _origin, details) => {
-    return allowPermission(permission, requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL()));
+    return allowPermission(
+      permission,
+      requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL()),
+    );
   });
   // getDisplayMedia records the screen or window the Capture tab picked (chooseDisplaySource just before).
   // D210: with systemAudio, this Mac's sound too ("loopback": the speakers keep playing); for a
@@ -312,7 +385,11 @@ const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent 
 const openFile = installOpenFile({
   isAppWindow: fromAppWindow,
   send: sendMenuCommand,
-  show: () => { if (testBackground) return; win?.show(); win?.focus(); },
+  show: () => {
+    if (testBackground) return;
+    win?.show();
+    win?.focus();
+  },
   isLocal: () => (environments ? environments.active().kind === "local" : undefined),
   notifyRemote: (dir) => {
     const name = path.basename(dir);
@@ -349,19 +426,21 @@ app.whenReady().then(() => {
   installCrashReports(process.env.UNCUT_DATA_DIR || app.getPath("userData"));
   setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
   openFile.environmentsReady();
-  setServer(startServer({
-    ...resources,
-    // Tests point this at a temp dir so they never touch the real recents.
-    dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
-    // The local server going away matters to the window only while it shows Local.
-    onExit: (reason) => {
-      reportServerExit(process.env.UNCUT_DATA_DIR || app.getPath("userData"), reason);
-      if (environments?.active().kind !== "remote") win?.webContents.send(SERVER_EXIT_CHANNEL, reason);
-    },
-    // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
-    // ciphertext reaches the server's keys.json.
-    keys: crypt,
-  }));
+  setServer(
+    startServer({
+      ...resources,
+      // Tests point this at a temp dir so they never touch the real recents.
+      dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
+      // The local server going away matters to the window only while it shows Local.
+      onExit: (reason) => {
+        reportServerExit(process.env.UNCUT_DATA_DIR || app.getPath("userData"), reason);
+        if (environments?.active().kind !== "remote") win?.webContents.send(SERVER_EXIT_CHANNEL, reason);
+      },
+      // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
+      // ciphertext reaches the server's keys.json.
+      keys: crypt,
+    }),
+  );
   const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {
       if (!fromAppWindow(event)) throw new Error("not allowed");
@@ -440,7 +519,10 @@ app.whenReady().then(() => {
   // Tests answer from UNCUT_TEST_CLIPBOARD (a JSON array of paths, only with UNCUT_CDP), so a run
   // never reads whatever the person running it copied.
   handle(CLIPBOARD_PATHS_CHANNEL, () => {
-    if (process.env.UNCUT_CDP) return process.env.UNCUT_TEST_CLIPBOARD ? (JSON.parse(process.env.UNCUT_TEST_CLIPBOARD) as Array<string>).filter((p) => typeof p === "string" && path.isAbsolute(p)) : [];
+    if (process.env.UNCUT_CDP)
+      return process.env.UNCUT_TEST_CLIPBOARD
+        ? (JSON.parse(process.env.UNCUT_TEST_CLIPBOARD) as Array<string>).filter((p) => typeof p === "string" && path.isAbsolute(p))
+        : [];
     if (process.platform !== "darwin") return [];
     return clipboard.read().then(clipboardPaths, () => []);
   });

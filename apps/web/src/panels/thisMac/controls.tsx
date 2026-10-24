@@ -1,6 +1,22 @@
 import { Settings2, RefreshCw, Monitor, Mic, Video, CircleDot, Play, Pause, Square, X, type LucideIcon, ChevronDown, AppWindow } from "lucide-react";
 import React, { useState, useEffect } from "react";
-import { useRecorder, openPrivacySettings, refreshAccess, loadSources, askAccess, levelDb, takeSeconds, type TakeMode, clock, resumeTake, pauseTake, stopTake, cancelTake, openMonitor, closeMonitor } from "../../capture/recorder.ts";
+import {
+  useRecorder,
+  openPrivacySettings,
+  refreshAccess,
+  loadSources,
+  askAccess,
+  levelDb,
+  takeSeconds,
+  type TakeMode,
+  clock,
+  resumeTake,
+  pauseTake,
+  stopTake,
+  cancelTake,
+  openMonitor,
+  closeMonitor,
+} from "../../capture/recorder.ts";
 import type { MediaAccessKind, CaptureSource } from "../../state/bridge.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 
@@ -19,7 +35,9 @@ export function Access({ kind, children, sound = false }: { kind: MediaAccessKin
         <>
           <div className="small">
             {sound ? "Uncut isn't allowed to record this Mac's sound: macOS lets it with screen recording." : `Uncut isn't allowed to use ${NAMES[kind]}.`}{" "}
-            {access === "restricted" ? "This Mac's settings or a profile turn it off for every app." : `Turn Uncut on in System Settings, Privacy & Security, ${PANES[kind]}, then check again.`}
+            {access === "restricted"
+              ? "This Mac's settings or a profile turn it off for every app."
+              : `Turn Uncut on in System Settings, Privacy & Security, ${PANES[kind]}, then check again.`}
             {kind === "screen" && access === "denied" ? " macOS may ask you to quit and reopen Uncut after that." : ""}
           </div>
           <div className="capture-actions">
@@ -35,7 +53,11 @@ export function Access({ kind, children, sound = false }: { kind: MediaAccessKin
         </>
       ) : kind === "screen" ? (
         <>
-          <div className="small muted">{sound ? "macOS asks once whether Uncut may record the screen and this Mac's sound." : "macOS asks once whether Uncut may record the screen, the first time it lists your screens and windows."}</div>
+          <div className="small muted">
+            {sound
+              ? "macOS asks once whether Uncut may record the screen and this Mac's sound."
+              : "macOS asks once whether Uncut may record the screen, the first time it lists your screens and windows."}
+          </div>
           <button className="btn" data-testid="capture-allow-screen" onClick={() => void loadSources()}>
             <Monitor />
             {sound ? "Allow screen and sound recording" : "Show screens and windows"}
@@ -43,7 +65,11 @@ export function Access({ kind, children, sound = false }: { kind: MediaAccessKin
         </>
       ) : (
         <>
-          <div className="small muted">{kind === "microphone" ? "Uncut needs the microphone to record a voiceover. macOS asks once." : "Uncut needs the camera to record a take. macOS asks once."}</div>
+          <div className="small muted">
+            {kind === "microphone"
+              ? "Uncut needs the microphone to record a voiceover. macOS asks once."
+              : "Uncut needs the camera to record a take. macOS asks once."}
+          </div>
           <button className="btn" data-testid={`capture-allow-${kind}`} onClick={() => void askAccess(kind)}>
             {kind === "microphone" ? <Mic /> : <Video />}
             Allow {NAMES[kind]}
@@ -70,8 +96,12 @@ export function LevelMeter({ testId = "capture-mic-level", compact = false }: { 
     <div className={`level-meter ${compact ? "compact" : ""}`} title="The microphone's level">
       <div className="level-bar" data-testid={testId} data-level={level.toFixed(2)} data-peak={peak.toFixed(2)}>
         <div className="level-fill" style={{ clipPath: `inset(0 ${100 - level * 100}% 0 0)` }} />
-        {peak > 0 && <div className={`level-peak ${peak > 0.95 ? "hot" : ""}`} data-testid="capture-level-peak" style={{ left: `calc(${peak * 100}% - 1px)` }} />}
-        <span className="level-db" data-testid="capture-level-db">{Number.isFinite(db) ? `${Math.round(db)} dB` : "-∞ dB"}</span>
+        {peak > 0 && (
+          <div className={`level-peak ${peak > 0.95 ? "hot" : ""}`} data-testid="capture-level-peak" style={{ left: `calc(${peak * 100}% - 1px)` }} />
+        )}
+        <span className="level-db" data-testid="capture-level-db">
+          {Number.isFinite(db) ? `${Math.round(db)} dB` : "-∞ dB"}
+        </span>
       </div>
       {!compact && (
         <div className="level-scale" data-testid="capture-level-scale">
@@ -107,7 +137,19 @@ function useTakeSeconds() {
  * card's.) D267: the button stands alone at the top of the tab (no box around it) and a take
  * starts as soon as its devices are open, no 3-2-1 (nor the agent's take, D273).
  */
-export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode?: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
+export function RecordBar({
+  mode,
+  disabled,
+  onRecord,
+  label = "Record",
+  meter,
+}: {
+  mode?: TakeMode;
+  disabled: boolean;
+  onRecord: () => void;
+  label?: string;
+  meter: boolean;
+}) {
   const phase = useRecorder((s) => s.phase);
   const count = useRecorder((s) => s.count);
   const paused = useRecorder((s) => s.paused);
@@ -133,7 +175,11 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
     );
   }
   return (
-    <div className={`record-bar live ${paused ? "paused" : ""}`} data-testid="capture-record-bar" data-state={phase === "countdown" ? "countdown" : paused ? "paused" : "recording"}>
+    <div
+      className={`record-bar live ${paused ? "paused" : ""}`}
+      data-testid="capture-record-bar"
+      data-state={phase === "countdown" ? "countdown" : paused ? "paused" : "recording"}
+    >
       <div className="record-bar-row">
         {phase === "countdown" ? (
           count ? (
@@ -153,7 +199,12 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
         )}
         <div className="grow" />
         {phase === "recording" && (
-          <button className="icon-btn record-ctl" data-testid={paused ? "capture-take-resume" : "capture-take-pause"} title={paused ? "Resume recording" : "Pause recording"} onClick={() => (paused ? resumeTake() : pauseTake())}>
+          <button
+            className="icon-btn record-ctl"
+            data-testid={paused ? "capture-take-resume" : "capture-take-pause"}
+            title={paused ? "Resume recording" : "Pause recording"}
+            onClick={() => (paused ? resumeTake() : pauseTake())}
+          >
             {paused ? <Play /> : <Pause />}
           </button>
         )}
@@ -175,7 +226,23 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
 }
 
 /** D209: a device picker in the app's style (a native list underneath, so the keyboard and VoiceOver work). */
-export function Picker({ icon: Icon, value, onChange, testId, title, disabled, children }: { icon: LucideIcon; value: string; onChange: (v: string) => void; testId: string; title: string; disabled?: boolean; children: React.ReactNode }) {
+export function Picker({
+  icon: Icon,
+  value,
+  onChange,
+  testId,
+  title,
+  disabled,
+  children,
+}: {
+  icon: LucideIcon;
+  value: string;
+  onChange: (v: string) => void;
+  testId: string;
+  title: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <label className={`picker ${disabled ? "disabled" : ""}`} title={title}>
       <Icon className="picker-icon" />
@@ -188,7 +255,21 @@ export function Picker({ icon: Icon, value, onChange, testId, title, disabled, c
 }
 
 /** D209: an option as a plain checkbox and its words (a checkbox, not a chip, D263). */
-export function Option({ testId, checked, disabled, onChange, children, title }: { testId: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void; children: React.ReactNode; title?: string }) {
+export function Option({
+  testId,
+  checked,
+  disabled,
+  onChange,
+  children,
+  title,
+}: {
+  testId: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
     <label className={`opt-check ${checked ? "on" : ""} ${disabled ? "disabled" : ""}`} title={title}>
       <input type="checkbox" data-testid={testId} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
@@ -224,7 +305,15 @@ export function SourceTile({ source, active, disabled, onPick }: { source: Captu
   const [broken, setBroken] = useState<ReadonlyArray<string>>([]);
   const picture = [source.thumbnail, source.icon ?? ""].find((u) => u && !broken.includes(u));
   return (
-    <button className={`capture-source${active ? " active" : ""}`} data-testid="capture-source" data-id={source.id} data-picture={picture ? (picture === source.thumbnail ? "thumbnail" : "icon") : "none"} disabled={disabled} title={source.name} onClick={onPick}>
+    <button
+      className={`capture-source${active ? " active" : ""}`}
+      data-testid="capture-source"
+      data-id={source.id}
+      data-picture={picture ? (picture === source.thumbnail ? "thumbnail" : "icon") : "none"}
+      disabled={disabled}
+      title={source.name}
+      onClick={onPick}
+    >
       {picture ? (
         <span className={`capture-source-pic ${picture === source.thumbnail ? "" : "icon"}`}>
           <img src={picture} alt="" data-testid="capture-source-img" onError={() => setBroken((b) => [...b, picture])} />

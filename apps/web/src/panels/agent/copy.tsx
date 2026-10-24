@@ -26,7 +26,10 @@ export function CopyButton({ text, what = "text", className = "" }: { text: stri
       onClick={(e) => {
         e.stopPropagation();
         e.currentTarget.blur();
-        void bridge.copyText(text).then(() => setCopied(true), () => {});
+        void bridge.copyText(text).then(
+          () => setCopied(true),
+          () => {},
+        );
       }}
     >
       {copied ? <Check /> : <Copy />}

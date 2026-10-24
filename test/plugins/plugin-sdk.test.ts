@@ -63,7 +63,10 @@ test("the SDK serves the uncut.module/1 contract: initialize, ping, tools/list, 
     tools: {
       sdk_echo: (args, ctx) => {
         ctx.progress(50, 100, "half");
-        return text(`echo ${String(args.text)}`, { dirs: [ctx.projectDir ?? null, ctx.captureDir ?? null, ctx.flowsDir ?? null], uncut: { media: { path: "/x.mp4", source: { device: "d" } } } });
+        return text(`echo ${String(args.text)}`, {
+          dirs: [ctx.projectDir ?? null, ctx.captureDir ?? null, ctx.flowsDir ?? null],
+          uncut: { media: { path: "/x.mp4", source: { device: "d" } } },
+        });
       },
       sdk_refuse: () => {
         throw new ToolError("Pass device.");
@@ -90,11 +93,18 @@ test("the SDK serves the uncut.module/1 contract: initialize, ping, tools/list, 
   h.send({ id: 2, method: "ping" });
   assert.deepEqual((await h.answer(2)).result, {});
   h.send({ id: 3, method: "tools/list" });
-  assert.deepEqual((await h.answer(3)).result.tools.map((t: any) => t.name), ["sdk_echo"]);
+  assert.deepEqual(
+    (await h.answer(3)).result.tools.map((t: any) => t.name),
+    ["sdk_echo"],
+  );
 
   // Junk is ignored; the reader keeps going.
   for (const junk of ["null", "[]", "5", "not json", '{"id":null}', '{"jsonrpc":"2.0","id":99,"result":{}}']) h.raw(`${junk}\n`);
-  h.send({ id: 4, method: "tools/call", params: { name: "sdk_echo", arguments: { text: "hi" }, _meta: { progressToken: 4, "uncut/projectDir": "/p", "uncut/captureDir": "/p/media/captures" } } });
+  h.send({
+    id: 4,
+    method: "tools/call",
+    params: { name: "sdk_echo", arguments: { text: "hi" }, _meta: { progressToken: 4, "uncut/projectDir": "/p", "uncut/captureDir": "/p/media/captures" } },
+  });
   const echo = await h.answer(4);
   assert.equal(echo.result.content[0].text, "echo hi");
   assert.deepEqual(echo.result.structuredContent.dirs, ["/p", "/p/media/captures", null]);
@@ -143,7 +153,10 @@ test("a manifest for a newer plugin format is refused with a sentence; missing a
   assert.ok("manifest" in checkManifest(manifest, none));
   const newer = checkManifest({ ...manifest, apiVersion: "uncut.module/2", somethingNew: true }, none);
   assert.ok("problem" in newer);
-  assert.equal(newer.problem, "It's written for the plugin format uncut.module/2, which is newer than this Uncut understands (uncut.module/1). Update Uncut to use it.");
+  assert.equal(
+    newer.problem,
+    "It's written for the plugin format uncut.module/2, which is newer than this Uncut understands (uncut.module/1). Update Uncut to use it.",
+  );
   assert.equal(newer.id, "sdk.test");
   const bad = checkManifest({ ...manifest, apiVersion: "v1" }, none);
   assert.ok("problem" in bad && /module format/.test(bad.problem));

@@ -72,7 +72,16 @@ after(async () => {
 
 test("uncutUI.sequence: a key that starts mid-morph continues from the shell's place, no one-frame jump", { skip, timeout: 120000 }, async () => {
   const out = join(root, "f.png");
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: 1, info: graphicInfo({ duration: 200, props: {} }, canvas, 60), out, name: "graphics/seq.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: 1,
+    info: graphicInfo({ duration: 200, props: {} }, canvas, 60),
+    out,
+    name: "graphics/seq.html",
+  });
   const px = rgbaOf(out);
   const [r, g] = [px[0]!, px[1]!];
   assert.ok(g > 200 && r < 60, `the shell jumped between two frames (pixel ${r},${g}: red means a jump)`);

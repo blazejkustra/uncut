@@ -21,7 +21,22 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { projectChecks, type Project } from "../packages/core/src/index.ts";
-import { buildTurn, END_URL, fixTurn, loudness, makeBrandFolder, MUSIC, probe, REF, REF_DIR, referenceMissing, sceneOf, signature, stampReference, TOTAL } from "../test/helpers/phase6-fixture.ts";
+import {
+  buildTurn,
+  END_URL,
+  fixTurn,
+  loudness,
+  makeBrandFolder,
+  MUSIC,
+  probe,
+  REF,
+  REF_DIR,
+  referenceMissing,
+  sceneOf,
+  signature,
+  stampReference,
+  TOTAL,
+} from "../test/helpers/phase6-fixture.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -77,7 +92,8 @@ Or run it headlessly: node scripts/phase6-manual-check.ts --run
 
 // --run: the bundled server (plain node), a data folder of its own; the real claude from PATH (or the scripted one with --fake).
 const { BUNDLE, MEDIA, connect, startServer } = await import("../test/helpers/server.ts");
-for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), resolve("apps/desktop/dist/main.cjs"), MEDIA]) if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
+for (const built of [BUNDLE, resolve("apps/server/dist/mcp.mjs"), resolve("apps/desktop/dist/main.cjs"), MEDIA])
+  if (!existsSync(built)) throw new Error(`${built} isn't built: run pnpm build (from the repo root)`);
 const before = stampReference();
 const data = join(out, "data");
 mkdirSync(data, { recursive: true });
@@ -89,7 +105,12 @@ const env: NodeJS.ProcessEnv = { UNCUT_DATA_DIR: data, ANTHROPIC_API_KEY: "" };
 if (fake) {
   writeFileSync(fakePlan, JSON.stringify([buildTurn(brand)]));
   writeFileSync(results, "");
-  Object.assign(env, { UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts"), FAKE_PLAN: fakePlan, FAKE_PROMPT_LOG: join(out, "prompts.jsonl"), FAKE_RESULT_LOG: results });
+  Object.assign(env, {
+    UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts"),
+    FAKE_PLAN: fakePlan,
+    FAKE_PROMPT_LOG: join(out, "prompts.jsonl"),
+    FAKE_RESULT_LOG: results,
+  });
 } else delete process.env.UNCUT_CLAUDE;
 const server = await startServer({ env });
 const client = await connect(server.ready.port, server.ready.token);
@@ -124,7 +145,9 @@ try {
   const current = async () => (await client.ok("project.get", {})).project as Project;
   if (fake) {
     // The scripted claude's second turn fixes what project_check found (the real one does it in its first).
-    const found = projectChecks(await current()).filter((c) => c.severity === "warn").map((c) => ({ rule: c.id, items: c.itemIds as Array<string>, fix: c.fix }));
+    const found = projectChecks(await current())
+      .filter((c) => c.severity === "warn")
+      .map((c) => ({ rule: c.id, items: c.itemIds as Array<string>, fix: c.fix }));
     writeFileSync(fakePlan, JSON.stringify([buildTurn(brand), fixTurn(found)]));
     await turnOf("Fix the remaining checks", 5);
   }
@@ -133,8 +156,14 @@ try {
   for (const w of warnings) console.log(`  check: ${w.message}`);
   checks.push([`project_check: no warnings (${warnings.length})`, warnings.length === 0]);
   const fps = project.canvas.fps;
-  const length = Math.max(...project.tracks.flatMap((t) => t.items.map((i) => (t.role === "main" ? 0 : (i.start ?? 0)) + i.duration)), ...project.tracks.filter((t) => t.role === "main").map((t) => t.items.reduce((s, i) => s + i.duration, 0)));
-  checks.push([`${project.canvas.width}×${project.canvas.height} at ${fps} fps`, project.canvas.width === 1920 && project.canvas.height === 1080 && fps === 30]);
+  const length = Math.max(
+    ...project.tracks.flatMap((t) => t.items.map((i) => (t.role === "main" ? 0 : (i.start ?? 0)) + i.duration)),
+    ...project.tracks.filter((t) => t.role === "main").map((t) => t.items.reduce((s, i) => s + i.duration, 0)),
+  );
+  checks.push([
+    `${project.canvas.width}×${project.canvas.height} at ${fps} fps`,
+    project.canvas.width === 1920 && project.canvas.height === 1080 && fps === 30,
+  ]);
   const items = project.tracks.flatMap((t) => t.items);
   const used = new Set(items.map((i) => i.media).filter(Boolean));
   const mediaBy = (path: string) => project.media.find((m) => m.path === path || realpathSafe(m.path) === realpathSafe(path));
@@ -142,11 +171,17 @@ try {
   checks.push(["the recordings sit in device frames", items.filter((i) => i.component === "component.device-frame").length >= 2]);
   checks.push(["each recording has an agent log", items.filter((i) => i.component === "component.agent-log").length >= 2]);
   const recordings = items.filter((i) => i.type === "clip" && (i.media === mediaBy(REF.h45)?.id || i.media === mediaBy(REF.h55)?.id));
-  checks.push([`the recordings hold their last frame (${recordings.length} clips, hold and no loop)`, recordings.length >= 2 && recordings.every((i) => i.hold === true && !i.loop)]);
+  checks.push([
+    `the recordings hold their last frame (${recordings.length} clips, hold and no loop)`,
+    recordings.length >= 2 && recordings.every((i) => i.hold === true && !i.loop),
+  ]);
   checks.push(["a comparison table or chart", items.some((i) => i.component === "component.compare-table" || i.component === "component.chart")]);
   const texts = items.filter((i) => i.type === "text").map((i) => i.text ?? "");
   const shown = [...texts, ...items.filter((i) => i.type === "component").map((i) => JSON.stringify(i.props ?? {}))];
-  checks.push([`a text says ${END_URL}, and nothing on screen says argent.example.com`, texts.some((t) => t.includes(END_URL)) && !shown.some((t) => /argent\.example\.com/.test(t))]);
+  checks.push([
+    `a text says ${END_URL}, and nothing on screen says argent.example.com`,
+    texts.some((t) => t.includes(END_URL)) && !shown.some((t) => /argent\.example\.com/.test(t)),
+  ]);
   checks.push(["library music with fades", items.some((i) => i.type === "audio" && (i.fadeIn ?? 0) > 0 && (i.fadeOut ?? 0) > 0)]);
 
   // Export: Standard, the project's −16 LUFS target.
@@ -158,8 +193,14 @@ try {
   checks.push([`export ${job.phase}${job.error ? `: ${job.error}` : ""}`, job.phase === "done"]);
   if (job.phase === "done") {
     const p = probe(output);
-    checks.push([`1920×1080 h264 at 30 fps (${p.width}×${p.height} ${p.codec} ${p.fps}), with ${p.audio ?? "no"} audio`, p.width === 1920 && p.height === 1080 && p.fps === "30/1" && p.audio === "aac"]);
-    checks.push([`duration ${p.duration.toFixed(2)} s, the reference's ${(TOTAL / 30).toFixed(2)} s within 1.5 s (claude picks its own timings)`, Math.abs(p.duration - TOTAL / 30) <= 1.5 && length > 0]);
+    checks.push([
+      `1920×1080 h264 at 30 fps (${p.width}×${p.height} ${p.codec} ${p.fps}), with ${p.audio ?? "no"} audio`,
+      p.width === 1920 && p.height === 1080 && p.fps === "30/1" && p.audio === "aac",
+    ]);
+    checks.push([
+      `duration ${p.duration.toFixed(2)} s, the reference's ${(TOTAL / 30).toFixed(2)} s within 1.5 s (claude picks its own timings)`,
+      Math.abs(p.duration - TOTAL / 30) <= 1.5 && length > 0,
+    ]);
     const at = (s: number) => Math.min(p.duration - 0.1, s * (p.duration / (TOTAL / 30)));
     const scenes = [1.5, 12, 30, 38.5].map((s) => sceneOf(signature(output, at(s))));
     checks.push([`scenes at 4%, 30%, 76%, 98% of the length: ${scenes.join(", ")} (title, race, table, end)`, scenes.join() === "title,race,table,end"]);
@@ -183,4 +224,3 @@ function realpathSafe(p: string) {
     return p;
   }
 }
-

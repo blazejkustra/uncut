@@ -23,7 +23,11 @@ let dir = "";
 let app: LaunchedApp | undefined;
 const out = (name: string) => resolve("test-output", `issue93-${name}.png`);
 const MODEL = "claude-opus-5-5";
-const usage = (input: number, cacheRead: number, cacheCreation: number, output: number) => ({ usage: { input_tokens: input, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheCreation, output_tokens: output }, model: MODEL, contextWindow: 200_000 });
+const usage = (input: number, cacheRead: number, cacheCreation: number, output: number) => ({
+  usage: { input_tokens: input, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheCreation, output_tokens: output },
+  model: MODEL,
+  contextWindow: 200_000,
+});
 
 before(async () => {
   if (skip) return;
@@ -41,13 +45,34 @@ before(async () => {
       textLooks: 1,
       media: [],
       tracks: [
-        { id: "text", kind: "text", name: "Text", items: [{ id: "t1", type: "text", start: 0, duration: 90, text: "Launch day", transform: { x: 160, y: 440 }, style: { preset: "text.title", size: 140, weight: 700 } }] },
+        {
+          id: "text",
+          kind: "text",
+          name: "Text",
+          items: [
+            {
+              id: "t1",
+              type: "text",
+              start: 0,
+              duration: 90,
+              text: "Launch day",
+              transform: { x: 160, y: 440 },
+              style: { preset: "text.title", size: 140, weight: 700 },
+            },
+          ],
+        },
         { id: "main", kind: "video", role: "main", name: "Main", items: [] },
       ],
     }),
   );
   // A subagent's message with a far bigger context: not the conversation's.
-  const subagent = { raw: { type: "assistant", parent_tool_use_id: "toolu_sub", message: { id: "msg_sub", model: MODEL, role: "assistant", content: [{ type: "text", text: "subagent" }], usage: { input_tokens: 150_000 } } } };
+  const subagent = {
+    raw: {
+      type: "assistant",
+      parent_tool_use_id: "toolu_sub",
+      message: { id: "msg_sub", model: MODEL, role: "assistant", content: [{ type: "text", text: "subagent" }], usage: { input_tokens: 150_000 } },
+    },
+  };
   writeFileSync(
     join(root, "plan.json"),
     JSON.stringify([
@@ -92,13 +117,24 @@ const sendAndWait = async (page: Page, text: string, n: number) => {
     await new Promise((r) => setTimeout(r, 500));
   }
   await page.keyboard.press("Enter");
-  await page.waitForFunction((k) => document.querySelectorAll("[data-testid=agent-turn][data-status=done]").length === k, { timeout: 30000 }, n).catch(async (error) => {
-    await page.screenshot({ path: out(`stuck-${n}`) });
-    const turns = await page.$$eval("[data-testid=agent-turn]", (els) => els.map((el) => `${el.getAttribute("data-status")}: ${(el as HTMLElement).innerText.slice(0, 300)}`));
-    throw new Error(`turn ${n} didn't finish: ${JSON.stringify(turns)} ${app?.output().slice(-1500)}`, { cause: error });
-  });
+  await page
+    .waitForFunction((k) => document.querySelectorAll("[data-testid=agent-turn][data-status=done]").length === k, { timeout: 30000 }, n)
+    .catch(async (error) => {
+      await page.screenshot({ path: out(`stuck-${n}`) });
+      const turns = await page.$$eval("[data-testid=agent-turn]", (els) =>
+        els.map((el) => `${el.getAttribute("data-status")}: ${(el as HTMLElement).innerText.slice(0, 300)}`),
+      );
+      throw new Error(`turn ${n} didn't finish: ${JSON.stringify(turns)} ${app?.output().slice(-1500)}`, { cause: error });
+    });
 };
-const meter = (page: Page) => page.$eval("[data-testid=agent-token-meter]", (el) => ({ text: (el.querySelector("[data-testid=agent-token-used]")?.textContent ?? "").replace(/\s+/g, " ").trim(), count: document.querySelectorAll("[data-testid=agent-token-meter]").length, width: el.getBoundingClientRect().width, level: el.getAttribute("data-level"), color: getComputedStyle(el).color }));
+const meter = (page: Page) =>
+  page.$eval("[data-testid=agent-token-meter]", (el) => ({
+    text: (el.querySelector("[data-testid=agent-token-used]")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    count: document.querySelectorAll("[data-testid=agent-token-meter]").length,
+    width: el.getBoundingClientRect().width,
+    level: el.getAttribute("data-level"),
+    color: getComputedStyle(el).color,
+  }));
 const tooltip = async (page: Page) => {
   await page.mouse.move(5, 5);
   await page.waitForFunction(() => !document.querySelector("[data-testid=tooltip]"), { timeout: 3000 });

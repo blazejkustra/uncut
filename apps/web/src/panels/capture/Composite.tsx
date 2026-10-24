@@ -9,7 +9,19 @@ import type { CaptureSource } from "../../state/bridge.ts";
 
 const pctOf = (n: number, of: number) => `${(n / of) * 100}%`;
 
-export function Composite({ source, camera, screen, layout, canvas }: { source: CaptureSource | undefined; camera: boolean; screen: boolean; layout: MultiLayoutName; canvas: { width: number; height: number } }) {
+export function Composite({
+  source,
+  camera,
+  screen,
+  layout,
+  canvas,
+}: {
+  source: CaptureSource | undefined;
+  camera: boolean;
+  screen: boolean;
+  layout: MultiLayoutName;
+  canvas: { width: number; height: number };
+}) {
   const preview = useRecorder((s) => s.preview);
   const previewError = useRecorder((s) => s.previewError);
   const live = useRecorder((s) => s.screenLive);
@@ -22,14 +34,32 @@ export function Composite({ source, camera, screen, layout, canvas }: { source: 
     if (scr.current && scr.current.srcObject !== (live ?? null)) scr.current.srcObject = live ?? null;
   }, [live, screen]);
   const boxes = multiLayoutBoxes(layout, canvas.width, canvas.height);
-  const at = (b: { x: number; y: number; w: number; h: number; radius?: number }) => ({ left: pctOf(b.x, canvas.width), top: pctOf(b.y, canvas.height), width: pctOf(b.w, canvas.width), height: pctOf(b.h, canvas.height), borderRadius: b.radius ? "50%" : undefined });
+  const at = (b: { x: number; y: number; w: number; h: number; radius?: number }) => ({
+    left: pctOf(b.x, canvas.width),
+    top: pctOf(b.y, canvas.height),
+    width: pctOf(b.w, canvas.width),
+    height: pctOf(b.h, canvas.height),
+    borderRadius: b.radius ? "50%" : undefined,
+  });
   const full = { left: 0, top: 0, width: "100%", height: "100%" };
   const screenBox = screen && camera && boxes.screen ? at(boxes.screen) : full;
   return (
-    <div className="capture-composite" data-testid="capture-composite" data-layout={layout} data-live={live ? "yes" : "no"} style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+    <div
+      className="capture-composite"
+      data-testid="capture-composite"
+      data-layout={layout}
+      data-live={live ? "yes" : "no"}
+      style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
+    >
       {screen && (
         <div className="composite-screen" data-testid="capture-composite-screen" style={screenBox}>
-          {live ? <video ref={scr} autoPlay muted playsInline /> : source?.thumbnail ? <img src={source.thumbnail} alt="" /> : <Monitor className="composite-placeholder" />}
+          {live ? (
+            <video ref={scr} autoPlay muted playsInline />
+          ) : source?.thumbnail ? (
+            <img src={source.thumbnail} alt="" />
+          ) : (
+            <Monitor className="composite-placeholder" />
+          )}
         </div>
       )}
       {camera && (

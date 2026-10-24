@@ -55,12 +55,20 @@ if (given) {
   const shaderTemplate = dir === resolve(SHADER_TEMPLATE_DIR);
   // The shader sources first (--write may fill in the manifest's wgsl the gate then reads).
   problems.push(...shaders(dir));
-  problems.push(...checkPluginFolder(dir, ctx, { template: dir === resolve(TEMPLATE_DIR) || shaderTemplate, ...(shaderTemplate ? { templateId: SHADER_TEMPLATE_ID } : {}) }));
+  problems.push(
+    ...checkPluginFolder(dir, ctx, {
+      template: dir === resolve(TEMPLATE_DIR) || shaderTemplate,
+      ...(shaderTemplate ? { templateId: SHADER_TEMPLATE_ID } : {}),
+    }),
+  );
   checked = [dir];
 } else {
   for (const dir of [...bundled, ...catalog]) problems.push(...shaders(dir), ...checkPluginFolder(dir, ctx));
   problems.push(...checkPluginFolder(TEMPLATE_DIR, await gateContext(), { template: true }));
-  problems.push(...shaders(SHADER_TEMPLATE_DIR), ...checkPluginFolder(SHADER_TEMPLATE_DIR, await gateContext(), { template: true, templateId: SHADER_TEMPLATE_ID }));
+  problems.push(
+    ...shaders(SHADER_TEMPLATE_DIR),
+    ...checkPluginFolder(SHADER_TEMPLATE_DIR, await gateContext(), { template: true, templateId: SHADER_TEMPLATE_ID }),
+  );
   checked = [...bundled, ...catalog, TEMPLATE_DIR, SHADER_TEMPLATE_DIR];
 }
 if (problems.length) {

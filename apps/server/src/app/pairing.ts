@@ -44,10 +44,12 @@ export const urlHost = (host: string) => (host.includes(":") && !host.startsWith
 export function pairingText(host: string, port: number, token: string, file: string | undefined): string {
   const url = `http://${urlHost(reachableHost(host))}:${port}`;
   const link = `uncut://pair?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
-  const loopback = host === "127.0.0.1" || host === "::1" || host === "localhost" || /^127\./.test(host);
+  const loopback = host === "127.0.0.1" || host === "::1" || host === "localhost" || host.startsWith("127.");
   return [
     `Uncut server listening on ${url}`,
-    ...(loopback ? [] : ["Warning: plain http, not encrypted. The token and your footage travel in clear on this network: use an SSH tunnel, Tailscale or an https proxy."]),
+    ...(loopback
+      ? []
+      : ["Warning: plain http, not encrypted. The token and your footage travel in clear on this network: use an SSH tunnel, Tailscale or an https proxy."]),
     `Token: ${token}${file ? ` (kept in ${file})` : ""}`,
     "Pair from Uncut: Settings, Environments, Add environment, then paste this line:",
     link,

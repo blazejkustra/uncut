@@ -74,7 +74,12 @@ export interface Canvas {
 export const MATCH_FIRST_CLIP = "match-first-clip";
 
 export interface ProjectsShape {
-  readonly create: (input: { parentDir: string; name: string; canvas?: Canvas | undefined; matchFirstClip?: boolean | undefined }) => Effect.Effect<ProjectSnapshot, ProjectError>;
+  readonly create: (input: {
+    parentDir: string;
+    name: string;
+    canvas?: Canvas | undefined;
+    matchFirstClip?: boolean | undefined;
+  }) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly open: (dir: string) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;

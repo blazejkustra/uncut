@@ -85,7 +85,14 @@ let docs: Map<string, string>;
 let raster: Rasterizer;
 const project = {
   canvas,
-  tracks: [{ items: [{ type: "graphic", src: "graphics/stage.html", duration: 90 }, { type: "graphic", src: "graphics/other.html", duration: 90 }] }],
+  tracks: [
+    {
+      items: [
+        { type: "graphic", src: "graphics/stage.html", duration: 90 },
+        { type: "graphic", src: "graphics/other.html", duration: 90 },
+      ],
+    },
+  ],
 } as unknown as Project;
 
 before(async () => {
@@ -136,28 +143,32 @@ async function frame(src: string, local: number, out: string) {
   return out;
 }
 
-test("the live editor stage and fly: a frame is the same picture drawn fresh, in order, or after frames in shuffled order", { skip, timeout: 300000 }, async (t) => {
-  const frames = Array.from({ length: 31 }, (_, i) => i * 3); // t 0 to 3 s, every 0.1 s
-  const seq = new Map<number, string>();
-  for (const f of frames) seq.set(f, await frame("graphics/stage.html", f, join(root, `seq-${f}.png`)));
-  // A fixed shuffle (seeded), in the same document: each frame drawn after unrelated ones.
-  let s = 7;
-  const shuffled = [...frames].sort(() => (s = (s * 16807) % 2147483647) / 2147483647 - 0.5);
-  const bad: string[] = [];
-  let worst = 0;
-  const check = (how: string, f: number, png: string) => {
-    const d = apart(seq.get(f)!, png);
-    worst = Math.max(worst, d.off);
-    if (d.far > 0 || d.off > W * H * 0.01) bad.push(`${how} ${f}: ${d.off} px off, ${d.far} by more than 32, max ${d.max}`);
-  };
-  for (const f of shuffled) check("shuffled", f, await frame("graphics/stage.html", f, join(root, `shuf-${f}.png`)));
-  // Fresh: another graphic first, so the stage's document loads anew and this is its first frame.
-  for (const f of frames) {
-    await frame("graphics/other.html", 0, join(root, "other.png"));
-    check("fresh", f, await frame("graphics/stage.html", f, join(root, `fresh-${f}.png`)));
-  }
-  t.diagnostic(`worst: ${worst} px off`);
-  assert.deepEqual(bad, [], `frames apart from the in-order render (UNCUT_KEEP_OUTPUT=1 keeps ${root})`);
-  assert.ok(new Set([...seq.values()].map(pixelHash)).size > 25, "the stage moves with t");
-  assert.ok(opaquePixels(seq.get(45)!) / (W * H) > 0.99, "the frame is drawn");
-});
+test(
+  "the live editor stage and fly: a frame is the same picture drawn fresh, in order, or after frames in shuffled order",
+  { skip, timeout: 300000 },
+  async (t) => {
+    const frames = Array.from({ length: 31 }, (_, i) => i * 3); // t 0 to 3 s, every 0.1 s
+    const seq = new Map<number, string>();
+    for (const f of frames) seq.set(f, await frame("graphics/stage.html", f, join(root, `seq-${f}.png`)));
+    // A fixed shuffle (seeded), in the same document: each frame drawn after unrelated ones.
+    let s = 7;
+    const shuffled = [...frames].sort(() => (s = (s * 16807) % 2147483647) / 2147483647 - 0.5);
+    const bad: string[] = [];
+    let worst = 0;
+    const check = (how: string, f: number, png: string) => {
+      const d = apart(seq.get(f)!, png);
+      worst = Math.max(worst, d.off);
+      if (d.far > 0 || d.off > W * H * 0.01) bad.push(`${how} ${f}: ${d.off} px off, ${d.far} by more than 32, max ${d.max}`);
+    };
+    for (const f of shuffled) check("shuffled", f, await frame("graphics/stage.html", f, join(root, `shuf-${f}.png`)));
+    // Fresh: another graphic first, so the stage's document loads anew and this is its first frame.
+    for (const f of frames) {
+      await frame("graphics/other.html", 0, join(root, "other.png"));
+      check("fresh", f, await frame("graphics/stage.html", f, join(root, `fresh-${f}.png`)));
+    }
+    t.diagnostic(`worst: ${worst} px off`);
+    assert.deepEqual(bad, [], `frames apart from the in-order render (UNCUT_KEEP_OUTPUT=1 keeps ${root})`);
+    assert.ok(new Set([...seq.values()].map(pixelHash)).size > 25, "the stage moves with t");
+    assert.ok(opaquePixels(seq.get(45)!) / (W * H) > 0.99, "the frame is drawn");
+  },
+);

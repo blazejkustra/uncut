@@ -52,7 +52,17 @@ const OTHER = `<div style="width:10px;height:10px;background:#f00"></div><script
 let root: string;
 let docs: Map<string, string>;
 let raster: Rasterizer;
-const project = { canvas, tracks: [{ items: [{ type: "graphic", src: "graphics/send.html", duration: 90 }, { type: "graphic", src: "graphics/other.html", duration: 90 }] }] } as unknown as Project;
+const project = {
+  canvas,
+  tracks: [
+    {
+      items: [
+        { type: "graphic", src: "graphics/send.html", duration: 90 },
+        { type: "graphic", src: "graphics/other.html", duration: 90 },
+      ],
+    },
+  ],
+} as unknown as Project;
 
 before(async () => {
   if (skip) return;
@@ -94,26 +104,30 @@ async function frame(src: string, local: number, out: string) {
   return out;
 }
 
-test("the stage example's Send: the typed composer flies into the message bubble, the same pixels in order, shuffled or fresh", { skip, timeout: 300000 }, async () => {
-  const frames = Array.from({ length: 25 }, (_, i) => i * 3); // 0 to 2.4 s
-  const seq = new Map<number, string>();
-  for (const f of frames) seq.set(f, await frame("graphics/send.html", f, join(root, `seq-${f}.png`)));
-  // Before Send the big composer is on screen (frames differ from the editor alone as it types), mid-flight it moves.
-  const before = [3, 15, 30].map((f) => pixelHash(seq.get(f)!));
-  assert.equal(new Set(before).size, 3, "the hero types before Send");
-  assert.ok(apart(seq.get(33)!, seq.get(48)!).far > 500, "the prompt flies after Send");
-  assert.ok(apart(seq.get(66)!, seq.get(72)!).far < 50, "landed: it settles in the bubble");
-  let s = 11;
-  const shuffled = [...frames].sort(() => (s = (s * 16807) % 2147483647) / 2147483647 - 0.5);
-  const bad: string[] = [];
-  const check = (how: string, f: number, png: string) => {
-    const d = apart(seq.get(f)!, png);
-    if (d.far > 0 || d.off > W * H * 0.01) bad.push(`${how} ${f}: ${d.off} px off, ${d.far} by more than 32`);
-  };
-  for (const f of shuffled) check("shuffled", f, await frame("graphics/send.html", f, join(root, `shuf-${f}.png`)));
-  for (const f of frames) {
-    await frame("graphics/other.html", 0, join(root, "other.png"));
-    check("fresh", f, await frame("graphics/send.html", f, join(root, `fresh-${f}.png`)));
-  }
-  assert.deepEqual(bad, [], `frames apart from the in-order render (UNCUT_KEEP_OUTPUT=1 keeps ${root})`);
-});
+test(
+  "the stage example's Send: the typed composer flies into the message bubble, the same pixels in order, shuffled or fresh",
+  { skip, timeout: 300000 },
+  async () => {
+    const frames = Array.from({ length: 25 }, (_, i) => i * 3); // 0 to 2.4 s
+    const seq = new Map<number, string>();
+    for (const f of frames) seq.set(f, await frame("graphics/send.html", f, join(root, `seq-${f}.png`)));
+    // Before Send the big composer is on screen (frames differ from the editor alone as it types), mid-flight it moves.
+    const before = [3, 15, 30].map((f) => pixelHash(seq.get(f)!));
+    assert.equal(new Set(before).size, 3, "the hero types before Send");
+    assert.ok(apart(seq.get(33)!, seq.get(48)!).far > 500, "the prompt flies after Send");
+    assert.ok(apart(seq.get(66)!, seq.get(72)!).far < 50, "landed: it settles in the bubble");
+    let s = 11;
+    const shuffled = [...frames].sort(() => (s = (s * 16807) % 2147483647) / 2147483647 - 0.5);
+    const bad: string[] = [];
+    const check = (how: string, f: number, png: string) => {
+      const d = apart(seq.get(f)!, png);
+      if (d.far > 0 || d.off > W * H * 0.01) bad.push(`${how} ${f}: ${d.off} px off, ${d.far} by more than 32`);
+    };
+    for (const f of shuffled) check("shuffled", f, await frame("graphics/send.html", f, join(root, `shuf-${f}.png`)));
+    for (const f of frames) {
+      await frame("graphics/other.html", 0, join(root, "other.png"));
+      check("fresh", f, await frame("graphics/send.html", f, join(root, `fresh-${f}.png`)));
+    }
+    assert.deepEqual(bad, [], `frames apart from the in-order render (UNCUT_KEEP_OUTPUT=1 keeps ${root})`);
+  },
+);

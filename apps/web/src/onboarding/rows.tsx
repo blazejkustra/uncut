@@ -105,7 +105,14 @@ export function SpeechModelRow() {
             </div>
           )}
         </div>
-        <select className="wiz-select" data-testid="whisper-model-select" value={model.id} disabled={downloading || offline} onChange={(e) => void actions.selectModel(e.target.value)} title="The model transcripts use: bigger is more accurate, smaller downloads faster">
+        <select
+          className="wiz-select"
+          data-testid="whisper-model-select"
+          value={model.id}
+          disabled={downloading || offline}
+          onChange={(e) => void actions.selectModel(e.target.value)}
+          title="The model transcripts use: bigger is more accurate, smaller downloads faster"
+        >
           {choices.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name} ({mb(m.bytes)})
@@ -118,7 +125,13 @@ export function SpeechModelRow() {
             Ready
           </span>
         ) : downloading ? (
-          <button className="btn ghost" data-testid="whisper-download-cancel" disabled={offline} onClick={() => void actions.cancelModelDownload(model.id)} title="Stop the download">
+          <button
+            className="btn ghost"
+            data-testid="whisper-download-cancel"
+            disabled={offline}
+            onClick={() => void actions.cancelModelDownload(model.id)}
+            title="Stop the download"
+          >
             <X />
             Cancel
           </button>
@@ -152,7 +165,9 @@ export function KeyRows() {
   return (
     <div className="wiz-plugins wiz-keys" data-testid="keys">
       <div className="wiz-section">Keys (optional)</div>
-      <div className="wiz-sub">GPT Image, Veo and Sound effects bill your own account. A key stays in this Mac's Keychain and never goes to the agent or into a project.</div>
+      <div className="wiz-sub">
+        GPT Image, Veo and Sound effects bill your own account. A key stays in this Mac's Keychain and never goes to the agent or into a project.
+      </div>
       {keys.map((k) => (
         <KeyRow key={k.provider} info={k} offline={offline} />
       ))}

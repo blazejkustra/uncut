@@ -62,5 +62,11 @@ export async function captureSources(): Promise<Array<CaptureSource>> {
   const url = (image: Electron.NativeImage | null | undefined) => (image && !image.isEmpty() ? image.toDataURL() : "");
   return sources
     .filter((s) => s.id !== own)
-    .map((s) => ({ id: s.id, name: s.name, kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const), thumbnail: url(s.thumbnail), ...(url(s.appIcon) ? { icon: url(s.appIcon) } : {}) }));
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const),
+      thumbnail: url(s.thumbnail),
+      ...(url(s.appIcon) ? { icon: url(s.appIcon) } : {}),
+    }));
 }

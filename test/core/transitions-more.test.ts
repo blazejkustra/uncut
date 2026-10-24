@@ -7,14 +7,43 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 
-import { audibleAt, defaultFrames, dipsOf, incomingFx, layout, loadModules, maskDistance, maskGeq, maskRings, outgoingFx, TRANSITIONS, transitionInfo, validateProject, visualsAt, type MaskShape, type Project } from "../../packages/core/src/index.ts";
+import {
+  audibleAt,
+  defaultFrames,
+  dipsOf,
+  incomingFx,
+  layout,
+  loadModules,
+  maskDistance,
+  maskGeq,
+  maskRings,
+  outgoingFx,
+  TRANSITIONS,
+  transitionInfo,
+  validateProject,
+  visualsAt,
+  type MaskShape,
+  type Project,
+} from "../../packages/core/src/index.ts";
 import { exportCommand, planExport } from "../../apps/server/src/export/exportPlan.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const close = (a: number, b: number, msg?: string, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${msg ?? ""} ${a} vs ${b}`);
 const canvas = { width: 1920, height: 1080 };
 const NEW = TRANSITIONS.slice(6);
-const SHAPES: ReadonlyArray<MaskShape> = ["wipe-left", "wipe-up", "wipe-down", "split-v", "split-h", "box", "diamond", "diagonal", "circle-close", "clock", "blinds"];
+const SHAPES: ReadonlyArray<MaskShape> = [
+  "wipe-left",
+  "wipe-up",
+  "wipe-down",
+  "split-v",
+  "split-h",
+  "box",
+  "diamond",
+  "diagonal",
+  "circle-close",
+  "clock",
+  "blinds",
+];
 
 function twoClips(module: string, duration = 20, extra: Record<string, unknown> = {}): Project {
   return {
@@ -117,15 +146,27 @@ test("D133: dip to white keeps the clips apart under a white layer (the sound di
   const dips = dipsOf(white.tracks[0]!, starts);
   assert.equal(dips.length, 1);
   assert.equal(dips[0]!.item.props!.color, "#ffffff");
-  assert.deepEqual(visualsAt(white, starts, 55).map((v) => v.item.id), ["a", "dip:b"]);
+  assert.deepEqual(
+    visualsAt(white, starts, 55).map((v) => v.item.id),
+    ["a", "dip:b"],
+  );
   close(of(white, 55, "dip:b")!.opacity, 0.5);
   close(of(white, 60, "dip:b")!.opacity, 1);
   // The sound dips like a dip to black's: the outgoing clip fades out, nothing overlaps.
-  assert.deepEqual(audibleAt(white, starts, 65).map((s) => s.item.id), ["b"]);
-  assert.deepEqual(audibleAt(white, starts, 55).map((s) => s.item.id), ["a"]);
+  assert.deepEqual(
+    audibleAt(white, starts, 65).map((s) => s.item.id),
+    ["b"],
+  );
+  assert.deepEqual(
+    audibleAt(white, starts, 55).map((s) => s.item.id),
+    ["a"],
+  );
   const flash = twoClips("transition.flash", 10);
   const f = layout(flash).starts;
-  assert.deepEqual(visualsAt(flash, f, 57).map((v) => v.item.id), ["a", "b", "dip:b"]);
+  assert.deepEqual(
+    visualsAt(flash, f, 57).map((v) => v.item.id),
+    ["a", "b", "dip:b"],
+  );
   close(of(flash, 57, "b")!.opacity, 0.2);
   close(of(flash, 57, "dip:b")!.opacity, 0.4);
   assert.equal(dipsOf(flash.tracks[0]!, f)[0]!.item.props!.color, "#ffffff");
@@ -164,7 +205,12 @@ test("D133: every mask's outline (the preview's clip-path) agrees with its signe
     }
     // Nothing at 0, everything at 1 (corners included).
     assert.ok(maskDistance(shape, 0, W, H, W / 2 + 7, H / 2 + 5) <= 0.5, `${shape} at 0`);
-    for (const [x, y] of [[0.5, 0.5], [W - 0.5, H - 0.5], [W / 2, H / 2 + 3]]) assert.ok(maskDistance(shape, 1, W, H, x!, y!) >= -0.5, `${shape} at 1 (${x}, ${y})`);
+    for (const [x, y] of [
+      [0.5, 0.5],
+      [W - 0.5, H - 0.5],
+      [W / 2, H / 2 + 3],
+    ])
+      assert.ok(maskDistance(shape, 1, W, H, x!, y!) >= -0.5, `${shape} at 1 (${x}, ${y})`);
   }
 });
 
@@ -175,7 +221,21 @@ test("D133: every mask's geq expression (export, render_frames) gives core's cov
   for (const shape of SHAPES) {
     const p = 0.37;
     const sd = maskGeq(shape, String(p), W, H, "(X+0.5)", "(Y+0.5)");
-    const raw = execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H},format=gray`, "-vf", `geq=lum='255*clip(${sd}+0.5,0,1)'`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+    const raw = execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=black:s=${W}x${H},format=gray`,
+      "-vf",
+      `geq=lum='255*clip(${sd}+0.5,0,1)'`,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-",
+    ]);
     let worst = 0;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
@@ -195,32 +255,80 @@ test("D133 export plan: a mask layer cut at the reveal's end, a blur's sigmas cu
   };
   const clock = plan(twoClips("transition.clock"));
   const b = clock.visuals.filter((l) => l.item.id === "b");
-  assert.deepEqual(b.map((l) => [l.f0, l.f1, l.mask?.shape]), [[50, 70, "clock"], [70, 120, undefined]]);
+  assert.deepEqual(
+    b.map((l) => [l.f0, l.f1, l.mask?.shape]),
+    [
+      [50, 70, "clock"],
+      [70, 120, undefined],
+    ],
+  );
   assert.deepEqual(b[0]!.mask, { shape: "clock", st: 50, d: 20 });
-  const cmd = exportCommand(clock, { background: "/bg.png", rasters: new Map(), caps: { encoders: new Set(), videotoolboxDecode: false, major: 8 }, quality: "draft", output: "/out.mp4" });
+  const cmd = exportCommand(clock, {
+    background: "/bg.png",
+    rasters: new Map(),
+    caps: { encoders: new Set(), videotoolboxDecode: false, major: 8 },
+    quality: "draft",
+    output: "/out.mp4",
+  });
   assert.match(cmd.graph, /geq=lum='255\*clip\(\(hypot\(/);
   assert.match(cmd.graph, /atan2/);
 
   const blur = plan(twoClips("transition.blur"));
   const a = blur.visuals.filter((l) => l.item.id === "a");
-  assert.deepEqual(a.map((l) => [l.f0, l.f1, !!l.blur]), [[0, 50, false], [50, 70, true]]);
+  assert.deepEqual(
+    a.map((l) => [l.f0, l.f1, !!l.blur]),
+    [
+      [0, 50, false],
+      [50, 70, true],
+    ],
+  );
   close(a[1]!.blur![10]!, 0.5 * 0.02 * 540, "sigma in output px");
   const bb = blur.visuals.filter((l) => l.item.id === "b");
-  assert.deepEqual(bb.map((l) => [l.f0, l.f1, !!l.blur]), [[50, 70, true], [70, 120, false]]);
-  const blurCmd = exportCommand(blur, { background: "/bg.png", rasters: new Map(), caps: { encoders: new Set(), videotoolboxDecode: false, major: 8 }, quality: "draft", output: "/out.mp4" });
+  assert.deepEqual(
+    bb.map((l) => [l.f0, l.f1, !!l.blur]),
+    [
+      [50, 70, true],
+      [70, 120, false],
+    ],
+  );
+  const blurCmd = exportCommand(blur, {
+    background: "/bg.png",
+    rasters: new Map(),
+    caps: { encoders: new Set(), videotoolboxDecode: false, major: 8 },
+    quality: "draft",
+    output: "/out.mp4",
+  });
   assert.match(blurCmd.graph, /gblur@g\d+ sigma/);
 
   const push = plan(twoClips("transition.push-down"));
   const pa = push.visuals.filter((l) => l.item.id === "a");
-  assert.deepEqual(pa.map((l) => [l.f0, l.f1, !!l.geometry]), [[0, 50, false], [50, 70, true]]);
+  assert.deepEqual(
+    pa.map((l) => [l.f0, l.f1, !!l.geometry]),
+    [
+      [0, 50, false],
+      [50, 70, true],
+    ],
+  );
   assert.equal(pa[1]!.geometry!.frames[10]!.y, 270);
   const pb = push.visuals.filter((l) => l.item.id === "b");
-  assert.deepEqual(pb.map((l) => [l.f0, l.f1, !!l.geometry]), [[50, 70, true], [70, 120, false]]);
+  assert.deepEqual(
+    pb.map((l) => [l.f0, l.f1, !!l.geometry]),
+    [
+      [50, 70, true],
+      [70, 120, false],
+    ],
+  );
   assert.equal(pb[0]!.geometry!.frames[10]!.y, -270);
   // Zoom out: the incoming clip's geometry over the transition only, faded in.
   const zoom = plan(twoClips("transition.zoom-out"));
   const zb = zoom.visuals.filter((l) => l.item.id === "b");
-  assert.deepEqual(zb.map((l) => [l.f0, l.f1, !!l.geometry]), [[50, 70, true], [70, 120, false]]);
+  assert.deepEqual(
+    zb.map((l) => [l.f0, l.f1, !!l.geometry]),
+    [
+      [50, 70, true],
+      [70, 120, false],
+    ],
+  );
   assert.equal(zb[0]!.ramps.length, 1);
   // Dip to white: a white layer.
   const white = plan(twoClips("transition.dip-to-white"));

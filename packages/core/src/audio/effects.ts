@@ -52,7 +52,14 @@ export const BUTTERWORTH_Q = Math.SQRT1_2;
 
 export type Stage =
   | { readonly kind: "biquad"; readonly type: BiquadType; readonly freq: number; readonly q: number; readonly gainDb: number }
-  | { readonly kind: "compressor"; readonly thresholdDb: number; readonly ratio: number; readonly attackMs: number; readonly releaseMs: number; readonly makeupDb: number }
+  | {
+      readonly kind: "compressor";
+      readonly thresholdDb: number;
+      readonly ratio: number;
+      readonly attackMs: number;
+      readonly releaseMs: number;
+      readonly makeupDb: number;
+    }
   /** floorDb: the noise floor afftdn starts from (dBFS RMS), from the track's loudness envelopes (noiseFloorDb); absent = DENOISE_FLOOR_DB. */
   | { readonly kind: "denoise"; readonly amount: number; readonly floorDb?: number };
 
@@ -143,7 +150,11 @@ export function effectStages(fx: ModuleUse): Array<Stage> {
  * gets the track's measured noise floor (trackNoiseFloorDb): the preview and the export call this
  * the same way, so both start from the same floor (D88, D246).
  */
-export function trackStages(track: Pick<Track, "mixer" | "items">, project?: Pick<Project, "media">, envelopes?: ReadonlyMap<string, SpeechEnvelope | null>): Array<Stage> {
+export function trackStages(
+  track: Pick<Track, "mixer" | "items">,
+  project?: Pick<Project, "media">,
+  envelopes?: ReadonlyMap<string, SpeechEnvelope | null>,
+): Array<Stage> {
   const out: Array<Stage> = [];
   let floor: number | undefined;
   for (const fx of track.mixer?.effects ?? [])
@@ -178,7 +189,9 @@ export function trackNoiseFloorDb(project: Pick<Project, "media">, track: Pick<T
 /** Media on tracks with noise removal on (their envelopes give the noise floor, D88). */
 export function denoiseMediaIds(project: Pick<Project, "tracks" | "media">): Array<string> {
   const ids = new Set<string>();
-  for (const t of project.tracks) if ((t.mixer?.effects ?? []).some((fx) => fx.module === DENOISE && !fx.bypass)) for (const i of t.items) if (soundMedia(project, i) && i.media) ids.add(i.media);
+  for (const t of project.tracks)
+    if ((t.mixer?.effects ?? []).some((fx) => fx.module === DENOISE && !fx.bypass))
+      for (const i of t.items) if (soundMedia(project, i) && i.media) ids.add(i.media);
   return [...ids].sort();
 }
 
@@ -306,7 +319,12 @@ export function masterLimiter(project: Pick<Project, "master">): { readonly ceil
 
 /** The export's loudness choices: a preset target, the project's own target, or the mix as it is. */
 export type LoudnessChoice = "off" | "normal" | "quiet" | "broadcast" | "target";
-export const LOUDNESS_PRESETS: ReadonlyArray<{ readonly id: Exclude<LoudnessChoice, "off" | "target">; readonly lufs: number; readonly name: string; readonly hint: string }> = [
+export const LOUDNESS_PRESETS: ReadonlyArray<{
+  readonly id: Exclude<LoudnessChoice, "off" | "target">;
+  readonly lufs: number;
+  readonly name: string;
+  readonly hint: string;
+}> = [
   { id: "normal", lufs: -14, name: "Normal", hint: "YouTube, Instagram, TikTok" },
   { id: "quiet", lufs: -16, name: "Quieter", hint: "Podcasts, Apple" },
   { id: "broadcast", lufs: -23, name: "Broadcast", hint: "TV (EBU R128)" },

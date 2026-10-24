@@ -34,10 +34,20 @@ export const isSubtitleTrack = (track: Pick<Track, "kind" | "name">) => track.ki
 
 /** A subtitles-track text item the export may draw as part of one layer: no motion, keys or opacity of its own. */
 export const isPlainCue = (item: Item) =>
-  item.type === "text" && typeof item.text === "string" && !item.animation && !item.keys?.length && !item.effects?.length && (item.transform?.opacity === undefined || item.transform.opacity === 1);
+  item.type === "text" &&
+  typeof item.text === "string" &&
+  !item.animation &&
+  !item.keys?.length &&
+  !item.effects?.length &&
+  (item.transform?.opacity === undefined || item.transform.opacity === 1);
 
 /** Text markup (**bold**, [[accent]], `mono`) as plain text. */
-const unmarkup = (text: string) => text.replace(/\*\*(.+?)\*\*/gs, "$1").replace(/\[\[(.+?)\]\]/gs, "$1").replace(/`([^`]*)`/g, "$1").replace(/​/g, "");
+const unmarkup = (text: string) =>
+  text
+    .replace(/\*\*(.+?)\*\*/gs, "$1")
+    .replace(/\[\[(.+?)\]\]/gs, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/​/g, "");
 
 /**
  * Every cue the project's subtitles hold, in timeline order: the cards of each captions item and
@@ -49,7 +59,11 @@ export function subtitleCues(project: Project): Array<SubtitleCue> {
   const push = (from: number, to: number, text: string) => {
     const a = Math.max(0, from);
     const b = Math.min(duration, to);
-    const t = text.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+    const t = text
+      .split("\n")
+      .map((l) => l.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join("\n");
     if (b > a && t) out.push({ from: a, to: b, text: t });
   };
   for (const track of project.tracks) {
@@ -59,7 +73,10 @@ export function subtitleCues(project: Project): Array<SubtitleCue> {
         for (const card of captionCards(project, item)) {
           let i = 0;
           const lines = card.lines.map((n) => {
-            const line = card.words.slice(i, i + n).map((w) => w.text).join(" ");
+            const line = card.words
+              .slice(i, i + n)
+              .map((w) => w.text)
+              .join(" ");
             i += n;
             return line;
           });
@@ -72,7 +89,10 @@ export function subtitleCues(project: Project): Array<SubtitleCue> {
     }
   }
   // Stable: cues starting together keep their track order.
-  return out.map((c, k) => ({ c, k })).sort((a, b) => a.c.from - b.c.from || a.k - b.k).map((x) => x.c);
+  return out
+    .map((c, k) => ({ c, k }))
+    .sort((a, b) => a.c.from - b.c.from || a.k - b.k)
+    .map((x) => x.c);
 }
 
 /**
@@ -223,7 +243,10 @@ const plainCue = (lines: ReadonlyArray<string>) =>
  * are skipped; a timing line Uncut can't read refuses the file with its line number; cues with no
  * text or that end before they start are left out.
  */
-export function parseSubtitles(text: string, name = "subtitles.srt"): { readonly cues: Array<ParsedCue>; readonly format: SubtitleFormat; readonly skipped: number } | { readonly problem: string } {
+export function parseSubtitles(
+  text: string,
+  name = "subtitles.srt",
+): { readonly cues: Array<ParsedCue>; readonly format: SubtitleFormat; readonly skipped: number } | { readonly problem: string } {
   const body = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   const ext = subtitleFormatOf(name);
   const vtt = /^WEBVTT(?:[ \t].*)?(?:\n|$)/.test(body);
@@ -261,7 +284,12 @@ export function parseSubtitles(text: string, name = "subtitles.srt"): { readonly
     cues.push({ start, end, text: content });
     if (cues.length > MAX_SUBTITLE_CUES) return { problem: `${name} has more than ${MAX_SUBTITLE_CUES} cues: Uncut reads at most that many.` };
   }
-  if (!cues.length) return { problem: skipped ? `${name} has no cues with text and a time that ends after it starts.` : `${name} has no subtitle cues: it isn't a .srt or .vtt file Uncut can read.` };
+  if (!cues.length)
+    return {
+      problem: skipped
+        ? `${name} has no cues with text and a time that ends after it starts.`
+        : `${name} has no subtitle cues: it isn't a .srt or .vtt file Uncut can read.`,
+    };
   cues.sort((a, b) => a.start - b.start);
   return { cues, format, skipped };
 }
@@ -283,7 +311,12 @@ const markupSafe = (text: string) => text.replace(/`/g, "'").replace(/\*\*+/g, "
  * cue ends where the next starts, and cues starting on the same frame are joined into one. Each
  * sits with its last line where a caption's last line sits (the text.caption look). One edit.
  */
-export function planImportSubtitles(project: Pick<Project, "canvas" | "theme" | "tracks" | "media">, cues: ReadonlyArray<ParsedCue>, name: string, taken: Set<string> = new Set()): ImportSubtitlesPlan {
+export function planImportSubtitles(
+  project: Pick<Project, "canvas" | "theme" | "tracks" | "media">,
+  cues: ReadonlyArray<ParsedCue>,
+  name: string,
+  taken: Set<string> = new Set(),
+): ImportSubtitlesPlan {
   const fps = project.canvas.fps;
   const mainLength = mainEnd(project);
   const limit = mainLength > 0 ? mainLength : Infinity;
@@ -329,11 +362,21 @@ export function planImportSubtitles(project: Pick<Project, "canvas" | "theme" | 
   const one = captionBox(project, { style: look.style as Item["style"], transform: look.transform, lines: { maxLines: 1 } });
   const perLine = two.height - one.height;
   const pad = one.height - perLine;
-  const ops: Array<Op> = [{ op: "add_track", index: 0, track: { id: trackId, kind: "text", name: existing ? `Subtitles ${existing + 1}` : "Subtitles" } } as Op];
+  const ops: Array<Op> = [
+    { op: "add_track", index: 0, track: { id: trackId, kind: "text", name: existing ? `Subtitles ${existing + 1}` : "Subtitles" } } as Op,
+  ];
   for (const f of frames) {
     const n = f.text.split("\n").length;
     const y = Math.round(two.bottom - n * perLine - pad);
-    const item: Item = { id: fresh("sub"), type: "text", start: f.from, duration: f.to - f.from, text: f.text, style: look.style as Item["style"], transform: { ...look.transform, y } };
+    const item: Item = {
+      id: fresh("sub"),
+      type: "text",
+      start: f.from,
+      duration: f.to - f.from,
+      text: f.text,
+      style: look.style as Item["style"],
+      transform: { ...look.transform, y },
+    };
     ops.push({ op: "insert_item", track: trackId, item });
   }
   return { ops, trackId, cues: frames.length, clipped, joined, summary: `Import subtitles ${name}` };

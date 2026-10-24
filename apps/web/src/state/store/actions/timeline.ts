@@ -1,7 +1,18 @@
 import { transitionSeconds } from "../../../timeline/transitionLength.ts";
 import { type AgentUiPanel } from "@uncut/contracts";
 import { playback, getPlayback } from "../../../preview/playback.ts";
-import { planSplit, findItem, planSetTransition, planDelete, nearestCut, type TrackFlag, planTrackFlag, planGrouping, planLayer, planRippleDelete } from "../../../timeline/edit.ts";
+import {
+  planSplit,
+  findItem,
+  planSetTransition,
+  planDelete,
+  nearestCut,
+  type TrackFlag,
+  planTrackFlag,
+  planGrouping,
+  planLayer,
+  planRippleDelete,
+} from "../../../timeline/edit.ts";
 import { planResetPosition } from "../../../timeline/clip.ts";
 import { planPutOnMain, planDetachAudio, takenIds } from "@uncut/core/arrange";
 import { planSetLook, type LookDef, planEffect, lookInfo, effectInfo } from "@uncut/core/fx";
@@ -22,7 +33,8 @@ export const timelineActions = {
   openPanel: (panel: AgentUiPanel) => set({ panelRequest: { panel, seq: nextPanelSeq() } }),
   /** Text tab preset → a text item at the playhead (see planAddText). */
   /** Text tab → a preset at the playhead (or the dropped frame), placed where it was dropped on the canvas (D80). */
-  addText: (preset: TextPreset, opts: { at?: { x: number; y: number }; frame?: number } = {}) => addPlanned((project) => planAddText(project, preset, opts.frame ?? getPlayback().frame, opts.at)),
+  addText: (preset: TextPreset, opts: { at?: { x: number; y: number }; frame?: number } = {}) =>
+    addPlanned((project) => planAddText(project, preset, opts.frame ?? getPlayback().frame, opts.at)),
   /** A planned move or trim from the timeline (see edit.ts). */
   timelineEdit,
   /** A text or background change from the Inspector or the preview (see text.ts). */
@@ -31,7 +43,9 @@ export const timelineActions = {
   addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number; props?: Record<string, unknown> } = {}) => {
     // A drop (canvas or timeline) of a tile that carries props (a sticker from the set, D251): read now, before the drag ends.
     const props = opts.props ?? (opts.at || opts.frame !== undefined ? draggedComponentProps(id) : undefined);
-    return addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, { ...(opts.at ? { at: opts.at } : {}), ...(props ? { props } : {}) }));
+    return addPlanned((project) =>
+      planAddComponent(project, id, opts.frame ?? getPlayback().frame, { ...(opts.at ? { at: opts.at } : {}), ...(props ? { props } : {}) }),
+    );
   },
   /** Elements tab → a plugin's component (D103): the server copies it into graphics/, then a graphic item at the playhead. */
   async addPluginComponent(id: string) {
@@ -39,10 +53,13 @@ export const timelineActions = {
     const result = await call((c) => c["plugins.addComponent"]({ id }));
     if (!result.ok) return set({ notice: { text: plainError(result.error) } });
     const { src, name, props } = result.value;
-    await addPlanned((project) => planAddGraphic(project, { src, name, props: (props ?? {}) as Record<string, unknown>, idBase: id.split(".").at(-1) ?? "graphic" }, getPlayback().frame));
+    await addPlanned((project) =>
+      planAddGraphic(project, { src, name, props: (props ?? {}) as Record<string, unknown>, idBase: id.split(".").at(-1) ?? "graphic" }, getPlayback().frame),
+    );
   },
   /** Elements tab → a full-frame background (see planAddBackground): over the whole edit, or behind the selected item (D220). */
-  addBackground: (props: BackgroundProps, behindSelected = false) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
+  addBackground: (props: BackgroundProps, behindSelected = false) =>
+    addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
   /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
   async split() {
     if (!state.snapshot) return;
@@ -77,7 +94,13 @@ export const timelineActions = {
     const project = projectOf(state.snapshot);
     const target = cut ?? (nearest ? nearestCut(project, getPlayback().frame)?.item.id : getPlayback().cut);
     if (target === undefined) {
-      set({ notice: { text: nearest ? "There's no cut yet: put two clips on the main track first." : "Pick a cut first: click between two clips on the main track, drag the transition onto a cut, or use + for the cut nearest the playhead." } });
+      set({
+        notice: {
+          text: nearest
+            ? "There's no cut yet: put two clips on the main track first."
+            : "Pick a cut first: click between two clips on the main track, drag the transition onto a cut, or use + for the cut nearest the playhead.",
+        },
+      });
       return false;
     }
     // D133: the panel's length for all, when one is chosen (else the transition's default).
@@ -120,22 +143,40 @@ export const timelineActions = {
       // A shader effect (D213): a plugin's, or one a clip in this project already carries.
       const shader = kind === "shader" ? shaderDefOf(project, id) : undefined;
       if (kind === "shader" && !shader) return { problem: "That shader effect isn't available any more." };
-      const one = (p: ProjectModel, target: string) => (kind === "look" ? planSetLook(p, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {}) : kind === "shader" ? planShader(p, target, shader) : planEffect(p, target, id));
+      const one = (p: ProjectModel, target: string) =>
+        kind === "look"
+          ? planSetLook(p, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {})
+          : kind === "shader"
+            ? planShader(p, target, shader)
+            : planEffect(p, target, id);
       if (targets.length <= 1) return one(project, targets[0] ?? "");
       if (shader) return planForAll(project, targets, one, (n) => `${shader.name} on ${n} clips`);
       const look = lookInfo(id)?.name ?? custom?.name ?? id;
       const effect = effectInfo(id)?.name.toLowerCase() ?? id;
-      return planForAll(project, targets, one, (n) => (kind !== "look" ? `Add ${effect} to ${n} clips` : id ? `Filter ${look} on ${n} clips` : `Remove the filter from ${n} clips`));
+      return planForAll(project, targets, one, (n) =>
+        kind !== "look" ? `Add ${effect} to ${n} clips` : id ? `Filter ${look} on ${n} clips` : `Remove the filter from ${n} clips`,
+      );
     }),
   /** Change a clip's shader effect's values (D213): one edit. */
-  setShaderValues: (itemId: string, values: Readonly<Record<string, number | string | boolean>>) => itemEdit((project) => planShaderValues(project, itemId, values)),
+  setShaderValues: (itemId: string, values: Readonly<Record<string, number | string | boolean>>) =>
+    itemEdit((project) => planShaderValues(project, itemId, values)),
   /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
   setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => speedPlan(project, itemId, speed, keepPitch)),
   /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */
-  renameItem: (itemId: string, name: string) => itemEdit(() => ({ ops: [{ op: "update_item", item: itemId, set: { name: name.trim() ? name.trim() : null } }], summary: name.trim() ? `Rename ${itemId} to ${name.trim()}` : `Reset the name of ${itemId}` })),
-  renameTrack: (trackId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_track", track: trackId, set: { name: name.trim() } }], summary: `Rename track to ${name.trim()}` })) : Promise.resolve(false)),
+  renameItem: (itemId: string, name: string) =>
+    itemEdit(() => ({
+      ops: [{ op: "update_item", item: itemId, set: { name: name.trim() ? name.trim() : null } }],
+      summary: name.trim() ? `Rename ${itemId} to ${name.trim()}` : `Reset the name of ${itemId}`,
+    })),
+  renameTrack: (trackId: string, name: string) =>
+    name.trim()
+      ? itemEdit(() => ({ ops: [{ op: "update_track", track: trackId, set: { name: name.trim() } }], summary: `Rename track to ${name.trim()}` }))
+      : Promise.resolve(false),
   /** G4: a media item's display name (its file stays where it is), shown everywhere it appears. */
-  renameMedia: (mediaId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_media", media: mediaId, set: { name: name.trim() } }], summary: `Rename media to ${name.trim()}` })) : Promise.resolve(false)),
+  renameMedia: (mediaId: string, name: string) =>
+    name.trim()
+      ? itemEdit(() => ({ ops: [{ op: "update_media", media: mediaId, set: { name: name.trim() } }], summary: `Rename media to ${name.trim()}` }))
+      : Promise.resolve(false),
   /** F8 (D167): a media out of the project with every item using it, in one edit (core planRemoveMedia); its file stays on disk. */
   removeMedia: (mediaId: string) => itemEdit((project) => planRemoveMedia(project, mediaId)),
   /** F27 (D169): a sound trimmed or looped to the end of the picture, with a fade out (core planFitToVideo). */
@@ -161,7 +202,10 @@ export const timelineActions = {
       const item = findItem(project, itemId)?.item;
       if (!item) return { problem: "That item isn't in the project any more." };
       const on = !item[flag];
-      return { ops: [{ op: "update_item", item: itemId, set: { [flag]: on ? true : null } }], summary: `${flag === "mute" ? (on ? "Mute" : "Unmute") : on ? "Lock" : "Unlock"} ${item.name ?? itemId}` };
+      return {
+        ops: [{ op: "update_item", item: itemId, set: { [flag]: on ? true : null } }],
+        summary: `${flag === "mute" ? (on ? "Mute" : "Unmute") : on ? "Lock" : "Unlock"} ${item.name ?? itemId}`,
+      };
     }),
   /** Replace media (T7): the clip plays another media file of the project from its start, as long as it was (or as the file is). */
   replaceMedia: (itemId: string, mediaId: string) =>
@@ -170,8 +214,18 @@ export const timelineActions = {
       const media = project.media.find((m) => m.id === mediaId);
       if (!placed || !media) return { problem: "That media isn't in the project any more." };
       const frames = media.kind === "image" ? undefined : media.probe?.frames;
-      const duration = frames && !placed.item.loop ? Math.max(1, Math.min(placed.item.duration, Math.floor(frames / (placed.item.speed ?? 1)))) : placed.item.duration;
-      return { ops: [{ op: "update_item", item: itemId, set: { media: mediaId, in: media.kind === "image" ? null : 0, duration, ...(media.kind === "image" ? { speed: null } : {}) } }], summary: `Replace the media of ${itemId} with ${media.name}` };
+      const duration =
+        frames && !placed.item.loop ? Math.max(1, Math.min(placed.item.duration, Math.floor(frames / (placed.item.speed ?? 1)))) : placed.item.duration;
+      return {
+        ops: [
+          {
+            op: "update_item",
+            item: itemId,
+            set: { media: mediaId, in: media.kind === "image" ? null : 0, duration, ...(media.kind === "image" ? { speed: null } : {}) },
+          },
+        ],
+        summary: `Replace the media of ${itemId} with ${media.name}`,
+      };
     }),
   /** Add an empty track (T7): video and text tracks go on top (or just above `near`), audio at the bottom (or just below `near`). */
   addTrack: (kind: "video" | "text" | "audio", near?: string) =>

@@ -43,7 +43,11 @@ const save = (next: MediaView) => {
   for (const l of listeners) l();
 };
 
-export const useMediaView = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => view);
+export const useMediaView = () =>
+  useSyncExternalStore(
+    (l) => (listeners.add(l), () => void listeners.delete(l)),
+    () => view,
+  );
 export const setMediaMode = (mode: MediaViewMode) => mode !== view.mode && save({ ...view, mode });
 export const setMediaSort = (sort: MediaSort) => sort !== view.sort && save({ ...view, sort });
 
@@ -54,7 +58,9 @@ const KIND_ORDER = { video: 0, image: 1, audio: 2 } as const;
  * first; name A to Z (numbers in order); length longest first (pictures have none, last); type
  * video, image, sound, then by name.
  */
-export function sortMedia<M extends { readonly name: string; readonly kind: "video" | "image" | "audio"; readonly probe?: { readonly frames?: number | undefined } | undefined }>(media: ReadonlyArray<M>, sort: MediaSort): Array<M> {
+export function sortMedia<
+  M extends { readonly name: string; readonly kind: "video" | "image" | "audio"; readonly probe?: { readonly frames?: number | undefined } | undefined },
+>(media: ReadonlyArray<M>, sort: MediaSort): Array<M> {
   const byName = (a: M, b: M) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
   const list = [...media];
   switch (sort) {
@@ -63,7 +69,7 @@ export function sortMedia<M extends { readonly name: string; readonly kind: "vid
     case "name":
       return list.sort(byName);
     case "duration":
-      return list.sort((a, b) => (b.kind === "image" ? -1 : b.probe?.frames ?? -1) - (a.kind === "image" ? -1 : a.probe?.frames ?? -1) || byName(a, b));
+      return list.sort((a, b) => (b.kind === "image" ? -1 : (b.probe?.frames ?? -1)) - (a.kind === "image" ? -1 : (a.probe?.frames ?? -1)) || byName(a, b));
     case "type":
       return list.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || byName(a, b));
   }

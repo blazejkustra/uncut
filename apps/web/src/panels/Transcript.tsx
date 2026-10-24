@@ -18,7 +18,23 @@ import { frameTimecode, timecode } from "../state/format.ts";
 import { playback, usePlayback } from "../preview/playback.ts";
 import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { actions, getState, useApp } from "../state/store.ts";
-import { doneTranscripts, getTranscripts, mainSpeechMedia, mediaOnMain, scopeKey, scopeOf, sourceChoices, planRemoveFillers, planRemovePauses, selectedWords, transcriptStore, useTranscripts, wordKey, wordsOfEdit, type MediaTranscript } from "./transcript.ts";
+import {
+  doneTranscripts,
+  getTranscripts,
+  mainSpeechMedia,
+  mediaOnMain,
+  scopeKey,
+  scopeOf,
+  sourceChoices,
+  planRemoveFillers,
+  planRemovePauses,
+  selectedWords,
+  transcriptStore,
+  useTranscripts,
+  wordKey,
+  wordsOfEdit,
+  type MediaTranscript,
+} from "./transcript.ts";
 import { useTranscriptLoading, load, useCutBusy, cutSelectedWords, removeAll, addSelectedWordsToChat } from "./transcriptView/cuts.ts";
 import { useThreshold, PAUSE_SHOWN_S, PAUSE_STEPS } from "./transcriptView/threshold.ts";
 import { Untranscribed, CaptionsButton, PlayheadWord } from "./transcriptView/parts.tsx";
@@ -42,7 +58,23 @@ function onWordEnter(w: EditWord) {
 }
 
 /** One clip's words; re-renders only when its words, marks, threshold or selected span change. */
-const ClipWords = memo(function ClipWords({ own, transcript, marks, threshold, selLo, selHi, fps }: { own: ReadonlyArray<EditWord>; transcript: MediaTranscript; marks: Marks | undefined; threshold: number; selLo: number; selHi: number; fps: number }) {
+const ClipWords = memo(function ClipWords({
+  own,
+  transcript,
+  marks,
+  threshold,
+  selLo,
+  selHi,
+  fps,
+}: {
+  own: ReadonlyArray<EditWord>;
+  transcript: MediaTranscript;
+  marks: Marks | undefined;
+  threshold: number;
+  selLo: number;
+  selHi: number;
+  fps: number;
+}) {
   return (
     <p className="tx-words">
       {own.map((w, i) => {
@@ -62,14 +94,25 @@ const ClipWords = memo(function ClipWords({ own, transcript, marks, threshold, s
               data-start={w.start}
               data-end={w.end}
               data-filler={filler}
-              title={filler === "hesitation" ? "A hesitation: Remove fillers cuts it" : filler === "maybe" ? "Maybe a filler: cut it by hand if it adds nothing" : frameTimecode(w.start, fps)}
+              title={
+                filler === "hesitation"
+                  ? "A hesitation: Remove fillers cuts it"
+                  : filler === "maybe"
+                    ? "Maybe a filler: cut it by hand if it adds nothing"
+                    : frameTimecode(w.start, fps)
+              }
               onPointerDown={(e) => onWordDown(e, w)}
               onPointerEnter={() => onWordEnter(w)}
             >
               {(transcript.words[w.index]?.text ?? "").trim()}
             </span>
             {pause && next && next.index === w.index + 1 ? (
-              <span className={`tx-pause ${pause.end - pause.start >= threshold ? "long" : ""}`} data-testid="tx-pause" data-seconds={(pause.end - pause.start).toFixed(2)} title={`A ${(pause.end - pause.start).toFixed(1)} s pause`}>
+              <span
+                className={`tx-pause ${pause.end - pause.start >= threshold ? "long" : ""}`}
+                data-testid="tx-pause"
+                data-seconds={(pause.end - pause.start).toFixed(2)}
+                title={`A ${(pause.end - pause.start).toFixed(1)} s pause`}
+              >
                 {(pause.end - pause.start).toFixed(1)}s
               </span>
             ) : (
@@ -173,7 +216,12 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         const at = project.tracks.flatMap((tr) => tr.items.map((i) => ({ i, tr }))).find((x) => x.i.id === id);
         return at ? [{ item: at.i, start: starts.get(id) ?? 0, mediaId: scope.media as string | undefined, where: at.tr.name as string | undefined }] : [];
       })
-    : (main?.items ?? []).map((item) => ({ item, start: starts.get(item.id) ?? 0, mediaId: item.type === "clip" && item.media ? mainSpeechMedia(project, item) : undefined, where: undefined as string | undefined }));
+    : (main?.items ?? []).map((item) => ({
+        item,
+        start: starts.get(item.id) ?? 0,
+        mediaId: item.type === "clip" && item.media ? mainSpeechMedia(project, item) : undefined,
+        where: undefined as string | undefined,
+      }));
   const blocks = rows.map(({ item, start, mediaId, where }) => {
     const m = mediaId ? project.media.find((x) => x.id === mediaId) : undefined;
     if (!m || !media.includes(m.id)) return null;
@@ -193,7 +241,11 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
       return (
         <div key={item.id} className="tx-block" data-testid="tx-block" data-clip={item.id} data-media={m.id}>
           {head}
-          {own.length ? <ClipWords own={own} transcript={entry.transcript} marks={marks.get(m.id)} threshold={threshold} selLo={lo} selHi={hi} fps={fps} /> : <div className="tx-note muted">No speech in this part.</div>}
+          {own.length ? (
+            <ClipWords own={own} transcript={entry.transcript} marks={marks.get(m.id)} threshold={threshold} selLo={lo} selHi={hi} fps={fps} />
+          ) : (
+            <div className="tx-note muted">No speech in this part.</div>
+          )}
         </div>
       );
     }
@@ -214,7 +266,15 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
             </button>
           </div>
         ) : first ? (
-          <Untranscribed mediaId={m.id} name={m.name} online={online} whisperReady={whisperReady} checking={!setupChecks} modelMissing={model ? !model.installed : false} modelLabel={model ? `${model.name}, ${Math.round(model.bytes / 1e6)} MB` : ""} />
+          <Untranscribed
+            mediaId={m.id}
+            name={m.name}
+            online={online}
+            whisperReady={whisperReady}
+            checking={!setupChecks}
+            modelMissing={model ? !model.installed : false}
+            modelLabel={model ? `${model.name}, ${Math.round(model.bytes / 1e6)} MB` : ""}
+          />
         ) : (
           <div className="tx-note muted">Not transcribed yet (see above).</div>
         )}
@@ -228,7 +288,13 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   const anyDone = transcripts.size > 0;
   const locked = !scope && main?.locked === true;
   const busy = useCutBusy();
-  const status = locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : "";
+  const status = locked
+    ? "The main track is locked: unlock it to cut by text."
+    : busy
+      ? "Measuring the sound before cutting…"
+      : selected.length
+        ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected`
+        : "";
   return (
     <aside className="library tx-panel" data-testid="transcript-panel">
       <div className="lib-head">Transcript</div>
@@ -263,7 +329,13 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               data-count={fillerCount}
               aria-label="Remove fillers"
               disabled={!online || busy || !fillerCount}
-              title={locked ? "The main track is locked" : fillerCount ? `Cut ${fillerCount} hesitation${fillerCount === 1 ? "" : "s"} (um, uh, yyy), ${secs(fillerPlan)}. Words marked "maybe" stay.` : "No hesitations (um, uh, yyy) in the edit"}
+              title={
+                locked
+                  ? "The main track is locked"
+                  : fillerCount
+                    ? `Cut ${fillerCount} hesitation${fillerCount === 1 ? "" : "s"} (um, uh, yyy), ${secs(fillerPlan)}. Words marked "maybe" stay.`
+                    : "No hesitations (um, uh, yyy) in the edit"
+              }
               onClick={() => void removeAll("fillers")}
             >
               Remove
@@ -273,7 +345,13 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
             <div className="tx-tool-text">
               <label className="tx-tool-title tx-pause-label">
                 Pauses over
-                <select className="tx-select tx-threshold" data-testid="pause-threshold" value={threshold} aria-label="Shortest pause to remove" onChange={(e) => setThreshold(Number(e.target.value))}>
+                <select
+                  className="tx-select tx-threshold"
+                  data-testid="pause-threshold"
+                  value={threshold}
+                  aria-label="Shortest pause to remove"
+                  onChange={(e) => setThreshold(Number(e.target.value))}
+                >
                   {PAUSE_STEPS.map((s) => (
                     <option key={s} value={s}>
                       {s} s
@@ -281,7 +359,9 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
                   ))}
                 </select>
               </label>
-              <div className="tx-tool-meta">{!anyDone ? "Gaps between words" : pauseCount ? `${pauseCount} found, ${secs(pausePlan)}` : "None in the edit"}</div>
+              <div className="tx-tool-meta">
+                {!anyDone ? "Gaps between words" : pauseCount ? `${pauseCount} found, ${secs(pausePlan)}` : "None in the edit"}
+              </div>
             </div>
             <button
               className="btn"
@@ -289,7 +369,13 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               data-count={pauseCount}
               aria-label="Remove pauses"
               disabled={!online || busy || !pauseCount}
-              title={locked ? "The main track is locked" : pauseCount ? `Cut ${pauseCount} pause${pauseCount === 1 ? "" : "s"} of at least ${threshold} s (${secs(pausePlan)}), keeping a little quiet next to the words` : `No pauses of ${threshold} s or more in the edit`}
+              title={
+                locked
+                  ? "The main track is locked"
+                  : pauseCount
+                    ? `Cut ${pauseCount} pause${pauseCount === 1 ? "" : "s"} of at least ${threshold} s (${secs(pausePlan)}), keeping a little quiet next to the words`
+                    : `No pauses of ${threshold} s or more in the edit`
+              }
               onClick={() => void removeAll("pauses")}
             >
               Remove
@@ -304,7 +390,13 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         </span>
         {selected.length > 0 && (
           <>
-            <button className="btn ghost" data-testid="tx-cut" disabled={!online || busy} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
+            <button
+              className="btn ghost"
+              data-testid="tx-cut"
+              disabled={!online || busy}
+              title="Cut the selected words (⌫)"
+              onClick={() => void cutSelectedWords()}
+            >
               <Scissors />
               Cut
             </button>
@@ -343,7 +435,9 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               <Captions />
             </div>
             <div className="empty-title">Nothing to read yet</div>
-            <div className="empty-sub">{scope ? "No speech here." : "Put a clip with speech on the main track: its words show here, and cutting a word cuts the video."}</div>
+            <div className="empty-sub">
+              {scope ? "No speech here." : "Put a clip with speech on the main track: its words show here, and cutting a word cuts the video."}
+            </div>
           </div>
         ) : (
           <div className="tx-doc">{blocks}</div>

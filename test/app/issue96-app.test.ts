@@ -28,7 +28,16 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue96-")));
   const dir = join(root, "Rec.uncut");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Rec", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Rec",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      media: [],
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }],
+    }),
+  );
 });
 after(async () => {
   for (const app of apps) await app.close();
@@ -38,7 +47,10 @@ after(async () => {
 
 test("issue 96: Record at the top, alone and square-ish; a take starts with no countdown", { skip, timeout: 120000 }, async () => {
   const dir = join(root, "Rec.uncut");
-  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
+  const app = await launchApp({
+    command: APP,
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) },
+  });
   apps.add(app);
   const { page } = app;
   try {
@@ -91,15 +103,27 @@ test("issue 96: Record at the top, alone and square-ish; a take starts with no c
     seen.push(...(await page.evaluate(() => (window as unknown as { __seen96: Array<string> }).__seen96)));
     assert.deepEqual(seen, [], "no 3-2-1 was shown");
     // Mid-take the timer and controls are where Record was, above the toggles.
-    assert.ok(await page.$eval("[data-testid=capture-this-mac]", (s) => s.querySelector("[data-testid=capture-take-timer]")!.getBoundingClientRect().bottom <= s.querySelector("[data-testid=capture-toggles]")!.getBoundingClientRect().top));
+    assert.ok(
+      await page.$eval(
+        "[data-testid=capture-this-mac]",
+        (s) =>
+          s.querySelector("[data-testid=capture-take-timer]")!.getBoundingClientRect().bottom <=
+          s.querySelector("[data-testid=capture-toggles]")!.getBoundingClientRect().top,
+      ),
+    );
     await sleep(1500);
     await page.screenshot({ path: "test-output/issue96-recording.png" });
     await page.click("[data-testid=capture-take-stop]");
-    await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
+    await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), {
+      timeout: 60000,
+    });
     const recordedMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
     assert.ok(recordedMs > 1200 && recordedMs < 4000, `${recordedMs} ms`);
     const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as { media: Array<{ source?: { module: string } }> };
-    assert.ok(project.media.some((m) => m.source?.module === "capture.screen"), "the take is in Media");
+    assert.ok(
+      project.media.some((m) => m.source?.module === "capture.screen"),
+      "the take is in Media",
+    );
   } catch (error) {
     await page.screenshot({ path: "test-output/issue96-failure.png" }).catch(() => {});
     throw error;

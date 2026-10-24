@@ -40,7 +40,11 @@ export const isBoxed = (project: ProjectModel, item: Item) => !!pictureMedia(pro
 export const boxNoun = (item: Item) => componentInfo(item.component)?.name.toLowerCase() ?? "clip";
 
 /** A boxed item's box now (a clip's or a component's): its rest box (no keys) and its box at the playhead, with the local frame. */
-export function clipState(project: ProjectModel, itemId: string, frame: number): { item: Item; start: number; local: number; inside: boolean; rest: Rect; box: ClipBox } | undefined {
+export function clipState(
+  project: ProjectModel,
+  itemId: string,
+  frame: number,
+): { item: Item; start: number; local: number; inside: boolean; rest: Rect; box: ClipBox } | undefined {
   const placed = findItem(project, itemId);
   if (!placed) return undefined;
   const media = pictureMedia(project, placed.item);
@@ -49,8 +53,23 @@ export function clipState(project: ProjectModel, itemId: string, frame: number):
   const inside = local >= 0 && local < placed.item.duration;
   // A keyed edit with the playhead off the clip goes on its nearest frame (never past its last).
   const at = Math.min(placed.item.duration - 1, Math.max(0, local));
-  if (!media) return { item: placed.item, start: placed.start, local: at, inside, rest: componentRest(placed.item, project.canvas)!, box: componentBox(placed.item, project.canvas, at)! };
-  return { item: placed.item, start: placed.start, local: at, inside, rest: baseBox(placed.item, project.canvas, media.probe), box: clipBox(placed.item, project.canvas, media.probe, at) };
+  if (!media)
+    return {
+      item: placed.item,
+      start: placed.start,
+      local: at,
+      inside,
+      rest: componentRest(placed.item, project.canvas)!,
+      box: componentBox(placed.item, project.canvas, at)!,
+    };
+  return {
+    item: placed.item,
+    start: placed.start,
+    local: at,
+    inside,
+    rest: baseBox(placed.item, project.canvas, media.probe),
+    box: clipBox(placed.item, project.canvas, media.probe, at),
+  };
 }
 
 const secs = (frames: number, fps: number) => `${(frames / fps).toFixed(1)} s`;
@@ -100,7 +119,7 @@ export function planClipBox(project: ProjectModel, itemId: string, patch: BoxPat
   if (!s) return { problem: "That clip isn't in the project any more." };
   const { item, local, rest } = s;
   const noun = boxNoun(item);
-  const t: Record<string, unknown> = { ...(item.transform ?? {}) };
+  const t: Record<string, unknown> = { ...item.transform };
   let keys: Array<Key> = [...(item.keys ?? [])];
   const keyed = (p: KeyProp) => keysOf(item.keys, p).length > 0;
   const clean = { ...patch };
@@ -244,7 +263,9 @@ export function keyEase(item: Pick<Item, "keys">, local: number): Ease | undefin
 export function nearbyKey(project: ProjectModel, frame: number, dir: -1 | 1, ids?: ReadonlyArray<string>): number | undefined {
   const f = Math.round(frame);
   let best: number | undefined;
-  const items = ids?.length ? ids.map((id) => findItem(project, id)).filter((p) => p !== undefined) : project.tracks.flatMap((t) => t.items.map((i) => findItem(project, i.id)!));
+  const items = ids?.length
+    ? ids.map((id) => findItem(project, id)).filter((p) => p !== undefined)
+    : project.tracks.flatMap((t) => t.items.map((i) => findItem(project, i.id)!));
   for (const p of items) {
     for (const k of keyFrames(p.item)) {
       const at = p.start + k;

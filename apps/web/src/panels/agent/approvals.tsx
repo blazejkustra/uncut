@@ -87,7 +87,10 @@ export function CleanupLine({ turnId, cleanup, online }: { turnId: string; clean
   const [busy, setBusy] = useState(false);
   const g = cleanup.graphics.length;
   const n = cleanup.tracks.length;
-  const parts = [g ? `Moved ${g === 1 ? "1 unused graphic" : `${g} unused graphics`} to the trash` : "", n ? `${g ? "removed" : "Removed"} ${n === 1 ? "an empty track" : `${n} empty tracks`}` : ""].filter(Boolean);
+  const parts = [
+    g ? `Moved ${g === 1 ? "1 unused graphic" : `${g} unused graphics`} to the trash` : "",
+    n ? `${g ? "removed" : "Removed"} ${n === 1 ? "an empty track" : `${n} empty tracks`}` : "",
+  ].filter(Boolean);
   return (
     <div className="turn-cleanup" data-testid="agent-cleanup">
       <span>{parts.join(", ")}</span>
@@ -128,7 +131,11 @@ export function ApprovalCard({ approval, online }: { approval: AgentApproval; on
           ))}
         </div>
       )}
-      <div className="approval-sub">{approval.edit ? "This chat asks before big changes. No answer in 2 minutes means no." : "The agent waits for your answer. Billed to your own key; no answer in 2 minutes means no."}</div>
+      <div className="approval-sub">
+        {approval.edit
+          ? "This chat asks before big changes. No answer in 2 minutes means no."
+          : "The agent waits for your answer. Billed to your own key; no answer in 2 minutes means no."}
+      </div>
       <div className="approval-btns">
         <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
           Don't
@@ -142,14 +149,32 @@ export function ApprovalCard({ approval, online }: { approval: AgentApproval; on
 }
 
 /** Claude Code's tools in people's words, for the permission card (D194). */
-const TOOL_NAMES: Record<string, string> = { Bash: "Terminal", Write: "Write file", Edit: "Edit file", MultiEdit: "Edit file", NotebookEdit: "Edit notebook", Read: "Read file", WebFetch: "Web page", WebSearch: "Web search", export: "Export" };
+const TOOL_NAMES: Record<string, string> = {
+  Bash: "Terminal",
+  Write: "Write file",
+  Edit: "Edit file",
+  MultiEdit: "Edit file",
+  NotebookEdit: "Edit notebook",
+  Read: "Read file",
+  WebFetch: "Web page",
+  WebSearch: "Web search",
+  export: "Export",
+};
 
 /**
  * D194: a Claude Code tool (a command, a file write outside the project, ...) waits for the user:
  * what it would run or touch, why it asks, and Deny, Always for this session (when it can be
  * remembered; a destructive command never can) or Allow once. No answer in 2 minutes is no.
  */
-export function PermissionCard({ approval, permission, online }: { approval: AgentApproval; permission: NonNullable<AgentApproval["permission"]>; online: boolean }) {
+export function PermissionCard({
+  approval,
+  permission,
+  online,
+}: {
+  approval: AgentApproval;
+  permission: NonNullable<AgentApproval["permission"]>;
+  online: boolean;
+}) {
   const [sent, setSent] = useState(false);
   const answer = (allow: boolean, always = false) => {
     setSent(true);
@@ -209,7 +234,10 @@ export function ScreenApprovalCard({ approval, screen, online }: { approval: Age
   useEffect(() => {
     if (picked || !sources?.length) return;
     const want = screen.source?.toLowerCase();
-    const match = (want && (sources.find((s) => s.name.toLowerCase() === want) ?? sources.find((s) => s.name.toLowerCase().includes(want)))) || sources.find((s) => s.kind === "screen") || sources[0];
+    const match =
+      (want && (sources.find((s) => s.name.toLowerCase() === want) ?? sources.find((s) => s.name.toLowerCase().includes(want)))) ||
+      sources.find((s) => s.kind === "screen") ||
+      sources[0];
     if (match) setPicked(match.id);
   }, [sources, screen.source, picked]);
   const source = sources?.find((s) => s.id === picked);
@@ -230,7 +258,14 @@ export function ScreenApprovalCard({ approval, screen, online }: { approval: Age
   return (
     <div className="approval" data-testid="agent-approval" data-kind="screen" data-id={approval.id}>
       <div className="approval-text">{approval.text}?</div>
-      <select className="field input" data-testid="agent-screen-source" value={picked} disabled={sent || loading} onChange={(e) => setPicked(e.target.value)} title="Screen or window">
+      <select
+        className="field input"
+        data-testid="agent-screen-source"
+        value={picked}
+        disabled={sent || loading}
+        onChange={(e) => setPicked(e.target.value)}
+        title="Screen or window"
+      >
         {!sources?.length && <option value="">{loading ? "Looking for screens and windows…" : "No screens or windows"}</option>}
         {(["screen", "window"] as const).map((kind) => {
           const group = (sources ?? []).filter((s) => s.kind === kind);

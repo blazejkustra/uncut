@@ -23,7 +23,14 @@ export function whisperJson(segments: ReadonlyArray<ReadonlyArray<Token>>, langu
       timestamps: { from: stamp(from), to: stamp(to) },
       offsets: { from, to },
       text: tokens.map((t) => latin1(t[0])).join(""),
-      tokens: all.map(([text, a, b, p]) => ({ text: latin1(text), timestamps: { from: stamp(a), to: stamp(b) }, offsets: { from: a, to: b }, id: id++, p: p ?? 0.9, t_dtw: -1 })),
+      tokens: all.map(([text, a, b, p]) => ({
+        text: latin1(text),
+        timestamps: { from: stamp(a), to: stamp(b) },
+        offsets: { from: a, to: b },
+        id: id++,
+        p: p ?? 0.9,
+        t_dtw: -1,
+      })),
     };
   });
   const doc = {

@@ -25,7 +25,10 @@ export function checkLink(raw: unknown): { readonly url: string } | { readonly p
 
 /** The media's name: the title, tidied and cut near 80 characters; " 2", " 3" when the project has it. */
 export function linkMediaName(title: string | undefined, taken: ReadonlySet<string> = new Set(), fallback = "Imported link"): string {
-  let base = (title ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  let base = (title ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (base.length > 80) {
     const cut = base.slice(0, 80);
     base = cut.includes(" ", 40) ? cut.slice(0, cut.lastIndexOf(" ")) : cut;
@@ -40,9 +43,9 @@ export function linkMediaName(title: string | undefined, taken: ReadonlySet<stri
 export function linkFileStem(title: string | undefined): string {
   const stem = (title ?? "")
     .normalize("NFC")
-    .replace(/[^\p{L}\p{N} ._()\-]+/gu, " ")
+    .replace(/[^\p{L}\p{N} ._()-]+/gu, " ")
     .replace(/\s+/g, " ")
-    .replace(/^[\s.\-]+/, "")
+    .replace(/^[\s.-]+/, "")
     .trim()
     .slice(0, 80)
     .replace(/[\s.]+$/, "");

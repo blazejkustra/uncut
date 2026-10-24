@@ -20,7 +20,8 @@ const idle: PendingInput = {
 };
 
 test("nothing pending: nothing to ask, for every way of leaving", () => {
-  for (const reason of ["quit", "window", "close-project", "open-project", "new-project", "environment"] as const) assert.deepEqual(pendingWork({ ...idle, reason }), []);
+  for (const reason of ["quit", "window", "close-project", "open-project", "new-project", "environment"] as const)
+    assert.deepEqual(pendingWork({ ...idle, reason }), []);
 });
 
 test("a running agent turn and a draft are listed, with Save and wait / Discard and stop", () => {
@@ -33,7 +34,11 @@ test("a running agent turn and a draft are listed, with Save and wait / Discard 
     ],
   );
   assert.deepEqual(leaveWords("quit", items), { title: "Quit Uncut?", keep: "Save and wait", drop: "Discard and stop" });
-  assert.deepEqual(leaveWords("close-project", pendingWork({ ...idle, reason: "close-project", agentRunning: true })), { title: "Close the project?", keep: "Wait", drop: "Stop" });
+  assert.deepEqual(leaveWords("close-project", pendingWork({ ...idle, reason: "close-project", agentRunning: true })), {
+    title: "Close the project?",
+    keep: "Wait",
+    drop: "Stop",
+  });
   assert.deepEqual(leaveWords("window", pendingWork({ ...idle, draft: "field" })), { title: "Close Uncut?", keep: "Save", drop: "Discard" });
 });
 
@@ -44,11 +49,23 @@ test("exports and generations stop only with the app; a project change leaves th
     ["Exporting Promo.mp4", "Generating 2 results", "Downloading 1 export"],
   );
   assert.deepEqual(pendingWork({ ...busy, reason: "close-project" }), []);
-  assert.deepEqual(pendingWork({ ...busy, reason: "environment" }).map((i) => i.id), ["downloads"]);
+  assert.deepEqual(
+    pendingWork({ ...busy, reason: "environment" }).map((i) => i.id),
+    ["downloads"],
+  );
 });
 
 test("saves, takes, devices, uploads, imports and an unsent message", () => {
-  const items = pendingWork({ ...idle, reason: "open-project", saving: 2, recorder: "recording", devices: ["iPhone 17"], uploading: 3, imports: 1, message: true });
+  const items = pendingWork({
+    ...idle,
+    reason: "open-project",
+    saving: 2,
+    recorder: "recording",
+    devices: ["iPhone 17"],
+    uploading: 3,
+    imports: 1,
+    message: true,
+  });
   assert.deepEqual(
     items.map((i) => [i.text, i.how]),
     [

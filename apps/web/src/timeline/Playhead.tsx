@@ -7,7 +7,17 @@ import { getPlayback, usePlayback } from "../preview/playback.ts";
  * at the top of the timeline, D115), so its handle stays in view when the tracks scroll; the line
  * reaches down over the visible tracks (--tl-view-h). A press on the handle is the ruler's scrub.
  */
-export function Playhead({ ppf, bodyRef, headWidth, bodyWidth }: { ppf: number; bodyRef: RefObject<HTMLDivElement | null>; headWidth: number; bodyWidth: number }) {
+export function Playhead({
+  ppf,
+  bodyRef,
+  headWidth,
+  bodyWidth,
+}: {
+  ppf: number;
+  bodyRef: RefObject<HTMLDivElement | null>;
+  headWidth: number;
+  bodyWidth: number;
+}) {
   const frame = usePlayback((s) => s.frame);
   const x = frame * ppf;
   // Issue #118: the body's scroll position as its scroll events tell it. Reading scrollLeft (or

@@ -41,9 +41,23 @@ import {
 import { updateBusy, updateSubline } from "../../apps/web/src/state/updateBusy.ts";
 
 const DEVELOPER_ID = parseSignature(
-  ["Executable=/Applications/Uncut.app/Contents/MacOS/Uncut", "Identifier=com.blazejkustra.uncut", "CodeDirectory v=20500 size=600 flags=0x10000(runtime) hashes=8+7 location=embedded", "Authority=Developer ID Application: Example (ABCDE12345)", "Timestamp=16 Oct 2026 at 10:00:00", "TeamIdentifier=ABCDE12345"].join("\n"),
+  [
+    "Executable=/Applications/Uncut.app/Contents/MacOS/Uncut",
+    "Identifier=com.blazejkustra.uncut",
+    "CodeDirectory v=20500 size=600 flags=0x10000(runtime) hashes=8+7 location=embedded",
+    "Authority=Developer ID Application: Example (ABCDE12345)",
+    "Timestamp=16 Oct 2026 at 10:00:00",
+    "TeamIdentifier=ABCDE12345",
+  ].join("\n"),
 );
-const AD_HOC = parseSignature(["Executable=/x/Uncut.app/Contents/MacOS/Uncut", "CodeDirectory v=20400 size=600 flags=0x2(adhoc) hashes=8+7 location=embedded", "Signature=adhoc", "TeamIdentifier=not set"].join("\n"));
+const AD_HOC = parseSignature(
+  [
+    "Executable=/x/Uncut.app/Contents/MacOS/Uncut",
+    "CodeDirectory v=20400 size=600 flags=0x2(adhoc) hashes=8+7 location=embedded",
+    "Signature=adhoc",
+    "TeamIdentifier=not set",
+  ].join("\n"),
+);
 const UNSIGNED = parseSignature("/x/Uncut.app: code object is not signed at all");
 
 test("parseSignature reads codesign: Developer ID, ad-hoc, unsigned", () => {
@@ -101,7 +115,10 @@ test("UNCUT_UPDATE_FEED is loopback-only in every build, and outside tests still
 });
 
 test("the updater config names the feed and a cache folder; checks carry one fixed id for everyone", () => {
-  assert.equal(updaterConfigYaml({ provider: "github", owner: "blazejkustra", repo: "uncut" }), "provider: github\nowner: blazejkustra\nrepo: uncut\nupdaterCacheDirName: uncut-updater\n");
+  assert.equal(
+    updaterConfigYaml({ provider: "github", owner: "blazejkustra", repo: "uncut" }),
+    "provider: github\nowner: blazejkustra\nrepo: uncut\nupdaterCacheDirName: uncut-updater\n",
+  );
   assert.match(updaterConfigYaml({ provider: "generic", url: "http://127.0.0.1:9/f/" }), /^provider: generic\nurl: "http:\/\/127\.0\.0\.1:9\/f\/"\n/);
   assert.equal(NO_STAGING_ID, "00000000-0000-4000-8000-000000000000");
 });
@@ -207,10 +224,22 @@ test("busy: an export running, a recording (countdown, saving too), a device rec
 // A reopened app must not break the install ShipIt is doing (Restart to update, then the app was
 // opened again before ShipIt swapped the new bundle in: the old version re-staged the update and
 // booted ShipIt out, "App Still Running Error", 0.0.1 → 0.0.2 never installed).
-const SHIPIT_STATE = { bundleIdentifier: BUNDLE_ID, launchAfterInstallation: true, targetBundleURL: "file:///Applications/Uncut.app/", updateBundleURL: "file:///x/update.abc/Uncut.app/", useUpdateBundleName: true };
+const SHIPIT_STATE = {
+  bundleIdentifier: BUNDLE_ID,
+  launchAfterInstallation: true,
+  targetBundleURL: "file:///Applications/Uncut.app/",
+  updateBundleURL: "file:///x/update.abc/Uncut.app/",
+  useUpdateBundleName: true,
+};
 
 test("pendingInstall: a live ShipIt for this bundle makes the launching app step aside, a few times at most", () => {
-  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, stepAsides: [] as { t: number; pid: number }[], now: 1_000_000_000 };
+  const base = {
+    state: SHIPIT_STATE,
+    bundlePath: "/Applications/Uncut.app",
+    shipItPid: 73220,
+    stepAsides: [] as { t: number; pid: number }[],
+    now: 1_000_000_000,
+  };
   assert.deepEqual(pendingInstall(base), { action: "step-aside", shipItPid: 73220 });
   const recent = Array.from({ length: MAX_STEP_ASIDES - 1 }, (_, i) => ({ t: base.now - 1000 * (i + 1), pid: 73220 }));
   assert.equal(pendingInstall({ ...base, stepAsides: recent }).action, "step-aside");
@@ -224,9 +253,20 @@ test("pendingInstall: a ShipIt already waited out once (stuck, or waiting on ano
   const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, now: 1_000_000_000 };
   const waitedOut = base.now - (STEP_ASIDE_WAIT_S + 10) * 1000;
   assert.deepEqual(pendingInstall({ ...base, stepAsides: [{ t: waitedOut, pid: 73220 }] }), { action: "hold-updates", shipItPid: 73220 });
-  assert.equal(pendingInstall({ ...base, stepAsides: [{ t: base.now - 5000, pid: 73220 }] }).action, "step-aside", "a second click while the watcher still waits steps aside again");
-  assert.equal(pendingInstall({ ...base, stepAsides: [{ t: waitedOut, pid: 111 }] }).action, "step-aside", "a new ShipIt (launchd restarted it) gets its own wait");
-  assert.deepEqual(parseStepAsides([5, { t: 6, pid: 7 }, { t: "x" }, null]), [{ t: 5, pid: 0 }, { t: 6, pid: 7 }]);
+  assert.equal(
+    pendingInstall({ ...base, stepAsides: [{ t: base.now - 5000, pid: 73220 }] }).action,
+    "step-aside",
+    "a second click while the watcher still waits steps aside again",
+  );
+  assert.equal(
+    pendingInstall({ ...base, stepAsides: [{ t: waitedOut, pid: 111 }] }).action,
+    "step-aside",
+    "a new ShipIt (launchd restarted it) gets its own wait",
+  );
+  assert.deepEqual(parseStepAsides([5, { t: 6, pid: 7 }, { t: "x" }, null]), [
+    { t: 5, pid: 0 },
+    { t: 6, pid: 7 },
+  ]);
   assert.deepEqual(parseStepAsides({}), []);
 });
 
@@ -256,7 +296,11 @@ test("the step-aside watcher shows the installing dialog, waits for ShipIt to ex
   const w = stepAsideWatcher(4242, "/Applications/My Uncut.app", message);
   assert.equal(w.file, "/bin/sh");
   assert.deepEqual(w.args.slice(2), ["uncut-update-wait", "4242", "/Applications/My Uncut.app", message]);
-  assert.match(w.args[1]!, /osascript' .*display dialog \(item 1 of argv\).*giving up after 90' -e 'end run' "\$3"/, "the message goes in as an argument, never spliced into the script");
+  assert.match(
+    w.args[1]!,
+    /osascript' .*display dialog \(item 1 of argv\).*giving up after 90' -e 'end run' "\$3"/,
+    "the message goes in as an argument, never spliced into the script",
+  );
   assert.match(w.args[1]!, /kill "\$d"/, "the dialog closes once ShipIt is done");
   assert.match(w.args[1]!, /^'\/usr\/bin\/osascript' /, "the real dialog by absolute path");
   // Run it with a fake osascript that logs its message, a fake ShipIt that exits only once the
@@ -270,15 +314,22 @@ test("the step-aside watcher shows the installing dialog, waits for ShipIt to ex
     chmodSync(fake, 0o755);
     const watcher = stepAsideWatcher(0, "/Applications/My Uncut.app", "x", fake).args[1]!.replace("exec /usr/bin/open", "echo");
     const shipIt = 'n=0; while [ ! -s "$UNCUT_TEST_LOG" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n+1)); done';
-    const r = spawnSync("/bin/sh", ["-c", `/bin/sh -c '${shipIt}' & /bin/sh -c "$0" x $! "$1" "$2"`, watcher, "/Applications/My Uncut.app", "Installing it's \"quoted\""], { encoding: "utf8", timeout: 30_000, env: { ...process.env, UNCUT_TEST_LOG: log } });
-    assert.equal(readFileSync(log, "utf8") + r.stdout.trim(), "Installing it's \"quoted\"|/Applications/My Uncut.app");
+    const r = spawnSync(
+      "/bin/sh",
+      ["-c", `/bin/sh -c '${shipIt}' & /bin/sh -c "$0" x $! "$1" "$2"`, watcher, "/Applications/My Uncut.app", 'Installing it\'s "quoted"'],
+      { encoding: "utf8", timeout: 30_000, env: { ...process.env, UNCUT_TEST_LOG: log } },
+    );
+    assert.equal(readFileSync(log, "utf8") + r.stdout.trim(), 'Installing it\'s "quoted"|/Applications/My Uncut.app');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("the step-aside dialog names the version ShipIt installs (from the staged bundle) and says Uncut reopens by itself", () => {
-  const state = { targetBundleURL: "file:///Applications/Uncut.app/", updateBundleURL: "file:///Users/me/Library/Caches/com.blazejkustra.uncut.ShipIt/update.Ab12/Uncut%20Beta.app/" };
+  const state = {
+    targetBundleURL: "file:///Applications/Uncut.app/",
+    updateBundleURL: "file:///Users/me/Library/Caches/com.blazejkustra.uncut.ShipIt/update.Ab12/Uncut%20Beta.app/",
+  };
   assert.equal(updateBundlePath(state), "/Users/me/Library/Caches/com.blazejkustra.uncut.ShipIt/update.Ab12/Uncut Beta.app");
   assert.equal(updateBundlePath({ targetBundleURL: "file:///Applications/Uncut.app/" }), undefined);
   assert.equal(updateBundlePath(undefined), undefined);

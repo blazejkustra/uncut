@@ -22,13 +22,24 @@ const base: Project = {
 };
 const ids = (p: Project) => new Set([...p.media.map((m) => m.id), ...p.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]);
 const media = (id: string, kind: MultiKind, frames: number): Media =>
-  kind === "voiceover" || kind === "system" ? { id, kind: "audio", name: id, path: `media/captures/t/${id}`, probe: { frames, hasAudio: true } } : { id, kind: "video", name: id, path: `media/captures/t/${id}`, probe: { frames, fps: 30, width: 1280, height: 720, hasAudio: false } };
+  kind === "voiceover" || kind === "system"
+    ? { id, kind: "audio", name: id, path: `media/captures/t/${id}`, probe: { frames, hasAudio: true } }
+    : { id, kind: "video", name: id, path: `media/captures/t/${id}`, probe: { frames, fps: 30, width: 1280, height: 720, hasAudio: false } };
 const itemOf = (p: Project, id: string) => p.tracks.flatMap((t) => t.items.map((i) => ({ ...i, track: t.id, trackName: t.name }))).find((i) => i.id === id)!;
 
-function placeMulti(p: Project, parts: ReadonlyArray<{ id: string; kind: MultiKind; frames: number; offsetMs: number }>, frame: number, layout?: MultiLayoutName) {
+function placeMulti(
+  p: Project,
+  parts: ReadonlyArray<{ id: string; kind: MultiKind; frames: number; offsetMs: number }>,
+  frame: number,
+  layout?: MultiLayoutName,
+) {
   const taken = ids(p);
   for (const x of parts) taken.add(x.id);
-  const plan = planPlaceMulti(p, { parts: parts.map((x) => ({ mediaId: x.id, kind: x.kind, frames: x.frames, offsetMs: x.offsetMs })), frame, fps: p.canvas.fps, canvas: p.canvas, layout }, taken);
+  const plan = planPlaceMulti(
+    p,
+    { parts: parts.map((x) => ({ mediaId: x.id, kind: x.kind, frames: x.frames, offsetMs: x.offsetMs })), frame, fps: p.canvas.fps, canvas: p.canvas, layout },
+    taken,
+  );
   const ops: Array<Op> = [...parts.map((x) => ({ op: "add_media", media: media(x.id, x.kind, x.frames) }) as Op), ...plan.ops];
   const s = applyEdit(createSession(p), { actor: "user", ops });
   assert.deepEqual(validateProject(s.project, modules), []);
@@ -60,7 +71,16 @@ test("alignParts trims each part by how much earlier its recorder started; all a
   assert.deepEqual(ins, [6, 5, 0]);
   assert.equal(duration, 290);
   // Bad offsets count as 0.
-  assert.deepEqual(alignParts([{ offsetMs: Number.NaN, frames: 10 }, { offsetMs: -5, frames: 10 }], 30).ins, [0, 0]);
+  assert.deepEqual(
+    alignParts(
+      [
+        { offsetMs: Number.NaN, frames: 10 },
+        { offsetMs: -5, frames: 10 },
+      ],
+      30,
+    ).ins,
+    [0, 0],
+  );
 });
 
 test("a four-source take: one edit, grouped, start-aligned, the camera a bubble over the screen", () => {
@@ -76,7 +96,10 @@ test("a four-source take: one edit, grouped, start-aligned, the camera a bubble 
     "tr",
   );
   assert.equal(plan.items.length, 4);
-  assert.deepEqual(plan.items.map((i) => i.kind), ["screen", "camera", "voiceover", "system"]);
+  assert.deepEqual(
+    plan.items.map((i) => i.kind),
+    ["screen", "camera", "voiceover", "system"],
+  );
   const items = plan.items.map((i) => itemOf(project, i.itemId));
   // Every part starts at the playhead, as long as the shortest after trimming, all in one group.
   for (const i of items) {
@@ -85,7 +108,10 @@ test("a four-source take: one edit, grouped, start-aligned, the camera a bubble 
     assert.equal(i.duration, 300 - 3);
   }
   // 100 ms (3 frames) after the first recorder: the screen loses 3 frames at its head, the last none.
-  assert.deepEqual(items.map((i) => i.in), [3, 2, 1, 0]);
+  assert.deepEqual(
+    items.map((i) => i.in),
+    [3, 2, 1, 0],
+  );
   const [screen, camera, mic, sys] = items;
   assert.equal(screen!.trackName, "Screen", "Overlay isn't free at 15 (its clip runs to 60)");
   const order = project.tracks.map((t) => t.id);
@@ -164,6 +190,10 @@ test("this Mac's sound needs macOS 13; tests get a stand-in, only with test medi
   assert.equal(systemAudioSupport("linux", "6.1").supported, false);
   assert.deepEqual(systemAudioSupport("darwin", "12.0", { UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake" }), { supported: true, macos: "15.0", standin: true });
   assert.equal(systemAudioSupport("darwin", "15.0", { UNCUT_CDP: "9222", UNCUT_TEST_MEDIA: "fake", UNCUT_TEST_SYSTEM_AUDIO: "unsupported" }).supported, false);
-  assert.equal(systemAudioSupport("darwin", "15.0", { UNCUT_TEST_SYSTEM_AUDIO: "unsupported" }).supported, true, "a stray variable can't change a release user's app");
+  assert.equal(
+    systemAudioSupport("darwin", "15.0", { UNCUT_TEST_SYSTEM_AUDIO: "unsupported" }).supported,
+    true,
+    "a stray variable can't change a release user's app",
+  );
   assert.equal(SYSTEM_AUDIO_FEATURES, "MacCatapLoopbackAudioForScreenShare");
 });

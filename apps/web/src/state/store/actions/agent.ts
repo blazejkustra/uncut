@@ -1,4 +1,17 @@
-import { type AgentMention, type AgentImage, type AgentAccess, type AgentAnswer, type StoryboardBeat, type Brief, type Storyboard, type IntendedFinding, type TakeKind, takeUploadName, type ProjectSnapshot, type MediaRecentEntry } from "@uncut/contracts";
+import {
+  type AgentMention,
+  type AgentImage,
+  type AgentAccess,
+  type AgentAnswer,
+  type StoryboardBeat,
+  type Brief,
+  type Storyboard,
+  type IntendedFinding,
+  type TakeKind,
+  takeUploadName,
+  type ProjectSnapshot,
+  type MediaRecentEntry,
+} from "@uncut/contracts";
 import { type Result } from "../../connection.ts";
 import { playback, getPlayback } from "../../../preview/playback.ts";
 import { findItem } from "../../../timeline/edit.ts";
@@ -13,7 +26,12 @@ import { actions } from "../actions.ts";
 
 export const agentActions = {
   /** Start an agent turn; returns false (and says why in the Agent tab) when it didn't start. */
-  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = [], images: ReadonlyArray<AgentImage> = [], opts: { readonly access?: AgentAccess } = {}): Promise<boolean> {
+  async agentSend(
+    prompt: string,
+    mentions: ReadonlyArray<AgentMention> = [],
+    images: ReadonlyArray<AgentImage> = [],
+    opts: { readonly access?: AgentAccess } = {},
+  ): Promise<boolean> {
     if (!online()) return false;
     set({ agentError: undefined });
     // The agent works on what's on screen: stop playback so the frame it's told about stays put.
@@ -22,7 +40,9 @@ export const agentActions = {
     // export_video's range choices, as the Export dialog would read them now.
     const ranges = state.snapshot ? exportSpans(projectOf(state.snapshot), { markIn, markOut, selected, also }) : {};
     // Only the chips whose @label is still in the prompt.
-    const kept = mentions.filter((m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i);
+    const kept = mentions.filter(
+      (m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i,
+    );
     // The composer's choices for this project (D184): provider, model, effort, access.
     const prefs = state.snapshot ? agentPrefs(state.snapshot.dir) : DEFAULT_AGENT_PREFS;
     const result = await call((c) =>
@@ -61,7 +81,8 @@ export const agentActions = {
   dismissAgentChange: () => set({ agentChange: undefined }),
   setAgentDraft: (agentDraft: string, agentMentions?: ReadonlyArray<AgentMention>) => set({ agentDraft, ...(agentMentions ? { agentMentions } : {}) }),
   /** Hold a message until the running turn ends (D140); undefined takes it back. */
-  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention>; images?: ReadonlyArray<AgentImage> } | undefined) => set({ agentQueued: queued }),
+  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention>; images?: ReadonlyArray<AgentImage> } | undefined) =>
+    set({ agentQueued: queued }),
   /** The composer's attached images (D184). */
   setAgentImages: (agentImages: ReadonlyArray<AgentImage>) => set({ agentImages }),
   /** Add a moment (D183) or the In/Out range of the timeline to the chat, as a chip with its timecode. */
@@ -95,14 +116,26 @@ export const agentActions = {
     let label = `Area ${time}`;
     for (let n = 2; taken.has(label); n++) label = `Area ${n} ${time}`;
     const span = range ? `${range.start}-${range.end}` : `${frame}`;
-    actions.addToChat({ kind: "region", id: `region:${box.x},${box.y},${box.w},${box.h}@${span}`, label, area: box, ...(range ? { range } : { frame: frame! }) });
+    actions.addToChat({
+      kind: "region",
+      id: `region:${box.x},${box.y},${box.w},${box.h}@${span}`,
+      label,
+      area: box,
+      ...(range ? { range } : { frame: frame! }),
+    });
   },
   /** Add to chat (D141) for a timeline item: its name, with the stretch of the timeline it covers. */
   addItemToChat(itemId: string, frame?: number) {
     const snap = state.snapshot;
     const placed = snap ? findItem(projectOf(snap), itemId) : undefined;
     if (!snap || !placed) return;
-    actions.addToChat({ kind: "item", id: itemId, label: itemName(projectOf(snap) as never, placed.item as never), range: { start: Math.round(placed.start), end: Math.round(placed.start + placed.item.duration) }, ...(frame !== undefined ? { frame: Math.floor(frame) } : {}) });
+    actions.addToChat({
+      kind: "item",
+      id: itemId,
+      label: itemName(projectOf(snap) as never, placed.item as never),
+      range: { start: Math.round(placed.start), end: Math.round(placed.start + placed.item.duration) },
+      ...(frame !== undefined ? { frame: Math.floor(frame) } : {}),
+    });
   },
   /**
    * D264 (#77): Add to chat for anything the composer's @ picker offers (media, tracks, effects,
@@ -125,7 +158,10 @@ export const agentActions = {
     const snap = state.snapshot;
     if (!snap || end <= start) return;
     const fps = projectOf(snap).canvas.fps;
-    const text = words.replace(/[\r\n<>@]+/g, " ").replace(/\s+/g, " ").trim();
+    const text = words
+      .replace(/[\r\n<>@]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const quoted = text.length > 40 ? `${text.slice(0, 39).trimEnd()}…` : text;
     const label = quoted ? `"${quoted}" ${momentLabel(start, fps)}` : `${momentLabel(start, fps)}–${momentLabel(end, fps)}`;
     actions.addToChat({ kind: "range", id: `words:${Math.floor(start)}-${Math.floor(end)}`, label, range: { start: Math.floor(start), end: Math.floor(end) } });
@@ -147,13 +183,38 @@ export const agentActions = {
   },
   /** Allow or Don't on the running turn's approval card (D99). */
   /** Whether the server took the answer (false: the card was no longer open). */
-  async agentApprove(id: string, allow: boolean, source?: string, extra: { readonly answer?: AgentAnswer; readonly beats?: ReadonlyArray<StoryboardBeat>; readonly note?: string; readonly always?: boolean } = {}): Promise<boolean> {
-    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}), ...(extra.answer ? { answer: extra.answer } : {}), ...(extra.beats ? { beats: [...extra.beats] } : {}), ...(extra.note ? { note: extra.note } : {}), ...(extra.always ? { always: true } : {}) }));
+  async agentApprove(
+    id: string,
+    allow: boolean,
+    source?: string,
+    extra: { readonly answer?: AgentAnswer; readonly beats?: ReadonlyArray<StoryboardBeat>; readonly note?: string; readonly always?: boolean } = {},
+  ): Promise<boolean> {
+    const result = await call((c) =>
+      c["agent.approve"]({
+        id,
+        allow,
+        ...(source ? { source } : {}),
+        ...(extra.answer ? { answer: extra.answer } : {}),
+        ...(extra.beats ? { beats: [...extra.beats] } : {}),
+        ...(extra.note ? { note: extra.note } : {}),
+        ...(extra.always ? { always: true } : {}),
+      }),
+    );
     return result.ok && result.value.accepted;
   },
   /** D188: the user's own brief or storyboard (approved on the Plan card); false with the reason in the Agent tab when it didn't save. */
-  async agentPlanSave(input: { readonly brief?: Brief; readonly storyboard?: Storyboard; readonly intended?: ReadonlyArray<IntendedFinding> }): Promise<boolean> {
-    const result = await call((c) => c["agent.planSave"]({ ...(input.brief ? { brief: input.brief } : {}), ...(input.storyboard ? { storyboard: input.storyboard } : {}), ...(input.intended ? { intended: [...input.intended] } : {}) }));
+  async agentPlanSave(input: {
+    readonly brief?: Brief;
+    readonly storyboard?: Storyboard;
+    readonly intended?: ReadonlyArray<IntendedFinding>;
+  }): Promise<boolean> {
+    const result = await call((c) =>
+      c["agent.planSave"]({
+        ...(input.brief ? { brief: input.brief } : {}),
+        ...(input.storyboard ? { storyboard: input.storyboard } : {}),
+        ...(input.intended ? { intended: [...input.intended] } : {}),
+      }),
+    );
     if (!result.ok) set({ agentError: plainError(result.error) });
     return result.ok;
   },
@@ -161,11 +222,14 @@ export const agentActions = {
   async agentMarkIntended(finding: Omit<IntendedFinding, "at">, on = true): Promise<boolean> {
     const now = state.agent?.plan?.intended ?? [];
     const same = (x: IntendedFinding) => x.kind === finding.kind && x.from === finding.from && x.to === finding.to;
-    const next = on ? [...now.filter((x) => !same(x as IntendedFinding)), { ...finding, at: new Date().toISOString() }] : now.filter((x) => !same(x as IntendedFinding));
+    const next = on
+      ? [...now.filter((x) => !same(x as IntendedFinding)), { ...finding, at: new Date().toISOString() }]
+      : now.filter((x) => !same(x as IntendedFinding));
     return actions.agentPlanSave({ intended: next });
   },
   /** D144: the take an allowed screen_record recorded (uploaded), or why there's none. */
-  agentScreenTake: (id: string, answer: { readonly path?: string; readonly source?: string; readonly problem?: string }) => call((c) => c["agent.screenTake"]({ id, ...answer })),
+  agentScreenTake: (id: string, answer: { readonly path?: string; readonly source?: string; readonly problem?: string }) =>
+    call((c) => c["agent.screenTake"]({ id, ...answer })),
   /** D144: a take's file up to the active server's media/uploads/ (the agent's screen_record imports it). */
   async uploadTake(blob: Blob, kind: TakeKind): Promise<{ readonly path: string } | { readonly message: string }> {
     const ext = blob.type.startsWith("audio/") ? "webm" : blob.type.includes("mp4") ? "mp4" : "webm";
@@ -195,7 +259,9 @@ export const agentActions = {
     return result.ok ? result.value.entries : [];
   },
   /** D205: one of them into the open project (copied when it lives in another project, D12); one ⌘Z. */
-  async mediaRecentImport(id: string): Promise<{ readonly ok: true; readonly copied: boolean; readonly name: string } | { readonly ok: false; readonly message: string }> {
+  async mediaRecentImport(
+    id: string,
+  ): Promise<{ readonly ok: true; readonly copied: boolean; readonly name: string } | { readonly ok: false; readonly message: string }> {
     const result = await call((c) => c["media.recentImport"]({ id }));
     return result.ok ? { ok: true, copied: result.value.copied, name: result.value.name } : { ok: false, message: plainError(result.error) };
   },

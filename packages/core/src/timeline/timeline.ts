@@ -9,7 +9,20 @@ import { isSpringName, springEase } from "../visual/spring.ts";
 import { fxBox, fxSkips } from "../visual/fx.ts";
 import { captionAt } from "../text/captions.ts";
 import { componentBox } from "../visual/components.ts";
-import { BLUR_MOVE, BOUNCE_MOVE, LOOP_DEFAULTS, POP_MOVE, PULSE_MOVE, SCALE_MOVE, TYPEWRITER, WIGGLE_MOVE, WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
+import {
+  BLUR_MOVE,
+  BOUNCE_MOVE,
+  LOOP_DEFAULTS,
+  POP_MOVE,
+  PULSE_MOVE,
+  SCALE_MOVE,
+  TYPEWRITER,
+  WIGGLE_MOVE,
+  WORD_BY_WORD,
+  ZOOM_DEFAULTS,
+  ZOOM_MOVE,
+  type WordStyle,
+} from "../text/looks.ts";
 import { charCount, SOLID, wordCount, type Motion } from "../visual/render.ts";
 import { dipColor, incomingFx, outgoingFx, overlaps, WIPE, type MaskShape, type TransitionFx } from "../visual/transitions.ts";
 import { gapOf } from "./rules.ts";
@@ -144,13 +157,18 @@ export function dipsOf(track: Track, starts: ReadonlyMap<string, number>): Array
     const tr = item.transitionIn;
     const color = tr && dipColor(tr.module);
     if (index === 0 || !tr || !color || !(tr.duration > 0)) return;
-    out.push({ item: { id: dipId(item.id), type: "component", component: SOLID, duration: tr.duration, props: { color } }, cut: starts.get(item.id)!, half: tr.duration / 2 });
+    out.push({
+      item: { id: dipId(item.id), type: "component", component: SOLID, duration: tr.duration, props: { color } },
+      cut: starts.get(item.id)!,
+      half: tr.duration / 2,
+    });
   });
   return out;
 }
 
 /** A dip's opacity at frame f: up from 0 at cut − half to 1 on the cut, back to 0 at cut + half. */
-export const dipOpacity = (dip: Pick<Dip, "cut" | "half">, f: number) => Math.min(1, Math.max(0, f < dip.cut ? (f - (dip.cut - dip.half)) / dip.half : 1 - (f - dip.cut) / dip.half));
+export const dipOpacity = (dip: Pick<Dip, "cut" | "half">, f: number) =>
+  Math.min(1, Math.max(0, f < dip.cut ? (f - (dip.cut - dip.half)) / dip.half : 1 - (f - dip.cut) / dip.half));
 
 /** Start frame of every item and the project length. */
 export function layout(project: Pick<Project, "tracks">): { starts: Map<string, number>; duration: number } {
@@ -172,7 +190,11 @@ export function layout(project: Pick<Project, "tracks">): { starts: Map<string, 
 }
 
 /** Everything visible at frame f, bottom layer first, with opacity and source time in seconds. */
-export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "media" | "theme">>, starts: ReadonlyMap<string, number>, f: number): Array<Visual> {
+export function visualsAt(
+  project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "media" | "theme">>,
+  starts: ReadonlyMap<string, number>,
+  f: number,
+): Array<Visual> {
   const out: Array<Visual> = [];
   for (const track of [...project.tracks].reverse()) {
     if (track.hidden || track.kind === "audio") continue;
@@ -196,14 +218,33 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
       const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
       const media = pictureMedia(project, item);
       // A zoom pulse (D136) is the clip's box zoom at this frame.
-      const own = media ? (fxSkips(media) ? clipBox(item, project.canvas, media.probe, f - start) : fxBox(item, clipBox(item, project.canvas, media.probe, f - start), f - start, project.canvas.fps)) : componentBox(item, project.canvas, f - start);
+      const own = media
+        ? fxSkips(media)
+          ? clipBox(item, project.canvas, media.probe, f - start)
+          : fxBox(item, clipBox(item, project.canvas, media.probe, f - start), f - start, project.canvas.fps)
+        : componentBox(item, project.canvas, f - start);
       const box = own && moveBox(own, fx.shift, fx.zoom, fx.shiftY);
       if (box) opacity *= box.opacity;
       // A graphic (D78) has no box: transform.opacity alone applies.
       if (item.type === "graphic" && typeof item.transform?.opacity === "number") opacity *= Math.min(1, Math.max(0, item.transform.opacity));
-      const moved = { ...(fx.shift ? { shift: fx.shift } : {}), ...(fx.shiftY ? { shiftY: fx.shiftY } : {}), ...(fx.zoom !== undefined && fx.zoom !== 1 ? { zoom: fx.zoom } : {}) };
+      const moved = {
+        ...(fx.shift ? { shift: fx.shift } : {}),
+        ...(fx.shiftY ? { shiftY: fx.shiftY } : {}),
+        ...(fx.zoom !== undefined && fx.zoom !== 1 ? { zoom: fx.zoom } : {}),
+      };
       const extra = { ...(fx.mask ? { mask: fx.mask } : {}), ...(fx.blur ? { blur: fx.blur } : {}) };
-      out.push({ item, track, opacity, motion: anim.motion, source, ...(fx.wipe !== undefined ? { wipe: fx.wipe } : {}), ...(fx.iris !== undefined ? { iris: fx.iris } : {}), ...moved, ...extra, ...(box ? { box } : {}) });
+      out.push({
+        item,
+        track,
+        opacity,
+        motion: anim.motion,
+        source,
+        ...(fx.wipe !== undefined ? { wipe: fx.wipe } : {}),
+        ...(fx.iris !== undefined ? { iris: fx.iris } : {}),
+        ...moved,
+        ...extra,
+        ...(box ? { box } : {}),
+      });
     });
     // Dips to black: a black layer over the main track's clips, under the tracks above it.
     for (const dip of dipsOf(track, starts)) {
@@ -215,14 +256,31 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
 
 // The built-in moves (spec/modules/builtin/move.*.json) the preview and export draw. word-by-word
 // and zoom (D81) draw on text; on other items they show the item without motion.
-export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.wipe", WORD_BY_WORD, ZOOM_MOVE, TYPEWRITER, BOUNCE_MOVE, BLUR_MOVE, SCALE_MOVE, POP_MOVE, PULSE_MOVE, WIGGLE_MOVE] as const;
+export const DRAWN_MOVES = [
+  "move.fade",
+  "move.rise",
+  "move.slide-left",
+  "move.wipe",
+  WORD_BY_WORD,
+  ZOOM_MOVE,
+  TYPEWRITER,
+  BOUNCE_MOVE,
+  BLUR_MOVE,
+  SCALE_MOVE,
+  POP_MOVE,
+  PULSE_MOVE,
+  WIGGLE_MOVE,
+] as const;
 
 /**
  * Whether an in/out move changes the item's opacity (linearly over its frames, as animationAt does):
  * fade, rise and slide-left; zoom on text unless params.fade is false (D81). The export draws those
  * as alpha ramps; the rest of a move is in the drawn look.
  */
-export function moveFades(item: Partial<Pick<Item, "text">>, move: { readonly module: string; readonly params?: { readonly [key: string]: unknown } | undefined }): boolean {
+export function moveFades(
+  item: Partial<Pick<Item, "text">>,
+  move: { readonly module: string; readonly params?: { readonly [key: string]: unknown } | undefined },
+): boolean {
   if (move.module === "move.fade" || move.module === "move.rise" || move.module === "move.slide-left") return true;
   // Bounce and blur fade linearly on text (D163); pop's quick fade is drawn in the HTML (motion.fade), not a ramp.
   if ((move.module === BOUNCE_MOVE || move.module === BLUR_MOVE) && typeof item.text === "string") return true;
@@ -282,7 +340,12 @@ export function zoomScale(p: number, out: boolean, params: { readonly [key: stri
  * ease or a spring preset fitted to the move's duration, so rise, slide-left, zoom, scale, pop,
  * bounce and blur may overshoot and settle; wipe's reveal and pop's starting size stay in range.
  */
-export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text">>, local: number, canvas: Pick<Canvas, "width" | "height">, { skipIn = false, skipOut = false } = {}): { opacity: number; motion: Motion } {
+export function animationAt(
+  item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text">>,
+  local: number,
+  canvas: Pick<Canvas, "width" | "height">,
+  { skipIn = false, skipOut = false } = {},
+): { opacity: number; motion: Motion } {
   let opacity = 1;
   let dx = 0;
   let dy = 0;
@@ -342,11 +405,22 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
   // frame number, so equal phases draw byte-equal HTML and the export dedupes them).
   if (a?.loop && a.loop.duration > 0 && isText) {
     const wave = Math.sin((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration);
-    const amount = typeof a.loop.params?.amount === "number" ? a.loop.params.amount : LOOP_DEFAULTS[a.loop.module] ?? 0;
-    if (a.loop.module === PULSE_MOVE) scale *= 1 + amount * (1 - Math.cos((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration)) / 2;
+    const amount = typeof a.loop.params?.amount === "number" ? a.loop.params.amount : (LOOP_DEFAULTS[a.loop.module] ?? 0);
+    if (a.loop.module === PULSE_MOVE) scale *= 1 + (amount * (1 - Math.cos((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration))) / 2;
     else if (a.loop.module === WIGGLE_MOVE) rotate += amount * wave;
   }
-  const motion: { dx?: number; dy?: number; reveal?: number; scale?: number; words?: Array<number>; wordStyle?: WordStyle; chars?: number; blur?: number; rotate?: number; fade?: number } = {};
+  const motion: {
+    dx?: number;
+    dy?: number;
+    reveal?: number;
+    scale?: number;
+    words?: Array<number>;
+    wordStyle?: WordStyle;
+    chars?: number;
+    blur?: number;
+    rotate?: number;
+    fade?: number;
+  } = {};
   if (dx) motion.dx = dx;
   if (dy) motion.dy = dy;
   if (reveal < 1) motion.reveal = reveal;

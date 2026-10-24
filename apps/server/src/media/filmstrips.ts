@@ -73,16 +73,32 @@ export function tilesFor(seconds: number) {
 export function filmstripArgs(input: string, output: string, seconds: number, { keyframesOnly = false, hardware = false } = {}): Array<string> {
   const { interval, cols, rows } = tilesFor(seconds);
   return [
-    "-hide_banner", "-nostdin", "-y", "-v", "error",
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-v",
+    "error",
     ...(hardware ? ["-hwaccel", "videotoolbox"] : []),
     // A proxy has a keyframe every 10 frames (D212): decoding only those is near enough and much faster.
     ...(keyframesOnly ? ["-skip_frame", "nokey"] : []),
-    "-an", "-sn", "-dn",
-    "-i", input,
-    "-map", "0:v:0",
-    "-vf", `fps=1/${interval},scale=-2:${FILMSTRIP_TILE_H}:flags=bilinear,tile=${cols}x${rows}`,
-    "-frames:v", "1", "-update", "1", "-q:v", "5",
-    "-f", "image2", output,
+    "-an",
+    "-sn",
+    "-dn",
+    "-i",
+    input,
+    "-map",
+    "0:v:0",
+    "-vf",
+    `fps=1/${interval},scale=-2:${FILMSTRIP_TILE_H}:flags=bilinear,tile=${cols}x${rows}`,
+    "-frames:v",
+    "1",
+    "-update",
+    "1",
+    "-q:v",
+    "5",
+    "-f",
+    "image2",
+    output,
   ];
 }
 
@@ -133,7 +149,10 @@ export function makeSprite(ffmpeg: string, input: string, output: string, second
   const tmp = `${output}.tmp-${process.pid}.jpg`;
   if (options.signal?.aborted) return Promise.resolve(false);
   return new Promise((done) => {
-    const child = spawn(ffmpeg, localInputs(ffmpeg, filmstripArgs(input, tmp, seconds, options)), { env: withoutApiKey(process.env), stdio: ["ignore", "ignore", "ignore"] });
+    const child = spawn(ffmpeg, localInputs(ffmpeg, filmstripArgs(input, tmp, seconds, options)), {
+      env: withoutApiKey(process.env),
+      stdio: ["ignore", "ignore", "ignore"],
+    });
     running.add(child);
     const kill = () => child.kill("SIGKILL");
     options.signal?.addEventListener("abort", kill, { once: true });
@@ -160,7 +179,9 @@ export function makeSprite(ffmpeg: string, input: string, output: string, second
 export const isFilmstripFileOf = (file: string, id: string) => file.startsWith(`${id}--`) && /^[0-9a-f]{12}\.(jpg|json)$/.test(file.slice(id.length + 2));
 
 /** The answer for one request: the sprite and its layout (read or made), or "failed". */
-export type Generated = { readonly kind: "ok"; readonly bytes: Buffer; readonly layout: FilmstripLayout; readonly from: "cache" | "decode" } | { readonly kind: "failed"; readonly why: string };
+export type Generated =
+  | { readonly kind: "ok"; readonly bytes: Buffer; readonly layout: FilmstripLayout; readonly from: "cache" | "decode" }
+  | { readonly kind: "failed"; readonly why: string };
 
 export interface Source {
   /** The original file (its key names the cache files). */
@@ -330,7 +351,12 @@ export const layer = Layer.unwrap(
           const name = `${dir}\0${id}--${key}`;
           let job = inFlight.get(name);
           if (!job) {
-            job = generate(filmstripDir(dir), id, { path, key, input: proxy ?? path, proxy: proxy !== undefined, seconds }, { ffmpeg: tools.ffmpeg, ffprobe: tools.ffprobe, slot, release, hardware, signal: abortFor(dir) })
+            job = generate(
+              filmstripDir(dir),
+              id,
+              { path, key, input: proxy ?? path, proxy: proxy !== undefined, seconds },
+              { ffmpeg: tools.ffmpeg, ffprobe: tools.ffprobe, slot, release, hardware, signal: abortFor(dir) },
+            )
               .catch((): Generated => ({ kind: "failed", why: "the strip couldn't be made" }))
               .finally(() => inFlight.delete(name));
             inFlight.set(name, job);
@@ -339,7 +365,8 @@ export const layer = Layer.unwrap(
         });
         // 404: nothing to draw (the renderer keeps the poster); 503: it may work later.
         if (!result) return notFound();
-        if (result.kind === "failed") return HttpServerResponse.text(`Filmstrip unavailable: ${result.why}`, { status: 503, headers: { ...CORS, "retry-after": "30" } });
+        if (result.kind === "failed")
+          return HttpServerResponse.text(`Filmstrip unavailable: ${result.why}`, { status: 503, headers: { ...CORS, "retry-after": "30" } });
         return HttpServerResponse.uint8Array(result.bytes, {
           contentType: "image/jpeg",
           headers: { ...CORS, "cache-control": "no-store", "x-uncut-filmstrip": result.from, [LAYOUT_HEADER]: JSON.stringify(result.layout) },

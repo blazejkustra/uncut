@@ -21,7 +21,13 @@ test("doingLabel: present tense with the target, for every tool", () => {
   // Every built-in tool's step label turns into something that isn't the past tense.
   for (const tool of TOOL_NAMES) {
     const now = doingLabel(tool, {});
-    assert.ok(now && !/^(Read|Looked|Imported|Analysed|Wrote|Made|Cut|Saved|Generated|Checked|Searched|Added|Moved|Asked|Ranked|Scored|Found|Measured|Transcribed|Edited) /.test(now), `${tool}: ${now} (from ${stepLabel(tool, {})})`);
+    assert.ok(
+      now &&
+        !/^(Read|Looked|Imported|Analysed|Wrote|Made|Cut|Saved|Generated|Checked|Searched|Added|Moved|Asked|Ranked|Scored|Found|Measured|Transcribed|Edited) /.test(
+          now,
+        ),
+      `${tool}: ${now} (from ${stepLabel(tool, {})})`,
+    );
   }
 });
 
@@ -33,12 +39,24 @@ test("partialFields: string fields once their closing quote arrived, escapes dec
 
 test("access: Look only tools read and look; Ask first asks about removals, project changes, many ops and transcript cuts", () => {
   for (const t of LOOK_TOOLS) assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes(t), t);
-  for (const t of ["timeline_edit", "transcript_edit", "graphic_write", "media_import", "generate_media", "screen_record", "library_add", "captions_make"]) assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes(t), t);
-  assert.equal(bigChange("timeline_edit", { summary: "Add", ops: [{ op: "insert_item", track: "text", item: { id: "a", type: "text", start: 0, duration: 9, text: "a" } }] }, project), undefined);
+  for (const t of ["timeline_edit", "transcript_edit", "graphic_write", "media_import", "generate_media", "screen_record", "library_add", "captions_make"])
+    assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes(t), t);
+  assert.equal(
+    bigChange(
+      "timeline_edit",
+      { summary: "Add", ops: [{ op: "insert_item", track: "text", item: { id: "a", type: "text", start: 0, duration: 9, text: "a" } }] },
+      project,
+    ),
+    undefined,
+  );
   const del = bigChange("timeline_edit", { summary: "Remove the title", ops: [{ op: "delete_item", item: "title-1" }] }, project);
   assert.equal(del?.text, 'Apply "Remove the title" (1 change)');
   assert.equal(del?.lines.length, 1);
-  const many = bigChange("timeline_edit", { summary: "Lots", ops: Array.from({ length: 13 }, (_, i) => ({ op: "update_item", item: "title-1", set: { duration: 10 + i } })) }, project);
+  const many = bigChange(
+    "timeline_edit",
+    { summary: "Lots", ops: Array.from({ length: 13 }, (_, i) => ({ op: "update_item", item: "title-1", set: { duration: 10 + i } })) },
+    project,
+  );
   assert.equal(many?.text, 'Apply "Lots" (13 changes)');
   assert.equal(many?.lines.at(-1), "and 5 more");
   assert.ok(bigChange("transcript_edit", { media: "m-a", fillers: true }, project));
@@ -47,6 +65,9 @@ test("access: Look only tools read and look; Ask first asks about removals, proj
   assert.match(accessLine("look"), /^Access: Look only\./);
   assert.match(accessLine("ask"), /^Access: Ask first\./);
   // D214: Auto is Claude Code's own auto mode; the limits stay.
-  assert.match(accessLine("auto"), /^Access: Auto\. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first\.$/);
+  assert.match(
+    accessLine("auto"),
+    /^Access: Auto\. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first\.$/,
+  );
   for (const a of ["look", "ask", "auto"] as const) assert.doesNotMatch(accessLine(a), /[·*•]|Edit freely|Ask before big changes/);
 });

@@ -65,7 +65,8 @@ export function pluginNew(argv: ReadonlyArray<string>): { dir: string; id: strin
   const givenName = take("--name");
   const id = args.find((a) => !a.startsWith("-"));
   if (!id) throw new Error(`Pass the plugin's id, e.g. pnpm plugin:new acme.promo-kit.\n\n${HELP}`);
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)+$/.test(id)) throw new Error(`${id} isn't an id: lowercase letters, digits and dashes, in two or more parts with dots between (acme.promo-kit).`);
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)+$/.test(id))
+    throw new Error(`${id} isn't an id: lowercase letters, digits and dashes, in two or more parts with dots between (acme.promo-kit).`);
   if (id === TEMPLATE_ID || id === SHADER_TEMPLATE_ID) throw new Error(`${id} is the template's own id: pick yours.`);
   const folder = id.replaceAll(".", "-");
   const dir = join(plugins, "catalog", folder);
@@ -94,10 +95,19 @@ export function pluginNew(argv: ReadonlyArray<string>): { dir: string; id: strin
     }
     // The template's id, folder and tool prefix, wherever they appear (contribution ids, tool names).
     body = body.replaceAll(templateId, id).replaceAll(templateId.replaceAll(".", "-"), folder).replaceAll(templateId.replace(/[.-]/g, "_"), prefix);
-    if (source && file.endsWith(".ts")) body = body.replace(/^\/\/.*\n/, `// ${name} (${id}), started from ${source.name} (${source.id}) with pnpm plugin:new --from.\n`);
+    if (source && file.endsWith(".ts"))
+      body = body.replace(/^\/\/.*\n/, `// ${name} (${id}), started from ${source.name} (${source.id}) with pnpm plugin:new --from.\n`);
     if (file === "uncut.module.json" && source) body = `${JSON.stringify(renameSkills(JSON.parse(body) as Record<string, unknown>, source.id, id), null, 2)}\n`;
-    if (!source && file === "effect.ts") body = body.replace(/^\/\/ The shader effect template \(D213\): copy it with `pnpm plugin:new <id> --shader`, never edit it in place\.\n/m, `// ${name} (${id}), started from Uncut's shader effect template.\n`);
-    if (!source && file === "server.ts") body = body.replace(/^\/\/ The plugin template: copy it with `pnpm plugin:new <id>`, never edit it in place\.\n/m, `// ${name} (${id}), started from Uncut's plugin template.\n`);
+    if (!source && file === "effect.ts")
+      body = body.replace(
+        /^\/\/ The shader effect template \(D213\): copy it with `pnpm plugin:new <id> --shader`, never edit it in place\.\n/m,
+        `// ${name} (${id}), started from Uncut's shader effect template.\n`,
+      );
+    if (!source && file === "server.ts")
+      body = body.replace(
+        /^\/\/ The plugin template: copy it with `pnpm plugin:new <id>`, never edit it in place\.\n/m,
+        `// ${name} (${id}), started from Uncut's plugin template.\n`,
+      );
     writeFileSync(path, body);
   }
   return { dir, id, name, shader, from: !!source };
@@ -124,7 +134,12 @@ export function renameSkills(manifest: Record<string, unknown>, fromId: string, 
   if (!contributes?.skills?.length) return manifest;
   const was = fromId.split(".").at(-1)!;
   const now = toId.split(".").at(-1)!;
-  const renamed = contributes.skills.map((skill) => ({ ...skill, name: (skill.name.startsWith(`${was}-`) ? `${now}-${skill.name.slice(was.length + 1)}` : skill.name === was ? now : `${now}-${skill.name}`).slice(0, 64).replace(/-+$/, "") }));
+  const renamed = contributes.skills.map((skill) => ({
+    ...skill,
+    name: (skill.name.startsWith(`${was}-`) ? `${now}-${skill.name.slice(was.length + 1)}` : skill.name === was ? now : `${now}-${skill.name}`)
+      .slice(0, 64)
+      .replace(/-+$/, ""),
+  }));
   return { ...manifest, contributes: { ...contributes, skills: renamed } };
 }
 
@@ -142,13 +157,19 @@ if (isMain) {
     console.log(`Made ${name} (${id}) in ${where}/`);
     if (problems.length) console.log(`\nIt doesn't pass the checks yet:\n${problems.map((p) => `  ${p}`).join("\n")}`);
     console.log(`\nNext:
-${from ? `  1. Edit ${where}/uncut.module.json (and its .ts files): description, author, contributes.
+${
+  from
+    ? `  1. Edit ${where}/uncut.module.json (and its .ts files): description, author, contributes.
   2. pnpm plugin:check --write ${where}   (resolves shader effects into the manifest's wgsl)
-  3. pnpm plugin:check ${where}` : shader ? `  1. Edit ${where}/effect.ts (the TypeGPU effect) and its params in uncut.module.json.
+  3. pnpm plugin:check ${where}`
+    : shader
+      ? `  1. Edit ${where}/effect.ts (the TypeGPU effect) and its params in uncut.module.json.
   2. pnpm plugin:check --write ${where}   (resolves effect.ts into the manifest's wgsl)
-  3. pnpm plugin:check ${where}` : `  1. Edit ${where}/uncut.module.json: description, author, capabilities, agentTools, contributes.
+  3. pnpm plugin:check ${where}`
+      : `  1. Edit ${where}/uncut.module.json: description, author, capabilities, agentTools, contributes.
   2. Edit ${where}/server.ts: one handler per tool (or make it a data plugin: see --help).
-  3. pnpm plugin:check ${where}`}
+  3. pnpm plugin:check ${where}`
+}
   4. In Uncut: Settings, Plugins, Add plugin, Choose folder, then Allow.
   5. Open a pull request that adds only ${where}/.
 pnpm plugin:new --help has the details.`);

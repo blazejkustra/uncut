@@ -9,10 +9,12 @@ export function plainError(error: CallError): string {
   const first = error.details?.[0];
   if (error._tag === "EditRefused" && first && /invalid|malformed/.test(error.message)) return `That change isn't allowed: ${first.message}.`;
   if (error._tag === "EditRefused" && first?.code === "depends") return error.message;
-  if (error._tag === "EditRefused" && first?.code === "conflict") return "The agent changed that while you were editing it, so your change wasn't applied. Try again on what's there now.";
+  if (error._tag === "EditRefused" && first?.code === "conflict")
+    return "The agent changed that while you were editing it, so your change wasn't applied. Try again on what's there now.";
   if (error.reason === "missing") return "The project folder is gone, or has no project.json.";
   if (error.reason === "invalid" && first?.code === "json") return "project.json can't be read: it isn't valid JSON.";
-  if (error.reason === "invalid") return `project.json can't be read: ${first ? `${first.path === "/" ? "" : `${first.path} `}${first.message}` : error.message}.`;
+  if (error.reason === "invalid")
+    return `project.json can't be read: ${first ? `${first.path === "/" ? "" : `${first.path} `}${first.message}` : error.message}.`;
   return error.message;
 }
 
@@ -33,7 +35,10 @@ export const refreshRecents = async () => {
 export async function refreshHello() {
   const hello = await call((c) => c["server.hello"]({}));
   if (hello.ok) {
-    set({ hello: hello.value, ...(isRemote() && hello.value.home ? { appInfo: { homeDir: hello.value.home, defaultParentDir: hello.value.defaultParentDir ?? hello.value.home } } : {}) });
+    set({
+      hello: hello.value,
+      ...(isRemote() && hello.value.home ? { appInfo: { homeDir: hello.value.home, defaultParentDir: hello.value.defaultParentDir ?? hello.value.home } } : {}),
+    });
   } else if (!isTransportError(hello.error)) set({ connectionMessage: plainError(hello.error) });
   return hello;
 }
@@ -61,6 +66,8 @@ export async function uploadOne(file: File): Promise<{ readonly path: string } |
     return typeof path === "string" ? { path } : { message: "The server's answer had no path." };
   } catch (error) {
     // A folder (or a file that went away) can't be read as a body.
-    return { message: file.size === 0 && file.type === "" ? "Folders can't be uploaded; drop the files inside." : `The upload stopped: ${(error as Error).message}` };
+    return {
+      message: file.size === 0 && file.type === "" ? "Folders can't be uploaded; drop the files inside." : `The upload stopped: ${(error as Error).message}`,
+    };
   }
 }

@@ -27,20 +27,30 @@ export function beatsOut(result: BeatsResult, cached: boolean, toFrames: ToFrame
   const out: Record<string, unknown> = {
     ...base,
     beatCount: beats.length,
-    beatFrames: Math.round(((60 / result.bpm) * fps) * 100) / 100,
+    beatFrames: Math.round((60 / result.bpm) * fps * 100) / 100,
     firstBeat: beats[0],
     lastBeat: beats.at(-1),
     beats: {
       ...(range ? { range, count: listed.length } : {}),
       frames: shown.map((b) => b.frame),
       seconds: shown.map((b) => b.seconds),
-      ...(listed.length > cap ? { truncated: range ? `Only the first ${cap} of ${listed.length} in the range; narrow the range for the rest.` : `The first ${cap} of ${beats.length}; pass range for the others.` } : {}),
+      ...(listed.length > cap
+        ? {
+            truncated: range
+              ? `Only the first ${cap} of ${listed.length} in the range; narrow the range for the rest.`
+              : `The first ${cap} of ${beats.length}; pass range for the others.`,
+          }
+        : {}),
     },
     onsetCount: onsets.length,
   };
   if (range) {
     const hits = onsets.map((o) => ({ frame: toFrames(o.t, Math.round), seconds: o.t, strength: o.strength })).filter((o) => inRange(o.frame));
-    out.onsets = { count: hits.length, list: hits.slice(0, MAX_ONSETS_LISTED), ...(hits.length > MAX_ONSETS_LISTED ? { truncated: `Only the first ${MAX_ONSETS_LISTED} of ${hits.length}; narrow the range for the rest.` } : {}) };
+    out.onsets = {
+      count: hits.length,
+      list: hits.slice(0, MAX_ONSETS_LISTED),
+      ...(hits.length > MAX_ONSETS_LISTED ? { truncated: `Only the first ${MAX_ONSETS_LISTED} of ${hits.length}; narrow the range for the rest.` } : {}),
+    };
   }
   return out;
 }

@@ -19,7 +19,10 @@ export const shippedFiles = (dir: string) =>
     .sort();
 
 /** Writes the packaged layout into `out` (emptied first) and returns what went where, by folder name. */
-export function stagePlugins(pluginsDir: string = REPO_PLUGINS, out: string): { readonly bundled: ReadonlyArray<string>; readonly catalog: ReadonlyArray<string> } {
+export function stagePlugins(
+  pluginsDir: string = REPO_PLUGINS,
+  out: string,
+): { readonly bundled: ReadonlyArray<string>; readonly catalog: ReadonlyArray<string> } {
   const layout = pluginLayout(pluginsDir);
   if (!layout) throw new Error(`${join(pluginsDir, BUNDLED_LIST_FILE)} is missing: it lists the plugins that ship inside Uncut.`);
   if (layout.problems.length) throw new Error(layout.problems.join("\n"));

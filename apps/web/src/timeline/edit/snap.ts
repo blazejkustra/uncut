@@ -46,7 +46,10 @@ export function beatsInItem(project: ProjectModel, item: Item, beats: ReadonlyAr
 /** The median gap between neighbouring values (frames), 0 with fewer than two. */
 const medianGap = (frames: ReadonlyArray<number>) => {
   if (frames.length < 2) return 0;
-  const gaps = frames.slice(1).map((f, i) => f - frames[i]!).sort((a, b) => a - b);
+  const gaps = frames
+    .slice(1)
+    .map((f, i) => f - frames[i]!)
+    .sort((a, b) => a - b);
   return gaps[gaps.length >> 1]!;
 };
 
@@ -57,7 +60,11 @@ export function visibleBeats(project: ProjectModel, item: Item, beats: ReadonlyA
 }
 
 /** Timeline frames (whole) of the beats of every item `include` accepts, at a zoom where they're far enough apart. */
-export function beatTargets(project: ProjectModel, snap: BeatSnap | undefined, include: (item: Item, track: Track, index: number) => boolean = () => true): Array<number> {
+export function beatTargets(
+  project: ProjectModel,
+  snap: BeatSnap | undefined,
+  include: (item: Item, track: Track, index: number) => boolean = () => true,
+): Array<number> {
   if (!snap || !snap.beats.size) return [];
   const { starts } = layoutOf(project);
   const out: Array<number> = [];
@@ -95,7 +102,8 @@ function ownTrimBeats(project: ProjectModel, placed: Placed, edge: "start" | "en
 /** Where the playhead goes when dragged to `frame` with snapping on: the nearest beat within `threshold` frames, else `frame`. */
 export function snapPlayhead(project: ProjectModel, frame: number, snap: BeatSnap | undefined, threshold: number): { frame: number; snapAt?: number } {
   let best: number | undefined;
-  for (const t of beatTargets(project, snap)) if (Math.abs(t - frame) <= threshold && (best === undefined || Math.abs(t - frame) < Math.abs(best - frame))) best = t;
+  for (const t of beatTargets(project, snap))
+    if (Math.abs(t - frame) <= threshold && (best === undefined || Math.abs(t - frame) < Math.abs(best - frame))) best = t;
   return best === undefined ? { frame } : { frame: best, snapAt: best };
 }
 
@@ -171,7 +179,12 @@ export function nearestSnap(edges: ReadonlyArray<number>, snap: Snap | undefined
  * move snaps), else the frame rounded. The item's own edges aren't targets (there's nothing to cut
  * there). `snap` undefined: snapping is off.
  */
-export function bladeFrame(project: ProjectModel, itemId: string, frame: number, snap: { readonly playhead: number; readonly threshold: number; readonly beats?: BeatSnap } | undefined): { frame: number; snapAt?: number } {
+export function bladeFrame(
+  project: ProjectModel,
+  itemId: string,
+  frame: number,
+  snap: { readonly playhead: number; readonly threshold: number; readonly beats?: BeatSnap } | undefined,
+): { frame: number; snapAt?: number } {
   if (!snap) return { frame: Math.round(frame) };
   const hit = nearestSnap([frame], { targets: snapTargets(project, snap.playhead, itemId, snap.beats), threshold: snap.threshold });
   return hit ? { frame: hit.at, snapAt: hit.at } : { frame: Math.round(frame) };

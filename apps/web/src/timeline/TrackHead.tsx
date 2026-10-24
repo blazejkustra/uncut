@@ -11,7 +11,23 @@ import { trackFlag } from "./edit.ts";
 import { RenameField } from "./RenameField.tsx";
 import { TrackVolume } from "./TrackVolume.tsx";
 
-export function TrackHead({ project, track, online, renaming, onRenamed, onMenu, onRename }: { project: ProjectModel; track: Track; online: boolean; renaming: boolean; onRenamed: () => void; onMenu: (e: React.MouseEvent) => void; onRename: () => void }) {
+export function TrackHead({
+  project,
+  track,
+  online,
+  renaming,
+  onRenamed,
+  onMenu,
+  onRename,
+}: {
+  project: ProjectModel;
+  track: Track;
+  online: boolean;
+  renaming: boolean;
+  onRenamed: () => void;
+  onMenu: (e: React.MouseEvent) => void;
+  onRename: () => void;
+}) {
   const main = track.role === "main";
   const Icon = track.kind === "text" ? Type : track.kind === "audio" ? AudioLines : main ? Film : Layers;
   const audio = track.kind === "audio";
@@ -33,7 +49,11 @@ export function TrackHead({ project, track, online, renaming, onRenamed, onMenu,
       <div className="name" onDoubleClick={() => online && !locked && onRename()}>
         <Icon />
         {renaming ? (
-          <RenameField testId="track-rename" value={track.name} onDone={(name) => (name !== undefined && name !== track.name && void actions.renameTrack(track.id, name), onRenamed())} />
+          <RenameField
+            testId="track-rename"
+            value={track.name}
+            onDone={(name) => (name !== undefined && name !== track.name && void actions.renameTrack(track.id, name), onRenamed())}
+          />
         ) : (
           <span className="ellipsis" data-testid="track-name">
             {track.name}
@@ -47,16 +67,37 @@ export function TrackHead({ project, track, online, renaming, onRenamed, onMenu,
       </div>
       {(audio || soundTrack(project, track)) && <TrackVolume project={project} track={track} online={online} />}
       {(audio || soundTrack(project, track)) && (
-        <button className={`icon-btn ${muted ? "on" : ""}`} data-testid="track-mute" aria-pressed={muted} disabled={!online} title={muted ? "Unmute" : audio ? "Mute" : "Mute the clips' sound"} onClick={() => void actions.toggleTrack(track.id, "mute")}>
+        <button
+          className={`icon-btn ${muted ? "on" : ""}`}
+          data-testid="track-mute"
+          aria-pressed={muted}
+          disabled={!online}
+          title={muted ? "Unmute" : audio ? "Mute" : "Mute the clips' sound"}
+          onClick={() => void actions.toggleTrack(track.id, "mute")}
+        >
           {muted ? <VolumeX /> : <Volume2 />}
         </button>
       )}
       {!audio && (
-        <button className={`icon-btn ${hidden ? "on" : ""}`} data-testid="track-hide" aria-pressed={hidden} disabled={!online} title={hidden ? "Show in the preview" : "Hide from the preview"} onClick={() => void actions.toggleTrack(track.id, "hidden")}>
+        <button
+          className={`icon-btn ${hidden ? "on" : ""}`}
+          data-testid="track-hide"
+          aria-pressed={hidden}
+          disabled={!online}
+          title={hidden ? "Show in the preview" : "Hide from the preview"}
+          onClick={() => void actions.toggleTrack(track.id, "hidden")}
+        >
           {hidden ? <EyeOff /> : <Eye />}
         </button>
       )}
-      <button className={`icon-btn ${locked ? "on" : ""}`} data-testid="track-lock" aria-pressed={locked} disabled={!online} title={locked ? "Unlock" : "Lock: no edits by hand or by the agent"} onClick={() => void actions.toggleTrack(track.id, "locked")}>
+      <button
+        className={`icon-btn ${locked ? "on" : ""}`}
+        data-testid="track-lock"
+        aria-pressed={locked}
+        disabled={!online}
+        title={locked ? "Unlock" : "Lock: no edits by hand or by the agent"}
+        onClick={() => void actions.toggleTrack(track.id, "locked")}
+      >
         {locked ? <Lock /> : <LockOpen />}
       </button>
     </div>

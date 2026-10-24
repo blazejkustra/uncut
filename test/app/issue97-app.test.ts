@@ -23,7 +23,17 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue97-")));
   const dir = join(root, "Issue97.uncut");
   mkdirSync(dir);
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Issue97", canvas: { width: 1920, height: 1080, fps: 30 }, textLooks: 1, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Issue97",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      textLooks: 1,
+      media: [],
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [] }],
+    }),
+  );
 });
 after(async () => {
   await app?.close();

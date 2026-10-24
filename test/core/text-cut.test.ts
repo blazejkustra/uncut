@@ -2,7 +2,26 @@
 // main track as one edit, and editWords, the words heard in edit order (the Transcript panel).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, decodeEnvelope, editWords, encodeEnvelope, handleFrames, layout, pausesOf, planTextCut, speechEdges, speechWords, tailFrames, timelineProblems, undoTurn, type CutTranscript, type Item, type Project, type TextCutPlan } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  decodeEnvelope,
+  editWords,
+  encodeEnvelope,
+  handleFrames,
+  layout,
+  pausesOf,
+  planTextCut,
+  speechEdges,
+  speechWords,
+  tailFrames,
+  timelineProblems,
+  undoTurn,
+  type CutTranscript,
+  type Item,
+  type Project,
+  type TextCutPlan,
+} from "../../packages/core/src/index.ts";
 
 // 30 fps; words on round frames (frame = seconds × 30).
 const WORDS = [
@@ -17,7 +36,14 @@ const WORDS = [
 ];
 const T: CutTranscript = { words: WORDS, language: "en", seconds: 6 };
 
-const clip = (id: string, inF: number, duration: number, extra: Partial<Item> = {}): Item => ({ id, type: "clip", media: "m-talk", in: inF, duration, ...extra });
+const clip = (id: string, inF: number, duration: number, extra: Partial<Item> = {}): Item => ({
+  id,
+  type: "clip",
+  media: "m-talk",
+  in: inF,
+  duration,
+  ...extra,
+});
 function projectWith(main: ReadonlyArray<Item>, other: Partial<Project> = {}): Project {
   return {
     format: "uncut/0",
@@ -50,25 +76,50 @@ test("one word: cut over its frames, the clip splits and closes up, one edit", (
   const project = projectWith([clip("clip-1", 0, 180)]);
   const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }] }));
   // "um" covers 36–45; the words around it end at 30 (+5 tail) and start at 48 (−2 head): no handle bites.
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to, c.text, c.frames]), [[36, 45, "um", 9]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to, c.text, c.frames]),
+    [[36, 45, "um", 9]],
+  );
   assert.deepEqual(plan.ops, [
     { op: "split_item", item: "clip-1", at: 45, newId: "clip-2" },
     { op: "trim_item", item: "clip-1", edge: "end", frames: 9 },
   ]);
-  assert.deepEqual(shape(plan.project), [["clip-1", 0, 36], ["clip-2", 45, 135]]);
+  assert.deepEqual(shape(plan.project), [
+    ["clip-1", 0, 36],
+    ["clip-2", 45, 135],
+  ]);
   assert.equal(plan.framesRemoved, 9);
   assert.deepEqual([plan.before, plan.after], [180, 171]);
   assert.equal(plan.summary, 'Cut "um" (0.3 s)');
   assert.deepEqual(plan.notes, []);
   // Two cuts inside a clip: the new pieces are numbered left to right. "is" (63–69) keeps the 5-frame
   // tail of "this" (ends at 60): cut 65–69.
-  const two = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }, { from: 3, to: 3 }] }));
-  assert.deepEqual(shape(two.project), [["clip-1", 0, 36], ["clip-2", 45, 20], ["clip-3", 69, 111]]);
+  const two = ok(
+    planTextCut(project, "m-talk", T, {
+      remove: [
+        { from: 1, to: 1 },
+        { from: 3, to: 3 },
+      ],
+    }),
+  );
+  assert.deepEqual(shape(two.project), [
+    ["clip-1", 0, 36],
+    ["clip-2", 45, 20],
+    ["clip-3", 69, 111],
+  ]);
 });
 
 test("undo as one step: the plan is one edit (one log entry) and undoing it restores the project", () => {
   const project = projectWith([clip("clip-1", 0, 180), clip("b-1", 0, 90, { media: "m-b" })]);
-  const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }, { from: 3, to: 4 }], pauses: { min: 0.5 } }));
+  const plan = ok(
+    planTextCut(project, "m-talk", T, {
+      remove: [
+        { from: 1, to: 1 },
+        { from: 3, to: 4 },
+      ],
+      pauses: { min: 0.5 },
+    }),
+  );
   const s0 = createSession(project);
   const s1 = applyEdit(s0, { actor: "agent", ops: plan.ops, summary: plan.summary, turnId: "t1" }, timelineProblems);
   assert.equal(s1.log.length, 1);
@@ -84,12 +135,18 @@ test("a range across a clip boundary trims both clips", () => {
   const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 2, to: 5 }] }));
   // this … test. = 48–90, from 50: the word before ("um") ends at 45 and keeps its 5-frame tail;
   // the next starts at 120 − 2: no handle bites there.
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to, c.words, c.text, c.clips]), [[50, 90, [2, 5], "this is a test.", ["a", "b"]]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to, c.words, c.text, c.clips]),
+    [[50, 90, [2, 5], "this is a test.", ["a", "b"]]],
+  );
   assert.deepEqual(plan.ops, [
     { op: "trim_item", item: "a", edge: "end", frames: 10 },
     { op: "trim_item", item: "b", edge: "start", frames: 30 },
   ]);
-  assert.deepEqual(shape(plan.project), [["a", 0, 50], ["b", 90, 90]]);
+  assert.deepEqual(shape(plan.project), [
+    ["a", 0, 50],
+    ["b", 90, 90],
+  ]);
   assert.equal(plan.framesRemoved, 40);
 });
 
@@ -98,10 +155,21 @@ test("media used twice: both uses are cut, or only the clips asked for", () => {
   const both = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }] }));
   assert.equal(both.framesRemoved, 18);
   assert.deepEqual(both.cuts[0]!.clips, ["clip-1", "clip-3"]);
-  assert.deepEqual(shape(both.project), [["clip-1", 0, 36], ["clip-2", 45, 135], ["b-1", 0, 30], ["clip-3", 30, 6], ["clip-4", 45, 105]]);
+  assert.deepEqual(shape(both.project), [
+    ["clip-1", 0, 36],
+    ["clip-2", 45, 135],
+    ["b-1", 0, 30],
+    ["clip-3", 30, 6],
+    ["clip-4", 45, 105],
+  ]);
   const one = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }], clips: ["clip-3"] }));
   assert.equal(one.framesRemoved, 9);
-  assert.deepEqual(shape(one.project), [["clip-1", 0, 180], ["b-1", 0, 30], ["clip-3", 30, 6], ["clip-2", 45, 105]]);
+  assert.deepEqual(shape(one.project), [
+    ["clip-1", 0, 180],
+    ["b-1", 0, 30],
+    ["clip-3", 30, 6],
+    ["clip-2", 45, 105],
+  ]);
 });
 
 test("words already trimmed out are a no-op with a note; partly visible ones cut what's there", () => {
@@ -121,9 +189,19 @@ test("remove pauses: inward with handles next to kept words, edge pauses to the 
   const plan = ok(planTextCut(project, "m-talk", T, { pauses: { min: 0.5 } }));
   // Lead 0–0.5 s → [0, 13) (2 before "Hello"); the 1 s gap 3.0–4.0 → [95, 118) (5 after "test.",
   // 2 before "Second"); the tail 5.0–6.0 → [155, 180) (5 after "part").
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to, c.pauses]), [[0, 13, 1], [95, 118, 1], [155, 180, 1]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to, c.pauses]),
+    [
+      [0, 13, 1],
+      [95, 118, 1],
+      [155, 180, 1],
+    ],
+  );
   assert.equal(plan.framesRemoved, 13 + 23 + 25);
-  assert.deepEqual(shape(plan.project), [["clip-1", 13, 82], ["clip-2", 118, 37]]);
+  assert.deepEqual(shape(plan.project), [
+    ["clip-1", 13, 82],
+    ["clip-2", 118, 37],
+  ]);
   assert.equal(plan.summary, "Removed 3 pauses (2.0 s)");
   // Shorter pauses only at a lower threshold: nothing between 0.3 and 0.5 s here except none, so the same.
   assert.equal(ok(planTextCut(project, "m-talk", T, { pauses: { min: 2 } })).ops.length, 0);
@@ -134,14 +212,28 @@ test("pauses follow the silences when given (as transcript_read's do)", () => {
   const project = projectWith([clip("clip-1", 0, 180)]);
   const plan = ok(planTextCut(project, "m-talk", T, { pauses: { min: 0.5 }, silences: [{ start: 3.2, end: 3.9 }] }));
   // The gap 3.0–4.0 follows the silence 3.2–3.9: [96 + 5, 117 − 2).
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to]), [[0, 13], [101, 115], [155, 180]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to]),
+    [
+      [0, 13],
+      [101, 115],
+      [155, 180],
+    ],
+  );
 });
 
 test("a removed word and the pause next to it make one cut (no handle between them)", () => {
   const project = projectWith([clip("clip-1", 0, 180)]);
   const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 5, to: 5 }], pauses: { min: 0.5 } }));
   // test. 78–90 (from 80: "a" ends at 75 + 5) runs straight into the pause 90–118.
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to, c.text, c.pauses]), [[0, 13, "", 1], [80, 118, "test.", 1], [155, 180, "", 1]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to, c.text, c.pauses]),
+    [
+      [0, 13, "", 1],
+      [80, 118, "test.", 1],
+      [155, 180, "", 1],
+    ],
+  );
   assert.equal(plan.summary, "Cut 1 word and 3 pauses (2.5 s)");
 });
 
@@ -149,7 +241,11 @@ test("fillers: hesitations only, en/pl only", () => {
   const project = projectWith([clip("clip-1", 0, 180)]);
   const words = [...WORDS.slice(0, 6), { text: "you", start: 4.0, end: 4.2 }, { text: "know", start: 4.25, end: 4.5 }];
   const plan = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { fillers: true }));
-  assert.deepEqual(plan.cuts.map((c) => [c.text, c.fillers]), [["um", 1]], '"you know" is a maybe filler and stays');
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.text, c.fillers]),
+    [["um", 1]],
+    '"you know" is a maybe filler and stays',
+  );
   assert.equal(plan.summary, "Removed 1 filler (0.3 s)");
   const de = ok(planTextCut(project, "m-talk", { ...T, language: "de" }, { fillers: true }));
   assert.deepEqual(de.ops, []);
@@ -167,7 +263,10 @@ test("handles keep 5 frames after and 2 before touching words; a word too tight 
   ];
   const plan = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { remove: [{ from: 1, to: 1 }] }));
   // cd 45–54 keeps 42 + 5 after "ab" and 2 before "ef" (54): 47–52.
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to]), [[47, 52]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to]),
+    [[47, 52]],
+  );
   const tight = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { remove: [{ from: 3, to: 3 }] }));
   assert.deepEqual(tight.ops, []);
   assert.match(tight.notes.join(" "), /"x" \(w3\) runs into the words around it/);
@@ -175,16 +274,30 @@ test("handles keep 5 frames after and 2 before touching words; a word too tight 
 
 test("frame snapping: a word covers the frames it's heard in (floor start, ceil end)", () => {
   const project = projectWith([clip("clip-1", 0, 180)]);
-  const words = [{ text: "a", start: 0.2, end: 0.5 }, { text: "um", start: 1.21, end: 1.49 }, { text: "b", start: 2.0, end: 2.2 }];
+  const words = [
+    { text: "a", start: 0.2, end: 0.5 },
+    { text: "um", start: 1.21, end: 1.49 },
+    { text: "b", start: 2.0, end: 2.2 },
+  ];
   const plan = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { remove: [{ from: 1, to: 1 }] }));
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to]), [[36, 45]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to]),
+    [[36, 45]],
+  );
 });
 
 test("ripple: later clips stay back to back; free tracks don't move (and the note says so)", () => {
   const title: Item = { id: "title-1", type: "text", start: 100, duration: 60, text: "Hi" };
   const project = projectWith([clip("b-1", 0, 30, { media: "m-b" }), clip("clip-1", 0, 180), clip("b-2", 100, 60, { media: "m-b" })]);
   const withTitle = { ...project, tracks: [{ ...project.tracks[0]!, items: [title] }, project.tracks[1]!] };
-  const plan = ok(planTextCut(withTitle, "m-talk", T, { remove: [{ from: 1, to: 1 }, { from: 6, to: 7 }] }));
+  const plan = ok(
+    planTextCut(withTitle, "m-talk", T, {
+      remove: [
+        { from: 1, to: 1 },
+        { from: 6, to: 7 },
+      ],
+    }),
+  );
   const { starts } = layout(plan.project);
   let t = 0;
   for (const item of mainOf(plan.project)) {
@@ -203,12 +316,25 @@ test("speed: a 2× clip loses half as many frames", () => {
   const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 1, to: 1 }] }));
   // media 36–45 shows at local 18–22.5: frames 18..22 (5).
   assert.equal(plan.framesRemoved, 5);
-  assert.deepEqual(shape(plan.project), [["clip-1", 0, 18], ["clip-2", 46, 67]]);
+  assert.deepEqual(shape(plan.project), [
+    ["clip-1", 0, 18],
+    ["clip-2", 46, 67],
+  ]);
 });
 
 test("transitions at a cut that changes go in the same edit; fades, keys and animations are fitted", () => {
   const fade = { module: "transition.crossfade", duration: 10 };
-  const project = projectWith([clip("a", 0, 60), clip("b", 60, 120, { transitionIn: fade, gainKeys: [{ frame: 0, db: 0 }, { frame: 110, db: -12 }], animation: { out: { module: "move.fade", duration: 100 } } })]);
+  const project = projectWith([
+    clip("a", 0, 60),
+    clip("b", 60, 120, {
+      transitionIn: fade,
+      gainKeys: [
+        { frame: 0, db: 0 },
+        { frame: 110, db: -12 },
+      ],
+      animation: { out: { module: "move.fade", duration: 100 } },
+    }),
+  ]);
   const plan = ok(planTextCut(project, "m-talk", T, { remove: [{ from: 2, to: 5 }], pauses: { min: 0.5 } }));
   assert.deepEqual(plan.ops[0], { op: "set_transition", item: "b", transition: null });
   const b = mainOf(plan.project).find((i) => i.id === "b")!;
@@ -222,7 +348,10 @@ test("transitions at a cut that changes go in the same edit; fades, keys and ani
   // A whole clip covered by the cut is deleted; the transition into the next one goes.
   const short = projectWith([clip("a", 0, 30), clip("um", 36, 9), clip("c", 50, 100, { transitionIn: { module: "transition.crossfade", duration: 4 } })]);
   const gone = ok(planTextCut(short, "m-talk", T, { remove: [{ from: 1, to: 1 }] }));
-  assert.deepEqual(gone.ops, [{ op: "set_transition", item: "c", transition: null }, { op: "delete_item", item: "um" }]);
+  assert.deepEqual(gone.ops, [
+    { op: "set_transition", item: "c", transition: null },
+    { op: "delete_item", item: "um" },
+  ]);
 });
 
 test("locked clips are skipped with a note; a locked main track is refused; bad requests are refused", () => {
@@ -252,38 +381,64 @@ test("editWords: the words heard on the main track in edit order, at their timel
   const project = projectWith([clip("a", 36, 54), clip("b-1", 0, 30, { media: "m-b" }), clip("c", 0, 40)]);
   const words = editWords(project, new Map([["m-talk", WORDS]]));
   // a plays media 36–90: um, this, is, a, test.; c plays 0–40: Hello.
-  assert.deepEqual(words.map((w) => [w.clip, w.index, w.start, w.end]), [
-    ["a", 1, 0, 9],
-    ["a", 2, 12, 24],
-    ["a", 3, 27, 33],
-    ["a", 4, 36, 39],
-    ["a", 5, 42, 54],
-    ["c", 0, 84 + 15, 84 + 30],
-  ]);
+  assert.deepEqual(
+    words.map((w) => [w.clip, w.index, w.start, w.end]),
+    [
+      ["a", 1, 0, 9],
+      ["a", 2, 12, 24],
+      ["a", 3, 27, 33],
+      ["a", 4, 36, 39],
+      ["a", 5, 42, 54],
+      ["c", 0, 84 + 15, 84 + 30],
+    ],
+  );
 });
 
 // Review fixes (D69): handles only for words that stay in the clip being cut.
-const SEAM_WORDS = [{ text: "zero", start: 0, end: 1 }, { text: "one", start: 1, end: 1.5 }, { text: "two", start: 1.5, end: 2 }, { text: "three", start: 2, end: 3 }];
+const SEAM_WORDS = [
+  { text: "zero", start: 0, end: 1 },
+  { text: "one", start: 1, end: 1.5 },
+  { text: "two", start: 1.5, end: 2 },
+  { text: "three", start: 2, end: 3 },
+];
 const SEAM: CutTranscript = { words: SEAM_WORDS, language: "en", seconds: 3 };
-const seamProject = (main: ReadonlyArray<Item>) => ({ ...projectWith(main), media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }] });
+const seamProject = (main: ReadonlyArray<Item>) => ({
+  ...projectWith(main),
+  media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }],
+});
 
 test("deleting touching words one by one ends like deleting them together (no blip from a handle)", () => {
   const project = seamProject([clip("clip-1", 0, 90)]);
   const joint = ok(planTextCut(project, "m-talk", SEAM, { remove: [{ from: 1, to: 2 }] }));
   const first = ok(planTextCut(project, "m-talk", SEAM, { remove: [{ from: 1, to: 1 }] }));
   const second = ok(planTextCut(first.project, "m-talk", SEAM, { remove: [{ from: 2, to: 2 }] }));
-  assert.deepEqual(shape(joint.project), [["clip-1", 0, 35], ["clip-2", 58, 32]]);
+  assert.deepEqual(shape(joint.project), [
+    ["clip-1", 0, 35],
+    ["clip-2", 58, 32],
+  ]);
   assert.deepEqual(shape(second.project), shape(joint.project));
   // And the other way round.
-  const back = ok(planTextCut(ok(planTextCut(project, "m-talk", SEAM, { remove: [{ from: 2, to: 2 }] })).project, "m-talk", SEAM, { remove: [{ from: 1, to: 1 }] }));
+  const back = ok(
+    planTextCut(ok(planTextCut(project, "m-talk", SEAM, { remove: [{ from: 2, to: 2 }] })).project, "m-talk", SEAM, { remove: [{ from: 1, to: 1 }] }),
+  );
   assert.equal(layout(back.project).duration, layout(joint.project).duration);
   for (const item of mainOf(back.project)) assert.ok(item.duration > 4, `no sliver: ${JSON.stringify(shape(back.project))}`);
 });
 
 test("a selection across a clip seam (ranges carrying their clip) leaves no slivers", () => {
   const project = seamProject([clip("a", 0, 45), clip("b", 45, 45)]);
-  const plan = ok(planTextCut(project, "m-talk", SEAM, { remove: [{ from: 1, to: 1, clip: "a" }, { from: 2, to: 2, clip: "b" }] }));
-  assert.deepEqual(shape(plan.project), [["a", 0, 35], ["b", 58, 32]]);
+  const plan = ok(
+    planTextCut(project, "m-talk", SEAM, {
+      remove: [
+        { from: 1, to: 1, clip: "a" },
+        { from: 2, to: 2, clip: "b" },
+      ],
+    }),
+  );
+  assert.deepEqual(shape(plan.project), [
+    ["a", 0, 35],
+    ["b", 58, 32],
+  ]);
   assert.equal(plan.framesRemoved, 23);
   assert.deepEqual(plan.notes, []);
 });
@@ -296,12 +451,19 @@ test("the panel's planner cuts a seam selection in one call per media", async ()
   const plan = planCutWords(project, transcripts, selected);
   assert.ok(!("problem" in plan));
   const after = applyEdit(createSession(project), { actor: "user", ops: plan.ops }, timelineProblems).project;
-  assert.deepEqual(shape(after), [["a", 0, 35], ["b", 58, 32]]);
+  assert.deepEqual(shape(after), [
+    ["a", 0, 35],
+    ["b", 58, 32],
+  ]);
   assert.equal(plan.summary, "Cut 2 words (0.8 s)");
 });
 
 test("a word shorter than a frame at the clip's speed gets its own note, and no id is spent", () => {
-  const words = [{ text: "a", start: 0, end: 1 }, { text: "b", start: 1.1, end: 1.2 }, { text: "c", start: 1.3, end: 2 }];
+  const words = [
+    { text: "a", start: 0, end: 1 },
+    { text: "b", start: 1.1, end: 1.2 },
+    { text: "c", start: 1.3, end: 2 },
+  ];
   const project = projectWith([clip("clip-1", 0, 22, { speed: 4 })]);
   const plan = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 3 }, { remove: [{ from: 1, to: 1 }] }));
   assert.deepEqual(plan.ops, []);
@@ -322,7 +484,11 @@ test("removing pauses twice changes nothing the second time, even when a silence
     { text: "week.", start: 3.8, end: 4.4 },
   ];
   const t: CutTranscript = { words, language: "en", seconds: 6 };
-  const silences = [{ start: 1.0, end: 1.6 }, { start: 2.3, end: 3.4 }, { start: 4.5, end: 6 }];
+  const silences = [
+    { start: 1.0, end: 1.6 },
+    { start: 2.3, end: 3.4 },
+    { start: 4.5, end: 6 },
+  ];
   const first = ok(planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", t, { pauses: { min: 0.5 }, silences }));
   assert.ok(first.framesRemoved > 0);
   const again = ok(planTextCut(first.project, "m-talk", t, { pauses: { min: 0.5 }, silences }));
@@ -340,63 +506,136 @@ test("Remove pauses, then cutting a word with pauses: no sliver between the word
     { text: "end.", start: 2.8, end: 3.2 },
   ];
   const t: CutTranscript = { words, language: "en", seconds: 6 };
-  const silences = [{ start: 0.95, end: 1.52 }, { start: 1.6, end: 2.4 }, { start: 3.3, end: 6 }];
+  const silences = [
+    { start: 0.95, end: 1.52 },
+    { start: 1.6, end: 2.4 },
+    { start: 3.3, end: 6 },
+  ];
   const first = ok(planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", t, { pauses: { min: 0.5 }, silences }));
-  assert.deepEqual(shape(first.project), [["clip-1", 0, 35], ["clip-2", 43, 10], ["clip-3", 70, 34]]);
+  assert.deepEqual(shape(first.project), [
+    ["clip-1", 0, 35],
+    ["clip-2", 43, 10],
+    ["clip-3", 70, 34],
+  ]);
   const second = ok(planTextCut(first.project, "m-talk", t, { remove: [{ from: 1, to: 1 }], pauses: { min: 0.5 }, silences }));
-  assert.deepEqual(shape(second.project), [["clip-1", 0, 17], ["clip-3", 70, 34]]);
+  assert.deepEqual(shape(second.project), [
+    ["clip-1", 0, 17],
+    ["clip-3", 70, 34],
+  ]);
   assert.ok(mainOf(second.project).every((i) => i.duration >= 3));
 });
 
 // D74: the end of a kept word survives a cut (whisper's ends run early; a word's decay is quiet).
-const cutsOf = (words: ReadonlyArray<{ text: string; start: number; end: number }>, extra: Partial<CutTranscript> = {}, silences?: ReadonlyArray<{ start: number; end: number }>) =>
-  ok(planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", { words, language: "en", seconds: 6, ...extra }, { pauses: { min: 0.5 }, silences })).cuts.map((c) => [c.from, c.to]);
+const cutsOf = (
+  words: ReadonlyArray<{ text: string; start: number; end: number }>,
+  extra: Partial<CutTranscript> = {},
+  silences?: ReadonlyArray<{ start: number; end: number }>,
+) =>
+  ok(
+    planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", { words, language: "en", seconds: 6, ...extra }, { pauses: { min: 0.5 }, silences }),
+  ).cuts.map((c) => [c.from, c.to]);
 
 test("a word's quiet decay inside a −40 dB silence is kept: the pause starts after the word's end, then the tail", () => {
-  const words = [{ text: "one", start: 1.0, end: 2.0 }, { text: "two", start: 4.0, end: 5.0 }];
+  const words = [
+    { text: "one", start: 1.0, end: 2.0 },
+    { text: "two", start: 4.0, end: 5.0 },
+  ];
   // The silence starts at 1.9 s, while whisper still hears the word (its decay under −40 dB).
   const cuts = cutsOf(words, {}, [{ start: 1.9, end: 3.95 }]);
   assert.deepEqual(cuts[1], [60 + 5, 118 - 2]);
 });
 
 test("a sentence's last word ends no earlier than its segment (whisper's word end runs early)", () => {
-  const words = [{ text: "the", start: 1.0, end: 1.3 }, { text: "end.", start: 1.3, end: 1.6 }, { text: "Next", start: 4.0, end: 4.4 }];
-  const segments = [{ start: 1.0, end: 2.0, words: [0, 2] as const }, { start: 4.0, end: 4.5, words: [2, 3] as const }];
+  const words = [
+    { text: "the", start: 1.0, end: 1.3 },
+    { text: "end.", start: 1.3, end: 1.6 },
+    { text: "Next", start: 4.0, end: 4.4 },
+  ];
+  const segments = [
+    { start: 1.0, end: 2.0, words: [0, 2] as const },
+    { start: 4.0, end: 4.5, words: [2, 3] as const },
+  ];
   // Without segments the pause would start at 48 + 5; the segment says the sentence runs to 2.0 s.
   assert.deepEqual(cutsOf(words)[1], [53, 118]);
   assert.deepEqual(cutsOf(words, { segments })[1], [60 + 5, 118]);
   // And a silence that starts later still (the sound goes on): the word lasts until it.
   assert.deepEqual(cutsOf(words, { segments }, [{ start: 2.2, end: 3.9 }])[1], [66 + 5, 117 - 2]);
   // A segment end at (or past) the next word is punctuation timed there (D68), not sound: ignored.
-  const tight = [{ text: "a.", start: 1.0, end: 1.2 }, { text: "b", start: 1.6, end: 1.8 }];
-  const after0 = (segEnd: number) => pausesOf(tight, 6, undefined, 0.05, [{ start: 1.0, end: segEnd, words: [0, 1] }]).filter((p) => p.after === 0).map((p) => [p.start, p.end]);
+  const tight = [
+    { text: "a.", start: 1.0, end: 1.2 },
+    { text: "b", start: 1.6, end: 1.8 },
+  ];
+  const after0 = (segEnd: number) =>
+    pausesOf(tight, 6, undefined, 0.05, [{ start: 1.0, end: segEnd, words: [0, 1] }])
+      .filter((p) => p.after === 0)
+      .map((p) => [p.start, p.end]);
   assert.deepEqual(after0(1.55), [[1.2, 1.6]]);
   assert.deepEqual(after0(1.4), [[1.4, 1.6]]);
 });
 
 test("out points round outward: a word ending mid-frame keeps that frame, then the tail", () => {
-  const words = [{ text: "one", start: 1.0, end: 2.71 }, { text: "two", start: 4.0, end: 5.0 }];
+  const words = [
+    { text: "one", start: 1.0, end: 2.71 },
+    { text: "two", start: 4.0, end: 5.0 },
+  ];
   // 2.71 s is in frame 81: the pause starts at 82 + 5.
   assert.deepEqual(cutsOf(words)[1], [87, 118]);
 });
 
 test("a word whisper starts late keeps its head: the pause ends at the silence's end, less the head", () => {
-  const words = [{ text: "one", start: 1.0, end: 2.0 }, { text: "two", start: 4.0, end: 5.0 }];
+  const words = [
+    { text: "one", start: 1.0, end: 2.0 },
+    { text: "two", start: 4.0, end: 5.0 },
+  ];
   // The sound starts again at 3.5 s (the silence ends there); whisper says 4.0.
   assert.deepEqual(cutsOf(words, {}, [{ start: 2.0, end: 3.5 }])[1], [65, 105 - 2]);
 });
 
 test("speechWords only widens words, never past their neighbours, and is idempotent", () => {
-  const words = [{ text: "a", start: 1.0, end: 1.2 }, { text: "b.", start: 1.3, end: 1.5 }, { text: "c", start: 3.0, end: 3.2 }];
-  const opts = { segments: [{ start: 1.0, end: 1.9, words: [0, 2] as const }, { start: 2.8, end: 3.4, words: [2, 3] as const }], silences: [{ start: 2.1, end: 2.9 }], seconds: 6 };
+  const words = [
+    { text: "a", start: 1.0, end: 1.2 },
+    { text: "b.", start: 1.3, end: 1.5 },
+    { text: "c", start: 3.0, end: 3.2 },
+  ];
+  const opts = {
+    segments: [
+      { start: 1.0, end: 1.9, words: [0, 2] as const },
+      { start: 2.8, end: 3.4, words: [2, 3] as const },
+    ],
+    silences: [{ start: 2.1, end: 2.9 }],
+    seconds: 6,
+  };
   const once = speechWords(words, opts);
-  assert.deepEqual(once.map((w) => [w.text, w.start, w.end]), [["a", 1.0, 1.2], ["b.", 1.3, 2.1], ["c", 2.9, 3.4]]);
+  assert.deepEqual(
+    once.map((w) => [w.text, w.start, w.end]),
+    [
+      ["a", 1.0, 1.2],
+      ["b.", 1.3, 2.1],
+      ["c", 2.9, 3.4],
+    ],
+  );
   assert.deepEqual(speechWords(once, opts), once);
   for (let i = 0; i < words.length; i++) assert.ok(once[i]!.start <= words[i]!.start && once[i]!.end >= words[i]!.end);
   // A word wholly inside a silence (whisper mistimed it) moves to the nearer edge, in order (and,
   // a timestamp, gets 0.1 s on the side away from the silence).
-  const inside = speechWords([{ text: "x.", start: 1.0, end: 1.5 }, { text: "late", start: 2.1, end: 2.3 }, { text: "early", start: 3.6, end: 3.7 }, { text: "y", start: 3.8, end: 4.4 }], { silences: [{ start: 2.0, end: 4.0 }] });
-  assert.deepEqual(inside.map((w) => [w.text, w.start, w.end]), [["x.", 1.0, 1.5], ["late", 1.9, 2.0], ["early", 4.0, 4.0], ["y", 4.0, 4.4]]);
+  const inside = speechWords(
+    [
+      { text: "x.", start: 1.0, end: 1.5 },
+      { text: "late", start: 2.1, end: 2.3 },
+      { text: "early", start: 3.6, end: 3.7 },
+      { text: "y", start: 3.8, end: 4.4 },
+    ],
+    { silences: [{ start: 2.0, end: 4.0 }] },
+  );
+  assert.deepEqual(
+    inside.map((w) => [w.text, w.start, w.end]),
+    [
+      ["x.", 1.0, 1.5],
+      ["late", 1.9, 2.0],
+      ["early", 4.0, 4.0],
+      ["y", 4.0, 4.4],
+    ],
+  );
 });
 
 // Regression (D74): the real agent run behind "the last words are always cut in half". Talk.mp4 of
@@ -416,8 +655,14 @@ test("the real example: 'Croatia.' keeps its end and 'The first' its start", () 
     { text: "was", start: 9.52, end: 9.59 },
     { text: "flown", start: 9.83, end: 10.03 },
   ];
-  const segments = [{ start: 4.02, end: 8.28, words: [0, 5] as const }, { start: 9.52, end: 13.26, words: [5, 10] as const }];
-  const project = { ...projectWith([clip("clip-1", 0, 360)]), media: [{ id: "m-talk", kind: "video" as const, name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 360, fps: 30, hasAudio: true } }] };
+  const segments = [
+    { start: 4.02, end: 8.28, words: [0, 5] as const },
+    { start: 9.52, end: 13.26, words: [5, 10] as const },
+  ];
+  const project = {
+    ...projectWith([clip("clip-1", 0, 360)]),
+    media: [{ id: "m-talk", kind: "video" as const, name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 360, fps: 30, hasAudio: true } }],
+  };
   const plan = (silences?: ReadonlyArray<{ start: number; end: number }>) =>
     ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 12, segments }, { pauses: { min: 0.5 }, silences })).cuts.find((c) => c.from > 200)!;
   // Before D74 (whisper's word end + 2 frames) the pause cut started at frame 237 (7.90 s), 0.57 s
@@ -464,33 +709,93 @@ test("envelope: stored as one byte per 10 ms (0.5 dB steps) and read back", () =
 });
 
 test("envelope: a kept word's tail follows its sound past whisper's end (a short stop-consonant dip doesn't end it), its head likewise", () => {
-  const words = [{ text: "one", start: 1.0, end: 1.6 }, { text: "two", start: 3.0, end: 3.5 }];
+  const words = [
+    { text: "one", start: 1.0, end: 1.6 },
+    { text: "two", start: 3.0, end: 3.5 },
+  ];
   // The sound of "one": 0.9–1.9 s with a 60 ms dip at 1.7 s; "two" from 2.8 s.
-  const env = envelopeOf(6, [[0.9, 1.9, -14], [1.7, 1.76, -70], [2.8, 3.6, -14]]);
+  const env = envelopeOf(6, [
+    [0.9, 1.9, -14],
+    [1.7, 1.76, -70],
+    [2.8, 3.6, -14],
+  ]);
   const heard = speechWords(words, { envelope: env, seconds: 6 });
-  assert.deepEqual(heard.map((w) => [w.start, w.end]), [[0.9, 1.9], [2.8, 3.6]]);
+  assert.deepEqual(
+    heard.map((w) => [w.start, w.end]),
+    [
+      [0.9, 1.9],
+      [2.8, 3.6],
+    ],
+  );
   assert.deepEqual(speechWords(heard, { envelope: env, seconds: 6 }), heard, "idempotent");
   const project = projectWith([clip("clip-1", 0, 180)]);
   const plan = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { pauses: { min: 0.5 }, envelope: env }));
   // The pause between them: from 57 (1.9 s) + 5 to 84 (2.8 s) − 2; the clip ends 5 frames after "two"'s sound.
-  assert.deepEqual(plan.cuts.map((c) => [c.from, c.to]), [[0, 25], [62, 82], [113, 180]]);
+  assert.deepEqual(
+    plan.cuts.map((c) => [c.from, c.to]),
+    [
+      [0, 25],
+      [62, 82],
+      [113, 180],
+    ],
+  );
   const again = ok(planTextCut(plan.project, "m-talk", { words, language: "en", seconds: 6 }, { pauses: { min: 0.5 }, envelope: env }));
   assert.equal(again.ops.length, 0, "Remove pauses twice: nothing the second time");
   // Sound that runs from one word into the next: the gap is split at its quietest window (here the
   // first, all being equal), not given to the earlier word, and those edges aren't "measured".
-  const touching = speechEdges([{ text: "a", start: 1.0, end: 1.2 }, { text: "b", start: 1.5, end: 1.8 }], { envelope: envelopeOf(3, [[1.0, 1.8, -14]]) });
-  assert.deepEqual(touching.words.map((w) => [w.start, w.end]), [[1.0, 1.2], [1.2, 1.8]]);
+  const touching = speechEdges(
+    [
+      { text: "a", start: 1.0, end: 1.2 },
+      { text: "b", start: 1.5, end: 1.8 },
+    ],
+    { envelope: envelopeOf(3, [[1.0, 1.8, -14]]) },
+  );
+  assert.deepEqual(
+    touching.words.map((w) => [w.start, w.end]),
+    [
+      [1.0, 1.2],
+      [1.2, 1.8],
+    ],
+  );
   assert.deepEqual([touching.endMeasured[0], touching.startMeasured[1]], [false, false]);
-  const dip = speechEdges([{ text: "a", start: 1.0, end: 1.2 }, { text: "b", start: 1.5, end: 1.8 }], { envelope: envelopeOf(3, [[1.0, 1.8, -14], [1.3, 1.35, -30], [1.32, 1.33, -60]]) });
-  assert.deepEqual(dip.words.map((w) => [w.start, w.end]), [[1.0, 1.32], [1.33, 1.8]], "split at the quietest window of a short dip");
+  const dip = speechEdges(
+    [
+      { text: "a", start: 1.0, end: 1.2 },
+      { text: "b", start: 1.5, end: 1.8 },
+    ],
+    {
+      envelope: envelopeOf(3, [
+        [1.0, 1.8, -14],
+        [1.3, 1.35, -30],
+        [1.32, 1.33, -60],
+      ]),
+    },
+  );
+  assert.deepEqual(
+    dip.words.map((w) => [w.start, w.end]),
+    [
+      [1.0, 1.32],
+      [1.33, 1.8],
+    ],
+    "split at the quietest window of a short dip",
+  );
 });
 
 test("a filler whisper gave no length is removed whole: its sound with the envelope, 0.2 s around it without", () => {
   // "review." then "Um," at 4.02–4.02 (a timestamp); its sound is 4.00–4.35 s; "today" from 4.5 s.
-  const words = [{ text: "review.", start: 3.28, end: 3.71 }, { text: "Um,", start: 4.02, end: 4.02 }, { text: "today", start: 4.5, end: 4.8 }];
-  const env = envelopeOf(6, [[3.25, 3.85, -14], [4.0, 4.35, -15], [4.5, 4.9, -14]]);
+  const words = [
+    { text: "review.", start: 3.28, end: 3.71 },
+    { text: "Um,", start: 4.02, end: 4.02 },
+    { text: "today", start: 4.5, end: 4.8 },
+  ];
+  const env = envelopeOf(6, [
+    [3.25, 3.85, -14],
+    [4.0, 4.35, -15],
+    [4.5, 4.9, -14],
+  ]);
   const project = projectWith([clip("clip-1", 0, 180)]);
-  const cut = (envelope?: ReturnType<typeof envelopeOf>) => ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { fillers: true, envelope })).cuts.map((c) => [c.from, c.to]);
+  const cut = (envelope?: ReturnType<typeof envelopeOf>) =>
+    ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 6 }, { fillers: true, envelope })).cuts.map((c) => [c.from, c.to]);
   assert.deepEqual(cut(env), [[120, 131]], "4.00–4.35 s: all of it");
   // Without the envelope: 3.92–4.12 s, after the 5-frame tail of "review." (ends at frame 112).
   assert.deepEqual(cut(), [[117, 124]]);
@@ -499,8 +804,21 @@ test("a filler whisper gave no length is removed whole: its sound with the envel
 // Regression (D74): "spray." in the phase 5 manual run lost its end before the removed "Ah, I almost…"
 // (a 0.19 s gap: no −40 dB silence of 0.3 s there). The envelope 21.0–22.5 s is the real one.
 test("the real example: 'spray.' keeps its end before a removed sentence, with the envelope", () => {
-  const real = [-19, -21, -20, -17, -13, -12, -13, -14, -12, -14, -12, -13, -14, -11, -13, -11, -13, -13, -17, -21, -25, -28, -31, -31, -31, -29, -31, -30, -31, -30, -26, -14, -13, -13, -14, -13, -13, -13, -14, -12, -13, -14, -12, -13, -13, -15, -13, -13, -13, -15, -14, -16, -21, -26, -31, -34, -39, -41, -39, -40, -34, -31, -29, -28, -28, -28, -31, -30, -32, -34, -40, -57, -61, -66, -67, -69, -69, -50, -39, -18, -14, -14, -13, -14, -13, -13, -15, -14, -14, -15, -14, -14, -16, -14, -15, -16, -14, -15, -16, -15, -15, -16, -17, -17, -16, -17, -18, -18, -20, -20, -21, -21, -22, -24, -28, -31, -33, -38, -49, -66, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -73, -42, -18, -14, -14, -14, -13, -13, -14, -13, -13];
-  const env = envelopeOf(24, [[20.0, 21.0, -14], [22.5, 23.0, -14]], { start: 21.0, db: real });
+  const real = [
+    -19, -21, -20, -17, -13, -12, -13, -14, -12, -14, -12, -13, -14, -11, -13, -11, -13, -13, -17, -21, -25, -28, -31, -31, -31, -29, -31, -30, -31, -30, -26,
+    -14, -13, -13, -14, -13, -13, -13, -14, -12, -13, -14, -12, -13, -13, -15, -13, -13, -13, -15, -14, -16, -21, -26, -31, -34, -39, -41, -39, -40, -34, -31,
+    -29, -28, -28, -28, -31, -30, -32, -34, -40, -57, -61, -66, -67, -69, -69, -50, -39, -18, -14, -14, -13, -14, -13, -13, -15, -14, -14, -15, -14, -14, -16,
+    -14, -15, -16, -14, -15, -16, -15, -15, -16, -17, -17, -16, -17, -18, -18, -20, -20, -21, -21, -22, -24, -28, -31, -33, -38, -49, -66, -100, -100, -100,
+    -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -100, -73, -42, -18, -14, -14, -14, -13, -13, -14, -13, -13,
+  ];
+  const env = envelopeOf(
+    24,
+    [
+      [20.0, 21.0, -14],
+      [22.5, 23.0, -14],
+    ],
+    { start: 21.0, db: real },
+  );
   const words = [
     { text: "salt", start: 20.82, end: 21.15 },
     { text: "spray.", start: 21.15, end: 21.57 },
@@ -508,9 +826,16 @@ test("the real example: 'spray.' keeps its end before a removed sentence, with t
     { text: "I", start: 22.42, end: 22.42 },
     { text: "almost", start: 22.73, end: 22.78 },
   ];
-  const segments = [{ start: 18, end: 21.9, words: [0, 2] as const }, { start: 22.42, end: 26.22, words: [2, 5] as const }];
-  const project = { ...projectWith([clip("clip-1", 600, 120)]), media: [{ id: "m-talk", kind: "video" as const, name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 720, fps: 30, hasAudio: true } }] };
-  const plan = (envelope?: ReturnType<typeof envelopeOf>) => ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 24, segments }, { remove: [{ from: 2, to: 4 }], envelope })).cuts[0]!;
+  const segments = [
+    { start: 18, end: 21.9, words: [0, 2] as const },
+    { start: 22.42, end: 26.22, words: [2, 5] as const },
+  ];
+  const project = {
+    ...projectWith([clip("clip-1", 600, 120)]),
+    media: [{ id: "m-talk", kind: "video" as const, name: "Talk.mp4", path: "/tmp/Talk.mp4", probe: { frames: 720, fps: 30, hasAudio: true } }],
+  };
+  const plan = (envelope?: ReturnType<typeof envelopeOf>) =>
+    ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 24, segments }, { remove: [{ from: 2, to: 4 }], envelope })).cuts[0]!;
   // The sound of "spray." stops at 22.19 s (the p's closure at 21.71 s doesn't end it); "Ah" starts at 22.40 s.
   assert.equal(plan(env).from, 672);
   assert.ok(plan(env).from / 30 > 22.19);
@@ -521,22 +846,47 @@ test("the real example: 'spray.' keeps its end before a removed sentence, with t
 // D74 review: the envelope must never clip a kept word itself.
 test("envelope: deleting 'um' right before 'Hello' (their sound 60 ms apart) keeps Hello's onset and its margin", () => {
   // um's sound 1.00–1.30 s, a 60 ms dip, Hello's from 1.36 s; whisper: um 1.0–1.25, Hello 1.44–1.75.
-  const words = [{ text: "So", start: 0.5, end: 0.8 }, { text: "um", start: 1.0, end: 1.25 }, { text: "Hello", start: 1.44, end: 1.75 }];
-  const env = envelopeOf(3, [[0.5, 0.82, -20], [1.0, 1.3, -20], [1.36, 1.8, -20]]);
-  const project = { ...projectWith([clip("clip-1", 0, 90)]), media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }] };
+  const words = [
+    { text: "So", start: 0.5, end: 0.8 },
+    { text: "um", start: 1.0, end: 1.25 },
+    { text: "Hello", start: 1.44, end: 1.75 },
+  ];
+  const env = envelopeOf(3, [
+    [0.5, 0.82, -20],
+    [1.0, 1.3, -20],
+    [1.36, 1.8, -20],
+  ]);
+  const project = {
+    ...projectWith([clip("clip-1", 0, 90)]),
+    media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }],
+  };
   for (const envelope of [undefined, env]) {
-    const cuts = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 3 }, { remove: [{ from: 1, to: 1 }], envelope })).cuts.map((c) => [c.from, c.to]);
+    const cuts = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 3 }, { remove: [{ from: 1, to: 1 }], envelope })).cuts.map((c) => [
+      c.from,
+      c.to,
+    ]);
     // Hello's sound starts in frame 40 (1.36 s): the cut stops 2 frames before it.
     assert.deepEqual(cuts, [[30, 38]], envelope ? "with the envelope" : "without");
   }
 });
 
 test("envelope: words whose sound runs together are cut on whisper's edges with the margins, as without it", () => {
-  const words = [{ text: "I", start: 0.5, end: 0.7 }, { text: "really", start: 0.7, end: 1.1 }, { text: "like", start: 1.1, end: 1.4 }, { text: "it.", start: 1.4, end: 1.6 }];
+  const words = [
+    { text: "I", start: 0.5, end: 0.7 },
+    { text: "really", start: 0.7, end: 1.1 },
+    { text: "like", start: 1.1, end: 1.4 },
+    { text: "it.", start: 1.4, end: 1.6 },
+  ];
   const env = envelopeOf(3, [[0.5, 1.7, -20]]);
-  const project = { ...projectWith([clip("clip-1", 0, 90)]), media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }] };
+  const project = {
+    ...projectWith([clip("clip-1", 0, 90)]),
+    media: [{ id: "m-talk", kind: "video" as const, name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: 30, hasAudio: true } }],
+  };
   for (const envelope of [undefined, env]) {
-    const cuts = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 3 }, { remove: [{ from: 1, to: 1 }], envelope })).cuts.map((c) => [c.from, c.to]);
+    const cuts = ok(planTextCut(project, "m-talk", { words, language: "en", seconds: 3 }, { remove: [{ from: 1, to: 1 }], envelope })).cuts.map((c) => [
+      c.from,
+      c.to,
+    ]);
     assert.deepEqual(cuts, [[26, 31]], envelope ? "with the envelope" : "without");
   }
 });
@@ -636,9 +986,15 @@ test("fuzz: deleting words one by one leaves no piece under 3 frames, with or wi
       }
       const seconds = x + 1;
       const frames = Math.ceil(seconds * fps);
-      const db = Array.from({ length: Math.ceil(seconds * 100) }, (_, k) => (words.some((w) => k / 100 >= w.start - 0.03 && k / 100 < w.end + 0.12) ? -20 : -70));
+      const db = Array.from({ length: Math.ceil(seconds * 100) }, (_, k) =>
+        words.some((w) => k / 100 >= w.start - 0.03 && k / 100 < w.end + 0.12) ? -20 : -70,
+      );
       const envelope = useEnv ? decodeEnvelope(encodeEnvelope(db)) : undefined;
-      const project: Project = { ...projectWith([clip("c", 0, frames)]), canvas: { width: 320, height: 180, fps: fps as Project["canvas"]["fps"] }, media: [{ id: "m-talk", kind: "video", name: "T.mp4", path: "/tmp/T.mp4", probe: { frames, fps, hasAudio: true } }] };
+      const project: Project = {
+        ...projectWith([clip("c", 0, frames)]),
+        canvas: { width: 320, height: 180, fps: fps as Project["canvas"]["fps"] },
+        media: [{ id: "m-talk", kind: "video", name: "T.mp4", path: "/tmp/T.mp4", probe: { frames, fps, hasAudio: true } }],
+      };
       const tr = { words, seconds };
       const b = 2 + Math.floor(rnd() * 4);
       const order = Array.from({ length: b - 1 }, (_, k) => 2 + k);
@@ -648,7 +1004,10 @@ test("fuzz: deleting words one by one leaves no piece under 3 frames, with or wi
         const q = ok(planTextCut(p, "m-talk", tr, { remove: [{ from: i, to: i }], envelope }));
         if (q.ops.length) p = q.project;
       }
-      assert.ok(mainOf(p).every((i) => i.duration >= 3), `${useEnv ? "env" : "no env"} trial ${t}: ${JSON.stringify(shape(p))}`);
+      assert.ok(
+        mainOf(p).every((i) => i.duration >= 3),
+        `${useEnv ? "env" : "no env"} trial ${t}: ${JSON.stringify(shape(p))}`,
+      );
     }
   }
 });

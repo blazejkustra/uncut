@@ -28,7 +28,15 @@ after(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const text = (id: string, start: number, words = id) => ({ id, type: "text", start, duration: 30, text: words, transform: { x: 100, y: 100 }, style: { preset: "text.title", size: 120 } });
+const text = (id: string, start: number, words = id) => ({
+  id,
+  type: "text",
+  start,
+  duration: 30,
+  text: words,
+  transform: { x: 100, y: 100 },
+  style: { preset: "text.title", size: 120 },
+});
 const add = (id: string, start: number) => ({ ops: [{ op: "insert_item", track: "text", item: text(id, start) }], summary: `Add ${id}` });
 const ids = (snap: any) => snap.project.tracks[0].items.map((i: any) => i.id);
 const onDisk = (dir: string) => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
@@ -74,10 +82,16 @@ test("revisions, ⌘Z and ⇧⌘Z survive a server restart; history.subscribe li
     await s.ok("project.undo");
     const back = await s.ok("project.undo");
     assert.deepEqual([ids(back), back.canUndo], [["a"], true]);
-    assert.deepEqual(onDisk(dir).tracks[0].items.map((i: any) => i.id), ["a"]);
+    assert.deepEqual(
+      onDisk(dir).tracks[0].items.map((i: any) => i.id),
+      ["a"],
+    );
     // Preview: the project at a revision, nothing changes.
     const preview = await s.ok("history.preview", { revision: 3 });
-    assert.deepEqual(preview.project.tracks[0].items.map((i: any) => i.id), ["a", "b", "c"]);
+    assert.deepEqual(
+      preview.project.tracks[0].items.map((i: any) => i.id),
+      ["a", "b", "c"],
+    );
     assert.deepEqual((await s.ok("project.get")).revision, back.revision);
     assert.equal((await s.fail("history.preview", { revision: 999 })).reason, "missing");
   } finally {
@@ -106,7 +120,14 @@ test("project.json changed while closed: an external revision, ⌘Z stops there 
     assert.deepEqual([external.kind, external.author, external.label], ["external", "external", "Changed outside Uncut"]);
     assert.deepEqual(external.lines, ["Added theirs", "Changed mine"]);
     // What came before the outside change is still history the project grew from, not "undone".
-    assert.deepEqual(s.latest().entries.map((e: any) => [e.kind, e.current]), [["external", true], ["edit", true], ["initial", true]]);
+    assert.deepEqual(
+      s.latest().entries.map((e: any) => [e.kind, e.current]),
+      [
+        ["external", true],
+        ["edit", true],
+        ["initial", true],
+      ],
+    );
     // ⌘Z is a no-op here: the outside change isn't lost by accident.
     assert.deepEqual(await s.ok("project.undo"), opened);
     assert.equal(onDisk(dir).tracks[0].items[0].text, "From git");
@@ -143,7 +164,10 @@ test("a hand edit while open, then Reload: an external revision ⌘Z stops at", 
     assert.deepEqual([reloaded.canUndo, reloaded.project.name], [false, "Renamed by hand"]);
     assert.match(reloaded.undoStop, /outside Uncut/);
     await s.history.until((h) => h?.revision === reloaded.revision);
-    assert.ok(s.latest().entries.every((e: any) => e.current), "earlier entries aren't struck through after a Reload");
+    assert.ok(
+      s.latest().entries.every((e: any) => e.current),
+      "earlier entries aren't struck through after a Reload",
+    );
     const after = await s.ok("project.edit", add("two", 30));
     assert.equal(after.canUndo, true);
     const back = await s.ok("project.undo");
@@ -161,10 +185,16 @@ test("concurrent edits are serialised: consecutive revisions, one row each, and 
   let s = await session();
   const { dir } = await s.ok("project.create", { parentDir: root, name: "Burst" });
   const results = await Promise.all(Array.from({ length: 40 }, (_, i) => s.ok("project.edit", add(`t${i}`, i * 30))));
-  assert.deepEqual(results.map((r) => r.revision).sort((a, b) => a - b), Array.from({ length: 40 }, (_, i) => i + 1));
+  assert.deepEqual(
+    results.map((r) => r.revision).sort((a, b) => a - b),
+    Array.from({ length: 40 }, (_, i) => i + 1),
+  );
   await s.end();
   const { rows, meta } = readRevisions(dir);
-  assert.deepEqual(rows.map((r) => r.revision), Array.from({ length: 41 }, (_, i) => i));
+  assert.deepEqual(
+    rows.map((r) => r.revision),
+    Array.from({ length: 41 }, (_, i) => i),
+  );
   assert.ok(rows.slice(1).every((r) => r.parent === r.revision - 1 && r.kind === "edit"));
   assert.equal(meta.get("head"), "40");
   assert.equal(JSON.parse(meta.get("past")!).length, 40);
@@ -204,7 +234,10 @@ test("a damaged history.db never blocks opening: in memory with a note, the file
     cpSync(join(dir, "project.json"), join(copy, "project.json"));
     const fresh = await s.ok("project.open", { dir: copy });
     assert.deepEqual([fresh.revision, fresh.canUndo, fresh.historyProblem, ids(fresh)], [0, false, undefined, ["kept"]]);
-    assert.deepEqual(readRevisions(copy).rows.map((r) => [r.kind, r.author, r.label]), [["initial", "import", "Opened project.json: the history starts here"]]);
+    assert.deepEqual(
+      readRevisions(copy).rows.map((r) => [r.kind, r.author, r.label]),
+      [["initial", "import", "Opened project.json: the history starts here"]],
+    );
   } finally {
     await s.end();
   }
@@ -217,8 +250,19 @@ test("agent/turns.json is moved into history.db once, then renamed", T, async ()
     const { dir } = await s.ok("project.create", { parentDir: root, name: "Migrate" });
     await s.ok("project.close");
     mkdirSync(join(dir, "agent"));
-    const turn = { id: "turn-old", prompt: "an old turn", startedAt: "2026-10-01T10:00:00.000Z", finishedAt: "2026-10-01T10:00:05.000Z", status: "done", items: [{ kind: "text", text: "Done." }], edits: [] };
-    writeFileSync(join(dir, "agent", "turns.json"), JSON.stringify({ format: "uncut.agent-history/0", provider: "claude", sessionId: "old-session", pendingNote: "The user did a thing.", turns: [turn] }));
+    const turn = {
+      id: "turn-old",
+      prompt: "an old turn",
+      startedAt: "2026-10-01T10:00:00.000Z",
+      finishedAt: "2026-10-01T10:00:05.000Z",
+      status: "done",
+      items: [{ kind: "text", text: "Done." }],
+      edits: [],
+    };
+    writeFileSync(
+      join(dir, "agent", "turns.json"),
+      JSON.stringify({ format: "uncut.agent-history/0", provider: "claude", sessionId: "old-session", pendingNote: "The user did a thing.", turns: [turn] }),
+    );
     await s.ok("project.open", { dir });
     await agent.until((a) => a?.dir === dir && a.turns.length === 1);
     assert.equal(agent.values.at(-1).turns[0].prompt, "an old turn");
@@ -245,7 +289,14 @@ test("scripted claude: a turn made before a restart is undone after it; the hand
   writeFileSync(log, "");
   const env = { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log };
   const turns: Array<unknown> = [
-    [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add a title", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, "Kraków") }] } }, { text: "Added." }],
+    [
+      { tool: "project_read" },
+      {
+        tool: "timeline_edit",
+        args: { baseRevision: "$rev", summary: "Add a title", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, "Kraków") }] },
+      },
+      { text: "Added." },
+    ],
     [{ tool: "project_read" }, { text: "Looked." }],
   ];
   writeFileSync(plan, JSON.stringify(turns));
@@ -273,12 +324,19 @@ test("scripted claude: a turn made before a restart is undone after it; the hand
     assert.deepEqual(ids(back), ["title-1", "user-1"], "one ⌘Z brings the turn back");
     await s.history.until((h) => h?.revision === back.revision);
     const authors = s.latest().entries.map((e: any) => [e.kind, e.author, e.turnId ?? null]);
-    assert.deepEqual(authors.slice(-3), [["edit", "user", null], ["edit", "agent", turnId], ["initial", "user", null]]);
+    assert.deepEqual(authors.slice(-3), [
+      ["edit", "user", null],
+      ["edit", "agent", turnId],
+      ["initial", "user", null],
+    ]);
     assert.ok(s.latest().entries.some((e: any) => e.kind === "undo-turn" && e.label.startsWith("Undid your turn")));
 
     const second = await s.ok("agent.send", { prompt: "anything to fix?" });
     await done(agent, second.turnId);
-    const prompts = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const prompts = readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(prompts.length, 2);
     assert.match(prompts[1].prompt, /Earlier, before the project was closed and reopened:/);
     assert.match(prompts[1].prompt, /Added text user-1 on track text/);

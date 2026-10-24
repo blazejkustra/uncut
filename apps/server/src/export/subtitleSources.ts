@@ -38,5 +38,7 @@ export async function recordSubtitleSources(projectDir: string, paths: ReadonlyA
 /** The sentence refusing to write over an imported subtitles file, or undefined. */
 export async function overwritesImported(projectDir: string, path: string): Promise<string | undefined> {
   const target = await canonicalPath(path);
-  return (await importedSubtitleSources(projectDir)).has(target) ? `${basename(path)} is a subtitles file this project imported, and Uncut never writes over it. Choose another name.` : undefined;
+  return (await importedSubtitleSources(projectDir)).has(target)
+    ? `${basename(path)} is a subtitles file this project imported, and Uncut never writes over it. Choose another name.`
+    : undefined;
 }

@@ -48,7 +48,14 @@ export function Strip({ project, track, online }: { project: ProjectModel; track
         <span className="strip-db mono" data-testid="mixer-db">
           {dbLabel(db)}
         </span>
-        <button className={`ms-btn ${muted ? "on mute" : ""}`} data-testid="mixer-mute" aria-pressed={muted} disabled={!online} title={muted ? "Unmute" : "Mute"} onClick={() => void actions.toggleTrack(track.id, "mute")}>
+        <button
+          className={`ms-btn ${muted ? "on mute" : ""}`}
+          data-testid="mixer-mute"
+          aria-pressed={muted}
+          disabled={!online}
+          title={muted ? "Unmute" : "Mute"}
+          onClick={() => void actions.toggleTrack(track.id, "mute")}
+        >
           M
         </button>
         <button

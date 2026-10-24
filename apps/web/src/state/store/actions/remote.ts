@@ -10,7 +10,10 @@ import { activeJobs } from "../sync.ts";
 let pickerSeq = 0;
 let pickerAnswer: ((value: string | ReadonlyArray<string> | null) => void) | undefined;
 /** Opens the remote file browser; resolves with what was picked (a path, paths for "media"), or null. */
-export function pickRemote(purpose: PickerPurpose, opts: { start?: string | undefined; fileName?: string | undefined } = {}): Promise<string | ReadonlyArray<string> | null> {
+export function pickRemote(
+  purpose: PickerPurpose,
+  opts: { start?: string | undefined; fileName?: string | undefined } = {},
+): Promise<string | ReadonlyArray<string> | null> {
   pickerAnswer?.(null);
   return new Promise((resolve) => {
     pickerAnswer = resolve;

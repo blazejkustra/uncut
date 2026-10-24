@@ -50,7 +50,19 @@ const skip = existsSync(APP) ? (hasFfmpeg ? false : "needs ffmpeg") : `packaged 
 
 const FPS = 30;
 const SEG = 30;
-const LAYOUTS = ["image", "still-video", "grid", "grid-1080p", "grid-sd", "reveal", "blur-dissolve", "blur-effect", "shader", "text-between", "interleaved"] as const;
+const LAYOUTS = [
+  "image",
+  "still-video",
+  "grid",
+  "grid-1080p",
+  "grid-sd",
+  "reveal",
+  "blur-dissolve",
+  "blur-effect",
+  "shader",
+  "text-between",
+  "interleaved",
+] as const;
 /** Each layout's frame and how many layers the GPU compositor draws there. */
 const AT: Record<(typeof LAYOUTS)[number], { frame: number; layers: number }> = {
   image: { frame: 15, layers: 7 },
@@ -77,8 +89,23 @@ const out = (name: string) => resolve("test-output", `issue12-${name}.png`);
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Boxes at fractional canvas positions, each fit, square and rounded corners. */
-const odd = Array.from({ length: 6 }, (_, i) => ({ x: 16.3 + (i % 3) * 630.37, y: 40.6 + Math.floor(i / 3) * 520.25, w: 600.45 - i * 3.3, h: 451.7 + i * 2.1, fit: ["cover", "contain", "fill"][i % 3]!, radius: i < 3 ? 0 : 18 }));
-const grid = Array.from({ length: 12 }, (_, i) => ({ x: 16 + (i % 4) * 476, y: 16 + Math.floor(i / 4) * 356, w: 460, h: 340, fit: "cover", radius: 18, opacity: 0.92 }));
+const odd = Array.from({ length: 6 }, (_, i) => ({
+  x: 16.3 + (i % 3) * 630.37,
+  y: 40.6 + Math.floor(i / 3) * 520.25,
+  w: 600.45 - i * 3.3,
+  h: 451.7 + i * 2.1,
+  fit: ["cover", "contain", "fill"][i % 3]!,
+  radius: i < 3 ? 0 : 18,
+}));
+const grid = Array.from({ length: 12 }, (_, i) => ({
+  x: 16 + (i % 4) * 476,
+  y: 16 + Math.floor(i / 4) * 356,
+  w: 460,
+  h: 340,
+  fit: "cover",
+  radius: 18,
+  opacity: 0.92,
+}));
 
 before(async () => {
   if (skip) return;
@@ -90,13 +117,39 @@ before(async () => {
   mkdirSync(join(dir, "media"), { recursive: true });
   mkdirSync(join(root, "out"));
   const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
-  const clip = (size: string, file: string, vf?: string) => ff("-f", "lavfi", "-i", `testsrc2=size=${size}:rate=${FPS}`, ...(vf ? ["-vf", vf] : []), "-t", "4", "-c:v", "libx264", "-preset", "veryfast", "-g", "30", "-bf", "0", "-pix_fmt", "yuv420p", join(root, file));
+  const clip = (size: string, file: string, vf?: string) =>
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc2=size=${size}:rate=${FPS}`,
+      ...(vf ? ["-vf", vf] : []),
+      "-t",
+      "4",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-g",
+      "30",
+      "-bf",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      join(root, file),
+    );
   ff("-f", "lavfi", "-i", `testsrc2=size=1280x720:rate=${FPS}`, "-frames:v", "1", join(root, "Frame.png"));
   clip("1280x720", "Still.mp4", "trim=end_frame=1,loop=200:1:0,setpts=N/30/TB");
   clip("1280x720", "Layer.mp4");
   clip("1920x1080", "Big.mp4");
   clip("640x360", "Small.mp4");
-  const video = (id: string, file: string, width: number, height: number) => ({ id, kind: "video", name: file, path: join(root, file), probe: { frames: 4 * FPS, fps: FPS, width, height, hasAudio: false } });
+  const video = (id: string, file: string, width: number, height: number) => ({
+    id,
+    kind: "video",
+    name: file,
+    path: join(root, file),
+    probe: { frames: 4 * FPS, fps: FPS, width, height, hasAudio: false },
+  });
   const media = [
     { id: "m-img", kind: "image", name: "Frame.png", path: join(root, "Frame.png"), probe: { width: 1280, height: 720 } },
     video("m-still", "Still.mp4", 1280, 720),
@@ -116,32 +169,123 @@ before(async () => {
             { id: `s${i}`, type: "clip", media: "m-still", start: at(1), in: 0, duration: SEG, transform: odd[i] },
           ]
         : []),
-      ...["m-layer", "m-big", "m-small"].map((m, k) => ({ id: `g${k}-${i}`, type: "clip", media: m, start: at(2 + k), in: (i * 7) % 60, duration: SEG, transform: grid[i] })),
+      ...["m-layer", "m-big", "m-small"].map((m, k) => ({
+        id: `g${k}-${i}`,
+        type: "clip",
+        media: m,
+        start: at(2 + k),
+        in: (i * 7) % 60,
+        duration: SEG,
+        transform: grid[i],
+      })),
     ],
   }));
   const main = [
-    ...["m-img", "m-still", "m-layer", "m-big", "m-small"].map((m, k) => ({ id: `c${k}`, type: "clip", media: m, ...(m === "m-img" ? {} : { in: 0 }), duration: SEG })),
+    ...["m-img", "m-still", "m-layer", "m-big", "m-small"].map((m, k) => ({
+      id: `c${k}`,
+      type: "clip",
+      media: m,
+      ...(m === "m-img" ? {} : { in: 0 }),
+      duration: SEG,
+    })),
     { id: "c5", type: "clip", media: "m-layer", in: 0, duration: 40 },
     { id: "c6", type: "clip", media: "m-big", in: 30, duration: 40, transitionIn: { module: "transition.diamond", duration: 20 } },
     { id: "c7", type: "clip", media: "m-layer", in: 30, duration: 40, transitionIn: { module: "transition.blur", duration: 20 } },
     // A blur effect on a picture placed smaller than its file (its CSS blur is in the <video>'s own px, D265).
-    { id: "c8", type: "clip", media: "m-big", in: 30, duration: 30, effects: [{ module: "effect.blur", params: { amount: 6 } }], transform: { x: 160, y: 90, w: 1280, h: 720, fit: "cover", radius: 24 } },
+    {
+      id: "c8",
+      type: "clip",
+      media: "m-big",
+      in: 30,
+      duration: 30,
+      effects: [{ module: "effect.blur", params: { amount: 6 } }],
+      transform: { x: 160, y: 90, w: 1280, h: 720, fit: "cover", radius: 24 },
+    },
     // A shader, then a look after it, in a smaller box.
-    { id: "c9", type: "clip", media: "m-layer", in: 30, duration: 30, effects: [shaderEntry(SMEAR, { amount: 0.7 }), { module: "effect.look", params: { look: "warm", intensity: 1 } }], transform: { x: 200, y: 120, w: 1200, h: 675, fit: "cover", radius: 12 } },
+    {
+      id: "c9",
+      type: "clip",
+      media: "m-layer",
+      in: 30,
+      duration: 30,
+      effects: [shaderEntry(SMEAR, { amount: 0.7 }), { module: "effect.look", params: { look: "warm", intensity: 1 } }],
+      transform: { x: 200, y: 120, w: 1200, h: 675, fit: "cover", radius: 12 },
+    },
     { id: "c10", type: "clip", media: "m-layer", in: 0, duration: 30 },
     { id: "c11", type: "clip", media: "m-layer", in: 0, duration: 60 },
   ];
   // Top first: overlay 11, its text, overlay 10, its text, ... overlay 0, its text.
-  const interleaved = grid.flatMap((transform, i) => [
-    { id: `iv${i}`, kind: "video", name: `IV${i}`, items: [{ id: `ic${i}`, type: "clip", media: "m-layer", start: 360, in: (i * 5) % 50, duration: 60, transform }] },
-    { id: `it${i}`, kind: "text", name: `IT${i}`, items: [{ id: `ix${i}`, type: "text", start: 360, duration: 60, text: `Layer ${i + 1}`, transform: { x: transform.x + 40, y: transform.y + 260 }, style: { preset: "text.title", size: 64, weight: 800 } }] },
-  ]).reverse();
+  const interleaved = grid
+    .flatMap((transform, i) => [
+      {
+        id: `iv${i}`,
+        kind: "video",
+        name: `IV${i}`,
+        items: [{ id: `ic${i}`, type: "clip", media: "m-layer", start: 360, in: (i * 5) % 50, duration: 60, transform }],
+      },
+      {
+        id: `it${i}`,
+        kind: "text",
+        name: `IT${i}`,
+        items: [
+          {
+            id: `ix${i}`,
+            type: "text",
+            start: 360,
+            duration: 60,
+            text: `Layer ${i + 1}`,
+            transform: { x: transform.x + 40, y: transform.y + 260 },
+            style: { preset: "text.title", size: 64, weight: 800 },
+          },
+        ],
+      },
+    ])
+    .reverse();
   const between = [
-    { id: "top", kind: "video", name: "Top", items: [{ id: "vb", type: "clip", media: "m-layer", start: 330, in: 40, duration: 30, transform: { x: 900, y: 500, w: 700, h: 394, fit: "cover", radius: 16 } }] },
-    { id: "words", kind: "text", name: "Words", items: [{ id: "x1", type: "text", start: 330, duration: 30, text: "Between the layers", transform: { x: 420, y: 520 }, style: { preset: "text.title", size: 110, weight: 800 } }] },
-    { id: "under", kind: "video", name: "Under", items: [{ id: "va", type: "clip", media: "m-big", start: 330, in: 20, duration: 30, transform: { x: 300, y: 260, w: 800, h: 450, fit: "cover", radius: 16 } }] },
+    {
+      id: "top",
+      kind: "video",
+      name: "Top",
+      items: [
+        { id: "vb", type: "clip", media: "m-layer", start: 330, in: 40, duration: 30, transform: { x: 900, y: 500, w: 700, h: 394, fit: "cover", radius: 16 } },
+      ],
+    },
+    {
+      id: "words",
+      kind: "text",
+      name: "Words",
+      items: [
+        {
+          id: "x1",
+          type: "text",
+          start: 330,
+          duration: 30,
+          text: "Between the layers",
+          transform: { x: 420, y: 520 },
+          style: { preset: "text.title", size: 110, weight: 800 },
+        },
+      ],
+    },
+    {
+      id: "under",
+      kind: "video",
+      name: "Under",
+      items: [
+        { id: "va", type: "clip", media: "m-big", start: 330, in: 20, duration: 30, transform: { x: 300, y: 260, w: 800, h: 450, fit: "cover", radius: 16 } },
+      ],
+    },
   ];
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Parity", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks: [...interleaved, ...between, ...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: main }] }));
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Parity",
+      canvas: { width: 1920, height: 1080, fps: FPS },
+      textLooks: 1,
+      media,
+      tracks: [...interleaved, ...between, ...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: main }],
+    }),
+  );
 });
 after(async () => {
   await app?.close();
@@ -166,30 +310,48 @@ async function setGpu(on: boolean) {
   await meta("Comma");
   await waitFor("[data-testid=settings]");
   await page.click("[data-testid=settings-nav-app]");
-  if ((await page.$eval("[data-testid=settings-gpu-compositor]", (el) => (el as HTMLInputElement).checked)) !== on) await page.click("[data-testid=settings-gpu-compositor]");
+  if ((await page.$eval("[data-testid=settings-gpu-compositor]", (el) => (el as HTMLInputElement).checked)) !== on)
+    await page.click("[data-testid=settings-gpu-compositor]");
   await page.click("[data-testid=settings-close]");
 }
 
 /** The paused preview at frame f once every shown <video> is at its frame and no scrub canvas covers one. */
 async function settle(f: number) {
   await clickAt(f);
-  await page.waitForFunction((frame) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === frame, { timeout: 10000 }, f);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 15000 });
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].every((c) => c.style.visibility === "hidden"), { timeout: 15000 });
+  await page.waitForFunction(
+    (frame) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === frame,
+    { timeout: 10000 },
+    f,
+  );
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 15000 },
+  );
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].every((c) => c.style.visibility === "hidden"), {
+    timeout: 15000,
+  });
   await sleep(600);
 }
 
 async function shot(name: string) {
   await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path: out(name) });
-  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", out(name)], { encoding: "utf8" }).trim().split(",").map(Number);
+  const [w, h] = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", out(name)], { encoding: "utf8" })
+    .trim()
+    .split(",")
+    .map(Number);
   return { file: out(name), w: w!, h: h! };
 }
 
 /** D136's preview-vs-export measure: luma SSIM at 480×270 and the mean colour Δ per channel (0–255) at 48×27. */
 function compare(a: string, b: string) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   const value = Number(/All:([\d.]+)/.exec(r.stderr)![1]);
-  const rgb = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", "scale=48:27:flags=area,format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"]);
+  const rgb = (file: string) =>
+    execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", "scale=48:27:flags=area,format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"]);
   const pa = rgb(a);
   const pb = rgb(b);
   let d = 0;
@@ -206,7 +368,7 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   await page.click("[data-testid=bottom-timeline]");
 
   const shots: Record<string, { dom: string; gpu: string; ssim: number }> = {};
-  for (const [k, layout] of LAYOUTS.entries()) {
+  for (const layout of LAYOUTS) {
     const f = AT[layout].frame;
     await setGpu(false);
     await settle(f);
@@ -222,7 +384,10 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   // Playback with the GPU on through the interleaved layout: every overlay on the GPU, in 12 runs, at the display's rate.
   await setGpu(true);
   await clickAt(AT.interleaved.frame - 14);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 15000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 15000 },
+  );
   await sleep(500);
   await page.keyboard.press("Space");
   const played = await page.evaluate(
@@ -235,7 +400,11 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
           if (last) raf.push(t - last);
           last = t;
           if (performance.now() < end) return void requestAnimationFrame(tick);
-          done({ raf, layers: Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.gpuLayers ?? 0), runs: [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-gpu-compositor]")].filter((c) => c.style.visibility !== "hidden").length });
+          done({
+            raf,
+            layers: Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.gpuLayers ?? 0),
+            runs: [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-gpu-compositor]")].filter((c) => c.style.visibility !== "hidden").length,
+          });
         };
         requestAnimationFrame(tick);
       }),
@@ -243,7 +412,9 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   await page.keyboard.press("Space");
   const raf = [...played.raf].sort((a, b) => a - b);
   const median = raf[Math.floor(raf.length / 2)]!;
-  console.log(`# issue12 interleaved playback: ${played.layers} layers on the GPU in ${played.runs} runs; rAF median ${median.toFixed(1)} ms, p90 ${raf[Math.floor(raf.length * 0.9)]!.toFixed(1)} ms, ${raf.filter((x) => x > 25).length} frames > 25 ms`);
+  console.log(
+    `# issue12 interleaved playback: ${played.layers} layers on the GPU in ${played.runs} runs; rAF median ${median.toFixed(1)} ms, p90 ${raf[Math.floor(raf.length * 0.9)]!.toFixed(1)} ms, ${raf.filter((x) => x > 25).length} frames > 25 ms`,
+  );
   assert.equal(played.layers, 13);
   assert.equal(played.runs, 12, "a run under each text (the main clip and overlay 0 share the first)");
   check(NO_REAL_GPU, median < 12, `animation frames every ${median} ms`);
@@ -272,7 +443,9 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
     const s = shots[layout]!;
     const dom = compare(s.dom, file);
     const gpu = compare(s.gpu, file);
-    console.log(`# issue12 ${layout} vs export: DOM SSIM ${dom.ssim.toFixed(4)} Δ${dom.colour.toFixed(2)}, GPU SSIM ${gpu.ssim.toFixed(4)} Δ${gpu.colour.toFixed(2)}`);
+    console.log(
+      `# issue12 ${layout} vs export: DOM SSIM ${dom.ssim.toFixed(4)} Δ${dom.colour.toFixed(2)}, GPU SSIM ${gpu.ssim.toFixed(4)} Δ${gpu.colour.toFixed(2)}`,
+    );
     // Interleaved with texts, the DOM path's own videos move off the export's place (measured: DOM vs
     // export 0.978 where the plain grid gives 0.987; GPU vs export 0.984): there the gate is the export.
     if (layout === "interleaved" ? !(s.ssim >= 0.96 && gpu.ssim >= dom.ssim) : !(s.ssim >= 0.99)) low.push(`${layout}: DOM vs GPU SSIM ${s.ssim}`);

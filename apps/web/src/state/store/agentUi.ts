@@ -40,6 +40,9 @@ export function applyWaitingUi() {
   if (ui.frame === undefined && ui.select === undefined) return;
   const project = projectOf(snap);
   const { starts } = layoutOf(project);
-  const range = changeRange(project.tracks.map((t) => ({ items: t.items.map((i) => ({ id: i.id, start: starts.get(i.id) ?? i.start ?? 0, duration: i.duration ?? 0 })) })), ui);
+  const range = changeRange(
+    project.tracks.map((t) => ({ items: t.items.map((i) => ({ id: i.id, start: starts.get(i.id) ?? i.start ?? 0, duration: i.duration ?? 0 })) })),
+    ui,
+  );
   if (range) set({ agentChange: { ...range, select: ui.select, seq: ++panelSeq } });
 }

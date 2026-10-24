@@ -18,8 +18,40 @@ const bt709 = ["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p"
 
 export function makeClipMedia(root: string) {
   mkdirSync(root, { recursive: true });
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=640x480:r=30,drawbox=x=160:y=0:w=480:h=480:color=blue:t=fill", "-t", "10", ...bt709, "-c:v", "libx264", "-crf", "10", join(root, "Split.mp4")]);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30", "-t", "10", ...bt709, "-c:v", "libx264", "-crf", "16", join(root, "Pattern.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red:s=640x480:r=30,drawbox=x=160:y=0:w=480:h=480:color=blue:t=fill",
+    "-t",
+    "10",
+    ...bt709,
+    "-c:v",
+    "libx264",
+    "-crf",
+    "10",
+    join(root, "Split.mp4"),
+  ]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=s=1280x720:r=30",
+    "-t",
+    "10",
+    ...bt709,
+    "-c:v",
+    "libx264",
+    "-crf",
+    "16",
+    join(root, "Pattern.mp4"),
+  ]);
 }
 
 export const SPLIT_PROBE = { frames: 300, fps: 30, width: 640, height: 480, hasAudio: false };

@@ -63,7 +63,16 @@ after(async () => {
 
 async function grey(f: number): Promise<Float32Array> {
   const out = join(root, `f${String(f).padStart(4, "0")}.png`);
-  await raster.render({ kind: "graphic", width: W, height: H, doc, t: f / canvas.fps, info: graphicInfo({ duration: 300, props: {} }, canvas, f), out, name: "graphics/grow.html" });
+  await raster.render({
+    kind: "graphic",
+    width: W,
+    height: H,
+    doc,
+    t: f / canvas.fps,
+    info: graphicInfo({ duration: 300, props: {} }, canvas, f),
+    out,
+    name: "graphics/grow.html",
+  });
   const px = rgbaOf(out);
   const g = new Float32Array(W * H);
   for (let i = 0; i < g.length; i++) g[i] = 0.299 * px[i * 4]! + 0.587 * px[i * 4 + 1]! + 0.114 * px[i * 4 + 2]!;

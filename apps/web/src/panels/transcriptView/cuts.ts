@@ -6,7 +6,22 @@ import { playback } from "../../preview/playback.ts";
 import type { ProjectModel } from "../../state/project.ts";
 import { actions, getState, projectOf, useApp } from "../../state/store.ts";
 import { defaultCaptionStyle } from "../../inspector/captionStyle.ts";
-import { transcriptStore, getTranscripts, selectedWords, wordsOfEdit, doneTranscripts, scopeOf, planCutWords, planCaptions, planRemovePauses, planRemoveFillers, mediaOnMain, type MediaTranscript, type TranscriptEntry, useTranscripts } from "../transcript.ts";
+import {
+  transcriptStore,
+  getTranscripts,
+  selectedWords,
+  wordsOfEdit,
+  doneTranscripts,
+  scopeOf,
+  planCutWords,
+  planCaptions,
+  planRemovePauses,
+  planRemoveFillers,
+  mediaOnMain,
+  type MediaTranscript,
+  type TranscriptEntry,
+  useTranscripts,
+} from "../transcript.ts";
 import { pauseMin } from "./threshold.ts";
 
 /** Send a transcript plan as one edit (one ⌘Z), then drop the selection. */
@@ -39,7 +54,14 @@ async function withLoudness(mediaIds: ReadonlyArray<string>) {
       // Couldn't start (or a job of it failed / was stopped): not again for this media this session.
       const failed = () =>
         getState().analysisError !== undefined ||
-        getState().analysisJobs.some((j) => j.projectDir === dir && j.analyzer === "loudness" && (j.mediaId === id || j.mediaIds.includes(id)) && (j.phase === "failed" || j.phase === "cancelled") && Date.parse(j.startedAt) >= startedAt - 1000);
+        getState().analysisJobs.some(
+          (j) =>
+            j.projectDir === dir &&
+            j.analyzer === "loudness" &&
+            (j.mediaId === id || j.mediaIds.includes(id)) &&
+            (j.phase === "failed" || j.phase === "cancelled") &&
+            Date.parse(j.startedAt) >= startedAt - 1000,
+        );
       const deadline = startedAt + LOUDNESS_WAIT_MS;
       while (Date.now() < deadline) {
         if (failed()) {
@@ -63,7 +85,11 @@ const setCutBusy = (busy: boolean) => {
   cutBusy = busy;
   for (const l of busyListeners) l();
 };
-export const useCutBusy = () => useSyncExternalStore((l) => (busyListeners.add(l), () => void busyListeners.delete(l)), () => cutBusy);
+export const useCutBusy = () =>
+  useSyncExternalStore(
+    (l) => (busyListeners.add(l), () => void busyListeners.delete(l)),
+    () => cutBusy,
+  );
 /** Runs one cut at a time, marked busy while it waits. */
 async function oneCut(run: () => Promise<boolean>) {
   if (cutBusy) return false;
@@ -80,7 +106,11 @@ export const cutSelectedWords = () => oneCut(cutSelected);
 async function cutSelected() {
   if (!getState().snapshot) return false;
   const before = getTranscripts();
-  const keys = selectedWords(wordsOfEdit(projectOf(getState().snapshot!), doneTranscripts(before.entries), scopeOf(projectOf(getState().snapshot!), before.source)), before.anchor, before.focus);
+  const keys = selectedWords(
+    wordsOfEdit(projectOf(getState().snapshot!), doneTranscripts(before.entries), scopeOf(projectOf(getState().snapshot!), before.source)),
+    before.anchor,
+    before.focus,
+  );
   if (!keys.length) return false;
   await withLoudness([...new Set(keys.map((w) => w.media))]);
   const snapshot = getState().snapshot;
@@ -124,7 +154,12 @@ async function makeAll(mode: CaptionMode, look: string) {
   await withLoudness(readMedia(projectOf(first)));
   const snapshot = getState().snapshot;
   if (!snapshot) return false;
-  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look, captionStyle: defaultCaptionStyle() }, scopeOf(projectOf(snapshot), getTranscripts().source));
+  const plan = planCaptions(
+    projectOf(snapshot),
+    doneTranscripts(getTranscripts().entries),
+    { mode, look, captionStyle: defaultCaptionStyle() },
+    scopeOf(projectOf(snapshot), getTranscripts().source),
+  );
   const applied = await actions.timelineEdit(plan);
   if (applied && !("problem" in plan)) playback.select(plan.items[0]);
   return applied;
@@ -152,13 +187,19 @@ function readMedia(project: ProjectModel): Array<string> {
 
 export async function load(dir: string, mediaId: string) {
   if (getTranscripts().entries.get(mediaId)?.state !== "done") transcriptStore.setEntry(dir, mediaId, { state: "loading" });
-  const result = (await actions.analysisCached(mediaId, "transcript")) as { hasAudio?: boolean; words?: MediaTranscript["words"]; segments?: MediaTranscript["segments"]; language?: string; seconds?: number } | null | undefined;
+  const result = (await actions.analysisCached(mediaId, "transcript")) as
+    | { hasAudio?: boolean; words?: MediaTranscript["words"]; segments?: MediaTranscript["segments"]; language?: string; seconds?: number }
+    | null
+    | undefined;
   let entry: TranscriptEntry;
   if (result === undefined) entry = { state: "error", message: "Couldn't read the transcript." };
   else if (result === null) entry = { state: "none" };
   else if (!result.hasAudio) entry = { state: "silent" };
   else {
-    const loud = (await actions.analysisCached(mediaId, "loudness")) as { hasAudio?: boolean; silence?: { ranges?: MediaTranscript["silences"] }; envelope?: unknown } | null | undefined;
+    const loud = (await actions.analysisCached(mediaId, "loudness")) as
+      | { hasAudio?: boolean; silence?: { ranges?: MediaTranscript["silences"] }; envelope?: unknown }
+      | null
+      | undefined;
     entry = {
       state: "done",
       transcript: {

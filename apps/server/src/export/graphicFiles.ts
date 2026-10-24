@@ -32,7 +32,8 @@ export const layer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = HttpServerRequest.toURL(request);
-        if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), graphicToken(config.token))) return HttpServerResponse.text("Unauthorized", { status: 401 });
+        if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), graphicToken(config.token)))
+          return HttpServerResponse.text("Unauthorized", { status: 401 });
         let name: string;
         try {
           name = decodeURIComponent(url.value.pathname.slice(GRAPHIC_PATH.length + 1));
@@ -46,7 +47,12 @@ export const layer = Layer.unwrap(
         if (html === undefined) return notFound();
         return HttpServerResponse.text(graphicDocument(html, project.canvas), {
           contentType: "text/html; charset=utf-8",
-          headers: { "access-control-allow-origin": "*", "cache-control": "no-store", "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`, "x-content-type-options": "nosniff" },
+          headers: {
+            "access-control-allow-origin": "*",
+            "cache-control": "no-store",
+            "content-security-policy": `${GRAPHIC_CSP}; sandbox allow-scripts`,
+            "x-content-type-options": "nosniff",
+          },
         });
       }),
     );

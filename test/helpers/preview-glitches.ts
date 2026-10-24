@@ -73,7 +73,19 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
   const { fps, lateMs = 1000, staleS = 0.25, frozenMs = 500, longMs = 100, edgeFrames = 2, settleMs = 600 } = options;
   const c: GlitchCounts = { flash: 0, late: 0, lookFlash: 0, stale: 0, frozen: 0, order: 0, longFrames: 0, worstFrameMs: 0, details: [] };
   const note = (kind: string, id: string, s: GlitchSample) => c.details.length < 200 && c.details.push(`${kind} ${id} @f${s.frame}`);
-  type State = { inside: boolean; since: number; drawnOnce: boolean; flashing: boolean; lateCounted: boolean; fxOnce: boolean; lookFlashing: boolean; stale: boolean; lastP?: number; lastPAt: number; frozen: boolean };
+  type State = {
+    inside: boolean;
+    since: number;
+    drawnOnce: boolean;
+    flashing: boolean;
+    lateCounted: boolean;
+    fxOnce: boolean;
+    lookFlashing: boolean;
+    stale: boolean;
+    lastP?: number;
+    lastPAt: number;
+    frozen: boolean;
+  };
   const state = new Map<string, State>();
   let playingSince: number | undefined;
   let prev: GlitchSample | undefined;
@@ -95,7 +107,18 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
       const inside = s.frame >= l.start + edgeFrames && s.frame < l.start + l.duration - edgeFrames;
       let st = state.get(l.id);
       if (!st || !st.inside || !inside || jumped) {
-        st = { inside, since: s.t, drawnOnce: false, flashing: false, lateCounted: false, fxOnce: false, lookFlashing: false, stale: false, lastPAt: s.t, frozen: false };
+        st = {
+          inside,
+          since: s.t,
+          drawnOnce: false,
+          flashing: false,
+          lateCounted: false,
+          fxOnce: false,
+          lookFlashing: false,
+          stale: false,
+          lastPAt: s.t,
+          frozen: false,
+        };
         state.set(l.id, st);
       }
       if (!inside) continue;
@@ -175,61 +198,87 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
  * effects"; so does a layer the GPU compositor draws); a text's element in the text layer, not hidden.
  */
 export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
-  await page.evaluate((ids: Array<string>) => {
-    type L = { d: boolean; f?: boolean; z: number; mt?: number; p?: number; s?: boolean };
-    type W = { __glitch?: { samples: Array<{ t: number; frame: number; playing: boolean; layers: Record<string, L> }>; stop: boolean; contextLost: number; playSeeks: number } };
-    const w = window as unknown as W;
-    if (w.__glitch) w.__glitch.stop = true;
-    const g = { samples: [] as Array<{ t: number; frame: number; playing: boolean; layers: Record<string, L> }>, stop: false, contextLost: 0, playSeeks: 0 };
-    w.__glitch = g;
-    document.addEventListener("webglcontextlost", () => g.contextLost++, true);
-    const presented = new WeakMap<HTMLVideoElement, number>();
-    const watch = (v: HTMLVideoElement) => {
-      if (presented.has(v)) return;
-      presented.set(v, 0);
-      const loop = () => v.requestVideoFrameCallback(() => (presented.set(v, (presented.get(v) ?? 0) + 1), !g.stop && loop()));
-      loop();
-      v.addEventListener("seeking", () => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true" && !v.paused && g.playSeeks++);
-    };
-    const frameEl = document.querySelector<HTMLElement>("[data-testid=preview-frame]")!;
-    const text = document.querySelector<HTMLElement>("[data-testid=preview-text]")!;
-    const shown = (el: HTMLElement | null | undefined): el is HTMLElement => !!el && el.style.visibility !== "hidden";
-    const tick = (t: number) => {
-      if (g.stop) return;
-      const layers: Record<string, L> = {};
-      for (const id of ids) {
-        const sel = CSS.escape(id);
-        const box = frameEl.querySelector<HTMLElement>(`.pv-box[data-item="${sel}"]`);
-        if (box) {
-          const v = box.querySelector<HTMLVideoElement>(":scope > video");
-          const img = box.querySelector<HTMLImageElement>(":scope > img");
-          const fx = box.querySelector<HTMLCanvasElement>("canvas[data-fx]");
-          const scrub = box.querySelector<HTMLCanvasElement>("canvas[data-scrub]");
-          if (v) watch(v);
-          const gpu = box.dataset.gpu !== undefined;
-          const visible = (el: HTMLElement | null) => shown(el) && el!.style.opacity !== "0";
-          const vOk = !!v && (visible(v) || gpu) && (v.readyState >= 2 || (v.seeking && v.videoWidth > 0));
-          const iOk = !!img && (visible(img) || gpu) && img.complete && img.naturalWidth > 0;
-          const fOk = !!fx && visible(fx) && fx.width > 0;
-          const sOk = !!scrub && visible(scrub) && scrub.width > 0;
-          layers[id] = { d: vOk || iOk || fOk || sOk, f: fOk || (gpu && (vOk || iOk)), z: Number(box.style.zIndex || 0), ...(v ? { mt: v.currentTime, p: presented.get(v) ?? 0, s: v.seeking } : {}) };
-          continue;
+  await page.evaluate(
+    (ids: Array<string>) => {
+      type L = { d: boolean; f?: boolean; z: number; mt?: number; p?: number; s?: boolean };
+      type W = {
+        __glitch?: {
+          samples: Array<{ t: number; frame: number; playing: boolean; layers: Record<string, L> }>;
+          stop: boolean;
+          contextLost: number;
+          playSeeks: number;
+        };
+      };
+      const w = window as unknown as W;
+      if (w.__glitch) w.__glitch.stop = true;
+      const g = { samples: [] as Array<{ t: number; frame: number; playing: boolean; layers: Record<string, L> }>, stop: false, contextLost: 0, playSeeks: 0 };
+      w.__glitch = g;
+      document.addEventListener("webglcontextlost", () => g.contextLost++, true);
+      const presented = new WeakMap<HTMLVideoElement, number>();
+      const watch = (v: HTMLVideoElement) => {
+        if (presented.has(v)) return;
+        presented.set(v, 0);
+        const loop = () => v.requestVideoFrameCallback(() => (presented.set(v, (presented.get(v) ?? 0) + 1), !g.stop && loop()));
+        loop();
+        v.addEventListener(
+          "seeking",
+          () => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true" && !v.paused && g.playSeeks++,
+        );
+      };
+      const frameEl = document.querySelector<HTMLElement>("[data-testid=preview-frame]")!;
+      const text = document.querySelector<HTMLElement>("[data-testid=preview-text]")!;
+      const shown = (el: HTMLElement | null | undefined): el is HTMLElement => !!el && el.style.visibility !== "hidden";
+      const tick = (t: number) => {
+        if (g.stop) return;
+        const layers: Record<string, L> = {};
+        for (const id of ids) {
+          const sel = CSS.escape(id);
+          const box = frameEl.querySelector<HTMLElement>(`.pv-box[data-item="${sel}"]`);
+          if (box) {
+            const v = box.querySelector<HTMLVideoElement>(":scope > video");
+            const img = box.querySelector<HTMLImageElement>(":scope > img");
+            const fx = box.querySelector<HTMLCanvasElement>("canvas[data-fx]");
+            const scrub = box.querySelector<HTMLCanvasElement>("canvas[data-scrub]");
+            if (v) watch(v);
+            const gpu = box.dataset.gpu !== undefined;
+            const visible = (el: HTMLElement | null) => shown(el) && el!.style.opacity !== "0";
+            const vOk = !!v && (visible(v) || gpu) && (v.readyState >= 2 || (v.seeking && v.videoWidth > 0));
+            const iOk = !!img && (visible(img) || gpu) && img.complete && img.naturalWidth > 0;
+            const fOk = !!fx && visible(fx) && fx.width > 0;
+            const sOk = !!scrub && visible(scrub) && scrub.width > 0;
+            layers[id] = {
+              d: vOk || iOk || fOk || sOk,
+              f: fOk || (gpu && (vOk || iOk)),
+              z: Number(box.style.zIndex || 0),
+              ...(v ? { mt: v.currentTime, p: presented.get(v) ?? 0, s: v.seeking } : {}),
+            };
+            continue;
+          }
+          const el = text.querySelector<HTMLElement>(`:scope > [data-item="${sel}"]`);
+          if (el) layers[id] = { d: shown(el), z: Number(el.style.zIndex || 0) };
         }
-        const el = text.querySelector<HTMLElement>(`:scope > [data-item="${sel}"]`);
-        if (el) layers[id] = { d: shown(el), z: Number(el.style.zIndex || 0) };
-      }
-      g.samples.push({ t, frame: Number(frameEl.dataset.frame), playing: frameEl.dataset.playing === "true", layers });
+        g.samples.push({ t, frame: Number(frameEl.dataset.frame), playing: frameEl.dataset.playing === "true", layers });
+        requestAnimationFrame(tick);
+      };
       requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [...ids]);
+    },
+    [...ids],
+  );
 }
 
 /** The samples taken since startGlitchProbe (sampling stops), with the page's own counters. */
 export async function stopGlitchProbe(page: Page) {
   return page.evaluate(() => {
-    const w = window as unknown as { __glitch: { samples: Array<GlitchSample>; stop: boolean; contextLost: number; playSeeks: number }; __uncutPreview?: { stats?: () => { compositors: number; fxLost: number; playSeeks: number } } };
+    const w = window as unknown as {
+      __glitch: { samples: Array<GlitchSample>; stop: boolean; contextLost: number; playSeeks: number };
+      __uncutPreview?: { stats?: () => { compositors: number; fxLost: number; playSeeks: number } };
+    };
     w.__glitch.stop = true;
     return { samples: w.__glitch.samples, contextLost: w.__glitch.contextLost, playSeeks: w.__glitch.playSeeks, stats: w.__uncutPreview?.stats?.() };
-  }) as Promise<{ samples: Array<GlitchSample>; contextLost: number; playSeeks: number; stats: { compositors: number; fxLost: number; playSeeks: number } | undefined }>;
+  }) as Promise<{
+    samples: Array<GlitchSample>;
+    contextLost: number;
+    playSeeks: number;
+    stats: { compositors: number; fxLost: number; playSeeks: number } | undefined;
+  }>;
 }

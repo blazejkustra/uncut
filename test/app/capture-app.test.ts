@@ -83,15 +83,37 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     assert.deepEqual(await page.$$eval("[data-testid=capture-device]", (els) => els.map((e) => (e as HTMLElement).dataset.id)), ["SIM-IPHONE-16"]);
     await page.click("[data-testid=capture-device-picker]");
     await waitFor(page, "[data-testid=capture-device-menu] [data-testid=capture-device-option]");
-    const rows = await page.$$eval("[data-testid=capture-device-option]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, recordable: (e as HTMLElement).dataset.recordable, bootable: (e as HTMLElement).dataset.bootable, text: (e as HTMLElement).innerText })));
-    assert.deepEqual(rows.slice(0, 2).map((r) => [r.id, r.recordable]), [["SIM-IPHONE-16", "true"], ["emulator-5554", "true"]]);
-    assert.deepEqual(rows.slice(2, 4).map((r) => [r.id, r.bootable]), [["SIM-IPAD-OFF", "true"], ["avd:Pixel_Tablet_API_35", "true"]]);
+    const rows = await page.$$eval("[data-testid=capture-device-option]", (els) =>
+      els.map((e) => ({
+        id: (e as HTMLElement).dataset.id,
+        recordable: (e as HTMLElement).dataset.recordable,
+        bootable: (e as HTMLElement).dataset.bootable,
+        text: (e as HTMLElement).innerText,
+      })),
+    );
+    assert.deepEqual(
+      rows.slice(0, 2).map((r) => [r.id, r.recordable]),
+      [
+        ["SIM-IPHONE-16", "true"],
+        ["emulator-5554", "true"],
+      ],
+    );
+    assert.deepEqual(
+      rows.slice(2, 4).map((r) => [r.id, r.bootable]),
+      [
+        ["SIM-IPAD-OFF", "true"],
+        ["avd:Pixel_Tablet_API_35", "true"],
+      ],
+    );
     assert.match(rows[2]!.text, /iOS simulator, off/);
     const tv = rows.find((r) => r.id === "SIM-APPLE-TV")!;
     assert.equal(tv.recordable, "false");
     assert.match(tv.text, /tvOS simulators can't be recorded yet/);
     assert.match(rows.find((r) => r.id === "chromium-cdp-9222")!.text, /Chromium apps can't be recorded yet/);
-    assert.match(await page.$eval("[data-testid=capture-device-menu]", (el) => el.textContent ?? ""), /Ready[\s\S]*Off, boots when you record[\s\S]*Can't record yet/);
+    assert.match(
+      await page.$eval("[data-testid=capture-device-menu]", (el) => el.textContent ?? ""),
+      /Ready[\s\S]*Off, boots when you record[\s\S]*Can't record yet/,
+    );
     await page.screenshot({ path: "test-output/capture-device-menu.png" });
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => !document.querySelector("[data-testid=capture-device-menu]"));
@@ -105,7 +127,11 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     const iphone = "[data-testid=capture-device][data-id=SIM-IPHONE-16]";
     await page.click(`${iphone} [data-testid=capture-record]`);
     await waitFor(page, `${iphone} [data-testid=capture-stop]`);
-    await page.waitForFunction((row) => /0:0[1-9]/.test(document.querySelector(`${row} [data-testid=capture-timer]`)?.textContent ?? ""), { timeout: 10000 }, iphone);
+    await page.waitForFunction(
+      (row) => /0:0[1-9]/.test(document.querySelector(`${row} [data-testid=capture-timer]`)?.textContent ?? ""),
+      { timeout: 10000 },
+      iphone,
+    );
     await sleep(600);
     await page.screenshot({ path: "test-output/capture-recording.png" });
     await page.click(`${iphone} [data-testid=capture-stop]`);
@@ -117,7 +143,11 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await page.click("[data-testid=rail-media]");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 1, { timeout: 15000 });
     assert.match((await mediaNames(page))[0]!, /iPhone 16 \d{8}-\d{6}/);
-    const dir = join(root, "projects", readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!);
+    const dir = join(
+      root,
+      "projects",
+      readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!,
+    );
     const projectFile = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
     assert.equal(projectFile.media.length, 1);
     assert.match(projectFile.media[0].path, /^media\/captures\/iPhone 16 \d{8}-\d{6}\.mp4$/);
@@ -130,7 +160,11 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await page.keyboard.up("Meta");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 0, { timeout: 10000 });
 
-    const logNow = () => readFileSync(join(root, "argent.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const logNow = () =>
+      readFileSync(join(root, "argent.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
     let log = logNow();
     assert.ok(!log.some((e) => e.forbidden), "never a server stop or a stop-all");
     assert.equal(log.filter((e) => e.boot).length, 0, "no boot before the click");
@@ -155,12 +189,17 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await waitFor(page, `${ipad} [data-testid=capture-stop]`, 30000);
     await sleep(1200);
     await page.click(`${ipad} [data-testid=capture-stop]`);
-    await page.waitForFunction(() => /iPad Air \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-saved]")?.textContent ?? ""), { timeout: 30000 });
+    await page.waitForFunction(() => /iPad Air \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-saved]")?.textContent ?? ""), {
+      timeout: 30000,
+    });
     log = logNow();
     assert.equal(log.filter((e) => e.boot).length, 1, "one boot, after the click");
     const runs = log.filter((e) => e.argv[0] === "run" && e.argv[1] !== "list-devices" && !e.completed);
     const fromBoot = runs.slice(runs.findIndex((e) => e.argv[1] === "boot-device"));
-    assert.deepEqual(fromBoot.map((e) => e.argv[1]), ["boot-device", "rotate", "launch-app", "screen-recording-start", "screen-recording-stop"]);
+    assert.deepEqual(
+      fromBoot.map((e) => e.argv[1]),
+      ["boot-device", "rotate", "launch-app", "screen-recording-start", "screen-recording-stop"],
+    );
     assert.deepEqual(JSON.parse(fromBoot[0].argv[3]), { udid: "SIM-IPAD-OFF" });
     assert.deepEqual(JSON.parse(fromBoot[1].argv[3]), { udid: "SIM-IPAD-OFF", orientation: "LandscapeLeft" });
     assert.deepEqual(JSON.parse(fromBoot[2].argv[3]), { udid: "SIM-IPAD-OFF", bundleId: "com.example.app" });
@@ -172,16 +211,25 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     mkdirSync(join(dir, "flows"), { recursive: true });
     writeFileSync(join(dir, "flows", "tour.yaml"), "# fake-seconds: 2.5\nsteps: []\n");
     await page.click("[data-testid=capture-refresh]");
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLOptionElement>("[data-testid=capture-opt-flow] option")].some((o) => o.value === "tour"), { timeout: 10000 });
+    await page.waitForFunction(
+      () => [...document.querySelectorAll<HTMLOptionElement>("[data-testid=capture-opt-flow] option")].some((o) => o.value === "tour"),
+      { timeout: 10000 },
+    );
     await page.select("[data-testid=capture-opt-flow]", "tour");
-    assert.equal(await page.$eval("[data-testid=capture-opt-max]", (el) => (el as HTMLSelectElement).disabled), true, "a flow's take lasts as long as the flow");
+    assert.equal(
+      await page.$eval("[data-testid=capture-opt-max]", (el) => (el as HTMLSelectElement).disabled),
+      true,
+      "a flow's take lasts as long as the flow",
+    );
     await choose(page, "SIM-IPHONE-16", "iphone");
     await page.click(`${iphone} [data-testid=capture-record]`);
     await waitFor(page, `${iphone} [data-testid=capture-timer]`, 10000);
     assert.match(await text(page, iphone), /Playing tour/);
     assert.equal(await page.$(`${iphone} [data-testid=capture-stop]`), null, "no Stop: it ends with the flow");
     await page.screenshot({ path: "test-output/capture-flow.png" });
-    await page.waitForFunction(() => /iPhone 16 \d{8}-\d{6}(-\d)?\.mp4/.test(document.querySelector("[data-testid=capture-saved]")?.textContent ?? ""), { timeout: 30000 });
+    await page.waitForFunction(() => /iPhone 16 \d{8}-\d{6}(-\d)?\.mp4/.test(document.querySelector("[data-testid=capture-saved]")?.textContent ?? ""), {
+      timeout: 30000,
+    });
     const withFlow = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).media.find((m: any) => m.source?.flow);
     assert.deepEqual(withFlow.source, { module: "argent.capture", device: "SIM-IPHONE-16", flow: "flows/tour.yaml" });
     assert.ok(!logNow().some((e) => e.forbidden));
