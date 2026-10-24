@@ -56,7 +56,7 @@ test("issue #103: the setup wizard takes Claude Code's API key sign-in and shows
   const { page } = app;
   await page.waitForSelector("[data-testid=check-claude][data-status=ready]", { timeout: 30000 });
   const wizard = await page.$eval("[data-testid=onboarding]", (el) => (el as HTMLElement).innerText);
-  assert.match(wizard, /runs your installed Claude Code, with whatever sign-in it uses/);
+  assert.match(wizard, /runs your installed Claude Code or Codex, with whatever sign-in each uses/);
   assert.doesNotMatch(wizard, /Codex you already use|subscription|No API keys needed|One agent is enough/i);
   assert.match(await page.$eval("[data-testid=check-claude]", (el) => (el as HTMLElement).innerText), /Signed in with an API key/);
   assert.ok(!wizard.includes(KEY) && !wizard.includes("sk-ant"), "the key is never shown");
