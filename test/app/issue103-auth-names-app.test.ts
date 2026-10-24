@@ -125,7 +125,7 @@ test("issue #103: Generate names no Claude feature and lists no brand-named comi
 
   await page.click("[data-testid=generate-type-audio]");
   await page.waitForSelector("[data-testid=generator][data-id='generate.sound']");
-  assert.deepEqual((await models()).map((r) => r.id), ["generate.sound", "soon.music", "soon.voice"], "Sound keeps its generic ElevenLabs models");
+  assert.deepEqual((await models()).map((r) => r.id), ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"], "Sound has its generic ElevenLabs models (#107, #108: the plugin's)");
   assert.doesNotMatch(await panel(), BRANDS);
 
   await page.click("[data-testid=rail-audio]");

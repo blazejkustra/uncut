@@ -2,9 +2,11 @@
 // switch at the top, then that type's models with their labs' marks (the wired ones first, then
 // the ones coming soon, whose real options show but can't be used), the prompt in a composer-like
 // box, the model's options as segmented choices and selects (no chips, D263), and one Generate button that says what it costs: your
-// Claude Code for the SVG generator, your key for the keyed ones. Progress and Cancel stay here; results go
+// Claude Code for the SVG generator, your key for the keyed ones. A plugin's models (#107, #108: the
+// ElevenLabs plugin's Voiceover and Music) bring their own options (a voice from the user's account,
+// a model, a speed, Instrumental only) and price. Progress and Cancel stay here; results go
 // to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
-import type { GenerateJob, GeneratorInfo, KeyProvider } from "@uncut/contracts";
+import type { GenerateJob, GenerateOptions, GeneratorChoice, GeneratorInfo, GeneratorOption, KeyProvider } from "@uncut/contracts";
 import { AudioLines, Check, Film, FolderOpen, Image as ImageIcon, ImagePlus, LoaderCircle, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -21,8 +23,14 @@ const CHIP_LABEL: Record<string, string> = { canvas: "Canvas", "1536x1024": "Lan
 const chipLabel = (s: string) => CHIP_LABEL[s] ?? s.replace("x", "×");
 
 /** A rough price for the button, in dollars (0 for the SVG generator: it runs on the user's Claude Code). */
-export function estimateOf(g: GeneratorInfo, kind: GenType, size: string | undefined, seconds: number | undefined): number {
+export function estimateOf(g: GeneratorInfo, kind: GenType, size: string | undefined, seconds: number | undefined, prompt = "", options: GenerateOptions = {}): number {
   if (!g.provider) return 0;
+  if (g.price) {
+    // A plugin's price (#107): per character of the prompt or per second, the `by` option's own when it has one.
+    const value = g.price.by ? options[g.price.by.option] : undefined;
+    const rate = g.price.by && typeof value === "string" && g.price.by.usd[value] !== undefined ? g.price.by.usd[value]! : g.price.usd;
+    return rate * (g.price.unit === "character" ? prompt.length : (seconds ?? g.seconds?.[0] ?? 0));
+  }
   if (g.id === "generate.veo") return (seconds ?? 4) * 0.4;
   if (g.id === "generate.sound") return (seconds ?? 5) * 0.01;
   if (g.id === "generate.gpt-image") return size === "1024x1024" ? 0.032 : 0.048;
@@ -47,6 +55,7 @@ const priceOf = (m: Model) => {
   const g = m.info;
   if (!g) return "Soon";
   if (!g.provider) return "Subscription";
+  if (g.price) return g.price.unit === "character" ? `$${(g.price.usd * 1000).toFixed(2)} per 1,000 characters` : `$${(g.price.usd * 60).toFixed(2)} a minute`;
   return g.id === "generate.veo" ? "$0.40 a second" : g.id === "generate.sound" ? "$0.01 a second" : g.id === "generate.gpt-image" ? "$0.05 each" : g.billing;
 };
 /** The line under a model's name: what it costs, and whether its key is set. */
@@ -84,21 +93,22 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
   const size = g && draft.size && g.sizes.includes(draft.size) ? draft.size : g?.sizes[0];
   const seconds = g?.seconds && type !== "image" ? (draft.seconds !== undefined && g.seconds.includes(draft.seconds) ? draft.seconds : g.id === "generate.sound" ? 5 : g.seconds[0]) : undefined;
   const fullPrompt = draft.prompt.trim();
+  const options = optionsOf(g, draft.options);
   const jobs = app.generateJobs.filter((j) => j.projectDir === app.snapshot?.dir);
   const running = jobs.filter((j) => j.phase === "running" || j.phase === "importing");
   const last = [...jobs].reverse().find((j) => j.phase === "done" || j.phase === "failed");
-  const estimate = g ? estimateOf(g, type, size, seconds) : 0;
+  const estimate = g ? estimateOf(g, type, size, seconds, fullPrompt, options) : 0;
   // The same request already running (a double click, or Generate again while it works): not twice.
-  const same = running.some((j) => j.generator === g?.id && j.prompt === fullPrompt && j.kind === type && (j.size ?? undefined) === (size ?? undefined) && (j.seconds ?? undefined) === (seconds ?? undefined));
+  const same = running.some((j) => j.generator === g?.id && j.prompt === fullPrompt && j.kind === type && (j.size ?? undefined) === (size ?? undefined) && (j.seconds ?? undefined) === (seconds ?? undefined) && sameOptions(j.options, options));
   const canRun = online && !!g && !m?.soon && g.ready && fullPrompt.length > 0 && !!app.snapshot && !same;
   const run = () => {
     if (!canRun || !g) return;
-    void actions.startGenerate({ generator: g.id, prompt: fullPrompt, kind: type, ...(size ? { size } : {}), ...(seconds !== undefined ? { seconds } : {}) });
+    void actions.startGenerate({ generator: g.id, prompt: fullPrompt, kind: type, ...(size ? { size } : {}), ...(seconds !== undefined ? { seconds } : {}), ...(Object.keys(options).length ? { options } : {}) });
   };
   const pickType = (t: GenType) => {
     setType(t);
     const first = firstModel(modelsFor(generators, t));
-    setDraft((d) => ({ ...d, generator: first?.id ?? d.generator, kind: t, size: undefined, seconds: undefined }));
+    setDraft((d) => ({ ...d, generator: first?.id ?? d.generator, kind: t, size: undefined, seconds: undefined, options: undefined }));
   };
   const noun = TYPES.find((t) => t.id === type)!.noun;
   const wired = models.filter((x) => !x.soon);
@@ -116,7 +126,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
       data-ready={x.info?.ready ?? false}
       data-soon={x.soon}
       title={x.soon ? `${x.name} by ${x.lab}: coming soon` : x.info?.provider ? `${x.name} by ${x.lab}` : `${x.name}, uses your ${x.lab}`}
-      onClick={() => setDraft((d) => ({ ...d, generator: x.id, size: undefined, seconds: undefined }))}
+      onClick={() => setDraft((d) => ({ ...d, generator: x.id, size: undefined, seconds: undefined, options: undefined }))}
     >
       <LabMark brand={x.brand} lab={x.lab} />
       <span className="gen-model-text">
@@ -158,9 +168,10 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
             ref={prompt}
             className="gen-prompt"
             data-testid="generate-prompt"
-            placeholder={PLACEHOLDER[type]}
+            placeholder={g?.placeholder ?? PLACEHOLDER[type]}
+            aria-label={g?.promptLabel ?? "Prompt"}
             value={draft.prompt}
-            maxLength={4000}
+            maxLength={g?.maxPrompt ?? 4000}
             onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run();
@@ -187,12 +198,15 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
               <span className="seg" role="radiogroup" aria-label="Length">
                 {g.seconds.map((n) => (
                   <button key={n} className={n === seconds ? "active" : ""} role="radio" aria-checked={n === seconds} data-testid={`generate-seconds-${n}`} data-value={n} onClick={() => setDraft((d) => ({ ...d, seconds: n }))}>
-                    {n} s
+                    {lengthLabel(n)}
                   </button>
                 ))}
               </span>
             </div>
           )}
+          {g?.options?.map((o) => (
+            <PluginOption key={`${g.id}:${o.id}`} generator={g} option={o} value={options[o.id]} online={online} onChange={(v) => setDraft((d) => ({ ...d, options: { ...d.options, [o.id]: v } }))} />
+          ))}
           {m?.soon && m.options?.map((o) => <SoonOption key={o.label} option={o} />)}
         </div>
         <div className="gen-go">
@@ -202,7 +216,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
             <kbd>⌘↩</kbd>
           </button>
           <div className="gen-cost small" data-testid="generate-estimate">
-            {m?.soon ? `${m.name} is coming soon` : g?.provider ? `About ${dollars(estimate)}, billed to your ${PROVIDER[g.provider]} key` : "Uses your Claude Code"}
+            {m?.soon ? `${m.name} is coming soon` : g?.provider ? `${estimate > 0 && estimate < 0.005 ? "Under $0.01" : `About ${dollars(estimate)}`}, billed to your ${PROVIDER[g.provider]} key` : "Uses your Claude Code"}
           </div>
         </div>
         {running.map((j) => (
@@ -216,7 +230,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
         {last && running.length === 0 && last.phase === "failed" && (
           <div className="inline-error small gen-failed" data-testid="generate-failed">
             <span>{last.error}</span>
-            <button className="link-btn" data-testid="generate-retry" disabled={!online} onClick={() => void actions.startGenerate({ generator: last.generator, prompt: last.prompt, kind: last.kind, ...(last.size ? { size: last.size } : {}), ...(last.seconds !== undefined ? { seconds: last.seconds } : {}) })}>
+            <button className="link-btn" data-testid="generate-retry" disabled={!online} onClick={() => void actions.startGenerate({ generator: last.generator, prompt: last.prompt, kind: last.kind, ...(last.size ? { size: last.size } : {}), ...(last.seconds !== undefined ? { seconds: last.seconds } : {}), ...(last.options ? { options: last.options } : {}) })}>
               <RefreshCw />
               Try again
             </button>
@@ -240,6 +254,77 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
         )}
       </div>
     </aside>
+  );
+}
+
+/** "30 s", "1 min", "1.5 min". */
+const lengthLabel = (n: number) => (n >= 60 ? `${Number((n / 60).toFixed(1))} min` : `${n} s`);
+
+/** A plugin generator's option values: the draft's, else each option's default (a toggle off). */
+function optionsOf(g: GeneratorInfo | undefined, picked: GenerateOptions | undefined): GenerateOptions {
+  const out: Record<string, string | boolean> = {};
+  for (const o of g?.options ?? []) {
+    const v = picked?.[o.id];
+    if (o.type === "toggle") out[o.id] = typeof v === "boolean" ? v : o.default === true;
+    else {
+      const value = typeof v === "string" ? v : typeof o.default === "string" ? o.default : o.choices?.[0]?.value;
+      if (value !== undefined) out[o.id] = value;
+    }
+  }
+  return out;
+}
+const sameOptions = (a: GenerateOptions | undefined, b: GenerateOptions) => JSON.stringify(a ?? {}) === JSON.stringify(b);
+
+/** Choices a plugin gave per generator and option (the voices), kept for the session. */
+const choicesCache = new Map<string, ReadonlyArray<GeneratorChoice>>();
+
+/**
+ * One option of a plugin's model (#107, #108): a choice as a select (a dynamic one's values from the
+ * plugin, e.g. the voices of the user's ElevenLabs account, with the manifest's as the fallback),
+ * a toggle as a switch.
+ */
+function PluginOption({ generator: g, option: o, value, online, onChange }: { generator: GeneratorInfo; option: GeneratorOption; value: string | boolean | undefined; online: boolean; onChange: (v: string | boolean) => void }) {
+  const cacheKey = `${g.id}:${o.id}`;
+  const [loaded, setLoaded] = useState<ReadonlyArray<GeneratorChoice> | undefined>(() => choicesCache.get(cacheKey));
+  const [problem, setProblem] = useState<string | undefined>();
+  useEffect(() => {
+    if (o.type !== "choice" || !o.dynamic || !g.ready || !online || choicesCache.has(cacheKey)) return;
+    let live = true;
+    void actions.generatorChoices(g.id, o.id).then((r) => {
+      if (!live) return;
+      if ("choices" in r) {
+        choicesCache.set(cacheKey, r.choices);
+        setLoaded(r.choices);
+        setProblem(undefined);
+      } else setProblem(r.error);
+    });
+    return () => {
+      live = false;
+    };
+  }, [cacheKey, g.ready, online]);
+  if (o.type === "toggle")
+    return (
+      <label className="gen-opt gen-toggle" data-testid="generate-option" data-kind="toggle" data-option={o.id} title={o.description}>
+        <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />
+        <span>{o.label}</span>
+      </label>
+    );
+  const fallback = o.choices ?? [];
+  const list = loaded && loaded.length ? loaded : fallback;
+  // The value picked (or the default) stays listed even when it isn't among the loaded ones.
+  const shown = typeof value === "string" && !list.some((c) => c.value === value) ? [...(fallback.filter((c) => c.value === value).length ? fallback.filter((c) => c.value === value) : [{ value, label: value }]), ...list] : list;
+  return (
+    <div className="gen-opt" data-testid="generate-option" data-kind="choice" data-option={o.id} title={problem ?? o.description}>
+      <span className="k">{o.label}</span>
+      {/* A plain select, not chips (D263). */}
+      <select className="field input gen-select" data-testid={`generate-option-${o.id}`} aria-label={o.label} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)}>
+        {shown.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -357,13 +442,14 @@ function JobRow({ job, online }: { job: GenerateJob; online: boolean }) {
 }
 
 const draftOf = (m: Project["media"][number]): GenerateDraft => {
-  const s = (m.source ?? {}) as { module?: unknown; prompt?: unknown; kind?: unknown; size?: unknown; seconds?: unknown };
+  const s = (m.source ?? {}) as { module?: unknown; prompt?: unknown; kind?: unknown; size?: unknown; seconds?: unknown; options?: unknown };
   return {
     generator: String(s.module),
     prompt: typeof s.prompt === "string" ? s.prompt : "",
     ...(s.kind === "image" || s.kind === "video" || s.kind === "audio" ? { kind: s.kind } : {}),
     ...(typeof s.size === "string" ? { size: s.size } : {}),
     ...(typeof s.seconds === "number" ? { seconds: s.seconds } : {}),
+    ...(s.options && typeof s.options === "object" && !Array.isArray(s.options) ? { options: s.options as GenerateOptions } : {}),
   };
 };
 

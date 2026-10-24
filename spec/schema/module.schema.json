@@ -386,7 +386,7 @@
     {
       "if": { "properties": { "kind": { "const": "generator" } } },
       "then": {
-        "required": ["generator"],
+        "anyOf": [{ "required": ["generator"] }, { "required": ["generators"] }],
         "properties": {
           "generator": {
             "type": "object",
@@ -396,6 +396,68 @@
               "media": { "enum": ["image", "video", "audio"] },
               "provider": { "type": "string" },
               "model": { "type": "string" }
+            }
+          },
+          "generators": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "description": "A generator plugin's generators (#107, #108), each in the Generate tab and generate_media as generate.<id>. Uncut calls the plugin's tool (default generate) with {generator: id, prompt, seconds?, options}; the plugin sends its requests with uncut/fetch (the user's key for provider, added by Uncut, only to that provider's API) and saves its result with uncut/fetch's save. Needs the network and api-key capabilities.",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "media", "provider", "billing", "price"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$", "maxLength": 60, "description": "Unique across plugins, the provider first: elevenlabs.voiceover." },
+                "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+                "media": { "enum": ["image", "video", "audio"] },
+                "provider": { "enum": ["openai", "google", "elevenlabs"], "description": "Whose key it uses (Settings › Keys)." },
+                "model": { "type": "string", "maxLength": 80 },
+                "billing": { "type": "string", "maxLength": 120, "description": "How it's paid for, in a few words." },
+                "tool": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,52}$", "description": "The tool Uncut calls to make it (default generate)." },
+                "promptLabel": { "type": "string", "maxLength": 30, "description": "What the prompt is (Script)." },
+                "placeholder": { "type": "string", "maxLength": 120 },
+                "maxPrompt": { "type": "integer", "minimum": 1, "maximum": 10000 },
+                "seconds": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 3600 }, "description": "Lengths to pick from, the first the default; a request may ask for any length between the shortest and the longest." },
+                "options": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "label", "type"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_]{0,31}$" },
+                      "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+                      "type": { "enum": ["choice", "toggle"] },
+                      "choices": {
+                        "type": "array",
+                        "maxItems": 40,
+                        "items": { "type": "object", "required": ["value", "label"], "additionalProperties": false, "properties": { "value": { "type": "string", "maxLength": 80 }, "label": { "type": "string", "maxLength": 80 } } }
+                      },
+                      "dynamic": { "type": "boolean", "description": "Its choices come from the plugin's choices tool ({generator, option}, with a grant); choices is then the fallback." },
+                      "default": { "type": ["string", "boolean"] },
+                      "description": { "type": "string", "maxLength": 200 }
+                    }
+                  }
+                },
+                "price": {
+                  "type": "object",
+                  "required": ["unit", "usd"],
+                  "additionalProperties": false,
+                  "description": "The estimate, in US dollars per character of the prompt or per second.",
+                  "properties": {
+                    "unit": { "enum": ["character", "second"] },
+                    "usd": { "type": "number", "minimum": 0 },
+                    "by": {
+                      "type": "object",
+                      "required": ["option", "usd"],
+                      "additionalProperties": false,
+                      "properties": { "option": { "type": "string" }, "usd": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } } }
+                    }
+                  }
+                }
+              }
             }
           }
         }

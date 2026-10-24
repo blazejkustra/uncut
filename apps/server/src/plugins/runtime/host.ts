@@ -1,5 +1,5 @@
 import { type ProcessSpec, messageOf } from "../discovery/manifest.ts";
-import { PluginProcess, DEFAULT_SDK_DIR, PluginTimeout, PluginCancelled } from "./process.ts";
+import { PluginProcess, DEFAULT_SDK_DIR, PluginTimeout, PluginCancelled, type PluginRequestHandler } from "./process.ts";
 import { type PluginContext, type PluginResult, errorResult, declaredOf, toMcpResult } from "./result.ts";
 
 // A plugin that crashes again and again: wait a little longer before each restart, and stop
@@ -12,6 +12,8 @@ const backoffMs = (recent: number) => (recent ? Math.min(8000, 250 * 2 ** (recen
 export interface CallExtra {
   readonly timeoutMs?: number | undefined;
   readonly onProgress?: ((progress: number, total: number | undefined, message?: string) => void) | undefined;
+  /** More of the call's context (a generator's grant, #107). */
+  readonly meta?: PluginContext | undefined;
 }
 
 interface Slot {
@@ -34,10 +36,16 @@ export class PluginHost {
   private readonly live = new Set<PluginProcess>();
 
   private readonly sdkDir: string;
+  private onRequest: PluginRequestHandler | undefined;
 
   /** `sdkDir`: the folder with the plugin SDK's index.ts and register.ts (D102). */
   constructor(sdkDir: string = DEFAULT_SDK_DIR) {
     this.sdkDir = sdkDir;
+  }
+
+  /** Who answers the plugins' own requests (uncut/fetch, #107); processes started from now on. */
+  serveRequests(handler: PluginRequestHandler) {
+    this.onRequest = handler;
   }
 
   /** The process of a running plugin (tests, diagnostics). */
@@ -58,7 +66,7 @@ export class PluginHost {
     const spec = slot.spec;
     const starting = (async () => {
       if (wait) await new Promise((r) => setTimeout(r, wait));
-      const proc = await PluginProcess.start(spec, this.live, this.sdkDir);
+      const proc = await PluginProcess.start(spec, this.live, this.sdkDir, (id, method, params) => this.onRequest?.(id, method, params));
       void proc.exited.then(() => {
         if (!proc.stoppedByUs) slot.crashes.push(Date.now());
         if (slot.proc === proc) slot.proc = undefined;
@@ -111,7 +119,8 @@ export class PluginHost {
     const refusal = await allowed?.();
     if (refusal) return errorResult(refusal);
     try {
-      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(context && Object.keys(context).length ? { _meta: context } : {}) }, extra.timeoutMs ?? spec.timeoutMs, signal, extra.onProgress);
+      const meta = { ...context, ...extra.meta };
+      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(Object.keys(meta).length ? { _meta: meta } : {}) }, extra.timeoutMs ?? spec.timeoutMs, signal, extra.onProgress);
       const declared = declaredOf(raw);
       const structured = (raw as { structuredContent?: unknown } | null)?.structuredContent;
       return { ...toMcpResult(raw), ...(declared ? { declared } : {}), ...(structured !== undefined ? { structured } : {}) };

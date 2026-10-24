@@ -500,7 +500,7 @@
     },
     {
       "name": "generate_media",
-      "description": "Make an image, video or sound with a generator into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 asks the user on a card.",
+      "description": "Make an image, video or sound with a generator into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo, generate.sound and plugins' generators (modules_list kind generator) bill the user's own API key; without it the result says which key is needed. Over $1 asks the user on a card.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -510,12 +510,8 @@
         "additionalProperties": false,
         "properties": {
           "generator": {
-            "enum": [
-              "generate.svg",
-              "generate.gpt-image",
-              "generate.veo",
-              "generate.sound"
-            ]
+            "type": "string",
+            "pattern": "^generate\\.[a-z0-9.-]+$"
           },
           "prompt": {
             "type": "string",
@@ -538,7 +534,17 @@
           "seconds": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "description": "veo: 4, 6 or 8. sound: 0.5 to 30 (default 5). svg video: up to 12 (default 5)."
+            "description": "veo: 4, 6 or 8. sound: 0.5 to 30 (default 5). svg video: up to 12 (default 5). music: 30 to 180."
+          },
+          "options": {
+            "type": "object",
+            "description": "A plugin's generator: option values by id, e.g. {\"voice\": \"George\"}.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "boolean"
+              ]
+            }
           },
           "name": {
             "type": "string",

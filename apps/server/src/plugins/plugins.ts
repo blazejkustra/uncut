@@ -101,6 +101,8 @@ export interface PluginsShape {
   readonly processChecks: (project: unknown, projectDir: string | undefined) => Effect.Effect<{ readonly checks: ReadonlyArray<Check>; readonly notes: ReadonlyArray<string> }>;
   /** The running process of a plugin (tests). */
   readonly host: PluginHost;
+  /** #107: the allowed generator plugins that run (kind generator), with their manifests, after a fresh scan. */
+  readonly generatorPlugins: Effect.Effect<ReadonlyArray<PluginCaller & { readonly manifest: Record<string, unknown> }>>;
 }
 
 /** Who answered a plugin call: what Uncut needs to decide what to do with its declaration. */
@@ -110,6 +112,27 @@ export interface PluginCaller {
   readonly kind: string;
   readonly capabilities: ReadonlyArray<string>;
 }
+
+/** #107: a generator plugin's generators as modules_list shows them: what generate_media takes (its id, length, options) and costs. */
+const generatorsFor = (gens: ReadonlyArray<Record<string, any>>) =>
+  gens.map((g) => ({
+    generator: `generate.${g.id}`,
+    name: g.name,
+    media: g.media,
+    key: g.provider,
+    ...(g.model ? { model: g.model } : {}),
+    billing: g.billing,
+    ...(g.promptLabel ? { prompt: g.promptLabel } : {}),
+    ...(Array.isArray(g.seconds) ? { seconds: g.seconds } : {}),
+    options: ((g.options ?? []) as ReadonlyArray<Record<string, any>>).map((o) => ({
+      id: o.id,
+      type: o.type,
+      ...(o.description ? { description: o.description } : {}),
+      ...(o.type === "choice" && !o.dynamic && Array.isArray(o.choices) ? { values: o.choices.map((c: { value: string }) => c.value) } : {}),
+      ...(o.dynamic ? { values: "the user's own (a name or id)" } : {}),
+      ...(o.default !== undefined ? { default: o.default } : {}),
+    })),
+  }));
 
 const callerOf = (p: FoundPlugin): PluginCaller => ({ id: p.id, name: p.name, kind: p.kind, capabilities: p.capabilities });
 
@@ -204,6 +227,13 @@ export const layer = Layer.effect(
       host,
       refresh,
       list,
+      generatorPlugins: Effect.gen(function* () {
+        yield* refresh;
+        const approvals = yield* settings.pluginApprovals;
+        // The plugins that ship with Uncut first, so their generator ids are theirs.
+        const allowed = discovery.plugins.filter((p) => p.kind === "generator" && p.runs && isApproved(p, approvals[p.id]) && !installing.has(p.id));
+        return [...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => ({ ...callerOf(p), manifest: p.manifest as unknown as Record<string, unknown> }));
+      }),
       approve: ({ id, dir, capabilities, skills }) =>
         Effect.gen(function* () {
           const plugin = yield* find(id);
@@ -317,7 +347,7 @@ export const layer = Layer.effect(
           if (refused) return { ...errorResult(`${plugin.name} isn't allowed to run yet: allow it in Settings, the Capture step.`), plugin: callerOf(plugin) };
           const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
           const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
-          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress }));
+          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress, meta: options.meta }));
           return { ...result, plugin: callerOf(plugin) };
         }),
       catalog: Effect.gen(function* () {
@@ -403,6 +433,7 @@ export const layer = Layer.effect(
                     capabilities: p.capabilities,
                     tools: p.tools.map((t) => t.name),
                     ...(contributesOf(p.contributions) ? { contributes: contributesFor(p.contributions) } : {}),
+                    ...(p.kind === "generator" && Array.isArray(p.manifest.generators) ? { generators: generatorsFor(p.manifest.generators as ReadonlyArray<Record<string, any>>) } : {}),
                     ...(p.warnings.length ? { warnings: p.warnings } : {}),
                   }
                 : { id: p.id, kind: p.kind, name: p.name.slice(0, 80), source: p.source, plugin: true, approved: false, note: "Installed, but the user hasn't allowed it yet: its tools aren't available until they do (Uncut > Settings…, the Capture step, Plugins)." },

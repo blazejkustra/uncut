@@ -43,6 +43,8 @@ export interface PluginContext {
   readonly "uncut/captureDir"?: string;
   /** The project's saved flows (capture sources): <project>/flows. */
   readonly "uncut/flowsDir"?: string;
+  /** A generator's call (#107): the grant its uncut/fetch requests name. */
+  readonly "uncut/grant"?: string;
 }
 
 export const CAPTURE_DIR = join("media", "captures");

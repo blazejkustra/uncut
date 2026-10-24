@@ -1,4 +1,4 @@
-import type { ServerHello, ProjectSnapshot, RecentProject, SetupCheck, PluginInfo, PluginContributions, CatalogEntry, CaptureState, GeneratorInfo, GenerateJob, KeyInfo, ImportJob, MediaImportResult, AgentState, HistoryState, AgentMention, AgentImage, AgentUiPanel, ExportJob, AnalysisJob, ProxyState, TranscriptionState, BrandState, GenerateKind, TemplateInfo } from "@uncut/contracts";
+import type { ServerHello, ProjectSnapshot, RecentProject, SetupCheck, PluginInfo, PluginContributions, CatalogEntry, CaptureState, GeneratorInfo, GenerateJob, GenerateOptions, KeyInfo, ImportJob, MediaImportResult, AgentState, HistoryState, AgentMention, AgentImage, AgentUiPanel, ExportJob, AnalysisJob, ProxyState, TranscriptionState, BrandState, GenerateKind, TemplateInfo } from "@uncut/contracts";
 import type { AppInfo, EnvironmentInfo } from "../bridge.ts";
 import type { Check } from "@uncut/core/checks";
 import type { ProjectModel } from "../project.ts";
@@ -161,6 +161,8 @@ export interface GenerateDraft {
   readonly kind?: GenerateKind | undefined;
   readonly size?: string | undefined;
   readonly seconds?: number | undefined;
+  /** A plugin generator's option values (#107, #108). */
+  readonly options?: GenerateOptions | undefined;
 }
 /**
  * A field where keys type text (text-like inputs, textareas, contenteditable). A focused checkbox,

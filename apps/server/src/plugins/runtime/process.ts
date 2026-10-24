@@ -22,6 +22,15 @@ interface Pending {
   readonly onProgress?: ((progress: number, total: number | undefined, message?: string) => void) | undefined;
 }
 
+/**
+ * Answers a request from a plugin (`uncut/fetch`, #107): resolves with the result, rejects with a
+ * sentence; undefined when Uncut doesn't offer `method`.
+ */
+export type PluginRequestHandler = (pluginId: string, method: string, params: unknown) => Promise<unknown> | undefined;
+
+/** The most requests from one plugin Uncut works on at once. */
+const MAX_PLUGIN_REQUESTS = 8;
+
 /** Thrown when a call ran out of time (the process is then stopped). */
 export class PluginTimeout extends Error {}
 /** Thrown when the agent turn ended before the call finished. */
@@ -80,9 +89,12 @@ export class PluginProcess {
   private gone = false;
   /** Set when Uncut stopped it on purpose (a timeout, a stop): not a crash. */
   stoppedByUs = false;
+  private readonly onRequest: PluginRequestHandler | undefined;
+  private serving = 0;
 
-  private constructor(spec: ProcessSpec, command: Command, live?: Set<PluginProcess>) {
+  private constructor(spec: ProcessSpec, command: Command, live?: Set<PluginProcess>, onRequest?: PluginRequestHandler) {
     this.spec = spec;
+    this.onRequest = onRequest;
     // Its own process group, so stopping it also stops whatever it started.
     this.child = spawn(command.file, [...command.flags, ...spec.args], { cwd: spec.dir, env: { ...pluginEnv(process.env), ...command.env }, stdio: ["pipe", "pipe", "pipe"], detached: true });
     this.exited = new Promise((done) => {
@@ -159,8 +171,19 @@ export class PluginProcess {
         }
         // A request from the plugin: ping is answered, nothing else is offered. Notifications need no answer.
         if (m.id === undefined || m.id === null || (typeof m.id !== "number" && typeof m.id !== "string")) return;
-        if (m.method === "ping") this.write({ id: m.id, result: {} });
-        else this.write({ id: m.id, error: { code: -32601, message: `Uncut doesn't offer ${m.method.slice(0, 100)}` } });
+        if (m.method === "ping") return this.write({ id: m.id, result: {} });
+        const reqId = m.id;
+        const answer = m.method.startsWith("uncut/") ? this.onRequest?.(this.spec.id, m.method, (msg as { params?: unknown }).params) : undefined;
+        if (!answer) return this.write({ id: reqId, error: { code: -32601, message: `Uncut doesn't offer ${m.method.slice(0, 100)}` } });
+        if (this.serving >= MAX_PLUGIN_REQUESTS) {
+          answer.catch(() => {});
+          return this.write({ id: reqId, error: { code: -32000, message: `Uncut works on at most ${MAX_PLUGIN_REQUESTS} requests from a plugin at once.` } });
+        }
+        this.serving++;
+        answer.then(
+          (result) => this.write({ id: reqId, result: result ?? {} }),
+          (error) => this.write({ id: reqId, error: { code: -32000, message: messageOf(error).slice(0, 2000) } }),
+        ).finally(() => this.serving--);
         return;
       }
       if (typeof m.id !== "number") return;
@@ -177,14 +200,14 @@ export class PluginProcess {
   }
 
   /** Starts the plugin and does the MCP handshake; rejects with a sentence. */
-  static async start(spec: ProcessSpec, live?: Set<PluginProcess>, sdkDir: string = DEFAULT_SDK_DIR): Promise<PluginProcess> {
+  static async start(spec: ProcessSpec, live?: Set<PluginProcess>, sdkDir: string = DEFAULT_SDK_DIR, onRequest?: PluginRequestHandler): Promise<PluginProcess> {
     let command: Command;
     try {
       command = await resolveCommand(spec, sdkDir);
     } catch (error) {
       throw new Error(`Couldn't start ${spec.name}: ${messageOf(error)}.`);
     }
-    const proc = new PluginProcess(spec, command, live);
+    const proc = new PluginProcess(spec, command, live, onRequest);
     try {
       await proc.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "uncut", version: "0.0.1" } }, START_TIMEOUT_MS);
       proc.notify("notifications/initialized");

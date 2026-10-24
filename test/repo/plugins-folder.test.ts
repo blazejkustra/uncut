@@ -23,7 +23,7 @@ import { checkPluginFolder, gateContext, pluginDirs, REPO, TEMPLATE_DIR } from "
 const { bundled, catalog } = pluginDirs();
 
 test("the repo has bundled plugins and a catalog with the example", () => {
-  assert.deepEqual(bundled.map((d) => d.split("/").at(-1)).sort(), ["argent-capture", "uncut-skills", "whisper-transcribe"]);
+  assert.deepEqual(bundled.map((d) => d.split("/").at(-1)).sort(), ["argent-capture", "uncut-elevenlabs", "uncut-skills", "whisper-transcribe"]);
   assert.ok(catalog.some((d) => d.endsWith("taste-extra")));
   assert.ok(!catalog.some((d) => d.endsWith("_template")), "the template isn't a catalog plugin");
 });

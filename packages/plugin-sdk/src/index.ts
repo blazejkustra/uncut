@@ -22,9 +22,13 @@
 //      agent's turn ended, the user cancelled): stop the work and send no answer for it.
 //   6. Uncut closes the plugin's stdin when it's done with it, then SIGTERM, then SIGKILL to the
 //      plugin's process group 0.5 s later. Exit when stdin closes.
+//   7. The plugin → `uncut/fetch` (FetchParams) during a call whose _meta has an `uncut/grant`
+//      (a generator's call, #107, #108): Uncut sends the request with the user's API key for the
+//      generator's provider and answers FetchResult. The plugin never sees the key: Uncut adds it,
+//      only to that provider's own API, and saves a file it asks for into the generated media.
 // A call that takes longer than the manifest's runtime.timeoutSeconds (default 120, at most 1800)
-// fails and the process group is killed. Uncut answers a plugin's `ping` with {}; it offers no
-// other requests (sampling, roots...) and answers them with error -32601.
+// fails and the process group is killed. Uncut answers a plugin's `ping` with {} and `uncut/fetch`
+// as above; it offers no other requests (sampling, roots...) and answers them with error -32601.
 //
 // A plugin returns data; it never edits the project itself. One exception, declared and checked
 // by Uncut (D98): a plugin allowed to add media (media:write) may write a file into CallMeta's
@@ -94,6 +98,8 @@ export interface CallMeta {
   readonly "uncut/captureDir"?: string;
   /** The project's saved flows, `<project>/flows`: capture-source plugins with project:read or media:write. */
   readonly "uncut/flowsDir"?: string;
+  /** A generator's call (#107, #108): the grant its `uncut/fetch` requests name, good until the call ends. */
+  readonly "uncut/grant"?: string;
 }
 
 /** `tools/call`'s params. */
@@ -117,6 +123,32 @@ export interface ProgressParams {
   readonly progress: number;
   readonly total?: number;
   readonly message?: string;
+}
+
+/**
+ * `uncut/fetch`'s params: one HTTP request to the generator's provider (its API's own host; a path
+ * like "/v1/voices" is on it), sent by Uncut with the user's key. `save` (an extension: "mp3") asks
+ * Uncut to save a successful reply's body as the call's result file instead of answering it; at
+ * most one file a call. Headers that carry credentials are dropped (Uncut adds the key).
+ */
+export interface FetchParams {
+  readonly grant: string;
+  readonly url: string;
+  readonly method?: "GET" | "POST" | "DELETE";
+  readonly headers?: Readonly<Record<string, string>>;
+  /** The body, as text (JSON.stringify it). */
+  readonly body?: string;
+  readonly save?: string;
+}
+
+/** `uncut/fetch`'s answer: the reply's status and type, and its text (at most 12 MB, the key redacted) or the saved file. */
+export interface FetchResult {
+  readonly status: number;
+  readonly contentType: string;
+  readonly text?: string;
+  /** With `save` and a 2xx reply: the file Uncut saved (absolute path) and its size. */
+  readonly file?: string;
+  readonly bytes?: number;
 }
 
 export interface TextContent {
@@ -222,6 +254,11 @@ export interface ToolContext {
   readonly meta: CallMeta;
   /** Reports progress, when Uncut asked for it (else does nothing). */
   readonly progress: (progress: number, total?: number, message?: string) => void;
+  /**
+   * An HTTP request to the generator's provider with the user's key (`uncut/fetch`), for a call
+   * with a grant (else it throws). Rejects with Uncut's sentence when it's refused.
+   */
+  readonly fetch: (request: Omit<FetchParams, "grant">) => Promise<FetchResult>;
 }
 
 export type ToolHandler = (args: Json, context: ToolContext) => ToolResult | Promise<ToolResult>;
@@ -254,6 +291,8 @@ export interface PluginServer {
   readonly send: (message: Json) => void;
   /** Sends a notification. */
   readonly notify: (method: string, params?: unknown) => void;
+  /** Sends a request to Uncut and waits for its answer (rejects with its error message). */
+  readonly request: (method: string, params?: unknown, signal?: AbortSignal) => Promise<unknown>;
   /** The calls running now, by id. */
   readonly running: ReadonlyMap<RequestId, AbortController>;
   /** Stops reading (tests; with exitOnClose the process exits on its own). */
@@ -282,6 +321,24 @@ export function serve(options: ServeOptions): PluginServer {
   const send = (message: Json) => void output.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
   const notify = (method: string, params?: unknown) => send({ method, ...(params === undefined ? {} : { params }) });
   const answerError = options.onError ?? ((error: unknown) => failure(messageOf(error)));
+  // Our own requests to Uncut (uncut/fetch), by id: plugin-side ids are strings, so they never meet Uncut's numbers.
+  const asked = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  let nextAsk = 0;
+  const request = (method: string, params?: unknown, signal?: AbortSignal) =>
+    new Promise<unknown>((resolve, reject) => {
+      if (signal?.aborted) return reject(new Error("cancelled"));
+      const id = `p${++nextAsk}`;
+      const onAbort = () => {
+        asked.delete(id);
+        reject(new Error("cancelled"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      asked.set(id, {
+        resolve: (value) => (signal?.removeEventListener("abort", onAbort), resolve(value)),
+        reject: (error) => (signal?.removeEventListener("abort", onAbort), reject(error)),
+      });
+      send({ id, method, ...(params === undefined ? {} : { params }) });
+    });
 
   async function call(id: RequestId, params: Json) {
     const name = String(params.name ?? "");
@@ -303,6 +360,11 @@ export function serve(options: ServeOptions): PluginServer {
         if (token === undefined || abort.signal.aborted) return;
         notify("notifications/progress", { progressToken: token, progress, ...(total !== undefined ? { total } : {}), ...(message ? { message } : {}) } satisfies ProgressParams);
       },
+      fetch: async (req) => {
+        const grant = str(meta["uncut/grant"]);
+        if (!grant) throw new ToolError("Uncut didn't give this call a key to use (only a generator's call gets one).");
+        return (await request("uncut/fetch", { ...req, grant } satisfies FetchParams, abort.signal)) as FetchResult;
+      },
     };
     let result: ToolResult;
     try {
@@ -321,7 +383,16 @@ export function serve(options: ServeOptions): PluginServer {
     const params = isObject(msg.params) ? msg.params : {};
     const hasId = typeof id === "number" || typeof id === "string";
     if (typeof method !== "string") {
-      if (hasId && ("result" in msg || "error" in msg)) options.onReply?.(msg as unknown as JsonRpcSuccess | JsonRpcFailure);
+      if (!hasId || !("result" in msg || "error" in msg)) return;
+      const mine = typeof id === "string" ? asked.get(id) : undefined;
+      if (mine) {
+        asked.delete(id as string);
+        const error = (msg as { error?: { message?: unknown } }).error;
+        if (error) mine.reject(new Error(typeof error.message === "string" ? error.message : "Uncut refused the request."));
+        else mine.resolve((msg as { result?: unknown }).result);
+        return;
+      }
+      options.onReply?.(msg as unknown as JsonRpcSuccess | JsonRpcFailure);
       return;
     }
     if (!hasId) {
@@ -391,5 +462,5 @@ export function serve(options: ServeOptions): PluginServer {
     });
   }
 
-  return { manifest, send, notify, running, close: () => void input.removeListener("data", onData) };
+  return { manifest, send, notify, request, running, close: () => void input.removeListener("data", onData) };
 }

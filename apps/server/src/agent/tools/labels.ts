@@ -100,6 +100,9 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "generate_media": {
       const what = args.kind === "video" ? "a video" : args.kind === "audio" ? "a sound" : args.generator === "generate.sound" ? "a sound" : args.generator === "generate.veo" ? "a video" : "a picture";
       const by = args.generator === "generate.gpt-image" ? " with GPT Image" : args.generator === "generate.veo" ? " with Veo" : args.generator === "generate.sound" ? " with ElevenLabs" : args.generator === "generate.svg" ? " from SVG" : "";
+      // A plugin's generators (#107, #108).
+      if (args.generator === "generate.elevenlabs.voiceover") return "Generated a voiceover with ElevenLabs";
+      if (args.generator === "generate.elevenlabs.music") return "Generated music with ElevenLabs";
       return `Generated ${what}${by}`;
     }
     case "screen_record":
