@@ -79,7 +79,12 @@ export interface ActionDef {
 
 /** Every row, in the order Settings and the sheet list them. */
 export const ACTIONS: ReadonlyArray<ActionDef> = [
-  { id: "play", group: "Playback", keys: ["Space"], does: "Play or pause (from the pointer while skimming the timeline)" },
+  {
+    id: "play",
+    group: "Playback",
+    keys: ["Space"],
+    does: "Play or pause (from the pointer while skimming the timeline; over a library item, plays it in the viewer)",
+  },
   { id: "shuttleBack", group: "Playback", keys: ["J"], does: "Play backwards (press again to go faster)" },
   { id: "pause", group: "Playback", keys: ["K"], does: "Pause" },
   { id: "shuttleForward", group: "Playback", keys: ["L"], does: "Play forwards (press again to go faster)" },
@@ -100,7 +105,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   { id: "delete", group: "Edit", keys: ["⌫", "Delete"], does: "Delete the selection (leaves a gap)" },
   { id: "rippleDelete", group: "Edit", keys: ["⇧⌫", "⇧Delete"], does: "Ripple delete: delete and close the gap" },
   { id: "duplicate", group: "Edit", keys: ["⌘D"], does: "Duplicate the selection" },
-  { id: "deselect", group: "Edit", keys: ["Esc"], does: "Deselect" },
+  { id: "deselect", group: "Edit", keys: ["Esc"], does: "Deselect (in the source viewer: back to the timeline)" },
   { id: "selectAll", group: "Edit", keys: ["⌘A"], does: "Select everything on the timeline", fixed: "menu" },
   { id: "copy", group: "Edit", keys: ["⌘C"], does: "Copy", fixed: "menu" },
   { id: "cut", group: "Edit", keys: ["⌘X"], does: "Cut", fixed: "menu" },

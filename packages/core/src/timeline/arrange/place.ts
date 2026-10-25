@@ -66,8 +66,14 @@ export function itemTypeFor(media: Pick<Media, "kind" | "probe">, track: Pick<Tr
   return undefined;
 }
 
-/** A media file to place: an entry of the project, or one being added in the same edit. */
-export type PlaceMedia = Pick<Media, "id" | "kind" | "name" | "probe">;
+/** A stretch of a media file, in project frames: from `in`, `duration` long. */
+export interface MediaRange {
+  readonly in: Frame;
+  readonly duration: Frame;
+}
+
+/** A media file to place: an entry of the project, or one being added in the same edit; `range`: only that stretch of a video or sound. */
+export type PlaceMedia = Pick<Media, "id" | "kind" | "name" | "probe"> & { readonly range?: MediaRange | undefined };
 
 export interface PlacedItem {
   readonly itemId: Id;
@@ -139,7 +145,8 @@ export function planPlaceMedia(
   const target = at.track !== undefined ? tracks.find((t) => t.id === at.track) : undefined;
   if (target?.locked) return { problem: `The ${target.name} track is locked. Unlock it to add to it.` };
   for (const m of media) {
-    const length = placedLength(m, fps, at.imageSeconds);
+    const range = m.kind === "image" ? undefined : m.range;
+    const length = range?.duration ?? placedLength(m, fps, at.imageSeconds);
     if (!length) return { problem: `${m.name} has no known length, so it can't go on the timeline.` };
     let track = target && itemTypeFor(m, target) ? target : undefined;
     const type = track ? itemTypeFor(m, track)! : m.kind === "audio" ? "audio" : "clip";
@@ -166,7 +173,7 @@ export function planPlaceMedia(
       }
     }
     const itemId = uniqueIn(type === "audio" ? "audio" : "clip", taken);
-    const body = { id: itemId, type, media: m.id, ...(m.kind === "image" ? {} : { in: 0 }), duration: length } as Item;
+    const body = { id: itemId, type, media: m.id, ...(m.kind === "image" ? {} : { in: range?.in ?? 0 }), duration: length } as Item;
     let start: number;
     if (track.role === "main") {
       // The cut nearest the drop: after every clip whose middle is at or before it.

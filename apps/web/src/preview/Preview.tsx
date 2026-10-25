@@ -35,6 +35,7 @@ import { ClipSelection, TextSelection } from "./stage/selection.tsx";
 import { AgentChangePill } from "./stage/AgentChangePill.tsx";
 import { MediaSkim } from "./stage/MediaSkim.tsx";
 import { RegionPins, RegionSelect } from "./stage/Region.tsx";
+import { SourceViewer } from "./source/SourceViewer.tsx";
 
 interface CanvasDrag {
   readonly id: string;
@@ -469,6 +470,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       </div>
       <AgentChangePill fps={project.canvas.fps} />
       <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} region={region} onRegion={() => setRegion(!region)} />
+      <SourceViewer fps={project.canvas.fps} />
     </main>
   );
 }
