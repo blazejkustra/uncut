@@ -8,6 +8,7 @@ import { cutSelectedWords } from "../panels/Transcript.tsx";
 import { addSelectedWordsToChat } from "../panels/transcriptView/cuts.ts";
 import { getTranscripts, transcriptStore } from "../panels/transcript.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
+import { sourceKey } from "../preview/source/source.ts";
 import { actions, getState, isTextEntry, projectOf } from "../state/store.ts";
 import { installFocusRules, isTyping } from "./focus.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
@@ -138,6 +139,8 @@ export function useEditorKeys(fps: number) {
       const pressed = keyOf(e);
       const action = pressed === undefined ? undefined : actionFor(keymap.bindings(), pressed);
       if (!action) return;
+      // D311: a media tile under the pointer, or a media open in the source viewer, takes its keys first.
+      if ((action !== "play" || !e.repeat) && sourceKey(action, fps)) return done();
       const snapshot = s().snapshot;
       const seekTo = (to: number | null | undefined) => to !== undefined && to !== null && (playback.pause(), playback.seek(to));
       // Issue #57 (D230): the tool keys pick the timeline's tool (held: only while down).

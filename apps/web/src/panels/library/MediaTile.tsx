@@ -11,6 +11,7 @@ import { analysisText } from "../../state/analysisText.ts";
 import { actionFor, keymap, keyOf } from "../../editor/keymap.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 import { getPlayback, playback } from "../../preview/playback.ts";
+import { getSource, source, useSource } from "../../preview/source/source.ts";
 import "./mediaChat.css";
 
 /** "59.94", "30", "23.98" */
@@ -92,6 +93,13 @@ export function MediaTile({
       [
         // D264 (#77): the media (or a generated picture) as a chip in the Agent tab's composer.
         { id: "media-add-to-chat", label: "Add to chat", run: () => void actions.addMediaToChat(item.id) },
+        // D311: the source viewer.
+        {
+          id: "media-open-source",
+          label: item.kind === "image" ? "Show in viewer" : "Play in viewer",
+          shortcut: "Space",
+          run: () => source.open(item.id, item.kind !== "image"),
+        },
         "-",
         ...(generated
           ? [
@@ -150,17 +158,22 @@ export function MediaTile({
   }, [scrub, seconds]);
   // A tile that goes while skimmed (removed, another project) leaves the preview to the playhead.
   useEffect(() => () => void (getPlayback().hoverMedia?.media === item.id && playback.hoverMedia(undefined)), [item.id]);
+  useEffect(() => () => void (getSource().hovered === item.id && source.hoverTile(undefined)), [item.id]);
+  const inViewer = useSource((s) => s.media === item.id);
   return (
     <div
-      className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}${generated ? " gen-tile" : ""}`}
+      className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}${generated ? " gen-tile" : ""}${inViewer ? " in-viewer" : ""}`}
       data-testid={generated ? "generated-item" : "media-tile"}
       data-id={item.id}
       data-used={used ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
+      data-source={inViewer ? "true" : undefined}
       title={generated ? `${item.name}\n${generated.prompt || "No prompt saved"}\n${generated.by}` : item.path}
       ref={tileRef}
       tabIndex={0}
       onClick={onSelect}
+      onPointerEnter={() => source.hoverTile(item.id)}
+      onPointerLeave={() => source.hoverTile(undefined)}
       onKeyDown={(e) => {
         // D264: the add-to-chat key (⌘L) on the focused tile adds this media, not the timeline's selection.
         if (e.target === e.currentTarget) {
@@ -203,6 +216,7 @@ export function MediaTile({
           playback.hoverMedia(undefined);
         }}
         onPointerDown={() => playback.hoverMedia(undefined)}
+        onDoubleClick={(e) => !(e.target as HTMLElement).closest("button") && source.open(item.id)}
       >
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
         {canScrub && scrub !== undefined && (

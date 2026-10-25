@@ -8,7 +8,7 @@ import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
 import { libraryMediaOf, mediaIdFor, projectIds } from "@uncut/core/library";
-import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
+import { type MediaRange, planPlaceMedia, takenIds } from "@uncut/core/arrange";
 import { defaultFrames, defaultSeconds } from "../settings/defaults.ts";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
@@ -70,23 +70,24 @@ export type Planned =
  * "Add to timeline" for a library tile. Video and images are appended to the end of the magnetic
  * main track (D17: no gaps, nothing shifts); audio goes on the first unlocked audio track (one is
  * created if there is none) at the playhead if the track is free there for the sound's whole
- * length, else after its last item (D54).
+ * length, else after its last item (D54). With `range`, only that stretch of a video or sound
+ * (the source viewer's In to Out, D311).
  */
-export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0): Planned {
+export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0, range?: MediaRange): Planned {
   const media = project.media.find((m) => m.id === mediaId);
   if (!media) return { problem: "That media isn't in the project any more." };
   const fps = project.canvas.fps;
   const frames = media.probe?.frames;
   if (media.kind !== "image" && !frames) return { problem: `${media.name} has no known length, so it can't go on the timeline.` };
-  if (media.kind === "audio") return planAudio(project, media, frames!, frame);
+  if (media.kind === "audio") return planDropMedia(project, media.id, { frame, range });
   const main = project.tracks.find((t) => t.role === "main");
   if (!main) return { problem: "This project has no main track." };
   if (main.locked) return { problem: "The main track is locked. Unlock it to add clips." };
   const mainEnd = mainEndOf(project);
   const itemId = uniqueId(project, "clip");
-  const duration = media.kind === "image" ? defaultFrames("still", fps) : frames!;
+  const stretch = media.kind === "image" ? { in: 0, duration: defaultFrames("still", fps) } : (range ?? { in: 0, duration: frames! });
   return {
-    ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, in: 0, duration } }],
+    ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, ...stretch } }],
     summary: `Add ${media.name} to the timeline`,
     itemId,
     start: mainEnd,
@@ -139,10 +140,15 @@ function planAudio(project: ProjectModel, media: Media, _length: number, frame: 
  * it (main: the slot nearest the drop; a free track: the nearest free spot; a video file on an audio
  * lane: its sound), else where core planPlaceMedia puts it. One edit.
  */
-export function planDropMedia(project: ProjectModel, mediaId: string, at: { readonly frame: number; readonly track?: string | undefined }): Planned {
+export function planDropMedia(
+  project: ProjectModel,
+  mediaId: string,
+  at: { readonly frame: number; readonly track?: string | undefined; readonly range?: MediaRange | undefined },
+): Planned {
   const media = project.media.find((m) => m.id === mediaId);
   if (!media) return { problem: "That media isn't in the project any more." };
-  const plan = planPlaceMedia(project, [media], { ...at, imageSeconds: defaultSeconds("still") }, takenIds(project));
+  const { range, ...where } = at;
+  const plan = planPlaceMedia(project, [{ ...media, range }], { ...where, imageSeconds: defaultSeconds("still") }, takenIds(project));
   if ("problem" in plan) return plan;
   const first = plan.placed[0]!;
   return { ops: plan.ops, summary: `Add ${media.name} to the timeline`, itemId: first.itemId, start: first.start };

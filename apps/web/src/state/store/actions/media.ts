@@ -3,6 +3,7 @@ import { bridge } from "../../bridge.ts";
 import { isTransportError } from "../../connection.ts";
 import { getPlayback } from "../../../preview/playback.ts";
 import { type LibraryQuery, libraryMediaOf, MUSIC_LIBRARY_PATH } from "@uncut/core/library";
+import type { MediaRange } from "@uncut/core/arrange";
 import { planAddAtPlayhead, planAddMedia, planAddLibrarySound } from "../../project.ts";
 import { set, state, online, projectOf, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
@@ -16,7 +17,7 @@ export const mediaActions = {
   /** A generated result → the timeline at the playhead (see planAddAtPlayhead, D99). */
   addAtPlayhead: (mediaId: string) => addPlanned((project) => planAddAtPlayhead(project, mediaId, getPlayback().frame)),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
-  addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
+  addMedia: (mediaId: string, range?: MediaRange) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame, range)),
   /** The sound library's sources and limit (D134). */
   async libraryState(): Promise<LibraryState | undefined> {
     const result = await call((c) => c["library.state"]({}));

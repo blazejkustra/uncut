@@ -4,7 +4,16 @@ import type { Cut } from "@uncut/core/transitions";
 import { bridge } from "../../state/bridge.ts";
 import { actions, getState, isRemote, textPresets } from "../../state/store.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../../preview/components.ts";
-import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../dnd.ts";
+import {
+  CUT_DROP_PX,
+  draggedRange,
+  EFFECT_DRAG_TYPE,
+  hasFiles,
+  MEDIA_DRAG_TYPE,
+  setDraggedEffect,
+  setDraggedTransition,
+  TRANSITION_DRAG_TYPE,
+} from "../dnd.ts";
 import { HEAD_WIDTH } from "./dragView.ts";
 import type { LaneGeometry } from "./lanes.ts";
 import { dragMayHoldLink, linkFromDrag, linkImportReady, openLinkImport } from "../../panels/library/linkImport.ts";
@@ -114,7 +123,7 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
     const id = e.dataTransfer.getData(MEDIA_DRAG_TYPE);
     if (id) {
       e.preventDefault();
-      void actions.dropMedia(id, { frame, track });
+      void actions.dropMedia(id, { frame, track, range: draggedRange(e.dataTransfer) });
       return;
     }
     // Files from Finder (T9, D128): imported (uploaded first when the project is remote) and put

@@ -14,7 +14,7 @@ import {
   planRippleDelete,
 } from "../../../timeline/edit.ts";
 import { planResetPosition } from "../../../timeline/clip.ts";
-import { planPutOnMain, planDetachAudio, takenIds } from "@uncut/core/arrange";
+import { type MediaRange, planPutOnMain, planDetachAudio, takenIds } from "@uncut/core/arrange";
 import { planSetLook, type LookDef, planEffect, lookInfo, effectInfo } from "@uncut/core/fx";
 import { planShader, planShaderValues } from "@uncut/core/shaders";
 import { planForAll } from "../../../timeline/multi.ts";
@@ -114,7 +114,8 @@ export const timelineActions = {
     state.snapshot ? timelineEdit(planSetTransition(projectOf(state.snapshot), itemId, next), origin) : Promise.resolve(false),
   toggleTrack: (trackId: string, flag: TrackFlag) => (state.snapshot ? timelineEdit(planTrackFlag(projectOf(state.snapshot), trackId, flag)) : undefined),
   /** Media dropped on a lane (T1, D122): at the drop frame on that lane when it takes it (see planDropMedia). */
-  dropMedia: (mediaId: string, at: { frame: number; track?: string | undefined }) => addPlanned((project) => planDropMedia(project, mediaId, at)),
+  dropMedia: (mediaId: string, at: { frame: number; track?: string | undefined; range?: MediaRange | undefined }) =>
+    addPlanned((project) => planDropMedia(project, mediaId, at)),
   /** Detach audio (T3, D123): the clip's sound to its own audio item, the clip muted; the new item is selected. */
   /** D215: a picture off Main (or a take, from any of its parts) goes on the main track, its sounds linked under it. */
   async putOnMain(itemId: string) {

@@ -22,7 +22,7 @@ export {
   planPlaceMedia,
   tryOps,
 } from "./arrange/place.ts";
-export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts";
+export type { MediaRange, PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts";
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, withLinkedAudio } from "./arrange/retime.ts";
 export type { DetachAudioPlan } from "./arrange/retime.ts";
 export { planPutOnMain } from "./arrange/putOnMain.ts";
