@@ -200,7 +200,8 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
  * Starts sampling the preview in the page, once per animation frame, for `ids` (clips' and texts'
  * item ids). What counts as drawn: a clip's box with a <video> that has a frame (or an <img> that's
  * loaded) shown, or its effects, scrub or play canvas (D311) shown (a shown effects canvas also counts
- * as "with effects"; so does a layer the GPU compositor draws); a text's element in the text layer, not hidden.
+ * as "with effects"; so does a layer the GPU compositor draws); a graphic's iframe shown once it has
+ * drawn a render(t) (its media time: the last one it drew); a text's element in the text layer, not hidden.
  */
 export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
   await page.evaluate(
@@ -268,6 +269,17 @@ export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
                 : v
                   ? { mt: v.currentTime, p: presented.get(v) ?? 0, s: v.seeking, ...(presentedAt.has(v) ? { pt: presentedAt.get(v)! } : {}) }
                   : {}),
+            };
+            continue;
+          }
+          const graphic = frameEl.querySelector<HTMLElement>(`.pv-graphic[data-item="${sel}"]`);
+          if (graphic) {
+            const drawn = shown(graphic) && graphic.style.opacity !== "0" && graphic.dataset.time !== undefined;
+            const time = Number(graphic.dataset.time);
+            layers[id] = {
+              d: drawn,
+              z: Number(graphic.style.zIndex || 0),
+              ...(drawn ? { mt: time, p: Number(graphic.dataset.frames ?? 0), s: false, pt: time } : {}),
             };
             continue;
           }
