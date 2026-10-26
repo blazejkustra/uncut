@@ -1,13 +1,12 @@
 import { heldPast } from "@uncut/core/audio";
-import { type Visual, visualsAt } from "@uncut/core/timeline";
+import { visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
-import { graphicInfo, graphicLocal } from "@uncut/core/graphics";
 import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
 import { PREROLL_S } from "../../audio/audio.ts";
 import { getPlayback } from "../playback.ts";
 import { type Item, layoutOf } from "../../state/project.ts";
-import { getState, mediaUrl, graphicUrl } from "../../state/store.ts";
+import { getState, mediaUrl } from "../../state/store.ts";
 // D290: graphics' project media answered from this page (their iframes ask by postMessage).
 import "../graphicMedia.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
@@ -38,7 +37,8 @@ export class Compositor extends CompositorBase {
     }
     // Issue #12 (D265): device px per canvas px, read before this render writes any style (no forced
     // layout): the GPU compositor gives the canvas one backing pixel per device pixel.
-    const gpuScale = gpuCompositorOn() && !this.gpuBroken ? this.screenScale(project.canvas.width) : 1;
+    const deviceScale = this.screenScale(project.canvas.width);
+    const gpuScale = gpuCompositorOn() && !this.gpuBroken ? deviceScale : 1;
     const background = canvasBackground(project);
     if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
     const { frame: playhead, playing: running, rate, selected, hover } = getPlayback();
@@ -68,6 +68,7 @@ export class Compositor extends CompositorBase {
     }
     // The nearest first, at most WARM_AHEAD of them (each is a decoder).
     aheads.sort((a, b) => starts.get(a.id)! - starts.get(b.id)!).splice(WARM_AHEAD);
+    this.decoded.plan(project, starts, frame, clips, { running, playing, scale: deviceScale });
     const keep = new Set([...clips.map((c) => c.item.id), ...aheads.map((a) => a.id)]);
     for (const [id, el] of [...this.els]) {
       if (keep.has(id)) continue;
@@ -220,114 +221,27 @@ export class Compositor extends CompositorBase {
       setBlur(c.el, v.blur && v.blur / (v.box?.scale ?? 1));
       c.el.classList.toggle("sel-clip", v.item.id === selected);
     }
-    // Graphics (D78): the server's document in a sandboxed iframe; render(t) by postMessage. One
-    // starting within two seconds is loaded ahead, out of sight at its first frame, so it doesn't
-    // start blank (like the next clip's warm-up).
-    type Shown = Pick<Visual, "wipe" | "iris" | "mask" | "shift" | "shiftY" | "zoom" | "blur"> & { item: Item; opacity: number; visible: boolean };
-    const graphics: Array<Shown> = drawn
-      .filter((v) => v.item.type === "graphic" && typeof v.item.src === "string")
-      .map((v) => ({
-        item: v.item,
-        opacity: v.opacity,
-        ...(v.wipe !== undefined ? { wipe: v.wipe } : {}),
-        ...(v.iris !== undefined ? { iris: v.iris } : {}),
-        ...(v.mask ? { mask: v.mask } : {}),
-        ...(v.shift !== undefined ? { shift: v.shift } : {}),
-        ...(v.shiftY !== undefined ? { shiftY: v.shiftY } : {}),
-        ...(v.zoom !== undefined ? { zoom: v.zoom } : {}),
-        ...(v.blur !== undefined ? { blur: v.blur } : {}),
-        visible: true,
-      }));
-    for (const track of project.tracks) {
-      if (track.hidden || track.kind !== "video") continue;
-      for (const it of track.items) {
-        const s = starts.get(it.id)!;
-        if (it.type === "graphic" && typeof it.src === "string" && s > frame && s - frame <= 2 * fps && !graphics.some((g) => g.item.id === it.id))
-          graphics.push({ item: it, opacity: 0, visible: false });
-      }
-    }
-    for (const [id, g] of [...this.graphics]) {
-      if (graphics.some((v) => v.item.id === id && graphicUrl(v.item.src!) === g.src)) continue;
-      g.wrap.remove();
-      this.graphics.delete(id);
-    }
-    for (const v of graphics) {
-      const src = graphicUrl(v.item.src!);
-      if (!src) continue;
-      let g = this.graphics.get(v.item.id);
-      if (!g) {
-        // Asked first: a 404 page in the iframe would draw "Not found" over the canvas, where the
-        // export draws nothing. A missing file is asked for again 3 s later.
-        const check = this.graphicCheck.get(src);
-        if (check !== "ok") {
-          if (check === "pending" || (typeof check === "number" && Date.now() < check)) continue;
-          this.graphicCheck.set(src, "pending");
-          void fetch(src)
-            .then(
-              (r) => r.ok,
-              () => false,
-            )
-            .then((ok) => {
-              this.graphicCheck.set(src, ok ? "ok" : Date.now() + 3000);
-              if (!ok) setTimeout(() => this.render(), 3100);
-              this.render();
-            });
-          continue;
-        }
-        const wrap = document.createElement("div");
-        wrap.className = "pv-graphic";
-        wrap.dataset.item = v.item.id;
-        const iframe = document.createElement("iframe");
-        iframe.setAttribute("sandbox", "allow-scripts");
-        iframe.setAttribute("tabindex", "-1");
-        iframe.title = v.item.name ?? v.item.id;
-        iframe.style.width = `${project.canvas.width}px`;
-        iframe.style.height = `${project.canvas.height}px`;
-        const entry = { wrap, frame: iframe, src, loaded: false, sent: "" };
-        iframe.addEventListener("load", () => {
-          entry.loaded = true;
-          entry.sent = "";
-          this.render();
-        });
-        iframe.src = src;
-        wrap.append(iframe);
-        this.mediaLayer.append(wrap);
-        g = entry;
-        this.graphics.set(v.item.id, g);
-      }
-      g.wrap.style.opacity = String(v.opacity);
-      g.wrap.style.zIndex = v.visible ? String(z.get(v.item.id)) : "0";
-      g.wrap.style.visibility = v.visible ? "" : "hidden";
-      transitionCanvas(g.wrap, v, project.canvas);
-      if (g.loaded) {
-        const local = graphicLocal(v.item, whole - starts.get(v.item.id)!);
-        const info = graphicInfo(v.item, project.canvas, local);
-        // Anything render(t, info) is given: a new length or canvas draws again too. And whether it
-        // plays: a graphic's footage (uncut.frame) is its nearest decoded frame while playing, the
-        // exact one when stopped, so the frame playback stops on is drawn again exactly.
-        const sent = JSON.stringify([local, info, running]);
-        if (g.sent !== sent) {
-          g.sent = sent;
-          g.frame.contentWindow?.postMessage({ uncut: "render", seq: ++this.graphicSeq, t: local / fps, info, playing: running }, "*");
-        }
-      }
-    }
+    const graphics = drawn.filter((v) => v.item.type === "graphic" && typeof v.item.src === "string").map((v) => ({ ...v, z: z.get(v.item.id)! }));
+    this.graphics.sync(project, starts, frame, graphics, running);
 
     if (!scrubCacheOn() && this.scrub.lru.size) this.scrub.clear();
     this.scrubbed.clear();
     this.scrubAimed.clear();
     clips.forEach((c) => {
       const media = mediaKind(c.item)!;
-      const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
+      const decodes = media.kind === "video" && this.decoded.decodes(c.item.id);
+      const apart = this.decoded.soundApart(c.item, project);
+      const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video", { lazy: decodes && playing, apart });
       if (!el) return;
       const wrap = this.boxes.get(c.item.id)!;
       wrap.classList.toggle("sel-clip", c.item.id === selected);
       // D221: paused or shuttling, a video's picture may be its cached frame (a canvas over it).
       const scrubbed =
-        el instanceof HTMLVideoElement
+        el instanceof HTMLVideoElement && !(decodes && playing)
           ? this.scrubPicture(c.item.id, el, c.source + 0.0001, playing, running && rate !== 1 ? rate : 0)
           : { pic: el, seek: true };
-      const pic = scrubbed.pic;
+      const decodedPic = el instanceof HTMLVideoElement && decodes ? this.decodedPicture(c.item.id, el, c.source + 0.0001, playing, scrubbed.pic) : undefined;
+      const pic = decodedPic ?? scrubbed.pic;
       // The opacity stays on the media element (the wrapper only places, clips and rounds it).
       el.style.opacity = String(c.opacity);
       wrap.style.zIndex = String(z.get(c.item.id));
@@ -371,7 +285,14 @@ export class Compositor extends CompositorBase {
       if (!(el instanceof HTMLVideoElement)) return;
       // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
       el.loop = c.item.loop === true;
-      if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
+      if (media.probe?.hasAudio && apart) this.mix.unshow(c.item.id, el);
+      else if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
+      // D311: the engine draws it while playing; paused, its <video> is seeked to the frame as any other's.
+      if (decodes && playing) {
+        if (!el.paused) el.pause();
+        return;
+      }
+      if (decodes && el.preload !== "auto") el.preload = "auto";
       // A held clip (D94) past its media's end sits paused on the last frame.
       if (scrubbed.seek)
         drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
@@ -382,12 +303,16 @@ export class Compositor extends CompositorBase {
     for (const ahead of aheads) {
       if (clips.some((c) => c.item.id === ahead.id)) continue;
       if (!gpuOn) this.warmFx(ahead);
-      const el = this.elementFor(ahead, "video");
+      // D311: the engine decodes its first frames ahead instead.
+      if (playing && this.decoded.decodes(ahead.id)) continue;
+      const apart = this.decoded.soundApart(ahead, project);
+      const el = this.elementFor(ahead, "video", { apart });
       if (el instanceof HTMLVideoElement) {
         const wrap = this.boxes.get(ahead.id)!;
         el.style.opacity = "0";
         wrap.style.zIndex = "0";
-        if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
+        if (mediaKind(ahead)?.probe?.hasAudio && apart) this.mix.unshow(ahead.id, el);
+        else if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
         const from = starts.get(ahead.id)! - preroll(ahead);
         const speed = ahead.speed ?? 1;
         // Just before it starts (while playing) it already runs, out of sight and silent, so the
@@ -498,6 +423,7 @@ export class Compositor extends CompositorBase {
       view.shown = false;
       view.canvas.style.visibility = "hidden";
     }
+    this.decoded.finish();
     // Sound after picture: the mix uses the <video> elements made above.
     this.mix.render(project, frame, playing);
     this.frameEl.dataset.frame = String(Math.floor(frame));
@@ -542,6 +468,11 @@ export class Compositor extends CompositorBase {
       const hide = id === this.editing ? "hidden" : "";
       if (t.el.style.visibility !== hide) t.el.style.visibility = hide;
     }
+  }
+
+  /** D311: a clip the engine draws: its decoded frame while playing; paused, its last one until the <video> or scrub canvas (`other`) has the frame. */
+  protected decodedPicture(id: string, el: HTMLVideoElement, t: number, playing: boolean, other: HTMLElement) {
+    return playing ? this.decoded.playing(id, el, t) : this.decoded.resting(id, el, t, other);
   }
 
   /** Device px per canvas px (the scaled canvas layer's width on screen, not the frame's rounded clientWidth). */

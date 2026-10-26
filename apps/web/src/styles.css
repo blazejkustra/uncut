@@ -184,7 +184,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* Issue #61 (D233): no native image drag on the canvas: a press on a picture moves the layer. */
 .frame img { -webkit-user-drag: none; user-select: none; }
 .pv-box > video, .pv-box > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
-.pv-box > canvas.pv-fx-canvas, .pv-box > canvas.pv-scrub { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.pv-box > canvas.pv-fx-canvas, .pv-box > canvas.pv-scrub, .pv-box > canvas.pv-play { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .pv-box > .pv-fx-overlay { position: absolute; inset: 0; pointer-events: none; }
 /* D221: the GPU compositor's canvas under the media layer, and the layers it draws (kept for sound, clock and clicks, transparent). */
 .pv-layer > canvas.pv-gpu { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }

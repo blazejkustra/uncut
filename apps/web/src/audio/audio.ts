@@ -96,6 +96,12 @@ export class Mix extends MixGraph {
     this.routes.delete(el);
   }
 
+  /** D311: clips the playback engine can draw: heard through an <audio> of ours, warmed up like a hidden track's. */
+  private apart: (item: Item) => boolean = () => false;
+  setApart(apart: (item: Item) => boolean) {
+    this.apart = apart;
+  }
+
   /** The Compositor shows (or warms up) a <video> for a clip with sound: its sound can come through here. */
   attach(itemId: string, el: HTMLVideoElement) {
     this.shown.set(itemId, el);
@@ -272,7 +278,7 @@ export class Mix extends MixGraph {
         const lead = leadOf(track.id);
         if (keepOwn.has(item.id) || (this.shown.has(item.id) && lead === 0) || !soundMedia(project, item)) return;
         // Clips on a visible track get their <video> from the Compositor, which warms it up (a led track's: ours, D262).
-        if (item.type === "clip" && !track.hidden && lead === 0) return;
+        if (item.type === "clip" && !track.hidden && lead === 0 && !this.apart(item)) return;
         const start = starts.get(item.id) ?? 0;
         const from = audioSpan(track, index, start).from;
         const at = frame + lead * fps;

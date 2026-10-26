@@ -27,7 +27,11 @@ export interface GlitchLayer {
   readonly fx?: boolean;
 }
 
-/** One layer in one sample: drawn, drawn with its effects, z-index, media time (s), frames presented, seeking. */
+/**
+ * One layer in one sample: drawn, drawn with its effects, z-index, media time (s), frames presented,
+ * seeking, and the media time of the picture on screen (`pt`: a <video>'s last presented frame, or
+ * the decoded frame a D311 play canvas holds).
+ */
 export interface LayerSample {
   readonly d: boolean;
   readonly f?: boolean;
@@ -35,6 +39,7 @@ export interface LayerSample {
   readonly mt?: number;
   readonly p?: number;
   readonly s?: boolean;
+  readonly pt?: number;
 }
 
 export interface GlitchSample {
@@ -194,13 +199,14 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
 /**
  * Starts sampling the preview in the page, once per animation frame, for `ids` (clips' and texts'
  * item ids). What counts as drawn: a clip's box with a <video> that has a frame (or an <img> that's
- * loaded) shown, or its effects or scrub canvas shown (a shown effects canvas also counts as "with
- * effects"; so does a layer the GPU compositor draws); a text's element in the text layer, not hidden.
+ * loaded) shown, or its effects, scrub or play canvas (D311) shown (a shown effects canvas also counts
+ * as "with effects"; so does a layer the GPU compositor draws); a graphic's iframe shown once it has
+ * drawn a render(t) (its media time: the last one it drew); a text's element in the text layer, not hidden.
  */
 export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
   await page.evaluate(
     (ids: Array<string>) => {
-      type L = { d: boolean; f?: boolean; z: number; mt?: number; p?: number; s?: boolean };
+      type L = { d: boolean; f?: boolean; z: number; mt?: number; p?: number; s?: boolean; pt?: number };
       type W = {
         __glitch?: {
           samples: Array<{ t: number; frame: number; playing: boolean; layers: Record<string, L> }>;
@@ -215,11 +221,16 @@ export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
       w.__glitch = g;
       document.addEventListener("webglcontextlost", () => g.contextLost++, true);
       const presented = new WeakMap<HTMLVideoElement, number>();
+      const presentedAt = new WeakMap<HTMLVideoElement, number>();
       const watch = (v: HTMLVideoElement) => {
         if (presented.has(v)) return;
         presented.set(v, 0);
-        const loop = () => v.requestVideoFrameCallback(() => (presented.set(v, (presented.get(v) ?? 0) + 1), !g.stop && loop()));
-        loop();
+        const onFrame = (_: number, meta: VideoFrameCallbackMetadata) => {
+          presented.set(v, (presented.get(v) ?? 0) + 1);
+          presentedAt.set(v, meta.mediaTime);
+          if (!g.stop) v.requestVideoFrameCallback(onFrame);
+        };
+        v.requestVideoFrameCallback(onFrame);
         v.addEventListener(
           "seeking",
           () => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true" && !v.paused && g.playSeeks++,
@@ -239,6 +250,7 @@ export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
             const img = box.querySelector<HTMLImageElement>(":scope > img");
             const fx = box.querySelector<HTMLCanvasElement>("canvas[data-fx]");
             const scrub = box.querySelector<HTMLCanvasElement>("canvas[data-scrub]");
+            const play = box.querySelector<HTMLCanvasElement>("canvas[data-play]");
             if (v) watch(v);
             const gpu = box.dataset.gpu !== undefined;
             const visible = (el: HTMLElement | null) => shown(el) && el!.style.opacity !== "0";
@@ -246,11 +258,28 @@ export async function startGlitchProbe(page: Page, ids: ReadonlyArray<string>) {
             const iOk = !!img && (visible(img) || gpu) && img.complete && img.naturalWidth > 0;
             const fOk = !!fx && visible(fx) && fx.width > 0;
             const sOk = !!scrub && visible(scrub) && scrub.width > 0;
+            // The play canvas is the clip's picture (shown, or read by its effects canvas or the GPU compositor).
+            const pOk = !!play && play.dataset.shown === "true" && play.width > 0;
             layers[id] = {
-              d: vOk || iOk || fOk || sOk,
-              f: fOk || (gpu && (vOk || iOk)),
+              d: vOk || iOk || fOk || sOk || pOk,
+              f: fOk || (gpu && (vOk || iOk || pOk)),
               z: Number(box.style.zIndex || 0),
-              ...(v ? { mt: v.currentTime, p: presented.get(v) ?? 0, s: v.seeking } : {}),
+              ...(pOk
+                ? { mt: Number(play.dataset.time), p: Number(play.dataset.frames ?? 0), s: false, pt: Number(play.dataset.time) }
+                : v
+                  ? { mt: v.currentTime, p: presented.get(v) ?? 0, s: v.seeking, ...(presentedAt.has(v) ? { pt: presentedAt.get(v)! } : {}) }
+                  : {}),
+            };
+            continue;
+          }
+          const graphic = frameEl.querySelector<HTMLElement>(`.pv-graphic[data-item="${sel}"]`);
+          if (graphic) {
+            const drawn = shown(graphic) && graphic.style.opacity !== "0" && graphic.dataset.time !== undefined;
+            const time = Number(graphic.dataset.time);
+            layers[id] = {
+              d: drawn,
+              z: Number(graphic.style.zIndex || 0),
+              ...(drawn ? { mt: time, p: Number(graphic.dataset.frames ?? 0), s: false, pt: time } : {}),
             };
             continue;
           }

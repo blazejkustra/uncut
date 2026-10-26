@@ -172,7 +172,7 @@ export function placePicture(el: HTMLElement, box: ClipBox) {
   const n =
     el instanceof HTMLVideoElement
       ? { w: el.videoWidth, h: el.videoHeight }
-      : el instanceof HTMLCanvasElement && el.classList.contains("pv-scrub")
+      : el instanceof HTMLCanvasElement && (el.classList.contains("pv-scrub") || el.classList.contains("pv-play"))
         ? { w: el.width, h: el.height }
         : { w: 0, h: 0 };
   const c = box.content;

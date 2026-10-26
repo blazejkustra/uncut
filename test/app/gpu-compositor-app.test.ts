@@ -191,6 +191,9 @@ async function playFrom(label: string, from: number) {
         const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")];
         const q0 = videos.map((v) => v.getVideoPlaybackQuality());
         const presented = videos.map(() => 0);
+        // D311: a clip the playback engine draws presents its frames in its play canvas (its <video> stays paused).
+        const playFrames = () => videos.map((v) => Number(v.parentElement?.querySelector<HTMLCanvasElement>("canvas[data-play]")?.dataset.frames ?? 0));
+        const played0 = playFrames();
         let stop = false;
         videos.forEach((v, i) => {
           const loop = () => v.requestVideoFrameCallback(() => (presented[i]!++, !stop && loop()));
@@ -215,6 +218,7 @@ async function playFrom(label: string, from: number) {
           clearTimeout(cap);
           const elapsed = performance.now() - start;
           const q1 = videos.map((v) => v.getVideoPlaybackQuality());
+          playFrames().forEach((n, i) => (presented[i] = Math.max(presented[i]!, n - played0[i]!)));
           const fxCanvases = [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-fx]")];
           done({
             seconds: elapsed / 1000,
