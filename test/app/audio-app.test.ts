@@ -535,7 +535,7 @@ test(
       const hidden = await listen(page, 20);
       assert.ok(Math.abs(median(hidden.map((x) => x.rms)) - steady) < 0.06, `hidden while paused, then played: ${median(hidden.map((x) => x.rms)).toFixed(3)}`);
       assert.ok(hidden.every((x) => x.gains["clip-1"] === 1));
-      // Show it again while paused: heard through the <video> again.
+      // Show it again while paused: heard again, through the mix's <audio> (D311: the playback engine draws the clip, so its <video> never sounds).
       await page.click("[data-testid=track][data-id=main] [data-testid=track-hide]");
       await page.waitForFunction(() => document.querySelector("[data-testid=track][data-id=main]")!.getAttribute("data-hidden") === null);
       await page.click("[data-testid=timeline]");
@@ -546,8 +546,8 @@ test(
       );
       assert.deepEqual(
         own.filter((i) => i.id === "clip-1").map((i) => i.own),
-        [false],
-        "through the clip's own <video>",
+        [true],
+        "through the mix's <audio>",
       );
       assert.deepEqual(app.errors, []);
     } catch (error) {

@@ -35,6 +35,21 @@ export function decoderColour(c: StreamColour | undefined, height: number): Vide
   return { matrix, primaries, transfer, fullRange: c.fullRange ?? false };
 }
 
+/**
+ * D311: decoderColour for a colour space a demuxer has already named (mediabunny's): what it leaves
+ * out read as Chromium's <video> reads it, so a played frame looks as the paused one does.
+ */
+export function namedColour(c: VideoColorSpaceInit, height: number): VideoColorSpaceInit {
+  const sd = height < 720;
+  const matrix = c.matrix ?? (sd ? "smpte170m" : "bt709");
+  return {
+    matrix,
+    primaries: c.primaries ?? (matrix === "bt709" ? "bt709" : "smpte170m"),
+    transfer: c.transfer ?? (sd ? "smpte170m" : "bt709"),
+    fullRange: c.fullRange ?? false,
+  };
+}
+
 /** Transfers the lift wasn't measured for (sRGB, linear, PQ, HLG): left as they are. */
 const UNMEASURED = new Set([13, 8, 16, 18]);
 

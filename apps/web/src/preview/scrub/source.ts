@@ -3,6 +3,7 @@ import { type Mp4Index, readMp4Index, sampleAt, keyframeOf } from "@uncut/core/m
 import type { ScrubCache } from "./cache.ts";
 import { decoderColour } from "./colour.ts";
 import { cachedSize, windowRanks } from "./frames.ts";
+import { frameBitmap, isHdr } from "../frameBitmap.ts";
 
 /** Largest byte range read at once while decoding a long GOP. */
 const READ_SPAN = 2 * 1024 * 1024;
@@ -277,30 +278,15 @@ export class ScrubSource {
     const job = this.job;
     try {
       if (sample === undefined || !job || !job.wanted.has(sample)) return;
-      // HDR footage would be tone-mapped differently from the <video>: leave it to the <video>.
-      const transfer = frame.colorSpace?.transfer as string | null | undefined;
-      if (transfer === "pq" || transfer === "hlg") {
+      if (isHdr(frame)) {
+        const transfer = String(frame.colorSpace?.transfer);
         queueMicrotask(() => this.fail(`HDR (${transfer})`));
         return;
       }
       if (!this.colour) this.colour = JSON.stringify(frame.colorSpace?.toJSON?.() ?? {});
-      const turn = this.index!.rotation;
-      const dw = turn % 180 ? frame.displayHeight : frame.displayWidth;
-      const dh = turn % 180 ? frame.displayWidth : frame.displayHeight;
-      const { w, h } = cachedSize(dw, dh);
+      this.scratch ??= new OffscreenCanvas(1, 1);
+      const { bitmap, w, h } = frameBitmap(frame, this.index!.rotation, this.scratch);
       this.size = { w, h };
-      if (!this.scratch) this.scratch = new OffscreenCanvas(w, h);
-      if (this.scratch.width !== w) this.scratch.width = w;
-      if (this.scratch.height !== h) this.scratch.height = h;
-      const ctx = this.scratch.getContext("2d")!;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      if (turn) {
-        ctx.translate(w / 2, h / 2);
-        ctx.rotate((turn * Math.PI) / 180);
-        const [rw, rh] = turn % 180 ? [h, w] : [w, h];
-        ctx.drawImage(frame, -rw / 2, -rh / 2, rw, rh);
-      } else ctx.drawImage(frame, 0, 0, w, h);
-      const bitmap = this.scratch.transferToImageBitmap();
       this.cache.lru.put(this.key(sample), bitmap, w * h * 4, () => bitmap.close());
       // The playhead's frame is drawn now, not on the next animation frame.
       if (this.target?.sample === sample) this.cache.changed(true);
