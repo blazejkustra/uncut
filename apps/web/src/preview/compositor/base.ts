@@ -13,6 +13,7 @@ import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
 import { DecodedPictures } from "./decoded.ts";
+import { GraphicLayers } from "./graphics.ts";
 import {
   type MediaEl,
   type ScrubView,
@@ -51,10 +52,6 @@ export abstract class CompositorBase {
   protected readonly solids = new Map<string, HTMLDivElement>();
   // Components (D76): each one's element and the HTML (plus wipe) it was made from.
   protected readonly comps = new Map<string, { el: HTMLElement; key: string }>();
-  // Graphics (D78): a wrapper and its sandboxed iframe per item; `sent` is the last render asked for.
-  protected readonly graphics = new Map<string, { wrap: HTMLDivElement; frame: HTMLIFrameElement; src: string; loaded: boolean; sent: string }>();
-  // Whether the server has each graphic's document: "ok", being asked, or when to ask again (D78).
-  protected readonly graphicCheck = new Map<string, "ok" | "pending" | number>();
   // Clip looks and effects (D136): each clip's compiled effects (by its effects' JSON), its WebGL
   // canvas over the hidden picture element, and its overlay (vignette, grain, bars).
   protected readonly fxOf = new Map<string, { key: string; fx: ClipFx | undefined }>();
@@ -74,7 +71,6 @@ export abstract class CompositorBase {
   protected readonly shaderOf = new Map<string, { key: string; use: ShaderUse | undefined }>();
   protected readonly shaderBadge = new Map<string, HTMLDivElement>();
   protected readonly offRunner: () => void;
-  protected graphicSeq = 0;
   // Issue #55: each text's element and the HTML it was made from.
   protected readonly texts = new Map<string, { el: HTMLElement; html: string }>();
   // The text being edited in place: hidden while the editor sits over it.
@@ -103,12 +99,15 @@ export abstract class CompositorBase {
   protected onGpu = new Set<string>();
   // D311: the playback engine, and the play canvases it draws clips into.
   protected readonly decoded = new DecodedPictures(() => this.render());
+  // Graphics (D78): their iframes, pooled per file.
+  protected readonly graphics: GraphicLayers;
 
   constructor(dir: string, frameEl: HTMLDivElement, mediaLayer: HTMLDivElement, textLayer: HTMLDivElement) {
     this.dir = dir;
     this.frameEl = frameEl;
     this.mediaLayer = mediaLayer;
     this.textLayer = textLayer;
+    this.graphics = new GraphicLayers(mediaLayer, () => this.render());
     this.unsubscribe = playback.subscribe(() => this.render());
     // Shader effects (D213) draw once the WebGPU runner is known (or the badge says why not).
     this.offRunner = whenRunner(() => this.render());
@@ -139,6 +138,7 @@ export abstract class CompositorBase {
     clearTimeout(this.settleTimer);
     this.scrub.destroy();
     this.decoded.dispose();
+    this.graphics.dispose();
     this.gpu?.dispose();
     this.gpu = undefined;
   }
@@ -147,7 +147,6 @@ export abstract class CompositorBase {
   protected clearOverlays() {
     for (const c of this.comps.values()) c.el.remove();
     this.comps.clear();
-    for (const g of this.graphics.values()) g.wrap.remove();
     this.graphics.clear();
   }
 

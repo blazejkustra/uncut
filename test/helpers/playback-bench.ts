@@ -9,6 +9,7 @@
 //   the time past that is summed;
 // - cut latency: from the playhead entering a layer until its first on-time sample;
 // - dropped: source frames the visit should have shown that never appeared;
+// - missing: time a layer wasn't drawn at all;
 // - clock slip: how far the playhead fell behind the wall clock over the run (a clock re-anchored
 //   to a late decoder plays slower than real time).
 import type { GlitchLayer, GlitchSample } from "./preview-glitches.ts";
@@ -39,6 +40,8 @@ export interface BenchResult {
   expected: number;
   clockSlipMs: number;
   longFrames: number;
+  /** Time a layer the playhead was inside wasn't drawn at all (ms, summed over layers). */
+  missingMs: number;
 }
 
 const quantile = (values: ReadonlyArray<number>, q: number) => {
@@ -75,6 +78,7 @@ export function benchPlayback(samples: ReadonlyArray<GlitchSample>, layers: Read
     expected: 0,
     clockSlipMs: 0,
     longFrames: 0,
+    missingMs: 0,
   };
   if (playing.length < 2) return result;
   const start = playing[0]!;
@@ -114,6 +118,7 @@ export function benchPlayback(samples: ReadonlyArray<GlitchSample>, layers: Read
       v.lastFrame = Math.round(want * fps);
       result.samples++;
       const ls = s.layers[l.id];
+      if (!ls?.d && prev) result.missingMs += s.t - prev.t;
       const pt = ls?.d ? ls.pt : undefined;
       const behind = pt === undefined || pt < want - tolerance / fps;
       const ahead = pt !== undefined && pt > want + (tolerance + 1) / fps;
@@ -146,4 +151,4 @@ export function benchPlayback(samples: ReadonlyArray<GlitchSample>, layers: Read
 }
 
 export const formatBench = (r: BenchResult) =>
-  `late ${r.late}/${r.samples} (${r.latePct.toFixed(1)}%), ahead ${r.ahead}, frozen ${r.frozenMs.toFixed(0)} ms, cuts ${r.cuts} (latency median ${r.cutMedianMs.toFixed(0)} ms, p90 ${r.cutP90Ms.toFixed(0)} ms, max on time ${r.cutMaxMs.toFixed(0)} ms, ${r.slowCuts} over 100 ms, ${r.neverOnTime} never on time), dropped ${r.dropped}/${r.expected} frames, clock slip ${r.clockSlipMs.toFixed(0)} ms, rAF gaps > 50 ms ${r.longFrames}`;
+  `late ${r.late}/${r.samples} (${r.latePct.toFixed(1)}%), ahead ${r.ahead}, frozen ${r.frozenMs.toFixed(0)} ms, cuts ${r.cuts} (latency median ${r.cutMedianMs.toFixed(0)} ms, p90 ${r.cutP90Ms.toFixed(0)} ms, max on time ${r.cutMaxMs.toFixed(0)} ms, ${r.slowCuts} over 100 ms, ${r.neverOnTime} never on time), dropped ${r.dropped}/${r.expected} frames, missing ${r.missingMs.toFixed(0)} ms, clock slip ${r.clockSlipMs.toFixed(0)} ms, rAF gaps > 50 ms ${r.longFrames}`;

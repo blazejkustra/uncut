@@ -234,6 +234,7 @@
 
   <h2>Playback engine (D311)</h2>
   <p>A <code>&lt;video&gt;</code> per clip only starts seeking when the playhead reaches its cut, so dense cuts (0.2 to 0.5 s) stalled, froze or drifted. While playing, the preview now demuxes the files itself (mediabunny) and decodes with WebCodecs ahead of the playhead: each clip on screen and the next ones within 2.5 s get a decoder filling a short frame queue, the soonest first, and the compositor draws the frame the playback clock asks for. Clips it draws are heard through the mix's own <code>&lt;audio&gt;</code>. Files WebCodecs can't take (ProRes, HDR, containers mediabunny can't read), looped clips, shuttling and scrubbing stay on the <code>&lt;video&gt;</code> and the scrub cache (D221).</p>
+  <p>HTML graphics (D78) draw from <code>t</code> alone, so their iframes are pooled per graphic file: an iframe whose item ended stays loaded out of sight (at most 6) and draws its file's next item, so a watermark used back to back, a label used again or a jump back to a graphic seen before doesn't load its document, libraries and fonts again.</p>
 </main>
 </body>
 </html>

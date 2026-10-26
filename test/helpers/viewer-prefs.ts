@@ -5,10 +5,12 @@
 import type { Page } from "puppeteer-core";
 import { waitForWelcome } from "./app.ts";
 
-export async function viewerPrefs(page: Page, prefs: { gpu?: boolean; atTarget?: boolean }) {
+export async function viewerPrefs(page: Page, prefs: { gpu?: boolean; atTarget?: boolean; playEngine?: boolean }) {
   await page.evaluate((p) => {
     if (p.gpu !== undefined) localStorage.setItem("uncut.preview.gpu", p.gpu ? "on" : "off");
     if (p.atTarget !== undefined) localStorage.setItem("uncut.previewAtTarget", p.atTarget ? "1" : "0");
+    if (p.playEngine === false) localStorage.setItem("uncut.preview.playEngine", "off");
+    if (p.playEngine === true) localStorage.removeItem("uncut.preview.playEngine");
   }, prefs);
   await page.reload();
   await waitForWelcome(page);

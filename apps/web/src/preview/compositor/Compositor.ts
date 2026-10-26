@@ -1,13 +1,12 @@
 import { heldPast } from "@uncut/core/audio";
-import { type Visual, visualsAt } from "@uncut/core/timeline";
+import { visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
-import { graphicInfo, graphicLocal } from "@uncut/core/graphics";
 import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
 import { PREROLL_S } from "../../audio/audio.ts";
 import { getPlayback } from "../playback.ts";
 import { type Item, layoutOf } from "../../state/project.ts";
-import { getState, mediaUrl, graphicUrl } from "../../state/store.ts";
+import { getState, mediaUrl } from "../../state/store.ts";
 // D290: graphics' project media answered from this page (their iframes ask by postMessage).
 import "../graphicMedia.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
@@ -222,98 +221,8 @@ export class Compositor extends CompositorBase {
       setBlur(c.el, v.blur && v.blur / (v.box?.scale ?? 1));
       c.el.classList.toggle("sel-clip", v.item.id === selected);
     }
-    // Graphics (D78): the server's document in a sandboxed iframe; render(t) by postMessage. One
-    // starting within two seconds is loaded ahead, out of sight at its first frame, so it doesn't
-    // start blank (like the next clip's warm-up).
-    type Shown = Pick<Visual, "wipe" | "iris" | "mask" | "shift" | "shiftY" | "zoom" | "blur"> & { item: Item; opacity: number; visible: boolean };
-    const graphics: Array<Shown> = drawn
-      .filter((v) => v.item.type === "graphic" && typeof v.item.src === "string")
-      .map((v) => ({
-        item: v.item,
-        opacity: v.opacity,
-        ...(v.wipe !== undefined ? { wipe: v.wipe } : {}),
-        ...(v.iris !== undefined ? { iris: v.iris } : {}),
-        ...(v.mask ? { mask: v.mask } : {}),
-        ...(v.shift !== undefined ? { shift: v.shift } : {}),
-        ...(v.shiftY !== undefined ? { shiftY: v.shiftY } : {}),
-        ...(v.zoom !== undefined ? { zoom: v.zoom } : {}),
-        ...(v.blur !== undefined ? { blur: v.blur } : {}),
-        visible: true,
-      }));
-    for (const track of project.tracks) {
-      if (track.hidden || track.kind !== "video") continue;
-      for (const it of track.items) {
-        const s = starts.get(it.id)!;
-        if (it.type === "graphic" && typeof it.src === "string" && s > frame && s - frame <= 2 * fps && !graphics.some((g) => g.item.id === it.id))
-          graphics.push({ item: it, opacity: 0, visible: false });
-      }
-    }
-    for (const [id, g] of [...this.graphics]) {
-      if (graphics.some((v) => v.item.id === id && graphicUrl(v.item.src!) === g.src)) continue;
-      g.wrap.remove();
-      this.graphics.delete(id);
-    }
-    for (const v of graphics) {
-      const src = graphicUrl(v.item.src!);
-      if (!src) continue;
-      let g = this.graphics.get(v.item.id);
-      if (!g) {
-        // Asked first: a 404 page in the iframe would draw "Not found" over the canvas, where the
-        // export draws nothing. A missing file is asked for again 3 s later.
-        const check = this.graphicCheck.get(src);
-        if (check !== "ok") {
-          if (check === "pending" || (typeof check === "number" && Date.now() < check)) continue;
-          this.graphicCheck.set(src, "pending");
-          void fetch(src)
-            .then(
-              (r) => r.ok,
-              () => false,
-            )
-            .then((ok) => {
-              this.graphicCheck.set(src, ok ? "ok" : Date.now() + 3000);
-              if (!ok) setTimeout(() => this.render(), 3100);
-              this.render();
-            });
-          continue;
-        }
-        const wrap = document.createElement("div");
-        wrap.className = "pv-graphic";
-        wrap.dataset.item = v.item.id;
-        const iframe = document.createElement("iframe");
-        iframe.setAttribute("sandbox", "allow-scripts");
-        iframe.setAttribute("tabindex", "-1");
-        iframe.title = v.item.name ?? v.item.id;
-        iframe.style.width = `${project.canvas.width}px`;
-        iframe.style.height = `${project.canvas.height}px`;
-        const entry = { wrap, frame: iframe, src, loaded: false, sent: "" };
-        iframe.addEventListener("load", () => {
-          entry.loaded = true;
-          entry.sent = "";
-          this.render();
-        });
-        iframe.src = src;
-        wrap.append(iframe);
-        this.mediaLayer.append(wrap);
-        g = entry;
-        this.graphics.set(v.item.id, g);
-      }
-      g.wrap.style.opacity = String(v.opacity);
-      g.wrap.style.zIndex = v.visible ? String(z.get(v.item.id)) : "0";
-      g.wrap.style.visibility = v.visible ? "" : "hidden";
-      transitionCanvas(g.wrap, v, project.canvas);
-      if (g.loaded) {
-        const local = graphicLocal(v.item, whole - starts.get(v.item.id)!);
-        const info = graphicInfo(v.item, project.canvas, local);
-        // Anything render(t, info) is given: a new length or canvas draws again too. And whether it
-        // plays: a graphic's footage (uncut.frame) is its nearest decoded frame while playing, the
-        // exact one when stopped, so the frame playback stops on is drawn again exactly.
-        const sent = JSON.stringify([local, info, running]);
-        if (g.sent !== sent) {
-          g.sent = sent;
-          g.frame.contentWindow?.postMessage({ uncut: "render", seq: ++this.graphicSeq, t: local / fps, info, playing: running }, "*");
-        }
-      }
-    }
+    const graphics = drawn.filter((v) => v.item.type === "graphic" && typeof v.item.src === "string").map((v) => ({ ...v, z: z.get(v.item.id)! }));
+    this.graphics.sync(project, starts, frame, graphics, running);
 
     if (!scrubCacheOn() && this.scrub.lru.size) this.scrub.clear();
     this.scrubbed.clear();
