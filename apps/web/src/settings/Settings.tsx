@@ -15,6 +15,7 @@ import { isRecordingKey } from "../editor/keymap.ts";
 import { DefaultLengths } from "./DefaultLengths.tsx";
 import { setProxiesOn, useProxiesOn } from "./proxies.ts";
 import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
+import { setPlayEngineOn, usePlayEngineOn } from "./playEngine.ts";
 import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 import { UsageDataSettings } from "./telemetry.tsx";
@@ -97,6 +98,7 @@ function AppSettings() {
   const snapping = usePlayback((s) => s.snapping);
   const proxies = useProxiesOn();
   const scrubCache = useScrubCacheOn();
+  const playEngine = usePlayEngineOn();
   const gpu = useGpuCompositorOn();
   const environments = useEnvironmentsUsable();
   return (
@@ -118,6 +120,10 @@ function AppSettings() {
         <label className="check-row">
           <input type="checkbox" data-testid="settings-scrub-cache" checked={scrubCache} onChange={(e) => setScrubCacheOn(e.target.checked)} />
           Decode frames ahead for scrubbing
+        </label>
+        <label className="check-row">
+          <input type="checkbox" data-testid="settings-play-engine" checked={playEngine} onChange={(e) => setPlayEngineOn(e.target.checked)} />
+          Decode frames ahead for playback
         </label>
         <label className="check-row">
           <input type="checkbox" data-testid="settings-gpu-compositor" checked={gpu} onChange={(e) => setGpuCompositorOn(e.target.checked)} />

@@ -12,6 +12,7 @@ import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverl
 import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
+import { DecodedPictures } from "./decoded.ts";
 import {
   type MediaEl,
   type ScrubView,
@@ -100,6 +101,8 @@ export abstract class CompositorBase {
   protected gpuBroken = false;
   // The layers the GPU compositor drew last (a new frame of theirs needs a render, as for effects).
   protected onGpu = new Set<string>();
+  // D311: the playback engine, and the play canvases it draws clips into.
+  protected readonly decoded = new DecodedPictures(() => this.render());
 
   constructor(dir: string, frameEl: HTMLDivElement, mediaLayer: HTMLDivElement, textLayer: HTMLDivElement) {
     this.dir = dir;
@@ -111,6 +114,7 @@ export abstract class CompositorBase {
     this.offRunner = whenRunner(() => this.render());
     playback.setFollower((f) => this.follow(f));
     setCurrentMix(this.mix);
+    this.mix.setApart((item) => this.decoded.soundApart(item, this.shown()));
     // Issue #55: the mix's AudioContext made while idle, not in the first frame of playback.
     this.prepareIdle = requestIdleCallback(() => this.mix.prepare(), { timeout: 3000 });
     previewStats.compositors++;
@@ -134,6 +138,7 @@ export abstract class CompositorBase {
     setCurrentMix(undefined);
     clearTimeout(this.settleTimer);
     this.scrub.destroy();
+    this.decoded.dispose();
     this.gpu?.dispose();
     this.gpu = undefined;
   }
@@ -159,6 +164,7 @@ export abstract class CompositorBase {
 
   setProject(project: ProjectModel) {
     this.project = project;
+    this.decoded.prepare(project);
     this.render();
   }
 
@@ -174,6 +180,7 @@ export abstract class CompositorBase {
     el.remove();
     this.scrubViews.get(id)?.canvas.remove();
     this.scrubViews.delete(id);
+    this.decoded.drop(id);
     this.boxes.get(id)?.remove();
     this.boxes.delete(id);
     this.els.delete(id);
@@ -465,8 +472,12 @@ export abstract class CompositorBase {
     return this.boxes.get(id);
   }
 
-  /** The element for a clip, made on first use; replaced if the clip now shows other media. */
-  protected elementFor(item: Item, kind: "video" | "image"): MediaEl | undefined {
+  /**
+   * The element for a clip, made on first use; replaced if the clip now shows other media. D311:
+   * `lazy`, the playback engine draws it now, so a <video> made then loads nothing yet; `apart`, its
+   * sound comes from the mix's own <audio>.
+   */
+  protected elementFor(item: Item, kind: "video" | "image", { lazy = false, apart = false } = {}): MediaEl | undefined {
     const media = item.media ? this.project?.media.find((m) => m.id === item.media) : undefined;
     const src = media ? previewSrc(media, kind) : undefined;
     if (!src || !media) return undefined;
@@ -487,7 +498,7 @@ export abstract class CompositorBase {
       video.muted = true;
       video.crossOrigin = "anonymous";
       video.playsInline = true;
-      video.preload = "auto";
+      video.preload = lazy ? "none" : "auto";
       video.addEventListener("seeked", () => {
         // Issue #55: a drift seek while playing has landed: how long it took aims the next one.
         const ps = playSeek.get(video);
@@ -534,7 +545,7 @@ export abstract class CompositorBase {
       wrap.append(note);
     });
     el.src = src;
-    if (el instanceof HTMLVideoElement && media.probe?.hasAudio) this.mix.attach(item.id, el);
+    if (el instanceof HTMLVideoElement && media.probe?.hasAudio && !apart) this.mix.attach(item.id, el);
     this.els.set(item.id, el);
     this.boxes.set(item.id, wrap);
     wrap.append(el);

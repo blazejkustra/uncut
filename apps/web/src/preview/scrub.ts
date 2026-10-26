@@ -14,6 +14,6 @@
 //   and a sample: edits (trim, speed, effects) never invalidate a frame, they only ask for another.
 //   A file changed in place (another size or modification time on any range read) drops its frames.
 export { SCRUB_MAX_SIDE, SCRUB_BUDGET, FrameLru, cachedSize, windowRanks } from "./scrub/frames.ts";
-export { decoderColour, liftsTone, convertsPrimaries } from "./scrub/colour.ts";
+export { decoderColour, namedColour, liftsTone, convertsPrimaries } from "./scrub/colour.ts";
 export { sameFile } from "./scrub/source.ts";
 export { ScrubCache, mediaIdOf } from "./scrub/cache.ts";

@@ -18,6 +18,7 @@ import { actions, getState, subscribeApp, textPresets } from "../state/store.ts"
 import { useProxiesOn } from "../settings/proxies.ts";
 import { useScrubCacheOn } from "../settings/scrub.ts";
 import { useGpuCompositorOn } from "../settings/gpu.ts";
+import { usePlayEngineOn } from "../settings/playEngine.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
 import { planText, planTextScale, planTransform, snapBox, textBox, type Guide } from "./text.ts";
@@ -127,10 +128,11 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   // D212: a proxy that's ready (or the setting turned) swaps the clip's element for the other file.
   const proxies = useSyncExternalStore(subscribeApp, () => getState().proxies);
   const useProxies = useProxiesOn();
-  // D221: the scrub cache or the GPU compositor turned on or off draws again.
+  // D221: the scrub cache, the playback engine (D311) or the GPU compositor turned on or off draws again.
   const scrubCache = useScrubCacheOn();
+  const playEngine = usePlayEngineOn();
   const gpu = useGpuCompositorOn();
-  useEffect(() => compositor.current?.render(), [proxies, useProxies, scrubCache, gpu]);
+  useEffect(() => compositor.current?.render(), [proxies, useProxies, scrubCache, playEngine, gpu]);
   useEffect(() => compositor.current?.setEditing(editing?.id), [editing?.id]);
   // Canvas pixels per screen pixel, and its inverse: how the canvas-size layer is scaled.
   const scale = width / Math.max(1, size.w);

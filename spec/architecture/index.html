@@ -231,6 +231,9 @@
     <li><strong>Export uses the same timeline maths.</strong> Shots and crossfades are cut from the originals by ffmpeg with VideoToolbox; text is rendered by Chromium from the same HTML as the preview. Exported frames match the source at SSIM 0.97 to 0.998, and a 35 s 4K export takes about 35 s.</li>
     <li><strong>The media core becomes a helper process</strong> for analysis, waveforms and the audio engine, started when needed. Smelter wasn't evaluated: the Chromium path passed, so there was nothing left for it to de-risk.</li>
   </ul>
+
+  <h2>Playback engine (D311)</h2>
+  <p>A <code>&lt;video&gt;</code> per clip only starts seeking when the playhead reaches its cut, so dense cuts (0.2 to 0.5 s) stalled, froze or drifted. While playing, the preview now demuxes the files itself (mediabunny) and decodes with WebCodecs ahead of the playhead: each clip on screen and the next ones within 2.5 s get a decoder filling a short frame queue, the soonest first, and the compositor draws the frame the playback clock asks for. Clips it draws are heard through the mix's own <code>&lt;audio&gt;</code>. Files WebCodecs can't take (ProRes, HDR, containers mediabunny can't read), looped clips, shuttling and scrubbing stay on the <code>&lt;video&gt;</code> and the scrub cache (D221).</p>
 </main>
 </body>
 </html>
