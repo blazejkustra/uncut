@@ -20,7 +20,7 @@ import { exportCommand, planLoudness, RASTER_CSS, graphFileArgs, hardwareEncoder
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasterizer.ts";
 import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
-import { Cancelled, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
+import { Cancelled, capsOf, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
@@ -168,33 +168,16 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         const renderStart = Date.now();
         patch(job.id, { phase: "rendering", progress: 0 });
         let lastPatch = 0;
-        return run(
-          bin,
-          [
-            "-hide_banner",
-            "-nostdin",
-            "-y",
-            "-nostats",
-            "-progress",
-            "pipe:1",
-            "-stats_period",
-            "0.25",
-            ...cmd.inputs,
-            ...graphFileArgs(caps, graphFile),
-            ...cmd.outputArgs,
-          ],
-          signal,
-          (line) => {
-            const m = /^out_time_us=(\d+)/.exec(line);
-            if (!m) return;
-            const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
-            const now = Date.now();
-            if (now - lastPatch < 200) return;
-            lastPatch = now;
-            const elapsed = (now - renderStart) / 1000;
-            patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
-          },
-        );
+        return run(bin, encodeArgs(cmd, graphFileArgs(caps, graphFile)), signal, (line) => {
+          const m = /^out_time_us=(\d+)/.exec(line);
+          if (!m) return;
+          const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
+          const now = Date.now();
+          if (now - lastPatch < 200) return;
+          lastPatch = now;
+          const elapsed = (now - renderStart) / 1000;
+          patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
+        });
       };
       const hardware = usesHardware(job.quality, caps, video);
       usedEncoder = hardware ? "hardware" : "software";

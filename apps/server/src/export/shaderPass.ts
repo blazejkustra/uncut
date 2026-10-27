@@ -12,6 +12,7 @@ import { shaderFrameBytes, shaderModuleCode, shaderParamBytes, shaderTime, type 
 import { shaderSourceArgs, type CommandOptions, type ExportPlan, type VisualLayer } from "./exportPlan.ts";
 import type { Rasterizer } from "./rasterizer.ts";
 import { localInputs } from "../media/localInputs.ts";
+import { lowerPriority } from "./exporter/ffmpeg.ts";
 
 /** The layers with a shader effect, in plan order. */
 export const shadedLayers = (plan: Pick<ExportPlan, "visuals">) => plan.visuals.filter((l) => (l.kind === "video" || l.kind === "image") && !!l.fx?.shader);
@@ -45,6 +46,7 @@ interface Spawned {
 
 function start(bin: string, args: ReadonlyArray<string>, stdin: "ignore" | "pipe"): Spawned {
   const child = spawn(bin, localInputs(bin, args), { stdio: [stdin, "pipe", "pipe"] });
+  lowerPriority(child.pid);
   const s: Spawned = {
     child,
     stderr: "",
