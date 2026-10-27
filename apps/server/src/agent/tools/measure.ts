@@ -3,10 +3,11 @@ import { isAbsolute, resolve } from "node:path";
 import { clipFx, fxSkips, sourceAt, type Item, type Project } from "@uncut/core";
 import * as Effect from "effect/Effect";
 
-import { mixReport } from "../agentMix.ts";
+import { mixLines, mixReport } from "../agentMix.ts";
 import { colourReadout, colourStats, graded, GRADING_DIRECTIONS, matchReadout, mergeStats, type ColourStats } from "../agentColour.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { CoreCtx } from "../session/core.ts";
+import type { ExporterShape } from "../../export/exporter.ts";
 
 /** Frames are read this wide (px): enough for percentiles, cheap to decode. */
 const COLOUR_WIDTH = 480;
@@ -14,6 +15,13 @@ const MAX_FRAMES = 12;
 const MAX_ITEMS = 6;
 /** Where in a clip its samples are taken (fractions of its length): away from transitions at its ends. */
 const CLIP_SAMPLES = [0.25, 0.5, 0.75];
+
+/** review_submit's measured sound facts for the critic's sound sheet. */
+export const measuredMixLines = (exporter: Pick<ExporterShape, "measureMix">, project: Project) =>
+  exporter.measureMix().pipe(
+    Effect.map((traces) => (traces ? mixLines(mixReport(project, traces)) : [])),
+    Effect.catch((e) => Effect.succeed([`The mix couldn't be measured: ${e.message}`])),
+  );
 
 const intList = (v: unknown) => (Array.isArray(v) && v.length > 0 && v.every((f) => Number.isInteger(f) && f >= 0) ? (v as Array<number>) : undefined);
 

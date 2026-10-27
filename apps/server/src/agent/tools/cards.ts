@@ -3,8 +3,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
-import { REVIEW_SCORES } from "@uncut/contracts";
+import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Storyboard, type Brief, type BrandKit, type BrandSkill } from "@uncut/contracts";
 import {
   CHECK_IDS,
   fontRule,
@@ -90,7 +89,7 @@ import {
 } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
-import { mixLines, mixReport } from "../agentMix.ts";
+import { measuredMixLines } from "./measure.ts";
 import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
 import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
@@ -1014,10 +1013,6 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
         ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
       ];
-      const measuredSound = yield* exporter.measureMix().pipe(
-        Effect.map((traces) => (traces ? mixLines(mixReport(project, traces)) : [])),
-        Effect.catch((e) => Effect.succeed([`The mix couldn't be measured: ${e.message}`])),
-      );
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
@@ -1038,7 +1033,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           r.owner.turns.map((t) => t.prompt),
           r.turn.prompt,
         ),
-        sound: [...soundSheet(project, { sound: rubric.sound }), ...measuredSound],
+        sound: [...soundSheet(project, { sound: rubric.sound }), ...(yield* measuredMixLines(exporter, project))],
         rubric,
         intended,
         motion: { lines: motionFacts, strips: motion.images.length },

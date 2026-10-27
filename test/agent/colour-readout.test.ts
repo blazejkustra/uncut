@@ -8,7 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { adjustOf, colourFn } from "../../packages/core/src/index.ts";
+import { adjustOf } from "../../packages/core/src/index.ts";
 import {
   balanceShift,
   castWords,
