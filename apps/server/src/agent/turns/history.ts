@@ -116,6 +116,9 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
     ...(typeof t.seconds === "number" ? { seconds: t.seconds } : {}),
     ...(isString(t.undoneAt) ? { undoneAt: t.undoneAt } : {}),
+    ...(isString(t.redoneAt) ? { redoneAt: t.redoneAt } : {}),
+    ...(t.kind === "compact" ? { kind: "compact" as const } : {}),
+    ...(t.compacted && typeof t.compacted === "object" ? { compacted: compactedOf(t.compacted) } : {}),
     ...(typeof t.spend === "number" && Number.isFinite(t.spend) && t.spend > 0 ? { spend: t.spend } : {}),
     ...(Array.isArray(t.graphics) ? { graphics: t.graphics.filter(isString).slice(-200) } : {}),
     ...(t.cleanup && typeof t.cleanup === "object" ? { cleanup: cleanupOf(t.cleanup) } : {}),
@@ -123,6 +126,15 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
 }
 
 /** A stored turn-end clean-up (D206). */
+const compactedOf = (raw: object): NonNullable<StoredTurn["compacted"]> => {
+  const c = raw as { trigger?: unknown; before?: unknown; after?: unknown };
+  return {
+    trigger: isString(c.trigger) ? c.trigger : "auto",
+    ...(typeof c.before === "number" ? { before: c.before } : {}),
+    ...(typeof c.after === "number" ? { after: c.after } : {}),
+  };
+};
+
 const cleanupOf = (raw: object): NonNullable<StoredTurn["cleanup"]> => {
   const c = raw as { graphics?: unknown; tracks?: unknown; restored?: unknown };
   return {

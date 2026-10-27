@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { applyEdit, createSession } from "../../packages/core/src/timeline/apply-ops.ts";
+import { applyEdit, createSession, EditConflict, redoTurn, undoTurn } from "../../packages/core/src/timeline/apply-ops.ts";
 import { netChanges, netEditsNote, netZeroNote } from "../../packages/core/src/timeline/net-edits.ts";
 import type { Edit, Op, Project, Session } from "../../packages/core/src/timeline/types.ts";
 
@@ -77,7 +77,7 @@ test("added, removed and reordered items and a deleted track read as the final s
   s = user(s, { op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", text: "Hi", start: 30, duration: 60 } });
   const lines = netChanges(start.project, s, 0);
   assert.ok(lines.includes("Deleted track v2"), lines.join("\n"));
-  assert.ok(lines.includes('Added text text "Hi" (txt-new) on track t1 at 1.0s, 2.0s long'), lines.join("\n"));
+  assert.ok(lines.includes('Added text "Hi" (txt-new) on track t1 at 1.0s, 2.0s long'), lines.join("\n"));
   assert.ok(
     lines.some((l) => l.startsWith("Removed ") && l.includes("(cmp-tap) from track v2")),
     lines.join("\n"),
@@ -108,4 +108,25 @@ test("nothing done: an empty note", () => {
   assert.equal(netEditsNote(start.project, start, 0), "");
   const s = agent(start, "t1", "Mine", { op: "update_item", item: "txt-hook", set: { text: "Mine" } });
   assert.equal(netEditsNote(start.project, s, 0), "");
+});
+
+const hook = (p: Project) => p.tracks.find((t) => t.id === "t1")!.items[0]!.text;
+
+test("redoTurn puts an undone turn back as one revision of that turn; refused when a later edit touched the same item", () => {
+  const start = createSession(promo);
+  let s = agent(start, "t1", "Retitle", { op: "update_item", item: "txt-hook", set: { text: "Agent" } });
+  s = agent(s, "t1", "Trim", { op: "trim_item", item: "aud-music", edge: "end", frames: 30 });
+  const entries = s.log.filter((e) => e.turnId === "t1");
+  const undone = undoTurn(promo, s, "t1");
+  const redone = redoTurn(undone, entries, undone.revision);
+  assert.equal(redone.revision, undone.revision + 1);
+  assert.equal(redone.log.at(-1)!.turnId, "t1");
+  assert.equal(redone.log.at(-1)!.actor, "user", "the user's step: the agent's note reports it");
+  assert.deepEqual(redone.project, s.project);
+  assert.equal(hook(undoTurn(promo, redone, "t1").project), hook(promo), "Undo turn takes it back again");
+  assert.throws(() => redoTurn(redone, entries, undone.revision), /in the project already/);
+  const later = user(undone, { op: "update_item", item: "txt-hook", set: { text: "Mine" } });
+  assert.throws(() => redoTurn(later, entries, undone.revision), EditConflict);
+  const elsewhere = user(undone, { op: "update_item", item: "txt-taps", set: { text: "Other" } });
+  assert.equal(hook(redoTurn(elsewhere, entries, undone.revision).project), "Agent");
 });

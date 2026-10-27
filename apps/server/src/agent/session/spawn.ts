@@ -51,6 +51,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     onAssistant,
     finish,
     noteContext,
+    onContextUsage,
     turnCleanup,
     publish,
     config,
@@ -60,6 +61,38 @@ export const makeSpawn = (ctx: StreamCtx) => {
 
   /** Which sign-in claude used (its init's apiKeySource) and where Uncut sees ANTHROPIC_API_KEY come from: presence only. */
   const authOf = (s: ClaudeSession) => ({ keySource: s.apiKeySource, keyWhere: apiKeySource(process.env) });
+
+  /**
+   * Ask claude for its context usage (get_context_usage, "summary": no API calls): the window and
+   * where it compacts on its own, and after a compaction the context now. A new ask replaces one never answered.
+   */
+  const askContextUsage = (s: ClaudeSession, compacted: boolean) => {
+    if (s.closed || !s.child?.stdin?.writable) return;
+    const id = `ctx-${randomBytes(4).toString("hex")}`;
+    s.contextAsk = { id, compacted };
+    try {
+      s.child.stdin.write(`${JSON.stringify({ type: "control_request", request_id: id, request: { subtype: "get_context_usage", detail: "summary" } })}\n`);
+    } catch {
+      s.contextAsk = undefined;
+    }
+  };
+
+  /** Claude Code compacted the conversation (auto, or the user's /compact): the turn says so, with the tokens before and after. */
+  const onCompacted = (s: ClaudeSession, msg: Record<string, any>) => {
+    forgetSentBlocks(s);
+    const r = s.turn;
+    if (!r || r.turn.status !== "running") return;
+    const m = (msg.compact_metadata ?? {}) as Record<string, unknown>;
+    const tokens = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? { value: v } : undefined);
+    const before = tokens(m.pre_tokens);
+    const after = tokens(m.post_tokens);
+    r.turn.compacted = {
+      trigger: isString(m.trigger) ? m.trigger : "auto",
+      ...(before ? { before: before.value } : {}),
+      ...(after ? { after: after.value } : {}),
+    };
+    publishNow();
+  };
 
   /** One stream-json line from a session's claude. */
   const onLine = (s: ClaudeSession, line: string) => {
@@ -86,7 +119,13 @@ export const makeSpawn = (ctx: StreamCtx) => {
       return;
     }
     // D266: after a compaction the brand kit and plan go whole with the next message.
-    if (msg.type === "system" && msg.subtype === "compact_boundary") return void forgetSentBlocks(s);
+    if (msg.type === "system" && msg.subtype === "compact_boundary") return onCompacted(s, msg);
+    if (msg.type === "control_response" && s.contextAsk && String(msg.response?.request_id ?? "") === s.contextAsk.id) {
+      const { compacted } = s.contextAsk;
+      s.contextAsk = undefined;
+      if (msg.response?.subtype === "success") onContextUsage(s, msg.response.response, compacted);
+      return;
+    }
     // D194: claude asks whether a built-in tool may run (--permission-prompt-tool stdio).
     if (msg.type === "control_request" && msg.request?.subtype === "can_use_tool") return void canUseTool(s, msg);
     if (msg.type === "control_response" && String(msg.response?.request_id ?? "") === s.initId) {
@@ -156,6 +195,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     } else if (msg.type === "result") {
       // D261: the window the result reports, before finish publishes the turn's end.
       noteContext(r, msg);
+      if (r.turn.compacted) askContextUsage(s, r.turn.kind === "compact");
       // A Stop that crossed a successful result doesn't relabel the finished turn.
       if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
       if (r.turn.error) return finish(r, { status: "error" });
@@ -248,6 +288,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       st.initWarning = undefined;
       publish();
     }
+    if (answered) askContextUsage(s, false);
     const w = s.waiting;
     s.waiting = undefined;
     w?.();

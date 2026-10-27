@@ -384,6 +384,30 @@ export function undoTurn(initialProject: Project, session: Session, turnId: stri
   return { project: s.project, revision: session.revision + 1, log: kept };
 }
 
+/**
+ * Redo turn: an undone turn's entries put back on top of the project as it is now, as one entry of
+ * that turn (Undo turn can take it back again), made by the user. Refused with EditConflict when an
+ * edit made after the undo (revisions after `undoneAt`) touches what the turn touched, and with
+ * EditError when the turn's ops no longer apply.
+ */
+export function redoTurn(
+  session: Session,
+  entries: ReadonlyArray<LogEntry>,
+  undoneAt: number,
+  validate?: (project: Project) => ReadonlyArray<Problem>,
+): Session {
+  const turnId = entries[0]?.turnId;
+  if (!turnId) throw new EditError("The turn has no edits to redo");
+  if (session.log.some((e) => e.turnId === turnId)) throw new EditError("The turn's edits are in the project already");
+  const mine = new Set(entries.flatMap((e) => e.ops.flatMap(touches)));
+  const later = session.log.filter((e) => e.revision > undoneAt).flatMap((e) => e.ops.flatMap(touches));
+  const clash = [...new Set(later.filter((id) => mine.has(id)))];
+  if (clash.length) throw new EditConflict(clash);
+  const first = entries[0]!.summary ?? "the turn's edits";
+  const summary = entries.length === 1 ? `Redo: ${first}` : `Redo: ${first} and ${entries.length - 1} more`;
+  return applyEdit(session, { actor: "user", turnId, ops: entries.flatMap((e) => e.ops), summary }, validate);
+}
+
 type Keys = NonNullable<Item["keys"]>;
 
 /**

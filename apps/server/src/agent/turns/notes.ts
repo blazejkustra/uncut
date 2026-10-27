@@ -1,9 +1,11 @@
 import type { AgentTurn } from "@uncut/contracts";
 import {
+  EditConflict,
   manualEditsNote,
   netEditsNote,
   netZeroNote,
   type Project,
+  redoTurn,
   speechItem,
   transcriptScope,
   type Session,
@@ -100,7 +102,7 @@ export function undoState(
   if (turn.status === "running" || turn.edits.length === 0) return { state: "none" };
   const logged = new Set(view && view.openId === openId ? view.session.log.filter((e) => e.turnId === turn.id).map((e) => e.revision) : []);
   if (!view || !logged.size) {
-    if (turn.undoneAt) return { state: "undone" };
+    if (turn.undoneAt) return { state: "undone", ...(view && view.openId === openId ? redoState(turn.id, view, validate) : {}) };
     return {
       state: "unavailable",
       reason:
@@ -128,6 +130,32 @@ export function undoState(
   cache.set(turn.id, state);
   return state;
 }
+
+/** Whether an undone turn can be redone now (a dry run, as the real redo, cached per session); nothing when it wasn't undone in this opening. */
+function redoState(
+  turnId: string,
+  view: ProjectView,
+  validate: (project: Project) => ReadonlyArray<{ readonly message: string }>,
+): Pick<UndoState, "redo" | "redoReason"> {
+  const undone = view.undone.get(turnId);
+  if (!undone) return {};
+  let cache = redoRuns.get(view.session);
+  if (!cache) redoRuns.set(view.session, (cache = new Map()));
+  const known = cache.get(turnId);
+  if (known) return known;
+  let state: Pick<UndoState, "redo" | "redoReason">;
+  try {
+    redoTurn(view.session, undone.entries, undone.revision, validate as Parameters<typeof redoTurn>[3]);
+    state = { redo: "available" };
+  } catch (error) {
+    const reason =
+      error instanceof EditConflict ? `A later edit changed what it changed (${error.details.join(", ")}). Undo that first.` : String((error as Error).message);
+    state = { redo: "blocked", redoReason: reason };
+  }
+  cache.set(turnId, state);
+  return state;
+}
+const redoRuns = new WeakMap<Session, Map<string, Pick<UndoState, "redo" | "redoReason">>>();
 
 /** D260 (issue #81): at most this many listed edits in a message's note. */
 export const NOTE_LINES = 30;

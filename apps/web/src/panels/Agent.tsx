@@ -2,7 +2,7 @@
 // reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
 // and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
-import { ChevronDown, ChevronRight, Maximize2, SquarePen, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FoldVertical, Maximize2, SquarePen, TriangleAlert, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Composer } from "./Composer.tsx";
@@ -45,6 +45,25 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         onClick={() => (setShowEarlier(false), void actions.agentNewThread())}
       >
         <SquarePen />
+      </button>
+    </Tooltip>
+  );
+  const compact = (
+    <Tooltip
+      label={
+        running !== null
+          ? "Wait for the agent to finish to compact the conversation"
+          : "Compact: Claude Code summarises the conversation so far, so the agent has room again (like /compact)"
+      }
+    >
+      <button
+        className="icon-btn agent-compact"
+        data-testid="agent-compact"
+        aria-label="Compact the conversation"
+        disabled={!online || running !== null || !turns.some((t) => t.kind !== "compact")}
+        onClick={() => void actions.agentCompact()}
+      >
+        <FoldVertical />
       </button>
     </Tooltip>
   );
@@ -99,6 +118,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
           <div className="plan-strip agent-strip" data-testid="agent-strip">
             {newChat}
+            {compact}
             <span className="spacer" />
             {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && <PlanChip plan={agent.plan} />}
           </div>

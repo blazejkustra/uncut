@@ -141,6 +141,8 @@ export interface AgentShape {
     readonly problem?: string | undefined;
   }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
+  /** Redo turn: an undone turn's edits back, recorded as its own revision; the agent's next note says so. */
+  readonly redoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */
   readonly restoreCleanup: (turnId: string) => Effect.Effect<{ readonly restored: ReadonlyArray<string> }, AgentError>;
   /** D295: a new chat: the next message starts a fresh Claude conversation (earlier turns stay in the history). */
@@ -170,6 +172,9 @@ export interface CardAnswer {
 export { agentEnv };
 
 // ---- the service ----
+
+/** A turn by its prompt, quoted and cut at 80 characters, for the history's labels and the agent's note. */
+const turnName = (prompt: string) => `"${prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt}"`;
 
 export const layer = Layer.effect(
   Agent,
@@ -330,7 +335,7 @@ export const layer = Layer.effect(
           // Partly beyond what history.db keeps (or not in the history at all): say why, change nothing.
           const state = undoState(turn, view(), owner.openId, format.validate);
           if (state.state === "unavailable") return yield* new AgentError({ reason: "failed", message: `This turn can't be undone. ${state.reason}` });
-          const label = `Undid your turn "${turn.prompt.length > 80 ? `${turn.prompt.slice(0, 77)}...` : turn.prompt}"`;
+          const label = `Undid your turn ${turnName(turn.prompt)}`;
           const snapshot = yield* projects.undoTurn(owner.openId, turnId, label);
           turn.undoneAt = new Date().toISOString();
           // D206: the graphics its clean-up put in the trash come back too.
@@ -338,6 +343,21 @@ export const layer = Layer.effect(
             yield* Effect.promise(() => restoreGraphics(owner.dir, turnId, turn.cleanup!.graphics).catch(() => []));
             turn.cleanup = { ...turn.cleanup, restored: true };
           }
+          persist(owner);
+          publish();
+          return snapshot;
+        }),
+      redoTurn: (turnId) =>
+        Effect.gen(function* () {
+          const owner = yield* ensureLoaded;
+          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+          if (st.running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before redoing a turn." });
+          const turn = owner.turns.find((t) => t.id === turnId);
+          if (!turn?.undoneAt) return yield* new AgentError({ reason: "unknown-turn", message: "That turn wasn't undone." });
+          const snapshot = yield* projects.redoTurn(owner.openId, turnId, `Redid your turn ${turnName(turn.prompt)} (its edits are back)`);
+          delete turn.undoneAt;
+          turn.redoneAt = new Date().toISOString();
+          turn.edits.splice(0, turn.edits.length, ...turn.edits.map((e) => ({ ...e, revision: snapshot.revision })));
           persist(owner);
           publish();
           return snapshot;

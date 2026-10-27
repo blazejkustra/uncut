@@ -52,7 +52,9 @@ const TIMING = new Set(["id", "type", "start", "duration", "in"]);
 function addedItem(after: Project, { track, item }: Placed) {
   const fps = after.canvas.fps;
   const at = track.role === "main" ? `at position ${track.items.indexOf(item) + 1}` : `at ${seconds(item.start ?? 0, fps)}`;
-  return `Added ${item.type} ${itemLabel(after, item.id)} on track ${track.id} ${at}, ${seconds(item.duration, fps)} long`;
+  const label = itemLabel(after, item.id);
+  const what = label.startsWith(`${item.type} `) ? label : `${item.type} ${label}`;
+  return `Added ${what} on track ${track.id} ${at}, ${seconds(item.duration, fps)} long`;
 }
 
 function changedItem(after: Project, was: Placed, now: Placed): Array<string> {

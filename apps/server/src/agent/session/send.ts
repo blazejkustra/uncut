@@ -59,6 +59,10 @@ export function leanPlanBlock(full: string, last: SentBlocks | undefined): { tex
   return { text: parts.join("\n\n"), sent: changed ? { brand, plan, since: 0 } : { ...last, since: last.since + 1 } };
 }
 
+/** Claude Code's /compact, with or without its focus words ("/compact keep the storyboard"). */
+export const isCompact = (text: string) => /^\/compact(\s|$)/.test(text);
+const NO_PLAN = { planBlock: "", skillsBlock: "", called: [] as Array<string> };
+
 export const makeSend = (ctx: SpawnCtx) => {
   const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, spawnCodex, persist, publishNow, writeTurn, writeCodexTurn } = ctx;
 
@@ -105,6 +109,8 @@ export const makeSend = (ctx: SpawnCtx) => {
       }
       const text = prompt.trim();
       if (!text) return yield* new AgentError({ reason: "failed", message: "Write what you'd like the agent to do." });
+      const compacting = isCompact(text);
+      if (compacting && !owner.sessionId && !st.session) return yield* new AgentError({ reason: "failed", message: "There's no conversation to compact yet." });
       if (images.length > AGENT_IMAGES_MAX)
         return yield* new AgentError({ reason: "failed", message: `Attach at most ${AGENT_IMAGES_MAX} images to a message.` });
       const decoded = images.map((img) => ({ ...img, bytes: Buffer.from(img.data, "base64") }));
@@ -132,7 +138,9 @@ export const makeSend = (ctx: SpawnCtx) => {
       const v = view();
       if (!v || v.openId !== owner.openId) return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
 
-      const note = joinNotes(owner.carried, noteFor(v, owner.agentSeen));
+      // A /compact goes to Claude Code as it is: the note waits for the next message.
+      const changes = compacting ? "" : noteFor(v, owner.agentSeen);
+      const note = compacting ? "" : joinNotes(owner.carried, changes);
       const project = v.session.project as Project;
       // What the prompt's @labels point at (D140), only those still in the prompt.
       const pointed = (mentions ?? [])
@@ -150,14 +158,16 @@ export const makeSend = (ctx: SpawnCtx) => {
       ].filter(Boolean);
       // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
       // D198: and each one is listed in the message (names only), so the agent can't miss one.
-      const named = namedFolders(text, v.dir, (p) => {
-        try {
-          const st = statSync(p);
-          return st.isDirectory() ? "dir" : st.isFile() ? "file" : undefined;
-        } catch {
-          return undefined;
-        }
-      });
+      const named = compacting
+        ? []
+        : namedFolders(text, v.dir, (p) => {
+            try {
+              const st = statSync(p);
+              return st.isDirectory() ? "dir" : st.isFile() ? "file" : undefined;
+            } catch {
+              return undefined;
+            }
+          });
       for (const f of named) {
         if (!f.problem && !owner.dirs.includes(f.dir) && !owner.mentioned.includes(f.dir) && owner.mentioned.length < 16) owner.mentioned.push(f.dir);
       }
@@ -192,39 +202,41 @@ export const makeSend = (ctx: SpawnCtx) => {
       const skip = access === "auto" && skipStoryboard;
       // D232 (issue #60): a /name in the message calls that skill: its instructions come with the
       // message and the project uses it from now on (the critic follows it).
-      const { planBlock, skillsBlock, called } = yield* Effect.promise(async () => {
-        try {
-          owner.plan = await readPlan(v.dir);
-          const dirs = { dataDir: config.dataDir, projectDir: v.dir, skills: plugins.skillsNow() };
-          let all = await readBrand(dirs);
-          const called = calledSkills(
-            text,
-            all.skills.map((x) => x.id),
-          );
-          if (called.length) {
-            await useSkills(v.dir, called);
-            all = await readBrand(dirs);
-          }
-          const kit = all.kits.find((k) => k.id === all.active.kit);
-          return {
-            planBlock: planContext(
-              {
-                kit,
-                files: kit ? (all.files[kit.id] ?? {}) : {},
-                skills: all.skills.filter((x) => all.active.skills.includes(x.id)),
-                others: all.kits.map((k) => ({ id: k.id, name: k.name })),
-              },
-              owner.plan,
-              gateOf(owner.plan, skip),
-            ),
-            skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
-            called,
-          };
-        } catch (error) {
-          console.error(`[uncut] couldn't read the brand kit or plan of ${v.dir}: ${(error as Error).message}`);
-          return { planBlock: "", skillsBlock: "", called: [] as Array<string> };
-        }
-      });
+      const { planBlock, skillsBlock, called } = compacting
+        ? NO_PLAN
+        : yield* Effect.promise(async () => {
+            try {
+              owner.plan = await readPlan(v.dir);
+              const dirs = { dataDir: config.dataDir, projectDir: v.dir, skills: plugins.skillsNow() };
+              let all = await readBrand(dirs);
+              const called = calledSkills(
+                text,
+                all.skills.map((x) => x.id),
+              );
+              if (called.length) {
+                await useSkills(v.dir, called);
+                all = await readBrand(dirs);
+              }
+              const kit = all.kits.find((k) => k.id === all.active.kit);
+              return {
+                planBlock: planContext(
+                  {
+                    kit,
+                    files: kit ? (all.files[kit.id] ?? {}) : {},
+                    skills: all.skills.filter((x) => all.active.skills.includes(x.id)),
+                    others: all.kits.map((k) => ({ id: k.id, name: k.name })),
+                  },
+                  owner.plan,
+                  gateOf(owner.plan, skip),
+                ),
+                skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
+                called,
+              };
+            } catch (error) {
+              console.error(`[uncut] couldn't read the brand kit or plan of ${v.dir}: ${(error as Error).message}`);
+              return { planBlock: "", skillsBlock: "", called: [] as Array<string> };
+            }
+          });
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
       const model = modelFor(askedModel, provider);
@@ -261,16 +273,18 @@ export const makeSend = (ctx: SpawnCtx) => {
       blocks.pending = undefined;
       sentBlocks.set(s, blocks);
       const lean = leanPlanBlock(planBlock, blocks.committed);
-      let message = [
-        userMessageText(text, called),
-        skillsBlock,
-        contextBlock(project, pointed),
-        foldersBlock,
-        planBlock ? lean.text : "",
-        context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      let message = compacting
+        ? text
+        : [
+            userMessageText(text, called),
+            skillsBlock,
+            contextBlock(project, pointed),
+            foldersBlock,
+            planBlock ? lean.text : "",
+            context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
 
       const turnId = `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
       // D184: attached images are kept in .cache/agent-images/ for the card (the cache can be
@@ -302,6 +316,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         ...(model ? { model } : {}),
         ...(note ? { note } : {}),
         ...(folderList.length ? { folders: folderList } : {}),
+        ...(compacting ? { kind: "compact" as const } : {}),
         startedAt: new Date().toISOString(),
         status: "running",
         items: [],
@@ -325,7 +340,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         streamed: new Map(),
         announced: [],
         gen: ++s.gens,
-        noteRevision: v.session.revision,
+        noteRevision: compacting ? owner.agentSeen : v.session.revision,
         stopReason: undefined,
         access,
         images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),

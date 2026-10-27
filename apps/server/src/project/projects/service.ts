@@ -1,6 +1,6 @@
 // The Projects service: its shape, the open project's state and an empty project.
 import { type ProjectSnapshot, ProjectError, EditRefused, type HistoryState } from "@uncut/contracts";
-import type { Session, Project, Canvas as CoreCanvas } from "@uncut/core";
+import type { LogEntry, Session, Project, Canvas as CoreCanvas } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
@@ -27,6 +27,14 @@ export interface OpenProject {
   // The agent turn whose first edit put the pre-turn project on the undo stack (D7: a turn is
   // one undo step). Cleared by anything else that touches the stack.
   pushedForTurn: string | undefined;
+  // Turns undone in this opening (Undo turn): their entries and the undo's revision, for Redo turn.
+  undone: Map<string, UndoneTurn>;
+}
+
+/** An agent turn taken back with Undo turn: its log entries as they were, and the revision the undo made. */
+export interface UndoneTurn {
+  readonly entries: ReadonlyArray<LogEntry>;
+  readonly revision: number;
 }
 
 /** A media entry as the media routes read it (the project's own fields, loosely typed). */
@@ -56,6 +64,7 @@ export interface ProjectView {
   readonly unlogged: ReadonlyArray<UnloggedChange>;
   /** The project at a revision of the history; undefined when the history no longer has it. */
   readonly stateAt: (revision: number) => Project | undefined;
+  readonly undone: ReadonlyMap<string, UndoneTurn>;
 }
 
 export interface AgentEditInput {
@@ -127,6 +136,8 @@ export interface ProjectsShape {
   readonly agentEdit: (openId: number, input: AgentEditInput) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
   /** Revert one turn's edits as one undoable step, keeping later edits (D7). */
   readonly undoTurn: (openId: number, turnId: string, label: string) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
+  /** Redo turn: an undone turn's edits back on top of the project as it is now, as one revision. */
+  readonly redoTurn: (openId: number, turnId: string, label: string) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
   /** The open project's history for the History tab (null: nothing open), then every change. */
   readonly historyChanges: Stream.Stream<HistoryState | null>;
   /** The project as it was at a revision, for the History tab's preview. Changes nothing. */

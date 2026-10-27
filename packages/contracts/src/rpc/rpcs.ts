@@ -184,6 +184,13 @@ export const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
   error: Schema.Union([AgentError, EditRefused, ProjectError]),
 });
 
+// Redo turn: an undone turn's edits back, as one revision, unless a later edit changed what it changed.
+export const AgentRedoTurnRpc = Rpc.make(RPC_METHODS.agentRedoTurn, {
+  payload: Schema.Struct({ turnId: Schema.String }),
+  success: ProjectSnapshot,
+  error: Schema.Union([AgentError, EditRefused, ProjectError]),
+});
+
 // D205: recent captures, imports and generations from other projects (the user's media index), newest first.
 export const MediaRecentRpc = Rpc.make(RPC_METHODS.mediaRecent, {
   payload: Schema.Struct({ query: Schema.optional(Schema.String), kind: Schema.optional(Schema.String), limit: Schema.optional(Schema.Number) }),

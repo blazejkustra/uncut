@@ -33,6 +33,7 @@ export const RPC_METHODS = {
   agentSend: "agent.send",
   agentCancel: "agent.cancel",
   agentUndoTurn: "agent.undoTurn",
+  agentRedoTurn: "agent.redoTurn",
   agentApprove: "agent.approve",
   exportStart: "export.start",
   exportJobs: "export.jobs",

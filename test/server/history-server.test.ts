@@ -339,7 +339,7 @@ test("scripted claude: a turn made before a restart is undone after it; the hand
       .map((l) => JSON.parse(l));
     assert.equal(prompts.length, 2);
     assert.match(prompts[1].prompt, /Earlier, before the project was closed and reopened:/);
-    assert.match(prompts[1].prompt, /Added text user-1 on track text/);
+    assert.match(prompts[1].prompt, /Added text "Mine" \(user-1\) on track text/);
     assert.equal(prompts[1].resume, "fake-session", "the conversation continues after the restart");
   } finally {
     await s.end();

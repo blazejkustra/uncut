@@ -8,7 +8,7 @@ import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
 import type { RunCtx } from "../tools/run.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { agentFailCode } from "../../telemetry/events.ts";
-import { assistantUsage, contextOf, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
+import { assistantUsage, contextOf, contextUsageReply, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
   const { publish, closeSession, view, st, persist, trackPending, plugins } = ctx;
@@ -83,6 +83,7 @@ export const makeStream = (ctx: RunCtx) => {
   const delivered = (r: Running) => {
     if (r.delivered) return;
     r.delivered = true;
+    if (r.turn.kind === "compact") return;
     r.owner.agentSeen = Math.max(r.owner.agentSeen, r.noteRevision);
     r.owner.carried = undefined;
     r.owner.pending = "";
@@ -176,10 +177,13 @@ export const makeStream = (ctx: RunCtx) => {
     const ids = { model: usage?.model ?? last?.model, initModel: s.initModel, chosen: s.model };
     if (usage) {
       const model = usage.model ?? s.initModel ?? s.model;
-      const window = knownWindow({ ...ids, learned: learnedWindows }) ?? (last && last.model === model ? last.window : undefined);
+      const window = s.window ?? knownWindow({ ...ids, learned: learnedWindows }) ?? (last && last.model === model ? last.window : undefined);
+      const compactAt = s.compactAt ?? (last && last.model === model ? last.compactAt : undefined);
       owner.context = contextOf({
         used: usage.used,
         window,
+        compactAt,
+        parts: usage.parts,
         systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
         message: messageContextEstimate(r.message, r.turn.prompt),
         model,
@@ -191,6 +195,34 @@ export const makeStream = (ctx: RunCtx) => {
     owner.context = { ...last, window };
     const key = windowKey(ids);
     if (key) learnedWindows.set(key, window);
+  };
+
+  /**
+   * Claude Code's answer to get_context_usage (asked when a session starts and after a compaction):
+   * the window and where it compacts on its own, as its own /context shows them. After a compaction
+   * its count is the context now (the last call's usage is from before it).
+   */
+  const onContextUsage = (s: ClaudeSession, reply: unknown, compacted: boolean) => {
+    const got = contextUsageReply(reply);
+    if (!got) return;
+    s.window = got.window ?? s.window;
+    s.compactAt = got.compactAt ?? s.compactAt;
+    const key = windowKey({ initModel: s.initModel, chosen: s.model });
+    if (key && got.window) learnedWindows.set(key, got.window);
+    const owner = s.owner;
+    const last = owner.context;
+    if (compacted && got.total)
+      owner.context = contextOf({
+        used: got.total,
+        window: s.window,
+        compactAt: s.compactAt,
+        systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
+        message: 0,
+        ...(last?.model ? { model: last.model } : {}),
+      });
+    else if (last) owner.context = { ...last, ...(s.window ? { window: s.window } : {}), ...(s.compactAt ? { compactAt: s.compactAt } : {}) };
+    else return;
+    publishNow();
   };
 
   /** A full assistant message: replaces what was streamed of it, adds what wasn't (a block this turn already shows word for word isn't added twice). */
@@ -257,7 +289,7 @@ export const makeStream = (ctx: RunCtx) => {
     }
   };
 
-  return { publishNow, publishSoon, label, doing, watchData, delivered, onStream, onAssistant, finish, noteContext };
+  return { publishNow, publishSoon, label, doing, watchData, delivered, onStream, onAssistant, finish, noteContext, onContextUsage };
 };
 
 export type StreamCtx = RunCtx & ReturnType<typeof makeStream>;

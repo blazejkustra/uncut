@@ -242,6 +242,16 @@ export const agentActions = {
     else if (result.error.reason === "changed-on-disk") set({ changedOnDisk: true, reloadProblem: undefined });
     else set({ agentError: plainError(result.error) });
   },
+  /** Redo turn: an undone turn's edits back, as one revision. */
+  async agentRedoTurn(turnId: string) {
+    set({ agentError: undefined });
+    const result = (await call((c) => c["agent.redoTurn"]({ turnId }))) as Result<ProjectSnapshot>;
+    if (result.ok) applyFromCall(result.value);
+    else if (result.error.reason === "changed-on-disk") set({ changedOnDisk: true, reloadProblem: undefined });
+    else set({ agentError: plainError(result.error) });
+  },
+  /** Compact: Claude Code's /compact in the agent's conversation (a row in the thread, the meter drops). */
+  agentCompact: () => actions.agentSend("/compact"),
   /** D295: New chat: the next message starts a fresh Claude conversation. */
   async agentNewThread() {
     set({ agentError: undefined });

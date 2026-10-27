@@ -3,8 +3,11 @@
 // draft while typing (its words at ~4 characters a token plus the context Uncut adds, estimated
 // like the last message's). The tooltip breaks the total down: system + tools, conversation, this
 // message's context (estimates). Amber from 80 %, red from 95 %. Hidden until claude reported usage.
-// D269 (#101): the window shows once it's known (the model's "[1m]" or the result's modelUsage);
-// until then only the used count ("72k"), the ring empty, never a guessed 200k.
+// D269 (#101): the window shows once it's known (Claude Code's get_context_usage, the model's "[1m]"
+// or the result's modelUsage); until then only the used count ("72k"), the ring empty, never a
+// guessed 200k. Handoff 8: counted as Claude Code's own indicator counts it (the last call's fresh
+// input, cache read and cache write; cached tokens fill the window like fresh ones); amber and red
+// are measured against where Claude Code compacts on its own when it says so.
 import { useApp } from "../state/store.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./token-meter.css";
@@ -27,20 +30,35 @@ export function TokenMeter() {
   if (!c || !(c.used > 0)) return null;
   const window = c.window && c.window > 0 ? c.window : undefined;
   const share = window ? Math.min(1, c.used / window) : 0;
-  const level = share >= 0.95 ? "full" : share >= 0.8 ? "high" : "ok";
+  const limit = c.compactAt && c.compactAt > 0 ? c.compactAt : window;
+  const toLimit = limit ? c.used / limit : 0;
+  const level = toLimit >= 0.95 ? "full" : toLimit >= 0.8 ? "high" : "ok";
+  const cached = c.cacheRead !== undefined && c.cacheWrite !== undefined && c.fresh !== undefined;
   const draft = agentDraft.trim() ? Math.round(agentDraft.trim().length / 4) + c.message : 0;
   const lines = [
     window
-      ? `Context: ${c.used.toLocaleString("en-US")} of ${window.toLocaleString("en-US")} tokens (${Math.round(share * 100)}%) after the agent's last answer, as Claude Code reported`
+      ? `Context: ${c.used.toLocaleString("en-US")} of ${window.toLocaleString("en-US")} tokens (${Math.round(share * 100)}%) after the agent's last answer, as Claude Code counts it`
       : `Context: ${c.used.toLocaleString("en-US")} tokens after the agent's last answer (the window shows once Claude Code reports it)`,
+    ...(cached
+      ? [
+          `Cache read ${tokens(c.cacheRead!)}, cache write ${tokens(c.cacheWrite!)}, fresh ${tokens(c.fresh!)}: cached tokens fill the window like fresh ones but cost about a tenth to read`,
+        ]
+      : []),
+    ...(c.compactAt && window
+      ? [`Claude Code compacts the conversation on its own at ${tokens(c.compactAt)} (${Math.round((c.compactAt / window) * 100)}% of the window)`]
+      : []),
     `System prompt + tools: ~${tokens(c.systemTools)} (estimate)`,
     `Conversation: ~${tokens(c.conversation)}`,
     `This message's context: ~${tokens(c.message)} (estimate)`,
     ...(draft ? [`Your draft adds ~${tokens(draft)} (estimate)`] : []),
     ...(level === "full"
-      ? ["Almost full: when the window runs out, Claude Code may summarise older messages, and details from earlier turns can be lost. Keep messages short."]
+      ? [
+          "Almost full: Claude Code will summarise older messages soon, and details from earlier turns can be lost. Compact now (or type /compact) to choose when.",
+        ]
       : level === "high"
-        ? ["Getting full: past 80% of the window."]
+        ? [
+            `Getting full: past 80% of where ${c.compactAt ? "Claude Code compacts" : "the window ends"}. Compact (or /compact) summarises the conversation so far.`,
+          ]
         : []),
   ];
   return (

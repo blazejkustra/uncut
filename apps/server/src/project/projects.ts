@@ -9,7 +9,7 @@
 import { isAbsolute, join } from "node:path";
 
 import { type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
-import { EditError, TurnDependency, undoTurn, type LogEntry, type Project, type Session } from "@uncut/core";
+import { EditConflict, EditError, TurnDependency, redoTurn, undoTurn, type LogEntry, type Project, type Session } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -258,6 +258,7 @@ export const layer = Layer.effect(
           initial,
           unlogged: [unlogged!],
           pushedForTurn: undefined,
+          undone: new Map(),
         };
         yield* recents.touch(dir, project.name);
         yield* publish;
@@ -460,6 +461,7 @@ export const layer = Layer.effect(
               initial: current.initial,
               unlogged: [...current.unlogged],
               stateAt: stateOf(current),
+              undone: new Map(current.undone),
             }
           : undefined,
       ),
@@ -489,8 +491,60 @@ export const layer = Layer.effect(
                 p.future = [];
                 p.pushedForTurn = undefined;
                 p.unlogged.push({ revision: next.revision, what: label });
+                p.undone.set(turnId, { entries: previous.log.filter((e) => e.turnId === turnId), revision: next.revision });
               },
               { kind: "undo-turn", author: "user", revision: next.revision, label, undoTurn: turnId, project: written },
+            );
+          }),
+        ),
+
+      redoTurn: (openId, turnId, label) =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            const p = yield* openingIs(openId);
+            const undone = p.undone.get(turnId);
+            if (!undone)
+              return yield* refused("The turn can't be redone: it wasn't undone since the project was opened", [
+                { code: "edit", path: "/", message: "nothing to redo" },
+              ]);
+            const next = yield* Effect.try({
+              try: () => redoTurn(p.session, undone.entries, undone.revision, format.validate),
+              catch: (error) =>
+                error instanceof EditError
+                  ? refused(
+                      error instanceof EditConflict
+                        ? `A later edit changed what the turn changed (${error.details.join(", ")}): undo that first`
+                        : error.message,
+                      [{ code: error instanceof EditConflict ? "conflict" : "edit", path: "/", message: error.message }],
+                    )
+                  : refused("The turn can't be redone", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
+            });
+            const written = JSON.parse(serialize(next.project)) as Session["project"];
+            const problems = format.validate(written);
+            if (problems.length) return yield* refused("Redoing the turn would make the project invalid", problems);
+            const entry = next.log.at(-1)!;
+            return yield* commit(
+              p,
+              { ...next, project: written },
+              (previous) => {
+                p.past.push(previous.revision);
+                p.future = [];
+                p.pushedForTurn = undefined;
+                p.unlogged.push({ revision: next.revision, what: label });
+                p.undone.delete(turnId);
+              },
+              {
+                kind: "edit",
+                author: "user",
+                revision: next.revision,
+                at: entry.at,
+                label,
+                lines: [label],
+                summary: entry.summary,
+                ops: entry.ops,
+                turnId,
+                project: written,
+              },
             );
           }),
         ),
