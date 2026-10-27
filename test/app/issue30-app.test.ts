@@ -194,8 +194,10 @@ test(
       await send("build it and review");
       await lastDone();
       const review = "[data-testid=agent-card][data-type=review]";
-      await waitFor(review, 30000);
+      await waitFor(`${review}[data-passed]`, 30000);
       assert.equal(await page.$eval(review, (el) => el.getAttribute("data-passed")), "false");
+      await page.click(`${review} .card-head`);
+      await waitFor(`${review} [data-testid=agent-review-blocker]`);
       const kinds = await page.$$eval(`${review} [data-testid=agent-review-blocker]`, (els) =>
         els.map((e) => [e.getAttribute("data-kind"), e.getAttribute("data-source")]),
       );

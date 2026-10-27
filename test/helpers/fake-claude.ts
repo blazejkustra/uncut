@@ -47,7 +47,8 @@ const flag = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 
 // the one stream-json user message, logs it to $FAKE_CRITIC_LOG ({ critic: true, text, images,
 // resume, args, env }) and answers with the next entry of $FAKE_CRITIC (a JSON array, one entry per
 // critic run, counted in $FAKE_CRITIC.turn): an object is sent as its JSON, a string as is,
-// { fail: msg } as an error result, { hang: true } never answers. No entry: all 9s with evidence.
+// { fail: msg } as an error result, { hang: true } never answers, { delay: ms, answer } answers
+// `answer` after ms. No entry: all 9s with evidence.
 if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-prompt") ?? "").startsWith("[uncut-critic]")) {
   const line = await new Promise<string>((resolve) => {
     let text = "";
@@ -84,6 +85,11 @@ if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-
     summary: "Fine.",
   };
   if (entry && typeof entry === "object" && "hang" in entry) await new Promise(() => {});
+  if (entry && typeof entry === "object" && "delay" in entry) {
+    const { delay, answer } = entry as { delay: number; answer?: unknown };
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    entry = answer;
+  }
   const fail = entry && typeof entry === "object" && "fail" in entry ? String((entry as { fail: unknown }).fail) : undefined;
   const result = fail ?? (typeof entry === "string" ? entry : JSON.stringify(entry ?? all9));
   process.stdout.write(`${JSON.stringify({ type: "system", subtype: "init", session_id: "fake-critic", tools: [] })}\n`);

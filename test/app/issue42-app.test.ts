@@ -112,6 +112,11 @@ test(
         .filter(Boolean)
         .map((l) => JSON.parse(l));
     const reviews = () => page.$$("[data-testid=agent-card][data-type=review]");
+    const openRow = async (row: import("puppeteer-core").ElementHandle<Element>) => {
+      await page.waitForFunction((el) => el.getAttribute("data-status") !== "running", { timeout: 30000 }, row);
+      if ((await row.$eval(".card-head", (el) => el.getAttribute("aria-expanded"))) !== "true") await (await row.$(".card-head"))!.click();
+      await row.waitForSelector("[data-testid=agent-review-by]", { timeout: 5000 });
+    };
     try {
       await waitForWelcome(page);
       await page.click("[data-testid=new-project]");
@@ -192,6 +197,7 @@ test(
       await turnsDone(2);
       await waitFor("[data-testid=agent-card][data-type=review]", 30000);
       const r1 = (await reviews())[0]!;
+      await openRow(r1);
       assert.equal(await r1.evaluate((el) => el.getAttribute("data-passed")), "true");
       assert.equal(await r1.$eval("[data-testid=agent-review-score][data-score=hook]", (el) => el.getAttribute("data-applies")), "na");
       assert.match(await r1.$eval("[data-testid=agent-review-score][data-score=hook]", (el) => (el as HTMLElement).innerText), /N\/A/);
@@ -230,6 +236,7 @@ test(
       await turnsDone(4);
       await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-card][data-type=review]").length >= 2, { timeout: 30000 });
       const r2 = (await reviews())[1]!;
+      await openRow(r2);
       assert.equal(await r2.evaluate((el) => el.getAttribute("data-passed")), "true");
       assert.equal(await r2.$("[data-testid=agent-review-blocker]"), null, "no sound blocker in a meme");
       assert.equal(await r2.$eval("[data-testid=agent-review-score][data-score=brand]", (el) => el.getAttribute("data-applies")), "na", "no kit: no brand");
@@ -256,6 +263,7 @@ test(
       await turnsDone(5);
       await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-card][data-type=review]").length >= 3, { timeout: 30000 });
       const r3 = (await reviews())[2]!;
+      await openRow(r3);
       assert.equal(await r3.$(density), null, "the Intended finding is left out");
       assert.match(await r3.$eval("[data-testid=agent-review-by]", (el) => (el as HTMLElement).innerText), /1 finding you marked Intended left out/);
       const critic = readFileSync(join(root, "critic.jsonl"), "utf8")

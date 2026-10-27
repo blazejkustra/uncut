@@ -267,7 +267,9 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard card, re
     assert.equal(sb.approvedBy, "agent");
 
     // ---- U16: the review card ----
-    await waitFor("[data-testid=agent-card][data-type=review]");
+    await waitFor("[data-testid=agent-card][data-type=review][data-passed]");
+    await page.click("[data-testid=agent-card][data-type=review] .card-head");
+    await waitFor("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]");
     assert.equal(await page.$$eval("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]", (els) => els.length), 6);
     assert.match(await text(page, "[data-testid=agent-card][data-type=review] [data-testid=agent-review-defects]"), /The claim is under 60 px at phone size/);
     await page.$eval("[data-testid=agent-card][data-type=review]", (el) => el.scrollIntoView({ block: "center" }));

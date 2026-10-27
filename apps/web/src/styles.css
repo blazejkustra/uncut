@@ -1553,7 +1553,7 @@ div.card-head { cursor: default; }
 .plan-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 6px; }
 .card-item { scroll-margin-top: 8px; }
 .critic-row .critic-head { gap: 10px; padding: 8px 10px; align-items: center; }
-.critic-row .critic-head:disabled { cursor: default; color: var(--fg); }
+.critic-row .critic-head:disabled { cursor: default; color: var(--fg); opacity: 1; }
 .critic-icon { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); flex: none; }
 .critic-row .critic-icon svg { width: 13px; height: 13px; color: var(--muted); }
 .critic-icon.running svg { color: var(--select); }
