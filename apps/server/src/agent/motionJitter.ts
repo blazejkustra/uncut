@@ -5,8 +5,10 @@
 // a line of the camera under it). Both are a pixel at the canvas's own size, so a scaled-down strip
 // or the critic's 64 px scan can't see them. Measured on grey frames at the canvas size (criticMotion
 // grayFrames); render_frames' run and review_submit render them.
+import * as Effect from "effect/Effect";
 import type { CriticFinding } from "./agentCritic.ts";
 import { grayFrames } from "./criticMotion.ts";
+import type { FrameSessionShape } from "../export/exporter.ts";
 
 /** Tiles the frame is cut into for the shift search (px). */
 export const TILE_W = 96;
@@ -258,3 +260,28 @@ export function finePlan(anchors: ReadonlyArray<{ readonly frame: number }>, fps
   }
   return runs;
 }
+
+/** review_submit's fine runs (finePlan) rendered at the canvas size and measured; a run that fails to render or measure adds nothing. */
+export const fineJitter = (
+  session: Pick<FrameSessionShape, "render">,
+  ffmpeg: string,
+  anchors: ReadonlyArray<{ readonly frame: number }>,
+  canvas: { readonly width: number; readonly height: number },
+  fps: number,
+  duration: number,
+  signal: AbortSignal,
+) =>
+  Effect.gen(function* () {
+    const jitter: Array<CriticFinding> = [];
+    const fineUntil = Date.now() + FINE_BUDGET_MS;
+    for (const frames of finePlan(anchors, fps, duration)) {
+      const shot = yield* session
+        .render(frames, canvas.width, { until: () => Date.now() > fineUntil })
+        .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
+      const found = yield* Effect.tryPromise((s) => measureRun(ffmpeg, shot, canvas.width, canvas.height, AbortSignal.any([s, signal]))).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
+      if (found) jitter.push(...jitterFindings(found.shakes, found.slivers, fps));
+    }
+    return jitter;
+  });

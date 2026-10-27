@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
 import {
+  blurStripLabel,
   criticMessage,
   criticReview,
   parseCritic,
@@ -88,7 +89,8 @@ import {
   type MotionScan,
 } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
-import { FINE_BUDGET_MS, finePlan, jitterFindings, measureRun } from "../motionJitter.ts";
+import { fineJitter } from "../motionJitter.ts";
+export { blurStripLabel } from "../agentCritic.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { measuredMixLines } from "./measure.ts";
 import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
@@ -150,22 +152,6 @@ export function criticSkills<S extends { readonly id: string }>(skills: Readonly
 /** D297: what the critic hears when the scan couldn't run (rehearsal 3 marked motion down for it). */
 export const UNMEASURED =
   "That's Uncut's problem, not the video's: don't mark anything down for what the scan would have measured (pops, holds, the seam); judge timing only from the strips and frames you have, and say what you couldn't check.";
-
-/**
- * The critic's label for a fast move drawn with the project's motion blur: the export's quality is
- * picked at export time (Draft draws it sharp unless the project turns blur on), so it's the
- * project's blur, not "the export's".
- */
-export function blurStripLabel(
-  run: { readonly start: number; readonly end: number },
-  fps: number,
-  blur: { readonly samples: number; readonly shutter: number },
-  frames: ReadonlyArray<number>,
-  forced: boolean,
-): string {
-  const when = forced ? "the project turns it on for every export" : "as a Standard or High export draws it; a Draft export draws it sharp";
-  return `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the project's motion blur (${blur.samples} sub-frames, more on a fast move, over a ${blur.shutter}° shutter; ${when}): frames ${frames.join(", ")} left to right`;
-}
 
 /** D295: storyboard_propose renders at most this many stills, this wide. */
 export const MAX_STILLS = 4;
@@ -866,18 +852,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                       flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
                   }
                 }
-                // Handoff 13 and 16: text shaking by a pixel and a 1 px line at the frame's edge show only at the canvas size, frame after frame.
-                const jitter: Array<CriticFinding> = [];
-                const fineUntil = Date.now() + FINE_BUDGET_MS;
-                for (const frames of ffmpeg ? finePlan(anchors, fps, duration) : []) {
-                  const shot = yield* session
-                    .render(frames, project.canvas.width, { until: () => Date.now() > fineUntil })
-                    .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
-                  const found = yield* Effect.tryPromise((signal) =>
-                    measureRun(ffmpeg!, shot, project.canvas.width, project.canvas.height, AbortSignal.any([signal, r.abort.signal])),
-                  ).pipe(Effect.catch(() => Effect.succeed(undefined)));
-                  if (found) jitter.push(...jitterFindings(found.shakes, found.slivers, fps));
-                }
+                const jitter = ffmpeg ? yield* fineJitter(session, ffmpeg, anchors, project.canvas, fps, duration, r.abort.signal) : [];
                 return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut, jitter };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
               // Round 2's A2: the export's graphics run as the export runs them (every frame in order,
