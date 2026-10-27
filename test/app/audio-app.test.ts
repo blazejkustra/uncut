@@ -340,7 +340,7 @@ test(
       assert.match(prompt, /Added audio audio-1 on track audio/);
       assert.match(prompt, /Muted track main/);
       assert.match(prompt, /Set volume of Music\.m4a \(audio-1\) to −6 dB/);
-      assert.match(prompt, /Faded in Music\.m4a \(audio-1\) over 2\.0 s/);
+      assert.doesNotMatch(prompt, /Faded in Music\.m4a \(audio-1\) over 2\.0 s/, "the net result: the 2 s fade in became 3 s");
       assert.match(prompt, /Faded out Music\.m4a \(audio-1\) over 2\.0 s/);
       assert.match(prompt, /Faded in Music\.m4a \(audio-1\) over 3\.0 s/);
       await page.screenshot({ path: out("audio-editor.png") });

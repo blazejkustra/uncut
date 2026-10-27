@@ -49,12 +49,34 @@ const placedItems = (p: Project) => new Map(p.tracks.flatMap((track) => track.it
 
 const TIMING = new Set(["id", "type", "start", "duration", "in"]);
 
-function addedItem(after: Project, { track, item }: Placed) {
+/** The fields of an added item the add line says (where and what it plays), or that only say what it is. */
+const ADDED_SKIP = new Set(["id", "type", "start", "duration", "in", "media", "src", "component", "source", "words", "linkedTo"]);
+
+/**
+ * An added item as the edit log says it ("Added audio audio-1 on track audio"), with its name and
+ * where it plays, then a line per field it was given (its text, style, position, volume, fades, …)
+ * as the edit log words a change of that field.
+ */
+function addedItem(after: Project, { track, item }: Placed): Array<string> {
   const fps = after.canvas.fps;
   const at = track.role === "main" ? `at position ${track.items.indexOf(item) + 1}` : `at ${seconds(item.start ?? 0, fps)}`;
   const label = itemLabel(after, item.id);
-  const what = label.startsWith(`${item.type} `) ? label : `${item.type} ${label}`;
-  return `Added ${what} on track ${track.id} ${at}, ${seconds(item.duration, fps)} long`;
+  const named = item.type === "text" || !label.endsWith(` (${item.id})`) ? "" : label.slice(0, -(item.id.length + 3));
+  const name = named.startsWith(`${item.type} `) ? named.slice(item.type.length + 1) : named;
+  const added = describeOp({ op: "insert_item", track: track.id, item }, after);
+  const solid = item.type === "component" && item.component === "component.solid";
+  const own = Object.fromEntries(Object.entries(item).filter(([k]) => !ADDED_SKIP.has(k) && !(solid && k === "props")));
+  return [`${added}${name && !added.includes(name) ? ` (${name})` : ""} ${at}, ${seconds(item.duration, fps)} long`, ...fieldLines(after, item, own)];
+}
+
+const CAPTION_FIELDS = new Set(["edits", "breaks", "mode", "lines", "hideFillers", "words", "coversMain"]);
+
+/** Fields of an item in words, one line each as the edit log says them (a captions item's own fields together). */
+function fieldLines(after: Project, item: Item, set: Record<string, unknown>): Array<string> {
+  const keys = Object.keys(set);
+  const captions = item.type === "captions" ? keys.filter((k) => CAPTION_FIELDS.has(k)) : [];
+  const groups = [...(captions.length ? [captions] : []), ...keys.filter((k) => !captions.includes(k)).map((k) => [k])];
+  return groups.map((g) => describeOp({ op: "update_item", item: item.id, set: Object.fromEntries(g.map((k) => [k, set[k]])) }, after));
 }
 
 function changedItem(after: Project, was: Placed, now: Placed): Array<string> {
@@ -67,8 +89,7 @@ function changedItem(after: Project, was: Placed, now: Placed): Array<string> {
   if ((was.item.in ?? 0) !== (now.item.in ?? 0)) timing.push(`source in ${framesChange(was.item.in ?? 0, now.item.in ?? 0, fps)}`);
   const lines = timing.length ? [`Changed ${itemLabel(after, now.item.id)}: ${timing.join(", ")}`] : [];
   const set = changedFields(was.item, now.item, TIMING);
-  if (Object.keys(set).length) lines.push(describeOp({ op: "update_item", item: now.item.id, set }, after));
-  return lines;
+  return [...lines, ...fieldLines(after, now.item, set)];
 }
 
 /** A track whose surviving items play in another order (a main track's reorder, which shifts every later start). */
@@ -85,7 +106,7 @@ function itemLines(before: Project, after: Project): Array<string> {
   const lines: Array<string> = [];
   for (const [id, now] of b) {
     const was = a.get(id);
-    if (!was) lines.push(addedItem(after, now));
+    if (!was) lines.push(...addedItem(after, now));
     else if (!same(was.item, now.item) || was.track.id !== now.track.id) lines.push(...changedItem(after, was, now));
   }
   for (const [id, was] of a) if (!b.has(id)) lines.push(`Removed ${itemLabel(before, id)} from track ${was.track.id}`);
