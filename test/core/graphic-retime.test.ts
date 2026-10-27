@@ -180,3 +180,37 @@ test("the user's ripple delete of a main clip re-times the panel over it too", a
     ],
   );
 });
+
+test("the Transcript panel's cut re-times a graphic over the clips, as the agent's does", async () => {
+  const { planCutWords, wordsOfEdit } = await import("../../apps/web/src/panels/transcript.ts");
+  const words = [
+    { text: "zero", start: 0, end: 1 },
+    { text: "one", start: 1, end: 1.5 },
+    { text: "two", start: 1.5, end: 2 },
+    { text: "three", start: 2, end: 3 },
+  ];
+  const talk = (id: string, inF: number): Item => ({ id, type: "clip", media: "m-talk", in: inF, duration: 45 });
+  const project: Project = {
+    format: "uncut/0",
+    name: "Panel cut",
+    canvas: { width: 320, height: 180, fps: FPS },
+    media: [{ id: "m-talk", kind: "video", name: "T.mp4", path: "/tmp/T.mp4", probe: { frames: 90, fps: FPS, hasAudio: true } }],
+    tracks: [
+      { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "panel", type: "graphic", src: "graphics/panel.html", start: 0, duration: 90 }] },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [talk("a", 0), talk("b", 45)] },
+    ],
+  };
+  const transcripts = new Map([["m-talk", { words, language: "en", seconds: 3 }]]);
+  const plan = planCutWords(
+    project,
+    transcripts,
+    wordsOfEdit(project, transcripts).filter((w) => w.index === 1 || w.index === 2),
+  );
+  assert.ok(!("problem" in plan));
+  const panel = item(apply(project, plan.ops), "panel");
+  assert.equal(panel.duration, 90 - 23);
+  assert.equal(
+    panel.skips!.reduce((n, s) => n + s.frames, 0),
+    23,
+  );
+});

@@ -458,27 +458,6 @@ test("the panel's planner cuts a seam selection in one call per media", async ()
   assert.equal(plan.summary, "Cut 2 words (0.8 s)");
 });
 
-test("C6: the panel's cut re-times a graphic over the clips, as the agent's does", async () => {
-  const { planCutWords, wordsOfEdit } = await import("../../apps/web/src/panels/transcript.ts");
-  const seam = seamProject([clip("a", 0, 45), clip("b", 45, 45)]);
-  const panel = { id: "panel", type: "graphic", src: "graphics/panel.html", start: 0, duration: 90 } as Item;
-  const project: Project = { ...seam, tracks: [{ id: "gfx", kind: "video", name: "Graphics", items: [panel] }, ...seam.tracks] };
-  const transcripts = new Map([["m-talk", SEAM]]);
-  const plan = planCutWords(
-    project,
-    transcripts,
-    wordsOfEdit(project, transcripts).filter((w) => w.index === 1 || w.index === 2),
-  );
-  assert.ok(!("problem" in plan));
-  const after = applyEdit(createSession(project), { actor: "user", ops: plan.ops }, timelineProblems).project;
-  const retimed = after.tracks[0]!.items[0]!;
-  assert.equal(retimed.duration, 90 - 23);
-  assert.equal(
-    retimed.skips!.reduce((n, s) => n + s.frames, 0),
-    23,
-  );
-});
-
 test("a word shorter than a frame at the clip's speed gets its own note, and no id is spent", () => {
   const words = [
     { text: "a", start: 0, end: 1 },
