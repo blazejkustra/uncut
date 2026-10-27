@@ -44,7 +44,8 @@ test("D216: tests draw as on a 2x sRGB screen on the primary display; a release 
     { x: -211, y: -1050 },
     "bigger than the area: its corner",
   );
-  assert.match(source("../../apps/desktop/src/app.ts"), /process\.env\.UNCUT_CDP \? centredIn\(screen\.getPrimaryDisplay\(\)\.workArea/);
+  // Every window (one per project) is placed by the window module.
+  assert.match(source("../../apps/desktop/src/app/windows.ts"), /process\.env\.UNCUT_CDP \? centredIn\(screen\.getPrimaryDisplay\(\)\.workArea/);
 });
 
 test("the test helper launches apps in the background unless UNCUT_TEST_VISIBLE=1, and emulates focus", () => {
@@ -59,13 +60,18 @@ test("the desktop shell never shows, focuses or activates in background mode", (
   assert.doesNotMatch(app, /app\.focus\(/, "never app.focus()");
   assert.match(app, /if \(testBackground\) \{\s*app\.dock\?\.hide\(\);\s*\/\/[^\n]*\n\s*app\.setActivationPolicy\?\.\("accessory"\);/);
   assert.match(app, /backgroundThrottling: !testBackground/);
-  // The window: shown inactive, transparent and click-through in the background; show() only otherwise.
+  // Every window (each one createWindow makes): shown inactive, transparent and click-through in the background; show() only otherwise.
+  const windows = source("../../apps/desktop/src/app/windows.ts");
   assert.match(
-    app,
-    /if \(!testBackground\) return win\?\.show\(\);\s*win\?\.setOpacity\(0\);[\s\S]*?win\?\.setIgnoreMouseEvents\(true\);\s*win\?\.showInactive\(\);/,
+    windows,
+    /if \(!testBackground\) return win\.show\(\);\s*win\.setOpacity\(0\);[\s\S]*?win\.setIgnoreMouseEvents\(true\);\s*win\.showInactive\(\);/,
   );
+  assert.equal(windows.match(/new BrowserWindow\(/g)?.length, 1, "one place makes the windows");
   // Every other show()/focus() sits after a background guard in the same handler.
-  const calls = [...app.matchAll(/win\.(show|focus)\(\)/g)];
+  const calls = [...app.matchAll(/win\??\.(show|focus)\(\)/g)].filter(
+    (call) => !app.slice(Math.max(0, call.index! - 30), call.index).endsWith("if (!testBackground) return "),
+  );
+  assert.ok(calls.length >= 2, "showWindow's show() and focus()");
   for (const call of calls) {
     const before = app.slice(Math.max(0, call.index! - 200), call.index);
     assert.match(before, /if \(testBackground\) return;/, `win.${call[1]}() at offset ${call.index} is guarded`);
