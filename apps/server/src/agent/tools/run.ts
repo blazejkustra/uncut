@@ -1,6 +1,17 @@
 // runTool: one Uncut tool call of the running turn; allowed: what the turn's access lets it do.
 import type { BrandKit } from "@uncut/contracts";
-import { brandColourRule, LAYOUT_RULES, type Project, describeOp, type Op, pluginCheckRules, type Problem, retimeNotes, withGraphicRetime } from "@uncut/core";
+import {
+  brandColourRule,
+  LAYOUT_RULES,
+  type Project,
+  describeOp,
+  layout,
+  type Op,
+  pluginCheckRules,
+  type Problem,
+  retimeNotes,
+  withGraphicRetime,
+} from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
@@ -17,6 +28,7 @@ import {
   FRAME_EDGE,
   LOOK_TOOLS,
   MAX_FRAMES,
+  MAX_RUN,
   modulesIndex,
   modulesList,
   projectSummary,
@@ -34,6 +46,10 @@ import { PHONE_WIDTH } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { legibilityNote } from "../agentLegibility.ts";
 import { makeExportVideo } from "./exportVideo.ts";
+import { clock, sheetLayout } from "../agentFootage.ts";
+import { jitterFindings, measureRun } from "../motionJitter.ts";
+import { which } from "../../app/setup.ts";
+import type { ProjectView } from "../../project/projects.ts";
 
 /** How long render_frames may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_RENDER_MS = 15_000;
@@ -93,6 +109,68 @@ export const makeRunTool = (ctx: LibraryCtx) => {
   } = ctx;
 
   const exportVideo = makeExportVideo(ctx);
+
+  // render_frames' run: consecutive frames at the canvas size (a pixel of motion only shows there),
+  // shown as one contact sheet, with the shakes and edge slivers measured on them.
+  const renderRun = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const run = args.run as { start?: unknown; count?: unknown } | null;
+      if (args.frames !== undefined) return textResult("Pass frames or run, not both.", true);
+      if (
+        !run ||
+        typeof run !== "object" ||
+        !Number.isInteger(run.start) ||
+        (run.start as number) < 0 ||
+        !Number.isInteger(run.count) ||
+        (run.count as number) < 2 ||
+        (run.count as number) > MAX_RUN
+      ) {
+        return textResult(`run must be { start, count }: a frame from 0 and 2 to ${MAX_RUN} frames.`, true);
+      }
+      const project = v.session.project;
+      const { width, height, fps } = project.canvas;
+      const { duration } = layout(project);
+      const start = run.start as number;
+      if (start >= duration) return textResult(`The edit is ${duration} frames long; the run starts after its end.`, true);
+      const frames = Array.from({ length: Math.min(run.count as number, duration - start) }, (_, i) => start + i);
+      const rendered = yield* exporter
+        .frameSession((session) =>
+          Effect.gen(function* () {
+            const list = yield* session.render(frames, width);
+            const sheet = yield* session.sheet(
+              list.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}` })),
+              sheetLayout(list.length, width / height),
+            );
+            return { list, sheet };
+          }),
+        )
+        .pipe(
+          Effect.map((x) => ({ ok: true as const, ...x })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+        );
+      if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
+      r.rendered.push({ stamp: stampOf(r, v), frames: rendered.list.map((x) => x.frame) });
+      const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
+      const measured = ffmpeg
+        ? yield* Effect.tryPromise(() => measureRun(ffmpeg, rendered.list, width, height)).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        : undefined;
+      const findings = measured ? jitterFindings(measured.shakes, measured.slivers, fps).map((f) => f.message) : [];
+      const verdict = !measured
+        ? "The motion couldn't be measured (ffmpeg isn't there or couldn't read the frames)."
+        : findings.length
+          ? `Measured at ${width}×${height}: ${findings.join(" ")}`
+          : `Measured at ${width}×${height}: no text shaking by a pixel and no 1 px line along the frame's edges.`;
+      const last = frames[frames.length - 1]!;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Frames ${start} to ${last} of the edit (revision ${v.session.revision}), every frame, as one contact sheet read left to right, top to bottom, drawn as the export draws them.${last < start + (run.count as number) - 1 ? ` The edit ends at frame ${duration - 1}.` : ""} ${verdict}`,
+          },
+          { type: "image" as const, data: rendered.sheet.toString("base64"), mimeType: "image/jpeg" },
+        ],
+      };
+    });
 
   const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
     Effect.gen(function* () {
@@ -167,6 +245,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             : textResult(answer);
         }
         case "render_frames": {
+          if (args.run !== undefined) return yield* renderRun(r, v, args);
           const frames = Array.isArray(args.frames) ? args.frames : [];
           if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0))
             return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);

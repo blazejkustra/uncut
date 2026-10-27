@@ -88,6 +88,7 @@ import {
   type MotionScan,
 } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
+import { FINE_BUDGET_MS, finePlan, jitterFindings, measureRun } from "../motionJitter.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { measuredMixLines } from "./measure.ts";
 import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
@@ -865,7 +866,19 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                       flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
                   }
                 }
-                return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut };
+                // Handoff 13 and 16: text shaking by a pixel and a 1 px line at the frame's edge show only at the canvas size, frame after frame.
+                const jitter: Array<CriticFinding> = [];
+                const fineUntil = Date.now() + FINE_BUDGET_MS;
+                for (const frames of ffmpeg ? finePlan(anchors, fps, duration) : []) {
+                  const shot = yield* session
+                    .render(frames, project.canvas.width, { until: () => Date.now() > fineUntil })
+                    .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
+                  const found = yield* Effect.tryPromise((signal) =>
+                    measureRun(ffmpeg!, shot, project.canvas.width, project.canvas.height, AbortSignal.any([signal, r.abort.signal])),
+                  ).pipe(Effect.catch(() => Effect.succeed(undefined)));
+                  if (found) jitter.push(...jitterFindings(found.shakes, found.slivers, fps));
+                }
+                return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut, jitter };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
               // Round 2's A2: the export's graphics run as the export runs them (every frame in order,
               // motion blur's sub-frames, the same page), so a graphic that only breaks on a long run
@@ -968,6 +981,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             })
           : []),
         ...flatFindings(flatStrips, fps, intent.footage),
+        ...("jitter" in motion ? (motion.jitter ?? []) : []),
       ];
       checks.push(...motionChecks);
       // The sheet's words measured (agentLegibility.ts): every small one at once, never a blocker.

@@ -65,12 +65,9 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the current edit exactly as export would, and return them as images to look at (768 px on the longest side by default; scale 1 for full size when a detail matters). Up to 12 per call: pick the moments that matter.",
+      "description": "Render frames of the current edit exactly as export would, and return them as images to look at (768 px on the longest side by default; scale 1 for full size when a detail matters). Up to 12 per call: pick the moments that matter. For motion pass run instead: up to 48 consecutive frames as one contact sheet, measured at full size for text shaking by a pixel and 1 px lines along the frame's edges, which stills miss.",
       "inputSchema": {
         "type": "object",
-        "required": [
-          "frames"
-        ],
         "additionalProperties": false,
         "properties": {
           "frames": {
@@ -90,10 +87,30 @@
           "phone": {
             "type": "boolean",
             "description": "Draw them 360 px wide, the size of a phone in a feed, to judge readability (overrides scale)."
+          },
+          "run": {
+            "type": "object",
+            "description": "Consecutive frames from start (instead of frames): count of them, 2 to 48.",
+            "required": [
+              "start",
+              "count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 48
+              }
+            }
           }
         }
       },
-      "returns": "one image per frame"
+      "returns": "one image per frame, or one contact sheet and the motion measured for a run"
     },
     {
       "name": "contact_sheet",
