@@ -52,5 +52,5 @@ async function transcribe(args: Json, { signal, progress }: ToolContext) {
 
 // notifications/cancelled aborts the call's signal, which kills whisper-cli; the call gets no
 // answer. Stopping (stdin closed, SIGTERM) aborts every call the same way.
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === import.meta.filename;
 if (isMain) serve({ manifest: new URL("./uncut.module.json", import.meta.url), tools: { transcribe } });
