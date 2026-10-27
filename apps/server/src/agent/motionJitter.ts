@@ -196,7 +196,7 @@ export function jitterFindings(shakes: ReadonlyArray<Shake>, slivers: ReadonlyAr
       frame: s.frame,
       range: { start: s.frame, end: s.back },
       hard: false,
-      message: `Shaking by a pixel at f ${s.frame} to f ${s.back} (${secs(s.frame, fps)}): the picture at x ${s.x} to ${s.x + s.w}, y ${s.y} to ${s.y + s.h} moves 1 px ${s.way} and straight back while it otherwise holds still, which reads as text vibrating. Usually a move whose last fraction of a pixel lands on text: text is drawn on whole pixels and the box around it isn't. Uncut rounds a graphic's plain translate() for you; for a scale, a canvas or an SVG text that ends near its place, end the move exactly on its value (or round it to whole pixels) once it is under a pixel away.`,
+      message: `Shaking by a pixel at f ${s.frame} to f ${s.back} (${secs(s.frame, fps)}): the picture at x ${s.x} to ${s.x + s.w}, y ${s.y} to ${s.y + s.h} moves 1 px ${s.way} and straight back while it otherwise holds still, which reads as text vibrating. Usually a move whose last fraction of a pixel lands on text: text is drawn on whole pixels and the box around it isn't. Uncut puts an element whose translate() is under a pixel from its place exactly there; for a move that rests elsewhere, a scale, a canvas or an SVG text, end the move exactly on its value (or round it to whole pixels) once it is under a pixel away.`,
     });
   }
   for (const s of slivers.slice(0, 4)) {

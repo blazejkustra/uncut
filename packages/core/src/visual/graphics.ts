@@ -170,10 +170,11 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
   let fonts;
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
-  // Chromium draws text on whole pixels but a box's edges anywhere, so a translate with a fraction
-  // (a spring's tail) moves a card smoothly while its text jumps a pixel at a time and shakes in it.
-  // Such a translate is cut to whole pixels, towards zero, and a scale that changes the element's
-  // size by under a pixel is dropped: a pop's sub-pixel overshoot stays still.
+  // Chromium draws text on whole pixels but a box's edges anywhere, so a move's sub-pixel tail (a
+  // spring settling or overshooting its place by under a pixel) left the box still while its text
+  // jumped a pixel up and back. An element within a pixel of its place (a translate under 1 px,
+  // a scale changing its size by under 1 px, no scaled parent) is put exactly there; real moves
+  // stay fractional, so drifts and motion blur keep their sub-pixel steps.
   const plainMatrix = (style) => style.translate !== "none" || style.rotate !== "none" || style.scale !== "none" ? undefined : new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
   const nearShift = (el) => {
     const m = plainMatrix(getComputedStyle(el));
@@ -185,11 +186,11 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
     for (let a = el.parentElement; a; a = a.parentElement) if (!nearShift(a)) return false;
     return true;
   };
-  const snapTranslates = () => {
+  const settleTails = () => {
     for (const el of document.querySelectorAll('[style*="transform"]')) {
       const m = nearShift(el);
-      if (!m || (m.a === 1 && m.d === 1 && Number.isInteger(m.e) && Number.isInteger(m.f)) || !shiftedOnly(el)) continue;
-      el.style.transform = "translate(" + Math.trunc(m.e) + "px, " + Math.trunc(m.f) + "px)";
+      if (!m || Math.abs(m.e) >= 1 || Math.abs(m.f) >= 1 || (m.a === 1 && m.d === 1 && m.e === 0 && m.f === 0) || !shiftedOnly(el)) continue;
+      el.style.transform = "translate(0px, 0px)";
     }
   };
   // dry (a rehearsal, nothing captured): no frames waited for after render(t).
@@ -207,7 +208,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
         throw new Error(text || "render(t) failed");
       }
     }
-    snapTranslates();
+    settleTails();
     await window.__uncutMedia.held();
     if (!dry) await frames();
     window.__uncutMedia.sweep();

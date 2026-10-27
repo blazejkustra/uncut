@@ -1,13 +1,16 @@
 // Handoff 13: text in graphics shook by a pixel (argent-100s "Claude Code", "~/stride"): a card
 // popping in on spring.settle moved by translate() with a fraction; Chromium drew the card's edges at
 // that fraction but the text on whole pixels, so the words jumped a pixel up and back inside a card
-// that barely moved. The document's bootstrap (core graphicDocument) now cuts a plain translate to
-// whole pixels after render(t). Through the real rasteriser:
-// - the pop's frames: the text keeps its place in the card on every frame and the shake check
-//   (motionJitter findShakes) finds nothing; the same move under a scale the bootstrap leaves alone
-//   (one that sizes the card 2 px bigger) still shakes, so the check would see it;
-// - which transforms are cut: a translate (towards zero) and a scale under a pixel of the
-//   element's size (dropped), not one inside a scaled parent, not a real scale.
+// that barely moved. The document's bootstrap (core graphicDocument) now puts an element within a
+// pixel of its place exactly there after render(t), and leaves real moves fractional. Through the
+// real rasteriser:
+// - the pop's frames: once the card is within a pixel of its place the text keeps its place in it,
+//   and the shake check (motionJitter findShakes) finds nothing, with or without a scale-in; the
+//   same move under a scale the bootstrap leaves alone (one that sizes the card 2 px bigger) still
+//   shakes, so the check would see it;
+// - a slow drift (0.3 px a frame) keeps its sub-pixel steps: the card's edge moves 0.3 px every frame;
+// - which transforms are put in place: a translate under 1 px, with a scale under a pixel of the
+//   element's size; not a longer translate, not one inside a scaled parent, not a real scale.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -92,11 +95,15 @@ function measure(gray: Uint8Array) {
 
 const FRAMES = Array.from({ length: 30 }, (_, i) => i + 3);
 
-test("a card popping in on a spring: its text keeps its place in the card on every frame and nothing shakes", { skip, timeout: 120_000 }, async () => {
+test("a card popping in on a spring: once within a pixel of its place its text stays put in it, and nothing shakes", { skip, timeout: 120_000 }, async () => {
   const frames = [];
   for (const f of FRAMES) frames.push({ frame: f, gray: await grayAt(pop(""), f, "pop") });
-  const gaps = frames.map((x) => measure(x.gray)).map((m) => m.text - m.edge);
-  console.log(`  text minus card edge: ${gaps.map((g) => g.toFixed(2)).join(" ")}`);
+  const gaps = frames
+    .map((x) => measure(x.gray))
+    .filter((m) => Math.abs(m.edge - CARD_TOP) < 1)
+    .map((m) => m.text - m.edge);
+  console.log(`  text minus card edge, settled frames: ${gaps.map((g) => g.toFixed(2)).join(" ")}`);
+  assert.ok(gaps.length >= 15, `${gaps.length} settled frames`);
   assert.ok(Math.max(...gaps) - Math.min(...gaps) < 0.05, `the text moves inside its card by ${(Math.max(...gaps) - Math.min(...gaps)).toFixed(2)} px`);
   assert.deepEqual(findShakes(frames, canvas.width, canvas.height), []);
 });
@@ -119,23 +126,35 @@ test("the same move under a scale left as it is shakes, and the check sees it", 
   assert.ok(findShakes(frames, canvas.width, canvas.height).length >= 1, "a shake found");
 });
 
+test("a slow drift keeps its sub-pixel steps", { skip, timeout: 120_000 }, async () => {
+  const drift = pop("").replace('const dy = 30 * (1 - uncutSpring(t, "spring.settle"));', "const dy = 20 - 9 * t;");
+  const edges: Array<number> = [];
+  for (const f of Array.from({ length: 20 }, (_, i) => i)) edges.push(measure(await grayAt(drift, f, "drift")).edge);
+  const steps = edges.slice(1).map((e, i) => e - edges[i]!);
+  assert.ok(
+    steps.every((d) => Math.abs(d + 0.3) < 0.05),
+    `the card's edge moves 0.3 px a frame: ${steps.map((d) => d.toFixed(2)).join(" ")}`,
+  );
+});
+
 // The second frame reads what the bootstrap left after the first (graphics are drawn in order in one page): green when each is as expected.
 const RULES = `<div id="a" style="position:absolute"></div><div id="p" style="position:absolute;transform:scale(2)"><div id="b" style="position:absolute"></div></div>
-<div id="s" style="position:absolute"></div><div id="z" style="position:absolute;width:200px;height:20px"></div><div id="n" style="position:absolute"></div><div id="w" style="position:absolute"></div>
+<div id="s" style="position:absolute"></div><div id="z" style="position:absolute;width:200px;height:20px"></div><div id="n" style="position:absolute"></div><div id="w" style="position:absolute"></div><div id="y" style="position:absolute;width:200px;height:20px"></div>
 <canvas id="out" width="640" height="360"></canvas>
 <script>
 const $ = (id) => document.getElementById(id);
 window.render = (t) => {
   if (t === 0) {
     $("a").style.transform = "translate(3.7px, -2.6px)";
-    $("b").style.transform = "translate(3.7px, 0px)";
+    $("b").style.transform = "translate(0.4px, 0px)";
     $("s").style.transform = "translate(3.7px, 0px) scale(1.5)";
     $("n").style.transform = "translate(4px, 5px)";
     $("w").style.transform = "translateY(0.4px)";
     $("z").style.transform = "translate(2.5px, 0px) scale(1.001)";
+    $("y").style.transform = "translate(0.6px, -0.3px) scale(1.001)";
     return;
   }
-  const want = { a: "translate(3px, -2px)", b: "translate(3.7px, 0px)", s: "translate(3.7px, 0px) scale(1.5)", n: "translate(4px, 5px)", w: "translate(0px, 0px)", z: "translate(2px, 0px)" };
+  const want = { a: "translate(3.7px, -2.6px)", b: "translate(0.4px, 0px)", s: "translate(3.7px, 0px) scale(1.5)", n: "translate(4px, 5px)", w: "translate(0px, 0px)", z: "translate(2.5px, 0px) scale(1.001)", y: "translate(0px, 0px)" };
   const wrong = Object.keys(want).filter((id) => $(id).style.transform !== want[id]);
   const g = $("out").getContext("2d");
   g.fillStyle = wrong.length ? "rgb(255,0,0)" : "rgb(0,255,0)";
@@ -143,7 +162,7 @@ window.render = (t) => {
 };
 </script>`;
 
-test("only a plain translate (or one with a scale under a pixel) outside any scale is cut, towards zero", { skip, timeout: 60_000 }, async () => {
+test("only an element within a pixel of its place, outside any scale, is put exactly there", { skip, timeout: 60_000 }, async () => {
   await grayAt(RULES, 0, "rules");
   const out = join(root, "rules-check.png");
   await raster.render({
