@@ -71,7 +71,19 @@ export {
   GenerateJob,
   GenerateError,
 } from "./generate.ts";
-export { BrandColor, BrandFont, BrandStyle, BrandScope, BrandKit, BrandSkill, BrandActive, BrandState, BrandError, BrandImported } from "./brand.ts";
+export {
+  BrandColor,
+  BrandFont,
+  BrandStyle,
+  BrandScope,
+  BrandKit,
+  BrandSkill,
+  BrandActive,
+  BrandState,
+  BrandError,
+  BrandImported,
+  ClaudeCodeSkill,
+} from "./brand.ts";
 export {
   Brief,
   StoryboardBeat,

@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
 import type { Access } from "../agentPermissions.ts";
 import type { TurnLimits } from "../agentLimits.ts";
+import type { ClaudeSkill } from "../claudeSkills.ts";
 
 // The agent's in-memory records: stored turns, a project's Loaded agent, a claude session, a running turn.
 
@@ -82,6 +83,10 @@ export interface ClaudeSession {
   readonly token: string;
   // The plugin tools it was started with (sorted names): another list needs another session.
   readonly toolsKey: string;
+  // The user's own Claude Code skills it loads (--plugin-dir); send's toolsKey has their names.
+  readonly claudeSkills: ReadonlyArray<ClaudeSkill>;
+  // Their folders' real paths: read without a card.
+  readonly skillDirs: ReadonlyArray<string>;
   // The model and effort it was started with (D184): another choice starts another (with --resume).
   readonly model: string | undefined;
   readonly effort: string | undefined;

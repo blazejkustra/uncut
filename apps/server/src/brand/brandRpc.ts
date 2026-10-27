@@ -1,6 +1,6 @@
 // The brand RPCs (D186): thin wrappers over store.ts with the user's data folder and the open
 // project's folder (project kits and skills, and the project's choice, need an open project).
-import { BrandError, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { BrandError, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState, type ClaudeCodeSkill } from "@uncut/contracts";
 import type { PluginSkill } from "@uncut/core";
 import * as Effect from "effect/Effect";
 
@@ -11,11 +11,23 @@ import { addKitFile, deleteKit, deleteSkill, readBrand, saveKit, saveSkill, writ
 
 const failed = (error: unknown) => new BrandError({ reason: "failed", message: error instanceof Error ? error.message : String(error) });
 
-export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | undefined>, skills: () => ReadonlyArray<PluginSkill> = () => []) {
+/** The user's Claude Code skills for a project folder, as the composer's / menu shows them. */
+export type ClaudeSkillsOf = (projectDir: string | undefined) => Promise<ReadonlyArray<ClaudeCodeSkill>>;
+
+export function brandRpc(
+  dataDir: string,
+  view: Effect.Effect<ProjectView | undefined>,
+  skills: () => ReadonlyArray<PluginSkill> = () => [],
+  claudeSkills: ClaudeSkillsOf = async () => [],
+) {
   // D232: the allowed plugins' skills come along (the Skills tab lists them).
   const dirs = Effect.map(view, (v): BrandDirs => ({ dataDir, projectDir: v?.dir, skills: skills() }));
   const run = <A>(f: (d: BrandDirs) => Promise<A>) => Effect.flatMap(dirs, (d) => Effect.tryPromise({ try: () => f(d), catch: failed }));
-  const state = (d: BrandDirs) => readBrand(d);
+  const ownSkills = (d: BrandDirs) => claudeSkills(d.projectDir).catch(() => []);
+  const state = async (d: BrandDirs): Promise<BrandState> => {
+    const [brand, claude] = await Promise.all([readBrand(d), ownSkills(d)]);
+    return { ...brand, claudeSkills: claude.map(({ id, plugin, name, description }) => ({ id, plugin, name, description })) };
+  };
   return {
     get: run(state),
     saveKit: (kit: BrandKit) => run(async (d): Promise<BrandState> => (await saveKit(d, kit), state(d))),

@@ -29,6 +29,11 @@ if (argv[0] === "auth" && argv[1] === "status") {
   console.log(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", subscriptionType: "max" }));
   process.exit(0);
 }
+// The user's enabled plugins ($FAKE_CLAUDE_PLUGINS, a JSON list as the real one prints it; none by default).
+if (argv[0] === "plugin" && argv[1] === "list") {
+  console.log(process.env.FAKE_CLAUDE_PLUGINS ?? "[]");
+  process.exit(0);
+}
 
 type Step = { tool: string; args?: unknown } | { text: string; split?: boolean } | { sleep: number } | { fail: string } | { await: string };
 interface RpcReply {

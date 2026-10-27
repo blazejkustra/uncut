@@ -496,6 +496,8 @@ export const makeCodex = (ctx: StreamCtx) => {
       dirsKey: [...owner.dirs].sort().join("\n"),
       prompts: new Map(),
       access,
+      claudeSkills: [],
+      skillDirs: [],
       initId: "",
       initialized: false,
       initFailed: false,

@@ -107,7 +107,7 @@ export interface PermissionContext {
   /**
    * D296: folders Uncut itself points the agent at, read without a card (never written): the
    * project's active brand kit (the sanctioned source of the product's look and screenshots) and
-   * the bundled graphic libraries. Real paths.
+   * the bundled graphic libraries, and the user's Claude Code skills the session loads. Real paths.
    */
   readonly sanctioned?: ReadonlyArray<string>;
   /** Folders the user pasted in this chat and hasn't confirmed yet (a card offers them). */
@@ -356,7 +356,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     for (const raw of paths) {
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
       if (inClaude(r)) {
-        if (toolOutput(r)) continue;
+        if (toolOutput(r) || (!webUsed && zone(r) === "sanctioned")) continue;
         return claudeRefusal;
       }
       const z = zone(r);
@@ -398,7 +398,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (z === "sanctioned")
       return {
         kind: "deny",
-        message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder or Uncut's graphic libraries, which are only read. Change a kit with brand_write; write your own files in the project.`,
+        message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder, Uncut's graphic libraries or one of the user's Claude Code skills, which are only read. Change a kit with brand_write; write your own files in the project.`,
       };
     const title = tool === "Write" ? "Write a file" : "Edit a file";
     // "Always" covers this exact file, and only inside the project.

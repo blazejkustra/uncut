@@ -75,6 +75,7 @@ export function withChips(text: string, labels: ReadonlyArray<string>, className
   return out;
 }
 
+const SLASH_GROUPS = { template: "Templates", skill: "Skills", claude: "Your Claude Code skills" } as const;
 const KIND_ICON = {
   media: Film,
   item: ListVideo,
@@ -199,9 +200,12 @@ export function Composer({
   useEffect(() => {
     if (online && !templates) void actions.templatesGet();
   }, [online, !templates]);
-  const slash = !query ? /(?:^|\s)\/([a-z0-9-]{0,40})$/.exec(before) : null;
+  const slash = !query ? /(?:^|\s)\/([A-Za-z0-9:._-]{0,80})$/.exec(before) : null;
   const slashAt = slash ? caret - slash[1]!.length - 1 : -1;
-  const skillMatches = useMemo(() => (slash ? slashItems(slash[1]!, brand?.skills ?? [], templates ?? []) : []), [brand?.skills, templates, slash?.[1]]);
+  const skillMatches = useMemo(
+    () => (slash ? slashItems(slash[1]!, brand?.skills ?? [], templates ?? [], brand?.claudeSkills ?? []) : []),
+    [brand?.skills, brand?.claudeSkills, templates, slash?.[1]],
+  );
   const skillOpen = !!slash && dismissed !== slashAt && skillMatches.length > 0 && !blocked;
   useEffect(() => setPick(0), [query?.[1], slash?.[1]]);
 
@@ -342,15 +346,15 @@ export function Composer({
           {skillMatches.map((x, i) => (
             <Fragment key={`${x.kind}:${x.id}`}>
               {x.kind !== skillMatches[i - 1]?.kind && (
-                <div className="slash-group" role="presentation" data-testid={x.kind === "template" ? "template-group" : "skill-group"}>
-                  {x.kind === "template" ? "Templates" : "Skills"}
+                <div className="slash-group" role="presentation" data-testid={`${x.kind === "claude" ? "claude-skill" : x.kind}-group`}>
+                  {SLASH_GROUPS[x.kind]}
                 </div>
               )}
               <button
                 role="option"
                 aria-selected={i === pick}
                 className={`mention-option ${i === pick ? "active" : ""}`}
-                data-testid={x.kind === "template" ? "template-option" : "skill-option"}
+                data-testid={`${x.kind === "claude" ? "claude-skill" : x.kind}-option`}
                 {...(x.kind === "template" ? { "data-template": x.id } : { "data-skill": x.id })}
                 title={x.description}
                 onMouseDown={(e) => {

@@ -153,7 +153,8 @@ export function autoAskRules(): Array<string> {
 
 /**
  * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
- * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
+ * Uncut's own files (deny) and the calls that must still reach Uncut (ask). The user's Claude Code
+ * skills don't run their inline shell commands (those would skip Uncut's approvals).
  */
 export function sessionSettings(
   o: {
@@ -164,8 +165,10 @@ export function sessionSettings(
   } = {},
 ): string {
   const cc = o.claudeConfig ?? [];
-  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
+  if (o.access !== "auto")
+    return JSON.stringify({ disableSkillShellExecution: true, permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
   return JSON.stringify({
+    disableSkillShellExecution: true,
     permissions: {
       deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])],
       ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],

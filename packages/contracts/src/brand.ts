@@ -80,10 +80,15 @@ export type BrandSkill = typeof BrandSkill.Type;
  */
 export const BrandActive = Schema.Struct({ kit: Schema.NullOr(Schema.String), skills: Schema.Array(Schema.String) });
 export type BrandActive = typeof BrandActive.Type;
+/** One of the user's own Claude Code skills (from ~/.claude, the project or an enabled plugin): `id` is what the user types after /. */
+export const ClaudeCodeSkill = Schema.Struct({ id: Schema.String, plugin: Schema.String, name: Schema.String, description: Schema.String });
+export type ClaudeCodeSkill = typeof ClaudeCodeSkill.Type;
 /** Every kit and skill the open project can see (project ones win on the same id), and its choice. */
 export const BrandState = Schema.Struct({
   kits: Schema.Array(BrandKit),
   skills: Schema.Array(BrandSkill),
+  // The user's Claude Code skills the agent loads too (the composer's / menu offers them).
+  claudeSkills: Schema.optional(Schema.Array(ClaudeCodeSkill)),
   active: BrandActive,
   // Absolute paths of each kit's files by kit id then file name, for thumbnails and the agent.
   files: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),

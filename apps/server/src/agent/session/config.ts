@@ -2,6 +2,7 @@ import { AGENT_IMAGE_TYPES, AGENT_MODELS, type AgentProvider } from "@uncut/cont
 import { type Access, claudeConfigDirs, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
 import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import type { PluginSkill } from "@uncut/core";
+import { type ClaudeSkill, claudeSkillsPrompt } from "../claudeSkills.ts";
 import { which } from "../../app/setup.ts";
 import { claudeEnv } from "../../app/shellEnv.ts";
 
@@ -49,8 +50,9 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = {
 /**
  * The session's command line (D139, D181, D194): Claude Code's default built-in tools (web, files,
  * shell, subagents) plus only Uncut's MCP server, none of the user's own Claude Code settings
- * (--setting-sources "": no hooks, plugins, permissions, skills, MCP servers or rules from
- * ~/.claude; flag and managed settings still apply), Opus/Sonnet/… and effort from the composer
+ * (--setting-sources "": no hooks, plugins, permissions, MCP servers or rules from ~/.claude; flag
+ * and managed settings still apply) except their skills: `pluginDirs` are skills-only plugins
+ * (claudeSkills.ts writeSkillPlugins) for the user's, the project's and the enabled plugins' skills. Opus/Sonnet/… and effort from the composer
  * (D184). Permissions (D214): Auto is `--permission-mode auto` (Claude Code's classifier approves
  * routine calls, like t3code's Auto), Ask first and Look only the default mode; in every access each
  * prompt comes to Uncut over stdio as a can_use_tool control request (the SDK's canUseTool), decided
@@ -73,6 +75,8 @@ export function sessionArgs(o: {
   readonly projects?: ReadonlyArray<string> | undefined;
   readonly dataDir?: string | undefined;
   readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined;
+  readonly claudeSkills?: ReadonlyArray<ClaudeSkill> | undefined;
+  readonly pluginDirs?: ReadonlyArray<string> | undefined;
 }) {
   const access = o.access ?? "auto";
   const args = [
@@ -102,7 +106,7 @@ export function sessionArgs(o: {
     o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir, claudeConfig: claudeConfigDirs() }),
     // D232 (issue #60): every installed skill by name and description; skill_read loads one.
     "--append-system-prompt",
-    `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
+    `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}${claudeSkillsPrompt(o.claudeSkills ?? [])}`,
   ];
   // D260 amended: Claude Code records the system prompt on a conversation's first request and reuses
   // that record on --resume (until compaction), ignoring the text passed later; off renders the current
@@ -111,6 +115,7 @@ export function sessionArgs(o: {
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
   if (access === "look") args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
   for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
+  for (const dir of o.pluginDirs ?? []) args.push("--plugin-dir", dir);
   if (o.model) args.push("--model", o.model);
   if (o.effort) args.push("--effort", o.effort);
   // D218: as the Agent SDK turns t3code's `thinking: { type: "adaptive", display: "summarized" }` into argv.

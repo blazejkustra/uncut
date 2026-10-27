@@ -11,6 +11,8 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "../agent/agent.ts";
 import { brandRpc } from "../brand/brandRpc.ts";
+import { claudeSkillsFor } from "../agent/claudeSkills.ts";
+import { findClaude, sessionEnv } from "../agent/session/config.ts";
 import { templatesRpc } from "../templates/templates.ts";
 import { Analysis } from "../analysis/analysis.ts";
 import { presentedToken, tokensMatch } from "./auth.ts";
@@ -60,6 +62,12 @@ interface Services {
   readonly links: typeof LinkImport.Service;
 }
 
+/** The user's Claude Code skills for a project (none when Claude Code isn't installed). */
+const claudeSkillsOnMachine = async (projectDir: string | undefined) => {
+  const bin = await findClaude();
+  return bin ? claudeSkillsFor(bin, projectDir, sessionEnv(process.env)) : [];
+};
+
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
 const handlersLayer = ({
   config,
@@ -82,7 +90,7 @@ const handlersLayer = ({
   proxies,
   links,
 }: Services) => {
-  const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow);
+  const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow, claudeSkillsOnMachine);
   const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>

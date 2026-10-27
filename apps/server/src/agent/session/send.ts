@@ -15,8 +15,9 @@ import { accessLine, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
 import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
 import { capNote, joinNotes, noteFor, noteShowsAll } from "../turns/notes.ts";
-import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
+import { findClaude, modelFor, IMAGE_EXT, sessionEnv } from "./config.ts";
 import { findCodex } from "./codex.ts";
+import { calledClaudeSkills, claudeSkillCallBlock, claudeSkillsFor } from "../claudeSkills.ts";
 import { shellAuthReady } from "../../app/shellEnv.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
@@ -133,7 +134,9 @@ export const makeSend = (ctx: SpawnCtx) => {
               : "Claude Code isn't installed. Install it, sign in once with `claude`, then try again.",
         });
       }
-      const toolsKey = yield* toolsKeyNow;
+      // The user's own Claude Code skills (user, 2026-10-27): installing one starts a new session too.
+      const claudeSkills = provider === "codex" ? [] : yield* Effect.promise(() => claudeSkillsFor(bin, owner.dir, sessionEnv(process.env)));
+      const toolsKey = `${yield* toolsKeyNow}|claude:${claudeSkills.map((x) => `${x.plugin}:${x.name}`).join(",")}`;
       if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
       const v = view();
       if (!v || v.openId !== owner.openId) return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
@@ -216,6 +219,11 @@ export const makeSend = (ctx: SpawnCtx) => {
                 text,
                 all.skills.map((x) => x.id),
               );
+              const claudeCalled = calledClaudeSkills(
+                text,
+                claudeSkills,
+                all.skills.map((x) => x.id),
+              );
               if (called.length) {
                 await useSkills(v.dir, called);
                 all = await readBrand(dirs);
@@ -232,7 +240,9 @@ export const makeSend = (ctx: SpawnCtx) => {
                   owner.plan,
                   gateOf(owner.plan, skip),
                 ),
-                skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
+                skillsBlock: [skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))), claudeSkillCallBlock(claudeCalled)]
+                  .filter(Boolean)
+                  .join("\n\n"),
                 called,
               };
             } catch (error) {
@@ -264,7 +274,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       if (!s) {
         // D277 review: a claude started right after launch waits (bounded) for the login shell's sign-in variables.
         yield* Effect.promise(() => shellAuthReady());
-        const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access });
+        const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access, claudeSkills });
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
         s = st.session = started;
       }

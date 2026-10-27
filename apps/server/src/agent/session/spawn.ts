@@ -17,6 +17,7 @@ import { forgetSentBlocks } from "./send.ts";
 import { asksNoQuestions, reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
 import { CODEX_SESSION, makeCodex } from "./codex.ts";
+import { type ClaudeSkill, skillReadDirs, writeSkillPlugins } from "../claudeSkills.ts";
 
 /**
  * D181: thinking summaries need `--thinking-display summarized` in print mode (claude 2.1.299 reads
@@ -304,7 +305,12 @@ export const makeSpawn = (ctx: StreamCtx) => {
     bin: string,
     toolsKey: string,
     resume: boolean,
-    choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access },
+    choice: {
+      readonly model: string | undefined;
+      readonly effort: string | undefined;
+      readonly access: Access;
+      readonly claudeSkills: ReadonlyArray<ClaudeSkill>;
+    },
   ): ClaudeSession | string => {
     let dir: string;
     try {
@@ -338,6 +344,13 @@ export const makeSpawn = (ctx: StreamCtx) => {
       rmSync(dir, { recursive: true, force: true });
       return `Can't prepare the agent's settings: ${(error as Error).message}`;
     }
+    const claudeSkills = choice.claudeSkills;
+    let pluginDirs: Array<string> = [];
+    try {
+      pluginDirs = writeSkillPlugins(join(dir, "claude-skills"), claudeSkills);
+    } catch (error) {
+      console.error(`[uncut] couldn't load the user's Claude Code skills: ${(error as Error).message}`);
+    }
     const args = sessionArgs({
       cfg,
       settings,
@@ -351,6 +364,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       projects,
       dataDir: config.dataDir,
       skills: ctx.plugins.skillsNow(),
+      claudeSkills: pluginDirs.length ? claudeSkills : [],
+      pluginDirs,
     });
     const initId = `init-${randomBytes(4).toString("hex")}`;
     const s: ClaudeSession = {
@@ -360,6 +375,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       dir,
       token,
       toolsKey,
+      claudeSkills,
+      skillDirs: pluginDirs.length ? skillReadDirs(claudeSkills) : [],
       model: choice.model,
       effort: choice.effort,
       thinking,
@@ -455,7 +472,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       if (s.thinking && !s.gotInit && /--thinking/i.test(s.stderr)) {
         thinkingDisplayRefused = true;
         console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
-        const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
+        const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
         st.session = again;
         return writeTurn(again, r);
@@ -466,7 +483,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         console.error(
           `[uncut] claude refused --system-prompt-snapshot; a resumed conversation keeps the system prompt it started with: ${s.stderr.trim().split("\n")[0]}`,
         );
-        const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
+        const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
         st.session = again;
         return writeTurn(again, r);
@@ -477,7 +494,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         // D261: a new conversation: the last one's context doesn't apply.
         s.owner.context = undefined;
         persist(s.owner);
-        const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access });
+        const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
         st.session = fresh;
         return writeTurn(fresh, r);
