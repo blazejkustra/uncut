@@ -466,7 +466,7 @@ test(
   "lock a track: drags, split and delete refuse by hand, the agent is refused too, and its prompt lists the manual edits",
   { skip, timeout: 120000 },
   async () => {
-    // Edits that stay (undone ones leave the log; the note says "Used undo" for those).
+    // Edits that stay; the note says their net result (a split whose second half is deleted is a shorter clip).
     let r = await revision();
     await page.keyboard.press("Escape");
     await dragItem("title-1", 30, { meta: true });
@@ -533,15 +533,14 @@ test(
       .split("\n")
       .map((l) => JSON.parse(l) as { prompt: string });
     const prompt = first!.prompt;
+    assert.doesNotMatch(prompt, /clip-3|Used undo/);
     for (const line of [
       /by hand/,
-      /Moved text "Title" \(title-1\) to 1\.0s/,
-      /Trimmed rb\.mp4 \(clip-1\) by 1\.0s at the end/,
-      /Split gy\.mp4 \(clip-2\) at 2\.0s/,
-      /Deleted clip-3/,
+      /\(title-1\): start \d+\.\ds → \d+\.\ds/,
+      /rb\.mp4 \(clip-1\): length \d+\.\ds → \d+\.\ds/,
+      /gy\.mp4 \(clip-2\): length \d+\.\ds → 2\.0s/,
       /Muted track audio/,
       /Locked track text/,
-      /Used undo/,
     ]) {
       assert.match(prompt, line);
     }

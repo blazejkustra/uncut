@@ -9,7 +9,7 @@
 import { isAbsolute, join } from "node:path";
 
 import { type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
-import { EditError, TurnDependency, undoTurn, type Project, type Session } from "@uncut/core";
+import { EditError, TurnDependency, undoTurn, type LogEntry, type Project, type Session } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -277,6 +277,16 @@ export const layer = Layer.effect(
           );
       });
 
+    // ⌘Z and ⇧⌘Z show in the agent's net note (D6); one that takes back or brings back the agent's own edits is said too.
+    const stepNote = (undo: boolean, revision: number, longer: ReadonlyArray<LogEntry>, shorter: ReadonlyArray<LogEntry>): UnloggedChange => {
+      const kept = new Set(shorter.map((e) => e.revision));
+      const agents = longer.filter((e) => e.actor === "agent" && !kept.has(e.revision));
+      const what = undo ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)";
+      if (!agents.length) return { revision, what, quiet: true };
+      const edits = agents.map((e) => (e.summary ? `"${e.summary}"` : `revision ${e.revision}`)).join(", ");
+      return { revision, what: `${what}, which ${undo ? "took back" : "brought back"} your edit${agents.length === 1 ? "" : "s"} ${edits}` };
+    };
+
     const step = (from: "past" | "future") =>
       lock.withPermits(1)(
         Effect.gen(function* () {
@@ -295,7 +305,7 @@ export const layer = Layer.effect(
               p[undo ? "future" : "past"].push(previous.revision);
               p.initial = restored.initial;
               p.pushedForTurn = undefined;
-              p.unlogged.push({ revision, what: undo ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)" });
+              p.unlogged.push(stepNote(undo, revision, undo ? previous.log : restored.log, undo ? restored.log : previous.log));
             },
             { kind: undo ? "undo" : "redo", author: "user", revision, label: undo ? "Undo" : "Redo", target },
           );
@@ -303,6 +313,14 @@ export const layer = Layer.effect(
       );
 
     const editUnlocked = makeEditUnlocked({ format, commit });
+
+    const stateOf = (p: OpenProject) => (revision: number) => {
+      try {
+        return p.history.stateAt(revision);
+      } catch {
+        return undefined;
+      }
+    };
 
     const openingIs = (openId: number) =>
       Effect.suspend(() =>
@@ -441,6 +459,7 @@ export const layer = Layer.effect(
               session: current.session,
               initial: current.initial,
               unlogged: [...current.unlogged],
+              stateAt: stateOf(current),
             }
           : undefined,
       ),

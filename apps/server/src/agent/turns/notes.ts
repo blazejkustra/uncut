@@ -1,21 +1,39 @@
 import type { AgentTurn } from "@uncut/contracts";
-import { manualEditsNote, type Project, speechItem, transcriptScope, type Session, undoTurn, TurnDependency, describeOp } from "@uncut/core";
+import {
+  manualEditsNote,
+  netEditsNote,
+  netZeroNote,
+  type Project,
+  speechItem,
+  transcriptScope,
+  type Session,
+  undoTurn,
+  TurnDependency,
+  describeOp,
+} from "@uncut/core";
 import type { ProjectView } from "../../project/projects.ts";
 import type { StoredTurn } from "../session/types.ts";
 
 // ---- notes and undo states ----
 
 /**
- * D6: what the user changed since the agent last looked. Item edits come from the log (core
- * manualEditsNote); undo, redo, reload and undone turns aren't log entries, so they're listed too.
+ * D6: what the user changed since the agent last looked, as the net result: the project the agent
+ * saw at `since` (plus its own edits after it) against the project now (core netEditsNote). Undo
+ * turn, a History jump and a reload get a line of their own too; ⌘Z and ⇧⌘Z only when they took
+ * back or brought back the agent's edits. Without the state at `since` in the history, the log's
+ * entries are listed as they are (manualEditsNote).
  */
 export function noteFor(view: ProjectView, since: number): string {
   // The log goes back to earlier openings (history.db); what happened then reached the note that
   // was carried over (pendingNote), so only this opening's edits count here.
-  const base = manualEditsNote(view.session, Math.max(since, view.openRevision));
-  const extra = view.unlogged.filter((u) => u.revision > since).map((u) => `- ${u.what}`);
-  if (!extra.length) return base;
-  if (!base) {
+  const from = Math.max(since, view.openRevision);
+  const before = view.stateAt(from);
+  const base = before ? netEditsNote(before, view.session, from) : manualEditsNote(view.session, from);
+  const happened = view.unlogged.filter((u) => u.revision > since);
+  const extra = happened.filter((u) => !u.quiet).map((u) => `- ${u.what}`);
+  const zero = netZeroNote(view.session.revision);
+  if (!extra.length) return base || (happened.length ? zero : "");
+  if (!base || base === zero) {
     return [
       `Since your last turn the user changed the project (now at revision ${view.session.revision}). Read it again before editing; keep what they did.`,
       ...extra,
@@ -24,9 +42,11 @@ export function noteFor(view: ProjectView, since: number): string {
   return [base, ...extra].join("\n");
 }
 
-/** A note carried over from an earlier opening, then the current one. */
+/** A note carried over from an earlier opening, then the current one (left out when the carried note already ends with it: a second reopen with nothing done in between). */
 export const joinNotes = (carried: string | undefined, current: string) =>
-  [carried ? `Earlier, before the project was closed and reopened:\n${carried}` : "", current].filter(Boolean).join("\n\n");
+  [carried ? `Earlier, before the project was closed and reopened:\n${carried}` : "", carried && current && carried.endsWith(current) ? "" : current]
+    .filter(Boolean)
+    .join("\n\n");
 
 type UndoState = AgentTurn["undo"];
 // Sessions are immutable, so a dry run per (session, turn) is computed once.

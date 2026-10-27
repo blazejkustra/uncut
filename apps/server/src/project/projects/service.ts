@@ -41,6 +41,8 @@ export interface MediaRecord {
 export interface UnloggedChange {
   readonly revision: number;
   readonly what: string;
+  /** Its effect shows in the note's net changes (D6), so it gets no line of its own. */
+  readonly quiet?: boolean;
 }
 
 /** The open project as the agent service needs it: the session with its log. Read-only. */
@@ -52,6 +54,8 @@ export interface ProjectView {
   readonly session: Session;
   readonly initial: Project;
   readonly unlogged: ReadonlyArray<UnloggedChange>;
+  /** The project at a revision of the history; undefined when the history no longer has it. */
+  readonly stateAt: (revision: number) => Project | undefined;
 }
 
 export interface AgentEditInput {
