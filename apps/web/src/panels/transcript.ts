@@ -18,6 +18,7 @@ import {
   type TranscriptScope,
 } from "@uncut/core/transcript";
 import { planMakeCaptions, type CaptionMode } from "@uncut/core/captions";
+import { withGraphicRetime } from "@uncut/core/retime";
 import { useSyncExternalStore } from "react";
 
 import { draftOf, type Plan } from "../timeline/edit.ts";
@@ -231,7 +232,9 @@ function chain(
     current = plan.project;
   }
   const base = { framesRemoved, pauses, fillers, words, notes };
-  return { ...base, ops, summary: ops.length ? summary(base, one || undefined) : "" };
+  // C6: graphics the cuts run through lose the same stretch of their own time.
+  const retimed = withGraphicRetime(project, ops).ops;
+  return { ...base, ops: retimed, summary: ops.length ? summary(base, one || undefined) : "" };
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;

@@ -164,3 +164,19 @@ test("the engine keeps skips through a trimmed start, a trimmed end and a split"
   assert.equal(item(halves, "panel-2").skips, undefined);
   assert.deepEqual(validateProject(halves, modules), []);
 });
+
+test("the user's ripple delete of a main clip re-times the panel over it too", async () => {
+  const { planRippleDelete } = await import("../../apps/web/src/timeline/edit.ts");
+  const project = film();
+  const plan = planRippleDelete(project, ["a"]);
+  assert.ok(!("problem" in plan));
+  const panel = item(apply(project, plan.ops), "panel");
+  assert.deepEqual([panel.start, panel.duration, panel.in], [0, 150, 150]);
+  assert.deepEqual(
+    panel.keys!.filter((k) => k.frame >= 40).map((k) => [k.frame, k.opacity]),
+    [
+      [50, 1],
+      [60, 0],
+    ],
+  );
+});
