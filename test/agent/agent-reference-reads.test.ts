@@ -192,3 +192,13 @@ test("review of C3+C4: a pasted folder that holds Claude Code's folder (~/.claud
   assert.notEqual(kind("Read", { file_path: `${dots}/uncut-data/keys.json` }, "auto", extra), "allow");
   assert.equal(bash(`cat ${dots}/zshrc`, "auto", extra).kind, "allow", "the rest of the pasted folder still reads");
 });
+
+test("a pasted folder is read in Auto by Read, Glob and Bash alike; Look only still asks and writing there asks", () => {
+  // e2e t1 #106/#107: a Read card for the pasted folder timed out, then `cd … && cat` read it with no card. Same rule both ways in Auto.
+  const pasted = "/Users/me/Documents/devrel/argent/argent-marketing/src/content/blog/argent-e2e-tutorial";
+  assert.equal(kind("Read", { file_path: `${pasted}/cover-merge-v7.png` }, "auto", { candidates: [pasted] }), "allow");
+  assert.equal(kind("Glob", { pattern: "*.png", path: pasted }, "auto", { candidates: [pasted] }), "allow");
+  assert.equal(kind("Bash", { command: `cd ${pasted} && ls -la` }, "auto", { candidates: [pasted] }), "allow");
+  assert.equal(kind("Read", { file_path: `${pasted}/cover-merge-v7.png` }, "look", { candidates: [pasted] }), "ask", "Look only: still a card");
+  assert.equal(kind("Write", { file_path: `${pasted}/notes.txt`, content: "x" }, "auto", { candidates: [pasted] }), "ask", "writing there still asks");
+});
