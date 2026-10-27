@@ -149,7 +149,7 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
         .some((p) => !ok(p))
     )
       return "deletes files outside the project";
-    for (const m of segment.matchAll(/(?:^|[^<>&\d])>>?\s*("[^"]+"|'[^']+'|[^\s;&|]+)/g)) {
+    for (const m of segment.matchAll(/(?:^|[^<>&\d])(?:\d+|&)?>>?\s*("[^"]+"|'[^']+'|[^\s;&|]+)/g)) {
       const target = m[1]!.replace(/^["']|["']$/g, "");
       if (target === "/dev/null" || target.startsWith("&")) continue;
       if (!ok(target)) return `writes ${target} outside the project`;

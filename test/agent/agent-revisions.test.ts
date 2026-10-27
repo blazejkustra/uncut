@@ -167,3 +167,30 @@ test("fam t11: after the project is closed and opened again, the agent edits fro
     await s.stop();
   }
 });
+
+test(
+  "review of C3+C4: after the user's undo, the note names the revision but the agent must read again (D6); a refusal caused by the undo doesn't count either",
+  { skip, timeout: 60000 },
+  async () => {
+    const s = await setup("undo");
+    try {
+      const a = await s.done(await s.start("add a title", [{ tool: "project_read" }, edit("$rev", "Title", [title("cap-1", "Hello")])]));
+      assert.equal(a.status, "done", a.error);
+      const own = s.edits()[0]!;
+      const undone = await s.client.ok("project.undo");
+      const now = undone.revision as number;
+      const stale = [title("cap-2", "Stale plan")];
+      const b = await s.done(
+        await s.start("make it bigger", [edit(now, "Stale plan", stale), edit(own.revision, "Stale plan", stale), edit(now, "Stale plan", stale)]),
+      );
+      assert.equal(b.status, "done", b.error);
+      assert.match(s.prompts()[1]!, /Used undo/);
+      const [fromNote, fromOwn, afterRefusal] = s.edits().slice(1);
+      assert.match(String(fromNote!.refused), /isn't a revision you were given/, JSON.stringify(fromNote));
+      assert.match(String(fromOwn!.refused), /changed after revision/, JSON.stringify(fromOwn));
+      assert.match(String(afterRefusal!.refused), /isn't a revision you were given/, JSON.stringify(afterRefusal));
+    } finally {
+      await s.stop();
+    }
+  },
+);

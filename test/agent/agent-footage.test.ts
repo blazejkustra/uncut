@@ -722,3 +722,20 @@ test(
     assert.ok(results[1]!.isError && /in the project's cache \(\.cache\).*\.cache\/work\/ can be imported/.test(textOf(results[1]!)), textOf(results[1]!));
   },
 );
+
+test("review of C3+C4: imports racing for one name in media/imports never overwrite each other's copy", async () => {
+  const { importablePath } = await import("../../apps/server/src/media/mediaIndex.ts");
+  const project = realpathSync(mkdtempSync(join(tmpdir(), "uncut-import-race-")));
+  try {
+    const sources = Array.from({ length: 8 }, (_, i) => join(project, ".cache", "work", `run-${i}`, "chunk.wav"));
+    sources.forEach((file, i) => {
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, `take ${i}`);
+    });
+    const placed = await Promise.all(sources.map((file) => importablePath(file, project)));
+    assert.equal(new Set(placed.map((p) => p.path)).size, sources.length, JSON.stringify(placed));
+    placed.forEach((p, i) => assert.equal(readFileSync(p.path, "utf8"), `take ${i}`, p.path));
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});

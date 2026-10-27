@@ -40,7 +40,7 @@ import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote } from "../../capture/capture.ts";
 import { type Running, pushEdit } from "../session/types.ts";
-import { noteFor } from "../turns/notes.ts";
+import { noteFor, noteShowsAll } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
@@ -470,8 +470,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           if (!outcome.ok) {
             const now = view();
             const userChanges = now ? noteFor(now, baseRevision) : "";
-            // The refusal gives the revision now and what the user changed since the agent's base: it may edit from there.
-            if (now) r.owner.seen.add(now.session.revision);
+            // The refusal gives the revision now and what the user changed since the agent's base: it
+            // may edit from there when that shows every change (D6: else it reads again).
+            if (now && noteShowsAll(now, baseRevision)) r.owner.seen.add(now.session.revision);
             // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
             const details =
               "details" in outcome.error && Array.isArray(outcome.error.details)

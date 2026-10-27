@@ -294,7 +294,8 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   // just pasted): read like the sanctioned folders, never after the web outside Auto.
   const dataReal = ctx.dataDir ? real(ctx.dataDir, home) : undefined;
   const reference = (r: string) => (webUsed ? undefined : referencePart(r, project, home, dataReal));
-  const given = (r: string) => !webUsed && [...ctx.roots, ...(ctx.access === "auto" ? (ctx.candidates ?? []) : [])].some((d) => inside(r, d));
+  const given = (r: string) =>
+    !webUsed && !(dataReal && inside(r, dataReal)) && [...ctx.roots, ...(ctx.access === "auto" ? (ctx.candidates ?? []) : [])].some((d) => inside(r, d));
   const speechModels = (r: string) => !!dataReal && inside(r, join(dataReal, "models"));
   // Claude Code's own folder (CLAUDE_DIR): only this project's saved tool output is read (claude
   // saves a large result there and tells the agent to read it); the rest is other conversations and
@@ -436,8 +437,9 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const zones = {
       project,
       sanctioned: webUsed ? [] : (ctx.sanctioned ?? []),
-      readable: (r: string) => toolOutput(r) || given(r) || reference(r) === "read",
-      listable: (r: string) => reference(r) === "list",
+      // Claude Code's folder only for this project's saved output, as Read judges it (a pasted folder may hold a linked ~/.claude).
+      readable: (r: string) => toolOutput(r) || (!inClaude(r) && (given(r) || reference(r) === "read")),
+      listable: (r: string) => !inClaude(r) && reference(r) === "list",
       list: ctx.readdir ?? ((dir: string) => readdirSync(dir)),
     };
     const notRead = tool === "Bash" ? nonReads(command, (p, base) => real(p, base), zones) : ["the line"];

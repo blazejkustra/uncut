@@ -14,7 +14,7 @@ import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
 import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
-import { capNote, joinNotes, noteFor } from "../turns/notes.ts";
+import { capNote, joinNotes, noteFor, noteShowsAll } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
 import { findCodex } from "./codex.ts";
 import { shellAuthReady } from "../../app/shellEnv.ts";
@@ -141,8 +141,9 @@ export const makeSend = (ctx: SpawnCtx) => {
       // A /compact goes to Claude Code as it is: the note waits for the next message.
       const changes = compacting ? "" : noteFor(v, owner.agentSeen);
       const note = compacting ? "" : joinNotes(owner.carried, changes);
-      // The note names the revision the project is at now ("now at revision N"): the agent may edit from it.
-      if (changes) owner.seen.add(v.session.revision);
+      // The note names the revision the project is at now ("now at revision N"): the agent may edit
+      // from it when it shows every change (noteShowsAll) and no earlier opening's note comes with it.
+      if (changes && !owner.carried && noteShowsAll(v, owner.agentSeen)) owner.seen.add(v.session.revision);
       const project = v.session.project as Project;
       // What the prompt's @labels point at (D140), only those still in the prompt.
       const pointed = (mentions ?? [])

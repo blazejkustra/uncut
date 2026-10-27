@@ -8,7 +8,7 @@
 // copied into this project's media/imports/ (the other project may be moved or deleted); anything
 // else is referenced where it is.
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { constants, createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 
@@ -81,6 +81,17 @@ const real = async (path: string) => {
   }
 };
 
+/** Copies `file` to `target` unless something is there already (another import got the name first): false then. */
+async function copyNew(file: string, target: string): Promise<boolean> {
+  try {
+    await copyFile(file, target, constants.COPYFILE_EXCL);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+}
+
 /** A file's SHA-256, read as a stream. */
 const fileDigest = (path: string) =>
   new Promise<string>((done, fail) => {
@@ -115,8 +126,8 @@ export async function importablePath(path: string, projectDir: string): Promise<
     const target = join(folder, n === 1 ? `${stem}${ext}` : `${stem} ${n}${ext}`);
     const s = await stat(target).catch(() => undefined);
     if (!s) {
-      await copyFile(file, target);
-      return { path: target, copied: true };
+      if (await copyNew(file, target)) return { path: target, copied: true };
+      continue;
     }
     if (s.size === size && (await same(target))) return { path: target, copied: true };
   }

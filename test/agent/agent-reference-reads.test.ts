@@ -3,7 +3,15 @@
 // speech-model hunt in Application Support (6 refusals), and the command checker's `2>&1`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decide, nonReads, referencePart, shellSegments, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
+import {
+  decide,
+  destructive,
+  nonReads,
+  referencePart,
+  shellSegments,
+  type Access,
+  type PermissionContext,
+} from "../../apps/server/src/agent/agentPermissions.ts";
 
 const HOME = "/Users/me";
 const PROJECT = `${HOME}/Movies/argent-100s.uncut`;
@@ -161,4 +169,26 @@ test("2>&1 stays with its command: the checker splits on & only between commands
   assert.deepEqual(nonReads("cat project.json 2>&1 | head -n 5", real, zones), []);
   assert.deepEqual(nonReads("cat project.json 2>&1 > out.txt", real, zones), ["cat project.json 2>&1 > out.txt"], "a real redirect still is no read");
   assert.deepEqual(nonReads("cat project.json 2>&1x", real, zones), ["cat project.json 2>&1x"]);
+  // Review of C3+C4: with &> no longer splitting the line, the redirect check still sees it (and an fd redirect).
+  assert.match(destructive("cat a &>/Users/x/.zshrc", PROJECT, [], HOME) ?? "", /writes \/Users\/x\/\.zshrc outside the project/);
+  assert.match(destructive("cat a 2>/Users/x/.zshrc", PROJECT, [], HOME) ?? "", /writes \/Users\/x\/\.zshrc outside the project/);
+  assert.equal(destructive("cat a 2>&1 >&2", PROJECT, [], HOME), undefined);
+});
+
+test("review of C3+C4: a pasted folder that holds Claude Code's folder (~/.claude linked into ~/dotfiles) or Uncut's data folder doesn't open them to Bash reads", () => {
+  const dots = `${HOME}/dotfiles`;
+  const realpath = (p: string) => p.replace(`${HOME}/.claude`, `${dots}/claude`).replace(DATA, `${dots}/uncut-data`);
+  const extra = { candidates: [dots], realpath };
+  for (const command of [
+    `cat ${HOME}/.claude/settings.json`,
+    `cat ${HOME}/.claude/projects/-other/a.jsonl`,
+    `cat ${dots}/claude/settings.json`,
+    `cd ${dots}/claude && cat settings.json`,
+  ]) {
+    assert.notEqual(bash(command, "auto", extra).kind, "allow", command);
+  }
+  assert.equal(kind("Read", { file_path: `${HOME}/.claude/settings.json` }, "auto", extra), "deny", "Read was already refused");
+  for (const command of [`cat ${dots}/uncut-data/keys.json`, `cat "${DATA}/keys.json"`]) assert.notEqual(bash(command, "auto", extra).kind, "allow", command);
+  assert.notEqual(kind("Read", { file_path: `${dots}/uncut-data/keys.json` }, "auto", extra), "allow");
+  assert.equal(bash(`cat ${dots}/zshrc`, "auto", extra).kind, "allow", "the rest of the pasted folder still reads");
 });
