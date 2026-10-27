@@ -13,6 +13,7 @@ import { type CheckRule, type Check, checkContext, type CheckFix, type CheckSeve
 import { TEXT_RULES } from "./rules/text.ts";
 import { MOTION_RULES, CANVAS_RULES } from "./rules/motion.ts";
 import { SOUND_RULES } from "./rules/sound.ts";
+import { FRAMING_RULES } from "./rules/framing.ts";
 import type { SoundProfile } from "./soundSheet.ts";
 export { textLabel, readFrames, FILLER_PHRASES, fixDots, fixPeriods, FOOTNOTE_LOOK } from "./context.ts";
 export type { CheckSeverity, CheckFix, Check, CheckContext, Placed, CheckRule } from "./context.ts";
@@ -37,7 +38,7 @@ export {
 } from "./soundSheet.ts";
 export type { SoundProfile, SoundLimits, SfxKind, PlacedSfx, VisualEvent } from "./soundSheet.ts";
 
-export const CHECK_RULES: ReadonlyArray<CheckRule> = [...TEXT_RULES, ...MOTION_RULES, ...SOUND_RULES, ...CANVAS_RULES];
+export const CHECK_RULES: ReadonlyArray<CheckRule> = [...TEXT_RULES, ...MOTION_RULES, ...FRAMING_RULES, ...SOUND_RULES, ...CANVAS_RULES];
 
 /** The rule ids, in the registry's order. */
 export const CHECK_IDS = CHECK_RULES.map((r) => r.id);
