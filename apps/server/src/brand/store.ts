@@ -615,6 +615,7 @@ export function normReview(raw: unknown): Review | undefined {
   const opt = (o: Record<string, unknown>) => ({
     ...(str(o.rule, 60) ? { rule: str(o.rule, 60) } : {}),
     ...(typeof o.to === "number" && Number.isFinite(o.to) ? { to: Math.max(0, o.to) } : {}),
+    ...(o.unresolved === true ? { unresolved: true } : {}),
   });
   const det = r.determinism && typeof r.determinism === "object" ? (r.determinism as Record<string, unknown>) : undefined;
   const looked = r.looked && typeof r.looked === "object" ? (r.looked as Record<string, unknown>) : undefined;

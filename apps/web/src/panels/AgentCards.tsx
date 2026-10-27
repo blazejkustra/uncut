@@ -2,14 +2,14 @@
 // (ask_user), the cards a turn keeps in the conversation where they happened (question and answer,
 // brief, storyboard, review, brand; the latest brief is edited on its card) and the pinned Plan chip
 // that jumps to the latest brief, storyboard and review cards.
-import { type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion, type Review } from "@uncut/contracts";
-import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, Gauge, HelpCircle, Palette, Pencil } from "lucide-react";
+import { type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion } from "@uncut/contracts";
+import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, HelpCircle, Palette, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { actions, useApp } from "../state/store.ts";
 import { type CardLive, BriefForm, BriefBody } from "./agent/brief.tsx";
 import { BeatRow } from "./agent/storyboard.tsx";
-import { ReviewBody } from "./agent/review.tsx";
+import { CriticItem } from "./agent/critic.tsx";
 export { StoryboardApproval } from "./agent/storyboard.tsx";
 export { ScoreBars } from "./agent/review.tsx";
 export type { CardLive } from "./agent/brief.tsx";
@@ -78,21 +78,19 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
   );
 }
 
-/** The review's chip: passed, its blockers, or under the bar. */
-const reviewOutcome = (r: Review) =>
-  r.passed ? "Passed" : r.blockers?.length ? (r.blockers.length === 1 ? "1 blocker" : `${r.blockers.length} blockers`) : "Below 8";
-
 /** The Plan chip's jump: the event a card listens for to open itself. */
 const OPEN_CARD = "uncut-open-card";
 
 /** A card a turn keeps (D186–D189), in the conversation where it happened; `live` on the latest of its type. */
 export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | undefined }) {
-  const [open, setOpen] = useState(card.type === "review" || card.type === "question");
+  if (card.type === "review") return <CriticItem card={card} />;
+  return <PlanCardItem card={card} live={live} />;
+}
+
+function PlanCardItem({ card, live }: { card: AgentCard; live?: CardLive | undefined }) {
+  const [open, setOpen] = useState(card.type === "question");
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const app = useApp();
-  const intended = app.agent?.plan?.intended ?? [];
-  const online = app.connection === "connected";
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -133,16 +131,10 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
         <span className="grow ellipsis">Brief: {brief?.film}</span>
         {brief?.by === "user" && live && <span className="card-outcome approved">Edited by you</span>}
       </>
-    ) : card.type === "storyboard" ? (
+    ) : (
       <>
         <Clapperboard />
         <span className="grow ellipsis">Storyboard, {card.storyboard?.beats.length ?? 0} beats</span>
-      </>
-    ) : (
-      <>
-        <Gauge />
-        <span className="grow">Review, round {card.review?.round}</span>
-        {card.review && <span className={`card-outcome ${card.review.passed ? "approved" : "declined"}`}>{reviewOutcome(card.review)}</span>}
       </>
     );
   return (
@@ -153,7 +145,6 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       data-type={card.type}
       data-outcome={card.outcome}
       data-latest={live ? "true" : undefined}
-      data-passed={card.review ? String(card.review.passed) : undefined}
     >
       <button className="card-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         {head}
@@ -178,13 +169,12 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
           ))}
         </div>
       )}
-      {open && card.review && <ReviewBody review={card.review} intended={intended} online={online} />}
     </div>
   );
 }
 
 /** Jumps to the latest card of a type in the thread: scrolled into view, opened, flashed. Whether there was one. */
-export function jumpToCard(type: "brief" | "storyboard" | "review"): boolean {
+export function jumpToCard(type: "brief" | "storyboard"): boolean {
   const all = document.querySelectorAll<HTMLElement>(`[data-testid="agent-card"][data-type="${type}"]`);
   const el = all[all.length - 1];
   if (!el) return false;
@@ -204,11 +194,10 @@ export function jumpToCard(type: "brief" | "storyboard" | "review"): boolean {
  */
 export function PlanChip({ plan }: { plan: AgentPlan }) {
   const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState<"brief" | "storyboard" | "review" | undefined>();
-  const last = plan.reviews.at(-1);
+  const [shown, setShown] = useState<"brief" | "storyboard" | undefined>();
   const sb = plan.storyboard;
-  if (!plan.brief && !sb && !last) return null;
-  const go = (type: "brief" | "storyboard" | "review") => {
+  if (!plan.brief && !sb) return null;
+  const go = (type: "brief" | "storyboard") => {
     if (jumpToCard(type)) {
       setOpen(false);
       setShown(undefined);
@@ -225,8 +214,7 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
       >
         <ClipboardList />
         Plan
-        {last && state(last.passed ? "passed" : "low", reviewOutcome(last))}
-        {!last && sb && state("approved", "Planned")}
+        {sb && state("approved", "Planned")}
       </button>
       {open && (
         <div className="plan-menu" data-testid="plan-menu">
@@ -243,13 +231,6 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
               {state("approved", "Planned")}
             </button>
           )}
-          {last && (
-            <button className="plan-row" data-testid="plan-review" onClick={() => go("review")}>
-              <Gauge />
-              <span className="grow">Review, round {last.round}</span>
-              {state(last.passed ? "passed" : "low", reviewOutcome(last))}
-            </button>
-          )}
           {shown === "brief" && plan.brief && (
             <div className="plan-body">
               <BriefBody brief={plan.brief} />
@@ -263,11 +244,6 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
                   <BeatRow key={i} beat={b} i={i} edit={false} />
                 ))}
               </div>
-            </div>
-          )}
-          {shown === "review" && last && (
-            <div className="plan-body">
-              <ReviewBody review={last} intended={plan.intended ?? []} online={false} />
             </div>
           )}
         </div>

@@ -67,6 +67,8 @@ export const Review = Schema.Struct({
   // id: the critic's defect id (d1, d2, …: what a fix claim names in the next round, D195).
   // D217: kind (a category or a blocker kind the rubric made a finding), source "check" (Uncut's own),
   // rule (a check's finding family, "sound:density"), to (where a check's range ends, seconds).
+  // unresolved: the same finding came back unchanged after the editor claimed a fix for it; the
+  // user decides it (it no longer opens another round).
   defects: Schema.Array(
     Schema.Struct({
       at: Schema.Number,
@@ -77,6 +79,7 @@ export const Review = Schema.Struct({
       source: Schema.optional(Schema.String),
       rule: Schema.optional(Schema.String),
       to: Schema.optional(Schema.Number),
+      unresolved: Schema.optional(Schema.Boolean),
     }),
   ),
   notes: Schema.optional(Schema.String),
@@ -95,6 +98,7 @@ export const Review = Schema.Struct({
         rule: Schema.optional(Schema.String),
         to: Schema.optional(Schema.Number),
         fix: Schema.optional(Schema.String),
+        unresolved: Schema.optional(Schema.Boolean),
       }),
     ),
   ),
@@ -163,6 +167,19 @@ export type AgentQuestion = typeof AgentQuestion.Type;
 /** The user's answer to a question card. */
 export const AgentAnswer = Schema.Struct({ choices: Schema.Array(Schema.String), text: Schema.optional(Schema.String) });
 export type AgentAnswer = typeof AgentAnswer.Type;
+/**
+ * A critic round as the thread shows it while it runs and after: running (with the live step),
+ * passed, failed (blockers or scores under the bar), unresolved (only findings that came back after
+ * a fix are left: the user decides), or error (the round couldn't run). Times are ISO strings.
+ */
+export const CriticRun = Schema.Struct({
+  round: Schema.Number,
+  status: Schema.Literals(["running", "passed", "failed", "unresolved", "error"]),
+  line: Schema.String,
+  startedAt: Schema.String,
+  endedAt: Schema.optional(Schema.String),
+});
+export type CriticRun = typeof CriticRun.Type;
 /** A card in a turn's history (kept with the turn): a question and its answer, the brief, the storyboard, a review. */
 export const AgentCard = Schema.Struct({
   type: Schema.Literals(["question", "brief", "storyboard", "review", "brand"]),
@@ -173,6 +190,8 @@ export const AgentCard = Schema.Struct({
   brief: Schema.optional(Brief),
   storyboard: Schema.optional(Storyboard),
   review: Schema.optional(Review),
+  // A review card's critic round, live while it runs.
+  critic: Schema.optional(CriticRun),
   // brand: what was written into which kit ("Style guide written into Argent")
   text: Schema.optional(Schema.String),
 });

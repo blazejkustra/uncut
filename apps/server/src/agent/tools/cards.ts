@@ -93,7 +93,8 @@ import { fineJitter } from "../motionJitter.ts";
 export { blurStripLabel } from "../agentCritic.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { measuredMixLines } from "./measure.ts";
-import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
+import { censusNear, legibilityFacts, legibilityFindings, requestedTypePx, textFloorPct, underFloor } from "../agentLegibility.ts";
+import { criticRow } from "./criticRow.ts";
 import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
@@ -427,21 +428,12 @@ export const makeCardTools = (ctx: GenerateCtx) => {
    */
   const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
-      if (!r.looked.sheet || !r.looked.phone) {
-        // Round 4's A1: a refusal says what is missing, what is already done and that nothing counted.
-        const sheet = "contact_sheet with no media argument (the whole edit)";
-        const phone = "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)";
-        const missing = [!r.looked.sheet ? sheet : "", !r.looked.phone ? phone : ""].filter(Boolean).join(" and ");
-        const done = r.looked.sheet ? ` Already done: ${sheet.split(" (")[0]}.` : r.looked.phone ? ` Already done: ${phone.split(" (")[0]}.` : "";
-        return textResult(
-          `Look before you ask for a review: each round starts from the edit as it is now, so first run ${missing}${r.reviewRounds ? ` (not done since round ${r.reviewRounds})` : ""}.${done} Then call review_submit again with the same fixes; this call didn't reach the critic and doesn't count as a round.`,
-          true,
-        );
-      }
       // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while it converges (reviewOutlook says why).
       const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
+      // The last round of an earlier turn: a turn's first round that finds the same again stops there.
+      const earlier = r.owner.plan.reviews.filter((x) => x.turnId !== r.turn.id).at(-1);
       // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
-      const outlook = reviewOutlook(turnReviews(), r.reviewRounds);
+      const outlook = reviewOutlook(turnReviews(), r.reviewRounds, earlier);
       if (!outlook.more)
         return textResult(`No more review rounds in this turn (${outlook.why}): stop fixing and tell the user what the critic still found.`, true);
       const project = v.session.project as Project;
@@ -478,554 +470,569 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           );
         claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what, ...(found.fix ? { fix: found.fix } : {}) });
       }
-      const near = (at: number) => [Math.max(0, Math.round((at - 0.5) * fps)), Math.round((at + 0.5) * fps)] as const;
-      const unseen = claims.filter((c) => {
-        if (c.at === undefined) return false;
-        const [lo, hi] = near(c.at);
-        return !r.rendered.some((x) => x.stamp === stamp && x.frames.some((f) => f >= lo && f <= hi));
-      });
-      if (unseen.length) {
-        return textResult(
-          `Look at each fix before you claim it: render_frames a frame of ${unseen.map((c) => `${c.defect} (at ${c.at} s, frames ${near(c.at!).join(" to ")})`).join(", ")} after your last change, and check the defect is really gone. Frames rendered before the change don't count.`,
-          true,
-        );
-      }
-      // Determinism (D189): each graphic's middle frame in the round's session and once more in a
-      // separate one; the same JPEG twice or it differed.
-      const graphics = project.tracks
-        .filter((t) => !t.hidden)
-        .flatMap((t) => t.items.filter((i) => i.type === "graphic" && typeof i.src === "string"))
-        .slice(0, 4);
-      const twiceOf = graphics.map((g) => ({ name: g.name ?? g.src!.replace(/^graphics\//, ""), frame: (starts.get(g.id) ?? 0) + Math.floor(g.duration / 2) }));
-      const sha = (jpeg: Buffer) => createHash("sha256").update(jpeg).digest("hex");
-      const hashes = (session: FrameSessionShape) =>
-        Effect.forEach(twiceOf, (x) =>
-          session.render([x.frame], 480).pipe(
-            Effect.map((a) => sha(a[0]!.jpeg)),
-            Effect.catch(() => Effect.succeed(undefined)),
-          ),
-        );
-      // The evidence, rendered by Uncut at this revision: a contact sheet, phone-size frames, each claimed fix's moment.
-      const last = duration - 1;
-      const clampF = (f: number) => Math.max(0, Math.min(last, Math.round(f)));
-      const sb = r.owner.plan.storyboard;
-      const phoneFrames = [...new Set([0, clampF(2 * fps), ...(sb?.beats ?? []).map((b) => clampF(b.end * fps - 1)), last])].sort((a, b) => a - b).slice(0, 8);
-      const phoneWidth = Math.max(64, Math.round(project.canvas.width * Math.min(1, PHONE_WIDTH / project.canvas.width)));
-      const fixFrames = claims.flatMap((c) => (c.at === undefined ? [] : [{ defect: c.defect, frame: clampF(c.at * fps) }])).slice(0, 6);
-      const sheetCells = sheetFrames(0, duration, undefined, 16);
-      const brand = yield* Effect.promise(() =>
-        activeBrand(brandDirs(v)).catch(
-          () =>
-            ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as {
-              kit?: BrandKit;
-              files: Record<string, string>;
-              skills: Array<BrandSkill>;
-            },
-        ),
-      );
-      // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
-      // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
-      const hasFootage = project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "clip"));
-      const intent = motionIntent({
-        skills: brand.skills.map((x) => x.id),
-        words: [
-          r.owner.plan.brief?.film,
-          r.owner.plan.brief?.visual,
-          r.owner.plan.brief?.notes,
-          ...(r.owner.plan.brief?.assets ?? []),
-          ...(r.owner.plan.brief?.hardLines ?? []),
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        hasFootage,
-        request: userRequest(
-          r.owner.turns.map((t) => t.prompt),
-          r.turn.prompt,
-        ),
-      });
-      const anchors = motionAnchors(sb?.beats, fps, duration);
-      const strips = stripPlan(anchors, fps, duration);
-      const scanList = scanPlan(anchors, fps, duration);
-      const aspect = project.canvas.width / project.canvas.height;
-      // The project's motion blur on a graphic (its setting, else on as Standard and High export it;
-      // the quality is picked at export time): its fast moves get blurred frames.
-      const blurred =
-        motionBlurDefault(project, "high") && project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && i.motionBlur !== false))
-          ? projectMotionBlur(project)
-          : undefined;
-      // D292: one frame session for the round (one rasteriser, the plan once per width), small
-      // frames captured small; the strips' and the scan's frames rendered once, under a time budget.
-      const rendered = yield* exporter
-        .frameSession(
-          (session) =>
-            Effect.gen(function* () {
-              const mine = yield* hashes(session);
-              const evidence = yield* Effect.gen(function* () {
-                const cells = "refused" in sheetCells ? [0] : [...sheetCells];
-                const list = yield* session.render(cells, CELL_WIDTH, { census: true });
-                const sheet = yield* session.sheet(
-                  list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })),
-                  sheetLayout(list.length, aspect),
-                );
-                const phone = yield* session.render(phoneFrames, phoneWidth);
-                // Each claimed fix's frame measured too: a blocker's hint names what softens the words there
-                // (T4-keynote's Export card, 0.08 s into a swap at the claimed 22.6 s, three rounds).
-                const fixed = fixFrames.length
-                  ? yield* session.render(
-                      fixFrames.map((x) => x.frame),
-                      Math.min(project.canvas.width, 720),
-                      { census: true },
-                    )
-                  : [];
-                const censusOfFrame = (f: (typeof list)[number]) => ({
-                  frame: f.frame,
-                  ...(f.small ? { small: f.small } : {}),
-                  ...(f.measured !== undefined ? { measured: f.measured } : {}),
-                  ...(f.unseen ? { unseen: f.unseen } : {}),
-                  ...(f.soft ? { soft: f.soft } : {}),
-                });
-                return {
-                  ok: true as const,
-                  sheet,
-                  shown: list.map((f) => f.frame),
-                  census: list.map(censusOfFrame),
-                  fixCensus: fixed.map(censusOfFrame),
-                  phone,
-                  fixed,
-                };
-              }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
-              if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
-              const motion = yield* Effect.gen(function* () {
-                const got = yield* Effect.tryPromise({
-                  try: (signal) =>
-                    motionFrames({
-                      strips,
-                      scanList,
-                      anchors,
-                      duration,
-                      render: (frames, until) => Effect.runPromise(session.render(frames, scanRenderWidth(project.canvas), { until }), { signal }),
-                    }),
-                  catch: (e) => e as Error,
-                });
-                const stripImages: Array<CriticImage> = [];
-                for (const st of strips) {
-                  const cells = st.frames.flatMap((f) => (got.byFrame.has(f) ? [{ jpeg: got.byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
-                  if (!cells.length) continue;
-                  const jpeg = yield* session.sheet(cells, stripLayout(cells.length, aspect));
-                  stripImages.push({
-                    label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`,
-                    jpeg,
-                  });
-                }
-                let scan: MotionScan | undefined;
-                let drop: string | undefined;
-                const flat: Array<FlatStrip> = [];
-                const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
-                // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
-                const { w, h } = scanSize(project.canvas);
-                if (ffmpeg && got.scanned.length > 2) {
-                  // Review of 72a73b9: emptiness is judged on larger grey frames (EMPTY_WIDTH) than the differences.
-                  const big = emptySize(project.canvas);
-                  // And how much each frame says (low-information frames) at the strips' own size (wider for a landscape canvas).
-                  const fine = thinSize(project.canvas);
-                  // D306: with each pixel's colour (cuts between footage shots) and the fine grey itself (typing).
-                  const decode = async (jpegs: ReadonlyArray<Buffer>, sig: AbortSignal) => {
-                    const [gs, bs, ts, cs] = await Promise.all([
-                      grayFrames(ffmpeg, jpegs, w, h, sig),
-                      grayFrames(ffmpeg, jpegs, big.w, big.h, sig),
-                      grayFrames(ffmpeg, jpegs, fine.w, fine.h, sig),
-                      chromaFrames(ffmpeg, jpegs, w, h, sig),
-                    ]);
-                    return gs.map((gray, i) => ({
-                      gray,
-                      bare: emptyMeasure(bs[i]!, big.w, big.h),
-                      info: thinMeasure(ts[i]!, fine.w, fine.h),
-                      fine: ts[i]!,
-                      chroma: cs[i]!,
-                    }));
-                  };
-                  const decoded = yield* Effect.tryPromise({
-                    try: (signal) =>
-                      decode(
-                        got.scanned.map((f) => got.byFrame.get(f)!),
-                        AbortSignal.any([signal, r.abort.signal]),
-                      ),
-                    catch: (e) => e as Error,
-                  });
-                  const grays = decoded.map((x) => x.gray);
-                  const sampled: Array<ScanFrame> = got.scanned.map((f, i) => ({ frame: f, ...decoded[i]! }));
-                  // A1: a cut between two sampled frames, narrowed down to the frame it happens on;
-                  // rehearsal 4: and each nearly empty stretch's exact edges, each on its own time budget.
-                  const refined =
-                    scanList.length === duration
-                      ? []
-                      : yield* Effect.tryPromise({
-                          try: async (signal) => {
-                            const sig = AbortSignal.any([signal, r.abort.signal]);
-                            const phase = (ms: number) => {
-                              const deadline = Date.now() + ms;
-                              const until = () => Date.now() > deadline || sig.aborted;
-                              const render = async (frames: ReadonlyArray<number>): Promise<Array<ScanFrame>> => {
-                                const shot = await Effect.runPromise(
-                                  session.render(frames, scanRenderWidth(project.canvas), { until: () => Date.now() > deadline }),
-                                  { signal: sig },
-                                );
-                                const ds = await decode(
-                                  shot.map((x) => x.jpeg),
-                                  sig,
-                                );
-                                return shot.map((x, i) => ({ frame: x.frame, ...ds[i]! }));
-                              };
-                              return { until, render };
-                            };
-                            const jumps = await refineJumps({ frames: sampled, fps, duration, ...phase(REFINE_BUDGET_MS) });
-                            const edges = await refineEmpty({
-                              frames: [...sampled, ...jumps],
-                              fps,
-                              size: { w, h },
-                              duration,
-                              ...phase(REFINE_EMPTY_BUDGET_MS),
-                            });
-                            return [...jumps, ...edges];
-                          },
-                          catch: (e) => e as Error,
-                        }).pipe(Effect.catch(() => Effect.succeed([] as Array<ScanFrame>)));
-                  scan = motionScan([...sampled, ...refined], fps, { size: { w, h }, fine });
-                  // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
-                  const di = dropBeat(sb?.beats);
-                  if (di !== undefined)
-                    drop = dropLine(
-                      got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })),
-                      clampF(sb!.beats[di]!.start * fps),
-                      fps,
-                    );
-                }
-                // Round 2's A1: the fast moves as the export draws them, with its motion blur (the
-                // critic otherwise sees only sharp frames, so ghosting and smeared edges never show).
-                if (scan?.fast.length && blurred) {
-                  for (const run of blurPicks(scan.fast)) {
-                    const shot = yield* session
-                      .render(run.frames, BLUR_CELL, { motionBlur: true })
-                      .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
-                    if (!shot.length) continue;
-                    const jpeg = yield* session
-                      .sheet(
-                        shot.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}   blur` })),
-                        stripLayout(shot.length, aspect, BLUR_CELL),
-                      )
-                      .pipe(Effect.catch(() => Effect.succeed(undefined)));
-                    if (jpeg)
-                      stripImages.push({
-                        label: blurStripLabel(
-                          run,
-                          fps,
-                          blurred,
-                          shot.map((f) => f.frame),
-                          project.motionBlur?.on === true,
-                        ),
-                        jpeg,
-                      });
-                  }
-                }
-                // D296: how much of each strip's frames is flat background (the median of its frames).
-                const stripFrames = [...new Set(strips.flatMap((st) => st.frames.filter((f) => got.byFrame.has(f))))];
-                if (ffmpeg && stripFrames.length) {
-                  const grays = yield* Effect.tryPromise({
-                    try: (signal) =>
-                      grayFrames(
-                        ffmpeg,
-                        stripFrames.map((f) => got.byFrame.get(f)!),
-                        w,
-                        h,
-                        AbortSignal.any([signal, r.abort.signal]),
-                      ),
-                    catch: (e) => e as Error,
-                  });
-                  const share = new Map(stripFrames.map((f, i) => [f, flatFraction(grays[i]!, w, h)]));
-                  const canvas = new Map(stripFrames.map((f, i) => [f, canvasShare(grays[i]!, w, h)]));
-                  for (const st of strips) {
-                    const xs = st.frames.flatMap((f) => (share.has(f) ? [share.get(f)!] : [])).sort((a, b) => a - b);
-                    const cs = st.frames.flatMap((f) => (canvas.has(f) ? [canvas.get(f)!] : [])).sort((a, b) => a.share - b.share);
-                    const mid = cs[cs.length >> 1];
-                    if (xs.length)
-                      flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
-                  }
-                }
-                const jitter = ffmpeg ? yield* fineJitter(session, ffmpeg, anchors, project.canvas, fps, duration, r.abort.signal) : [];
-                return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut, jitter };
-              }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
-              // Round 2's A2: the export's graphics run as the export runs them (every frame in order,
-              // motion blur's sub-frames, the same page), so a graphic that only breaks on a long run
-              // fails the round instead of the export.
-              const rehearsal = yield* session.rehearse(REHEARSE_REVIEW_MS).pipe(Effect.catch(() => Effect.succeed(undefined)));
-              return { mine, evidence, motion, rehearsal };
-            }),
-          { downscale: true },
-        )
-        .pipe(
-          Effect.catch((error) =>
-            Effect.succeed({
-              mine: [] as Array<string | undefined>,
-              evidence: { ok: false as const, message: error.message },
-              motion: { images: [] as Array<CriticImage>, scan: undefined },
-            }),
-          ),
-        );
-      const { evidence, motion } = rendered;
-      const rehearsal = "rehearsal" in rendered ? rendered.rehearsal : undefined;
-      if (!evidence.ok) return textResult(`Couldn't render the frames for the critic: ${evidence.message}`, true);
-      // The second render of each graphic, in a session of its own.
-      const theirs = twiceOf.length
-        ? yield* exporter.frameSession(hashes, { downscale: true }).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>)))
-        : [];
-      const checked: Array<string> = [];
-      const differed: Array<string> = [];
-      twiceOf.forEach((x, i) => {
-        const a = rendered.mine[i];
-        const b = theirs[i];
-        if (a === undefined || b === undefined) return;
-        checked.push(x.name);
-        if (a !== b) differed.push(x.name);
-      });
-      const images: Array<CriticImage> = [
-        {
-          label: `contact sheet of the whole video, ${evidence.shown.length} cells left to right, top to bottom, each captioned with its number, frame and time (frames ${evidence.shown.join(", ")})`,
-          jpeg: evidence.sheet,
-        },
-        ...evidence.phone.map((f) => {
-          // D296: a beat's last frame carries the words the storyboard says that beat shows.
-          const beat = (sb?.beats ?? []).findIndex((b) => clampF(b.end * fps - 1) === f.frame);
-          const words = beat >= 0 ? beatWords(sb!.beats[beat]!) : [];
-          return {
-            label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed${words.length ? `; the last frame of storyboard beat ${beat + 1}, which says it shows ${words.map((w) => `"${w}"`).join(", ")}` : ""}`,
-            jpeg: f.jpeg,
-          };
-        }),
-        ...evidence.fixed.map((f, i) => ({
-          label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s), the moment of claimed fix ${fixFrames[i]!.defect}, rendered after the fix`,
-          jpeg: f.jpeg,
-        })),
-      ];
-      // Uncut's layout checks (D196) and the safe-area ones, as facts.
-      // D207: and the sound rule (density and level fail a round as "sound" blockers; the rest the critic confirms).
-      const keep = new Set(["text-edge", "small-text", "sound"]);
-      // D198: a font that isn't there is a hard finding too (a "font" blocker).
-      const fontCheck = yield* fontsRule(v);
-      // D217: the rubric (the brief's type, the active skills, a kit) sets the sound profile; density
-      // and level fail a round only under the strict one. Findings the user marked Intended stay out.
-      const rubric = yield* rubricOf(v, r);
-      const intended = r.owner.plan.intended ?? [];
-      const checks: Array<CriticFinding> = projectChecks(project, {
-        rules: [...LAYOUT_RULES, fontCheck],
-        disabled: CHECK_IDS.filter((id) => !keep.has(id)),
-        sound: rubric.sound,
-      }).map((c) => ({
-        rule: c.id,
-        key: c.key,
-        message: c.message,
-        ...(c.frame !== undefined ? { frame: c.frame } : {}),
-        ...(c.range ? { range: c.range } : {}),
-        hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)),
-      }));
-      images.push(...motion.images);
-      const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
-      // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
-      const scanMissing = yield* Effect.promise(async () =>
-        (await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH",
-      );
-      // A motion film (one take, or graphics over half the timeline): one still frame over STILL_MAX_S is a finding.
-      const graphicFrames = project.tracks
-        .filter((t) => !t.hidden)
-        .flatMap((t) => t.items)
-        .filter((i) => i.type === "graphic")
-        .reduce((n, i) => n + i.duration, 0);
-      const motionFilm = intent.oneTake || graphicFrames * 2 >= duration;
-      // D306: the timeline's straight cuts between clips are footage cuts; when the user asked for the
-      // footage cut on the beat, only their own one-take words make the other cuts block.
-      const clipCuts = clipCutFrames(project.tracks, starts);
-      const filmSkill = brand.skills.some((x) => x.id === BUILTIN_IDS.film);
-      const motionChecks = [
-        ...(motion.scan
-          ? motionFindings(motion.scan, fps, {
-              ...intent,
-              hard: filmSkill || intent.asked,
-              cutsHard: intent.asked || (filmSkill && !intent.footageCuts),
-              clipCuts,
-              ...(motionFilm ? { still: STILL_MAX_S } : {}),
-            })
-          : []),
-        ...flatFindings(flatStrips, fps, intent.footage),
-        ...("jitter" in motion ? (motion.jitter ?? []) : []),
-      ];
-      checks.push(...motionChecks);
-      // The sheet's words measured (agentLegibility.ts): every small one at once, never a blocker.
-      const census = evidence.census;
-      checks.push(...legibilityFindings(census, fps, project.canvas.height));
-      // The typed prompt (agentTypedPrompt.ts): the user's words when their message asks to show itself typed.
-      const typed = typedPromptCheck(r.owner.turns.map((t) => t.prompt).concat(r.turn.prompt), [
-        ...(yield* Effect.promise(() => readGraphics(v.dir, project).catch(() => new Map<string, string>()))).values(),
-      ]);
-      checks.push(...typed.findings);
-      if (rehearsal?.failure)
-        checks.push({
-          rule: "motion",
-          key: "motion:export",
-          message: rehearsalLine(rehearsal),
-          ...(rehearsal.frame !== undefined ? { frame: rehearsal.frame } : {}),
-          hard: true,
-        });
-      // D292: the time budget left some of the scan's frames out.
-      // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
-      const cut = "planned" in motion && motion.scan && motion.cut ? budgetLine(Math.min(motion.scanned, motion.planned), motion.planned) : undefined;
-      const motionFacts = [
-        ...(motion.scan
-          ? motionLines(motion.scan, fps, {
-              consecutive: scanList.length === duration && !cut,
-              clipCuts,
-              ...(cut && "planned" in motion ? { planned: motion.planned, covered: motion.scanned } : {}),
-            })
-          : [
-              `${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : `No frame-difference scan (${scanMissing}).`} ${UNMEASURED}`,
-            ]),
-        ...flatLines(flatStrips, fps, intent.footage),
-        ...(intent.footageCuts
-          ? [
-              "The user's request asks for the footage cut on the beat: straight cuts between footage shots are what it asks for (check they land on the beat), never a one-take defect.",
-            ]
-          : []),
-        ...("drop" in motion && motion.drop ? [motion.drop] : []),
-        ...beatWordLines(sb?.beats),
-        ...legibilityFacts(census, fps),
-        ...typed.facts,
-        ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
-        // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
-        ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
-      ];
       const round = r.reviewRounds + 1;
-      // The review's number across the project (the card's "round n"); the limit counts this turn's.
+      // The review's number across the project (the row's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
-      const input: CriticInput = {
-        round: number,
-        canvas: project.canvas,
-        frames: duration,
-        brief: r.owner.plan.brief,
-        storyboard: sb,
-        kit: brand.kit ? kitLines(brand.kit, brand.files) : [],
-        previous: prev,
-        claims,
-        checks,
-        determinism: { checked, differed },
-        images,
-        skills: criticSkills(brand.skills).map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })),
-        request: userRequest(
+      const row = criticRow(r, number, () => persist(r.owner), publish);
+      return yield* Effect.gen(function* () {
+        // Determinism (D189): each graphic's middle frame in the round's session and once more in a
+        // separate one; the same JPEG twice or it differed.
+        const graphics = project.tracks
+          .filter((t) => !t.hidden)
+          .flatMap((t) => t.items.filter((i) => i.type === "graphic" && typeof i.src === "string"))
+          .slice(0, 4);
+        const twiceOf = graphics.map((g) => ({
+          name: g.name ?? g.src!.replace(/^graphics\//, ""),
+          frame: (starts.get(g.id) ?? 0) + Math.floor(g.duration / 2),
+        }));
+        const sha = (jpeg: Buffer) => createHash("sha256").update(jpeg).digest("hex");
+        const hashes = (session: FrameSessionShape) =>
+          Effect.forEach(twiceOf, (x) =>
+            session.render([x.frame], 480).pipe(
+              Effect.map((a) => sha(a[0]!.jpeg)),
+              Effect.catch(() => Effect.succeed(undefined)),
+            ),
+          );
+        // The evidence, rendered by Uncut at this revision: a contact sheet, phone-size frames, each claimed fix's moment.
+        const last = duration - 1;
+        const clampF = (f: number) => Math.max(0, Math.min(last, Math.round(f)));
+        const sb = r.owner.plan.storyboard;
+        const phoneFrames = [...new Set([0, clampF(2 * fps), ...(sb?.beats ?? []).map((b) => clampF(b.end * fps - 1)), last])]
+          .sort((a, b) => a - b)
+          .slice(0, 8);
+        const phoneWidth = Math.max(64, Math.round(project.canvas.width * Math.min(1, PHONE_WIDTH / project.canvas.width)));
+        const fixFrames = claims.flatMap((c) => (c.at === undefined ? [] : [{ defect: c.defect, frame: clampF(c.at * fps) }])).slice(0, 6);
+        const sheetCells = sheetFrames(0, duration, undefined, 16);
+        const brand = yield* Effect.promise(() =>
+          activeBrand(brandDirs(v)).catch(
+            () =>
+              ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as {
+                kit?: BrandKit;
+                files: Record<string, string>;
+                skills: Array<BrandSkill>;
+              },
+          ),
+        );
+        // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
+        // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
+        const hasFootage = project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "clip"));
+        const intent = motionIntent({
+          skills: brand.skills.map((x) => x.id),
+          words: [
+            r.owner.plan.brief?.film,
+            r.owner.plan.brief?.visual,
+            r.owner.plan.brief?.notes,
+            ...(r.owner.plan.brief?.assets ?? []),
+            ...(r.owner.plan.brief?.hardLines ?? []),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          hasFootage,
+          request: userRequest(
+            r.owner.turns.map((t) => t.prompt),
+            r.turn.prompt,
+          ),
+        });
+        const anchors = motionAnchors(sb?.beats, fps, duration);
+        const strips = stripPlan(anchors, fps, duration);
+        const scanList = scanPlan(anchors, fps, duration);
+        const aspect = project.canvas.width / project.canvas.height;
+        // The project's motion blur on a graphic (its setting, else on as Standard and High export it;
+        // the quality is picked at export time): its fast moves get blurred frames.
+        const blurred =
+          motionBlurDefault(project, "high") && project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && i.motionBlur !== false))
+            ? projectMotionBlur(project)
+            : undefined;
+        // D292: one frame session for the round (one rasteriser, the plan once per width), small
+        // frames captured small; the strips' and the scan's frames rendered once, under a time budget.
+        row.step("Rendering the contact sheet, phone-size frames and fixed moments");
+        const rendered = yield* exporter
+          .frameSession(
+            (session) =>
+              Effect.gen(function* () {
+                const mine = yield* hashes(session);
+                const evidence = yield* Effect.gen(function* () {
+                  const cells = "refused" in sheetCells ? [0] : [...sheetCells];
+                  const list = yield* session.render(cells, CELL_WIDTH, { census: true });
+                  const sheet = yield* session.sheet(
+                    list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })),
+                    sheetLayout(list.length, aspect),
+                  );
+                  const phone = yield* session.render(phoneFrames, phoneWidth);
+                  // Each claimed fix's frame measured too: a blocker's hint names what softens the words there
+                  // (T4-keynote's Export card, 0.08 s into a swap at the claimed 22.6 s, three rounds).
+                  const fixed = fixFrames.length
+                    ? yield* session.render(
+                        fixFrames.map((x) => x.frame),
+                        Math.min(project.canvas.width, 720),
+                        { census: true },
+                      )
+                    : [];
+                  const censusOfFrame = (f: (typeof list)[number]) => ({
+                    frame: f.frame,
+                    ...(f.small ? { small: f.small } : {}),
+                    ...(f.measured !== undefined ? { measured: f.measured } : {}),
+                    ...(f.unseen ? { unseen: f.unseen } : {}),
+                    ...(f.soft ? { soft: f.soft } : {}),
+                  });
+                  return {
+                    ok: true as const,
+                    sheet,
+                    shown: list.map((f) => f.frame),
+                    census: list.map(censusOfFrame),
+                    fixCensus: fixed.map(censusOfFrame),
+                    phone,
+                    fixed,
+                  };
+                }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
+                if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
+                row.step("Scanning the motion frame by frame");
+                const motion = yield* Effect.gen(function* () {
+                  const got = yield* Effect.tryPromise({
+                    try: (signal) =>
+                      motionFrames({
+                        strips,
+                        scanList,
+                        anchors,
+                        duration,
+                        render: (frames, until) => Effect.runPromise(session.render(frames, scanRenderWidth(project.canvas), { until }), { signal }),
+                      }),
+                    catch: (e) => e as Error,
+                  });
+                  const stripImages: Array<CriticImage> = [];
+                  for (const st of strips) {
+                    const cells = st.frames.flatMap((f) => (got.byFrame.has(f) ? [{ jpeg: got.byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
+                    if (!cells.length) continue;
+                    const jpeg = yield* session.sheet(cells, stripLayout(cells.length, aspect));
+                    stripImages.push({
+                      label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`,
+                      jpeg,
+                    });
+                  }
+                  let scan: MotionScan | undefined;
+                  let drop: string | undefined;
+                  const flat: Array<FlatStrip> = [];
+                  const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
+                  // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
+                  const { w, h } = scanSize(project.canvas);
+                  if (ffmpeg && got.scanned.length > 2) {
+                    // Review of 72a73b9: emptiness is judged on larger grey frames (EMPTY_WIDTH) than the differences.
+                    const big = emptySize(project.canvas);
+                    // And how much each frame says (low-information frames) at the strips' own size (wider for a landscape canvas).
+                    const fine = thinSize(project.canvas);
+                    // D306: with each pixel's colour (cuts between footage shots) and the fine grey itself (typing).
+                    const decode = async (jpegs: ReadonlyArray<Buffer>, sig: AbortSignal) => {
+                      const [gs, bs, ts, cs] = await Promise.all([
+                        grayFrames(ffmpeg, jpegs, w, h, sig),
+                        grayFrames(ffmpeg, jpegs, big.w, big.h, sig),
+                        grayFrames(ffmpeg, jpegs, fine.w, fine.h, sig),
+                        chromaFrames(ffmpeg, jpegs, w, h, sig),
+                      ]);
+                      return gs.map((gray, i) => ({
+                        gray,
+                        bare: emptyMeasure(bs[i]!, big.w, big.h),
+                        info: thinMeasure(ts[i]!, fine.w, fine.h),
+                        fine: ts[i]!,
+                        chroma: cs[i]!,
+                      }));
+                    };
+                    const decoded = yield* Effect.tryPromise({
+                      try: (signal) =>
+                        decode(
+                          got.scanned.map((f) => got.byFrame.get(f)!),
+                          AbortSignal.any([signal, r.abort.signal]),
+                        ),
+                      catch: (e) => e as Error,
+                    });
+                    const grays = decoded.map((x) => x.gray);
+                    const sampled: Array<ScanFrame> = got.scanned.map((f, i) => ({ frame: f, ...decoded[i]! }));
+                    // A1: a cut between two sampled frames, narrowed down to the frame it happens on;
+                    // rehearsal 4: and each nearly empty stretch's exact edges, each on its own time budget.
+                    const refined =
+                      scanList.length === duration
+                        ? []
+                        : yield* Effect.tryPromise({
+                            try: async (signal) => {
+                              const sig = AbortSignal.any([signal, r.abort.signal]);
+                              const phase = (ms: number) => {
+                                const deadline = Date.now() + ms;
+                                const until = () => Date.now() > deadline || sig.aborted;
+                                const render = async (frames: ReadonlyArray<number>): Promise<Array<ScanFrame>> => {
+                                  const shot = await Effect.runPromise(
+                                    session.render(frames, scanRenderWidth(project.canvas), { until: () => Date.now() > deadline }),
+                                    { signal: sig },
+                                  );
+                                  const ds = await decode(
+                                    shot.map((x) => x.jpeg),
+                                    sig,
+                                  );
+                                  return shot.map((x, i) => ({ frame: x.frame, ...ds[i]! }));
+                                };
+                                return { until, render };
+                              };
+                              const jumps = await refineJumps({ frames: sampled, fps, duration, ...phase(REFINE_BUDGET_MS) });
+                              const edges = await refineEmpty({
+                                frames: [...sampled, ...jumps],
+                                fps,
+                                size: { w, h },
+                                duration,
+                                ...phase(REFINE_EMPTY_BUDGET_MS),
+                              });
+                              return [...jumps, ...edges];
+                            },
+                            catch: (e) => e as Error,
+                          }).pipe(Effect.catch(() => Effect.succeed([] as Array<ScanFrame>)));
+                    scan = motionScan([...sampled, ...refined], fps, { size: { w, h }, fine });
+                    // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
+                    const di = dropBeat(sb?.beats);
+                    if (di !== undefined)
+                      drop = dropLine(
+                        got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })),
+                        clampF(sb!.beats[di]!.start * fps),
+                        fps,
+                      );
+                  }
+                  // Round 2's A1: the fast moves as the export draws them, with its motion blur (the
+                  // critic otherwise sees only sharp frames, so ghosting and smeared edges never show).
+                  if (scan?.fast.length && blurred) {
+                    for (const run of blurPicks(scan.fast)) {
+                      const shot = yield* session
+                        .render(run.frames, BLUR_CELL, { motionBlur: true })
+                        .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
+                      if (!shot.length) continue;
+                      const jpeg = yield* session
+                        .sheet(
+                          shot.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}   blur` })),
+                          stripLayout(shot.length, aspect, BLUR_CELL),
+                        )
+                        .pipe(Effect.catch(() => Effect.succeed(undefined)));
+                      if (jpeg)
+                        stripImages.push({
+                          label: blurStripLabel(
+                            run,
+                            fps,
+                            blurred,
+                            shot.map((f) => f.frame),
+                            project.motionBlur?.on === true,
+                          ),
+                          jpeg,
+                        });
+                    }
+                  }
+                  // D296: how much of each strip's frames is flat background (the median of its frames).
+                  const stripFrames = [...new Set(strips.flatMap((st) => st.frames.filter((f) => got.byFrame.has(f))))];
+                  if (ffmpeg && stripFrames.length) {
+                    const grays = yield* Effect.tryPromise({
+                      try: (signal) =>
+                        grayFrames(
+                          ffmpeg,
+                          stripFrames.map((f) => got.byFrame.get(f)!),
+                          w,
+                          h,
+                          AbortSignal.any([signal, r.abort.signal]),
+                        ),
+                      catch: (e) => e as Error,
+                    });
+                    const share = new Map(stripFrames.map((f, i) => [f, flatFraction(grays[i]!, w, h)]));
+                    const canvas = new Map(stripFrames.map((f, i) => [f, canvasShare(grays[i]!, w, h)]));
+                    for (const st of strips) {
+                      const xs = st.frames.flatMap((f) => (share.has(f) ? [share.get(f)!] : [])).sort((a, b) => a - b);
+                      const cs = st.frames.flatMap((f) => (canvas.has(f) ? [canvas.get(f)!] : [])).sort((a, b) => a.share - b.share);
+                      const mid = cs[cs.length >> 1];
+                      if (xs.length)
+                        flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
+                    }
+                  }
+                  const jitter = ffmpeg ? yield* fineJitter(session, ffmpeg, anchors, project.canvas, fps, duration, r.abort.signal) : [];
+                  return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut, jitter };
+                }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
+                // Round 2's A2: the export's graphics run as the export runs them (every frame in order,
+                // motion blur's sub-frames, the same page), so a graphic that only breaks on a long run
+                // fails the round instead of the export.
+                row.step("Rehearsing the export's graphics");
+                const rehearsal = yield* session.rehearse(REHEARSE_REVIEW_MS).pipe(Effect.catch(() => Effect.succeed(undefined)));
+                return { mine, evidence, motion, rehearsal };
+              }),
+            { downscale: true },
+          )
+          .pipe(
+            Effect.catch((error) =>
+              Effect.succeed({
+                mine: [] as Array<string | undefined>,
+                evidence: { ok: false as const, message: error.message },
+                motion: { images: [] as Array<CriticImage>, scan: undefined },
+              }),
+            ),
+          );
+        const { evidence, motion } = rendered;
+        const rehearsal = "rehearsal" in rendered ? rendered.rehearsal : undefined;
+        if (!evidence.ok) {
+          row.fail(`Couldn't render the frames: ${evidence.message}`);
+          return textResult(`Couldn't render the frames for the critic: ${evidence.message}`, true);
+        }
+        row.step("Running Uncut's layout, sound and text checks");
+        // The second render of each graphic, in a session of its own.
+        const theirs = twiceOf.length
+          ? yield* exporter.frameSession(hashes, { downscale: true }).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>)))
+          : [];
+        const checked: Array<string> = [];
+        const differed: Array<string> = [];
+        twiceOf.forEach((x, i) => {
+          const a = rendered.mine[i];
+          const b = theirs[i];
+          if (a === undefined || b === undefined) return;
+          checked.push(x.name);
+          if (a !== b) differed.push(x.name);
+        });
+        const images: Array<CriticImage> = [
+          {
+            label: `contact sheet of the whole video, ${evidence.shown.length} cells left to right, top to bottom, each captioned with its number, frame and time (frames ${evidence.shown.join(", ")})`,
+            jpeg: evidence.sheet,
+          },
+          ...evidence.phone.map((f) => {
+            // D296: a beat's last frame carries the words the storyboard says that beat shows.
+            const beat = (sb?.beats ?? []).findIndex((b) => clampF(b.end * fps - 1) === f.frame);
+            const words = beat >= 0 ? beatWords(sb!.beats[beat]!) : [];
+            return {
+              label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed${words.length ? `; the last frame of storyboard beat ${beat + 1}, which says it shows ${words.map((w) => `"${w}"`).join(", ")}` : ""}`,
+              jpeg: f.jpeg,
+            };
+          }),
+          ...evidence.fixed.map((f, i) => ({
+            label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s), the moment of claimed fix ${fixFrames[i]!.defect}, rendered after the fix`,
+            jpeg: f.jpeg,
+          })),
+        ];
+        // Uncut's layout checks (D196) and the safe-area ones, as facts.
+        // D207: and the sound rule (density and level fail a round as "sound" blockers; the rest the critic confirms).
+        const keep = new Set(["text-edge", "small-text", "sound"]);
+        // D198: a font that isn't there is a hard finding too (a "font" blocker).
+        const fontCheck = yield* fontsRule(v);
+        // D217: the rubric (the brief's type, the active skills, a kit) sets the sound profile; density
+        // and level fail a round only under the strict one. Findings the user marked Intended stay out.
+        const rubric = yield* rubricOf(v, r);
+        const intended = r.owner.plan.intended ?? [];
+        const checks: Array<CriticFinding> = projectChecks(project, {
+          rules: [...LAYOUT_RULES, fontCheck],
+          disabled: CHECK_IDS.filter((id) => !keep.has(id)),
+          sound: rubric.sound,
+        }).map((c) => ({
+          rule: c.id,
+          key: c.key,
+          message: c.message,
+          ...(c.frame !== undefined ? { frame: c.frame } : {}),
+          ...(c.range ? { range: c.range } : {}),
+          hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)),
+        }));
+        images.push(...motion.images);
+        const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
+        // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
+        const scanMissing = yield* Effect.promise(async () =>
+          (await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH",
+        );
+        // A motion film (one take, or graphics over half the timeline): one still frame over STILL_MAX_S is a finding.
+        const graphicFrames = project.tracks
+          .filter((t) => !t.hidden)
+          .flatMap((t) => t.items)
+          .filter((i) => i.type === "graphic")
+          .reduce((n, i) => n + i.duration, 0);
+        const motionFilm = intent.oneTake || graphicFrames * 2 >= duration;
+        // D306: the timeline's straight cuts between clips are footage cuts; when the user asked for the
+        // footage cut on the beat, only their own one-take words make the other cuts block.
+        const clipCuts = clipCutFrames(project.tracks, starts);
+        const filmSkill = brand.skills.some((x) => x.id === BUILTIN_IDS.film);
+        const motionChecks = [
+          ...(motion.scan
+            ? motionFindings(motion.scan, fps, {
+                ...intent,
+                hard: filmSkill || intent.asked,
+                cutsHard: intent.asked || (filmSkill && !intent.footageCuts),
+                clipCuts,
+                ...(motionFilm ? { still: STILL_MAX_S } : {}),
+              })
+            : []),
+          ...flatFindings(flatStrips, fps, intent.footage),
+          ...("jitter" in motion ? (motion.jitter ?? []) : []),
+        ];
+        checks.push(...motionChecks);
+        // The sheet's words measured (agentLegibility.ts): every small one at once, never a blocker; under
+        // the size the user's own words set when that's smaller than Uncut's floor.
+        const request = userRequest(
           r.owner.turns.map((t) => t.prompt),
           r.turn.prompt,
-        ),
-        sound: [...soundSheet(project, { sound: rubric.sound }), ...(yield* measuredMixLines(exporter, project))],
-        rubric,
-        intended,
-        motion: { lines: motionFacts, strips: motion.images.length },
-      };
-      const bin = yield* Effect.promise(() => findClaude());
-      if (!bin)
-        return textResult(
-          "Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.",
-          true,
         );
-      const answer = yield* Effect.tryPromise({
-        try: (signal) =>
-          runCritic({
-            bin,
-            env: sessionEnv(process.env),
-            model: r.session.model,
-            message: criticMessage(input),
-            signal: AbortSignal.any([signal, r.abort.signal]),
-          }),
-        catch: (e) => e as Error,
-      }).pipe(
-        Effect.map((text) => parseCritic(text, scoredOf(rubric))),
-        Effect.catch((e) => Effect.succeed({ problem: e.message })),
-      );
-      if ("problem" in answer)
-        return textResult(
-          `Uncut's critic couldn't review it: ${answer.problem}. This round doesn't count and nothing passed; try review_submit once more, else tell the user the review couldn't run.`,
-          true,
-        );
-      const review = criticReview(answer, {
-        round: number,
-        claims,
-        checks,
-        determinism: { checked, differed },
-        looked: { ...r.looked },
-        revision: v.session.revision,
-        turnId: r.turn.id,
-        fps,
-        rubric,
-        intended,
-      });
-      yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
-      r.reviewRounds = round;
-      r.looked = { sheet: false, phone: false };
-      r.reviewedStamp = review.passed ? undefined : stamp;
-      yield* refreshPlan(r, v);
-      addCard(r, { type: "review", review }, `Review round ${round}`);
-      return textResult({
-        round: number,
-        passed: review.passed,
-        by: "Uncut's critic (a separate Claude that sees only the frames, the brief, the kit and the storyboard)",
-        ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
-        scores: review.scores,
-        ...(review.rubric ? { rubric: review.rubric, sound: soundProfileText(rubric.sound) } : {}),
-        ...(review.intended ? { intended: `${review.intended} finding${review.intended === 1 ? "" : "s"} the user marked Intended left out` } : {}),
-        blockers: review.blockers,
-        defects: review.defects,
-        ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: {
-          strips: motion.images.length,
-          ...(cut ? { scanCut: cut } : {}),
-          ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}),
+        const typePx = requestedTypePx(request);
+        const floor = textFloorPct(project.canvas.height, typePx);
+        const census = underFloor(evidence.census, floor);
+        checks.push(...legibilityFindings(census, fps, project.canvas.height, floor));
+        // The typed prompt (agentTypedPrompt.ts): the user's words when their message asks to show itself typed.
+        const typed = typedPromptCheck(r.owner.turns.map((t) => t.prompt).concat(r.turn.prompt), [
+          ...(yield* Effect.promise(() => readGraphics(v.dir, project).catch(() => new Map<string, string>()))).values(),
+        ]);
+        checks.push(...typed.findings);
+        if (rehearsal?.failure)
+          checks.push({
+            rule: "motion",
+            key: "motion:export",
+            message: rehearsalLine(rehearsal),
+            ...(rehearsal.frame !== undefined ? { frame: rehearsal.frame } : {}),
+            hard: true,
+          });
+        // D292: the time budget left some of the scan's frames out.
+        // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
+        const cut = "planned" in motion && motion.scan && motion.cut ? budgetLine(Math.min(motion.scanned, motion.planned), motion.planned) : undefined;
+        const motionFacts = [
           ...(motion.scan
-            ? {
-                scanned: motion.scan.frames,
-                pops: motion.scan.pops.map((p) => p.frame),
-                ...(intent.oneTake
-                  ? {
-                      jumps: motion.scan.jumps.filter((j) => !footageJump(j, clipCuts)).map((j) => j.frame),
-                      footageCuts: motion.scan.jumps.filter((j) => footageJump(j, clipCuts)).map((j) => j.frame),
-                      holds: motion.scan.holds,
-                      empty: emptyRuns(motion.scan, fps),
-                      thin: thinRuns(motion.scan, fps),
-                    }
-                  : {}),
-                ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}),
-              }
-            : {}),
-          found: motionChecks.map((c) => c.message),
-          facts: motionFacts,
-        },
-        determinism: checked.length
-          ? differed.length
-            ? `differed: ${differed.join(", ")}`
-            : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`
-          : "no graphics to check",
-        next: reviewNext(
-          review,
-          round,
-          reviewOutlook(turnReviews(), r.reviewRounds),
-          (at) => {
-            // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
-            const f = clampF(at * fps);
-            const g = project.tracks
-              .filter((t) => !t.hidden)
-              .flatMap((t) => t.items)
-              .find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
-            const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
-            const measured = censusNear([...evidence.fixCensus, ...census], at, fps);
-            return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}${measured ? `; ${measured}` : ""}`;
+            ? motionLines(motion.scan, fps, {
+                consecutive: scanList.length === duration && !cut,
+                clipCuts,
+                loop: intent.loop,
+                ...(cut && "planned" in motion ? { planned: motion.planned, covered: motion.scanned } : {}),
+              })
+            : [
+                `${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : `No frame-difference scan (${scanMissing}).`} ${UNMEASURED}`,
+              ]),
+          ...flatLines(flatStrips, fps, intent.footage),
+          ...(intent.footageCuts
+            ? [
+                "The user's request asks for the footage cut on the beat: straight cuts between footage shots are what it asks for (check they land on the beat), never a one-take defect.",
+              ]
+            : []),
+          ...("drop" in motion && motion.drop ? [motion.drop] : []),
+          ...beatWordLines(sb?.beats),
+          ...legibilityFacts(census, fps, floor),
+          ...typed.facts,
+          ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
+          // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
+          ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
+        ];
+        const input: CriticInput = {
+          round: number,
+          canvas: project.canvas,
+          frames: duration,
+          brief: r.owner.plan.brief,
+          storyboard: sb,
+          kit: brand.kit ? kitLines(brand.kit, brand.files) : [],
+          previous: prev,
+          claims,
+          checks,
+          determinism: { checked, differed },
+          images,
+          skills: criticSkills(brand.skills).map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })),
+          request,
+          typePx,
+          sound: [...soundSheet(project, { sound: rubric.sound }), ...(yield* measuredMixLines(exporter, project))],
+          rubric,
+          intended,
+          motion: { lines: motionFacts, strips: motion.images.length },
+        };
+        const bin = yield* Effect.promise(() => findClaude());
+        if (!bin) {
+          row.fail("Claude Code isn't installed.");
+          return textResult(
+            "Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.",
+            true,
+          );
+        }
+        row.step(`Looking at ${images.length} images of the edit as it is now`);
+        const answer = yield* Effect.tryPromise({
+          try: (signal) =>
+            runCritic({
+              bin,
+              env: sessionEnv(process.env),
+              model: r.session.model,
+              message: criticMessage(input),
+              signal: AbortSignal.any([signal, r.abort.signal]),
+            }),
+          catch: (e) => e as Error,
+        }).pipe(
+          Effect.map((text) => parseCritic(text, scoredOf(rubric))),
+          Effect.catch((e) => Effect.succeed({ problem: e.message })),
+        );
+        if ("problem" in answer) {
+          row.fail(`Couldn't review it: ${answer.problem}`);
+          return textResult(
+            `Uncut's critic couldn't review it: ${answer.problem}. This round doesn't count and nothing passed; try review_submit once more, else tell the user the review couldn't run.`,
+            true,
+          );
+        }
+        const review = criticReview(answer, {
+          round: number,
+          claims,
+          checks,
+          determinism: { checked, differed },
+          looked: { ...r.looked },
+          revision: v.session.revision,
+          turnId: r.turn.id,
+          fps,
+          rubric,
+          intended,
+          previous: prev,
+        });
+        yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
+        r.reviewRounds = round;
+        r.looked = { sheet: false, phone: false };
+        r.reviewedStamp = review.passed ? undefined : stamp;
+        yield* refreshPlan(r, v);
+        row.done(review);
+        return textResult({
+          round: number,
+          passed: review.passed,
+          by: "Uncut's critic (a separate Claude that sees only the frames, the brief, the kit and the storyboard)",
+          ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
+          scores: review.scores,
+          ...(review.rubric ? { rubric: review.rubric, sound: soundProfileText(rubric.sound) } : {}),
+          ...(review.intended ? { intended: `${review.intended} finding${review.intended === 1 ? "" : "s"} the user marked Intended left out` } : {}),
+          blockers: review.blockers,
+          defects: review.defects,
+          ...(review.fixes ? { fixes: review.fixes } : {}),
+          motion: {
+            strips: motion.images.length,
+            ...(cut ? { scanCut: cut } : {}),
+            ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}),
+            ...(motion.scan
+              ? {
+                  scanned: motion.scan.frames,
+                  pops: motion.scan.pops.map((p) => p.frame),
+                  ...(intent.oneTake
+                    ? {
+                        jumps: motion.scan.jumps.filter((j) => !footageJump(j, clipCuts)).map((j) => j.frame),
+                        footageCuts: motion.scan.jumps.filter((j) => footageJump(j, clipCuts)).map((j) => j.frame),
+                        holds: motion.scan.holds,
+                        empty: emptyRuns(motion.scan, fps),
+                        thin: thinRuns(motion.scan, fps),
+                      }
+                    : {}),
+                  ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}),
+                }
+              : {}),
+            found: motionChecks.map((c) => c.message),
+            facts: motionFacts,
           },
-          { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) },
-        ),
-      });
+          determinism: checked.length
+            ? differed.length
+              ? `differed: ${differed.join(", ")}`
+              : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`
+            : "no graphics to check",
+          next: reviewNext(
+            review,
+            round,
+            reviewOutlook(turnReviews(), r.reviewRounds, earlier),
+            (at) => {
+              // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
+              const f = clampF(at * fps);
+              const g = project.tracks
+                .filter((t) => !t.hidden)
+                .flatMap((t) => t.items)
+                .find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
+              const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
+              const measured = censusNear([...evidence.fixCensus, ...census], at, fps);
+              return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}${measured ? `; ${measured}` : ""}`;
+            },
+            { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) },
+          ),
+        });
+      }).pipe(Effect.ensuring(Effect.sync(row.settle)));
     });
 
   /** D198: the fonts rule for the open project (the fonts its graphics' own HTML names, the kit's and the installed ones). */

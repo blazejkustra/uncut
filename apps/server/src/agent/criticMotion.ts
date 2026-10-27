@@ -1124,7 +1124,13 @@ export const budgetLine = (covered: number, planned: number) =>
 export function motionLines(
   scan: MotionScan,
   fps: number,
-  scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number; readonly clipCuts?: ReadonlyArray<number> },
+  scanned: {
+    readonly consecutive: boolean;
+    readonly planned?: number;
+    readonly covered?: number;
+    readonly clipCuts?: ReadonlyArray<number>;
+    readonly loop?: boolean;
+  },
 ): Array<string> {
   const covered = scanned.covered ?? scan.frames;
   const lines = [
@@ -1176,7 +1182,7 @@ export function motionLines(
     lines.push(
       `The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${scan.open.typing !== undefined ? `; typing shows from f ${scan.open.typing} (${secs(scan.open.typing, fps)})` : ""}${openLate(scan, fps) ? ", a static open" : ""}.`,
     );
-  if (scan.seam)
+  if (scanned.loop && scan.seam)
     lines.push(
       `Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`,
     );
@@ -1341,6 +1347,22 @@ export function asksFootageCuts(text: string): boolean {
 }
 
 /**
+ * Phrases in the user's own words that make the film a loop: "seamless loop", "loops forever",
+ * "a looping video", "make it loop", "last frame = first". A loop the film shows or mentions
+ * ("the loop diagram", "the feedback loop", "in the loop") isn't one.
+ */
+const LOOP_ASK =
+  /\bseamless(?:ly)? (?:loop|looping|loops|repeat)s?\b|\bloops? (?:seamlessly|forever|endlessly|back|perfectly|smoothly)\b|\b(?:looping|loopable|looped|infinite|endless) (?:video|gif|animation|clip|film|background|bg|reel|sequence)\b|\b(?:make|let|have) (?:it|the (?:film|video|animation)) loop\b|\b(?:it|the (?:film|video|animation)) (?:should|must|needs to|has to|will) loop\b|\b(?:as|into) a (?:seamless |perfect )?loop\b|\blast frame (?:is|=|equals|matches) (?:the )?first\b/i;
+
+/** Whether the user's own words ask for a film that loops (LOOP_ASK, not negated in its clause). */
+export function asksLoop(text: string): boolean {
+  return clauses(text).some((clause) => {
+    const m = LOOP_ASK.exec(clause);
+    return !!m && !NEGATED.test(clause.slice(0, m.index));
+  });
+}
+
+/**
  * What the film is (the brief's words, the active skills) and what the user asked for in their own
  * words (`request`): `asked` when the request itself asks for one take. A1-noskill3 asked for "one
  * take on the beat" with the motion-film skill off, and its four hard cuts were findings only: the
@@ -1359,7 +1381,8 @@ export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readon
     asked,
     footageCuts: asksFootageCuts(o.request ?? ""),
     oneTake: film || asked || asksOneTake(o.words),
-    loop: /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
+    // The loop seam only matters when the user asked for a loop (argent-e2e: "the loop diagram's style" in the brief).
+    loop: asksLoop(o.request ?? ""),
     // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
     // calm canvas around one UI element by design, so its words naming the app's UI keep it UI first.
     footage: !!o.hasFootage || (/\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words) && !UI_WORDS.test(o.words)),

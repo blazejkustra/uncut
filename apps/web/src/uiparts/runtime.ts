@@ -404,6 +404,8 @@ function setLead(el: Element | null, text: string) {
 function blankReview(card: Element) {
   card.removeAttribute("data-passed");
   setText(card.querySelector(".card-head .grow"), "Review");
+  setText(card.querySelector(".critic-name"), "Critic");
+  for (const el of card.querySelectorAll(".critic-line, .critic-time")) el.remove();
   const out = card.querySelector(".card-outcome");
   if (out) {
     out.className = "card-outcome";

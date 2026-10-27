@@ -222,7 +222,8 @@ test("review rounds: past 3 only while the blockers go down or change, never pas
   const b = (n: number, passed = false) => ({ passed, blockers: Array.from({ length: n }, () => ({})) });
   assert.equal(REVIEW_ROUNDS, 3);
   assert.equal(REVIEW_ROUNDS_MAX, 6);
-  assert.equal(mayReviewAgain([b(5), b(5)]), true, "under 3: always");
+  assert.equal(mayReviewAgain([b(5), b(4)]), true, "under 3 and changing: open");
+  assert.equal(mayReviewAgain([b(5), b(5)]), false, "the same blockers again stop it at any round (argent-100s)");
   assert.equal(mayReviewAgain([b(5), b(4), b(2)]), true, "shrinking");
   assert.equal(mayReviewAgain([b(5), b(4), b(4)]), false, "stalled");
   assert.equal(mayReviewAgain([b(5), b(2), b(3)]), false, "grew");

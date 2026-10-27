@@ -120,7 +120,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
             {newChat}
             {compact}
             <span className="spacer" />
-            {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && <PlanChip plan={agent.plan} />}
+            {agent?.plan && (agent.plan.brief || agent.plan.storyboard) && <PlanChip plan={agent.plan} />}
           </div>
         )}
         <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>

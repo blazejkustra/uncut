@@ -96,6 +96,7 @@ export {
   AgentQuestion,
   AgentAnswer,
   AgentCard,
+  CriticRun,
   AGENT_BRIDGE_PATH,
   AGENT_TOKEN_HEADER,
   AgentItem,

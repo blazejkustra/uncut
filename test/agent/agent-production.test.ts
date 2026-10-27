@@ -184,7 +184,9 @@ test("the tools, labels, Look only set and the prompt's production process", () 
     /never invent a logo/i,
     /hard lines/,
     /You don't score your own work/,
-    /Up to 6 rounds: the first 3 always; past 3 another only while it converges[\s\S]*there is no 3-round limit/,
+    /back unchanged after you claimed its fix is unresolved: don't try it again, ask the user/,
+    /The user's own numbers \(a text size, a timing\) win/,
+    /Up to 6 rounds[\s\S]*there is no 3-round limit/,
     /reference_frames/,
     /spring/,
   ])
@@ -497,14 +499,13 @@ test(
               ],
             },
           },
-          { tool: "review_submit", args: { scores: tenOutOfTen } },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-          // 6: round 1, with the builder's own perfect scores.
+          // 5: round 1, with the builder's own perfect scores.
           { tool: "review_submit", args: { scores: tenOutOfTen, defects: [] } },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0], phone: true } },
-          // 9: nothing changed since round 1.
+          // 8: nothing changed since round 1.
           { tool: "review_submit", args: {} },
           { tool: "project_read" },
           {
@@ -515,20 +516,10 @@ test(
               ops: [{ op: "update_item", item: "title-1", set: { transform: { x: 460, y: 400, w: 1000 } } }],
             },
           },
-          // 12: a fix claimed with frames from before the edit.
-          {
-            tool: "review_submit",
-            args: {
-              fixes: [
-                { defect: "d2", what: "centred the title" },
-                { defect: "d1", what: "put the recording in the phone" },
-              ],
-            },
-          },
-          // 13: an id that isn't in the last review.
+          // 11: an id that isn't in the last review.
           { tool: "review_submit", args: { fixes: [{ defect: "d9", what: "something" }] } },
           { tool: "render_frames", args: { frames: [0, 20], phone: true } },
-          // 15: round 2.
+          // 13: round 2 (Uncut renders each claimed fix's moment itself).
           {
             tool: "review_submit",
             args: {
@@ -545,15 +536,14 @@ test(
           },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-          // 20: round 3.
+          // 18: no round 3: d1 came back after its fix, so the user decides it.
           { tool: "review_submit", args: { fixes: [{ defect: "d1", what: "the recording plays in the phone" }] } },
         ],
         { access: "auto" },
       );
       assert.equal(t.status, "done", t.error);
       const r = s.results().slice(2);
-      assert.match(textOf(r[3]!.result), /Look before you ask for a review/);
-      const round1 = jsonOf(r[6]!.result);
+      const round1 = jsonOf(r[5]!.result);
       assert.equal(round1.round, 1);
       assert.equal(round1.passed, false, "the builder's own 10s don't pass it");
       assert.match(round1.yourScores, /ignored/);
@@ -571,13 +561,9 @@ test(
       assert.equal(round1.defects[0].id, "d3");
       assert.match(round1.next, /Blockers \(any one fails the round\): d1 placeholder/);
       assert.equal(round1.determinism, "1 graphic drew the same twice");
-      assert.match(textOf(r[9]!.result), /Nothing changed since round 1/);
-      assert.match(
-        textOf(r[12]!.result),
-        /Look at each fix before you claim it: render_frames a frame of d2 \(at 0 s, frames 0 to 15\), d1 \(at 0.5 s, frames 0 to 30\)/,
-      );
-      assert.match(textOf(r[13]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
-      const round2 = jsonOf(r[15]!.result);
+      assert.match(textOf(r[8]!.result), /Nothing changed since round 1/);
+      assert.match(textOf(r[11]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
+      const round2 = jsonOf(r[13]!.result);
       assert.equal(round2.passed, false, "a fix the critic didn't see fails the round");
       assert.deepEqual(
         round2.fixes.map((f: any) => [f.defect, f.verified]),
@@ -587,13 +573,15 @@ test(
         ],
       );
       assert.deepEqual(
-        round2.blockers.map((b: any) => [b.id, b.kind]),
-        [["d1", "unverified-fix"]],
+        round2.blockers.map((b: any) => [b.id, b.kind, b.unresolved]),
+        [["d1", "unverified-fix", true]],
       );
       assert.match(round2.blockers[0].what, /the phone is still empty/);
-      const round3 = jsonOf(r[20]!.result);
-      assert.equal(round3.passed, true, round3.next);
-      assert.match(round3.next, /critic passed it/);
+      assert.match(
+        round2.next,
+        /the last one \(round 2 of at most 6: every blocker left came back unchanged after a fix \(d1\), so the user decides them[\s\S]*Unresolved[\s\S]*ask_user/,
+      );
+      assert.match(textOf(r[18]!.result), /No more review rounds in this turn \(round 2 of at most 6: every blocker left came back unchanged/);
       // Saved by the critic.
       const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
       assert.equal(saved.by, "critic");
@@ -602,7 +590,7 @@ test(
       assert.deepEqual(saved.determinism, { checked: ["box.html"], differed: [] });
       // The critic: a separate claude with no tools, no MCP server, no session, none of the builder's conversation.
       const runs = s.criticRuns();
-      assert.equal(runs.length, 3);
+      assert.equal(runs.length, 2);
       const builder = s.prompts().at(-1)!;
       for (const run of runs) {
         assert.equal(run.resume, null);
@@ -632,14 +620,23 @@ test(
       const kinds = t.items.flatMap((i: any, at: number) => (i.kind === "card" ? [[i.card.type, at]] : []));
       assert.deepEqual(
         kinds.map((k: any) => k[0]),
-        ["brief", "storyboard", "review", "review", "review"],
+        ["brief", "storyboard", "review", "review"],
       );
       const stepAt = (n: number) => t.items.findIndex((i: any) => i.kind === "step" && i.tool === "review_submit" && --n === 0);
-      assert.ok(kinds[2][1] > stepAt(2) && kinds[3][1] > stepAt(8) && kinds[4][1] > stepAt(9), "each review card right after its call");
+      assert.ok(kinds[2][1] > stepAt(1) && kinds[3][1] > stepAt(4), "each critic row right after its call");
       assert.ok(kinds[0][1] < kinds[1][1] && kinds[1][1] < kinds[2][1]);
+      const rows = t.items.filter((i: any) => i.kind === "card" && i.card.type === "review").map((i: any) => i.card.critic);
+      assert.deepEqual(
+        rows.map((c: any) => [c.round, c.status]),
+        [
+          [1, "failed"],
+          [2, "unresolved"],
+        ],
+      );
+      assert.ok(rows.every((c: any) => Date.parse(c.endedAt) >= Date.parse(c.startedAt)));
       assert.deepEqual(
         s.latest().plan.reviews.map((x: any) => x.passed),
-        [false, false, true],
+        [false, false],
       );
       // Kept with the history after a close and reopen.
       await s.client.ok("project.close", {});
@@ -651,7 +648,7 @@ test(
       const kept = back.items.filter((i: any) => i.kind === "card" && i.card.type === "review");
       assert.equal(kept[0].card.review.blockers[0].kind, "placeholder");
       assert.equal(kept[1].card.review.fixes[1].verified, false);
-      assert.equal(reopened.plan.reviews.length, 3);
+      assert.equal(reopened.plan.reviews.length, 2);
     } finally {
       await s.stop();
     }

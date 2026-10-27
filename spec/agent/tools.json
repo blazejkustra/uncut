@@ -1162,7 +1162,7 @@
     },
     {
       "name": "review_submit",
-      "description": "Ask Uncut's critic for a review round of the built video: a separate Claude that sees only frames Uncut renders now, the brief, the brand kit, the storyboard and a rubric for the brief's type and the active skills; it scores what applies and lists blockers (any one fails the round); docs_read production has the rest. Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
+      "description": "Ask Uncut's critic for a review round of the built video: a separate Claude that sees only frames Uncut renders now, the brief, the brand kit, the storyboard and a rubric for the brief's type and the active skills; it scores what applies and lists blockers (any one fails the round); docs_read production has the rest. Uncut renders the contact sheet, phone-size frames and each claimed fix's moment itself. From round 2, claim each fix by the last review's id (look at the moment with render_frames first); the critic checks it on fresh frames, and a finding back unchanged after a claimed fix is unresolved: ask the user about it. You don't score it yourself.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
