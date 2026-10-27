@@ -28,17 +28,18 @@ test("the focused window opens it when it shows no project; otherwise a new wind
   assert.deepEqual(routeProject([], undefined, "/a/B.uncut"), { kind: "new" });
 });
 
-test("a window on a remote environment never takes a path of this Mac", () => {
-  const remote = win(1, { local: false, projectDir: "/a/A.uncut" });
-  assert.deepEqual(routeProject([remote], 1, "/a/A.uncut"), { kind: "new" }, "the same path on the remote is another project");
+test("a window on a remote environment never takes a path of this Mac, but its local server's project still counts", () => {
   assert.deepEqual(routeProject([win(1, { local: false })], 1, "/a/B.uncut"), { kind: "new" });
+  // Switched to a remote with A open on its local server: A is still open there.
+  const switched = win(1, { local: false, projectDir: "/a/A.uncut" });
+  assert.deepEqual(routeProject([switched, win(2)], 2, "/a/A.uncut"), { kind: "focus", id: 1 });
 });
 
 test("the page's own open looks only at the other windows", () => {
   const windows = [win(1, { projectDir: "/a/A.uncut" }), win(2), win(3, { local: false, projectDir: "/a/B.uncut" })];
   assert.equal(windowWithProject(windows, 2, "/a/A.uncut")?.id, 1);
   assert.equal(windowWithProject(windows, 1, "/a/A.uncut"), undefined);
-  assert.equal(windowWithProject(windows, 2, "/a/B.uncut"), undefined);
+  assert.equal(windowWithProject(windows, 2, "/a/B.uncut")?.id, 3, "a window showing a remote whose local server has it");
 });
 
 test("new windows cascade off the ones already there", () => {

@@ -146,8 +146,11 @@ const realDir = (dir: string) => {
 
 const NO_PROJECT_STATE: AppState = { projectOpen: false, recents: [], environments: false };
 
+/** How long a project handed to a page counts as opening there without the page saying so (an open that failed). */
+const OPENING_MS = 60_000;
+const openingDir = (w: AppWindow) => (w.opening && Date.now() - w.opening.at < OPENING_MS ? w.opening.dir : undefined);
 const routed = (): Array<RoutedWindow> =>
-  windows.map((w) => ({ id: w.window.id, local: environmentOf(w).kind === "local", projectDir: w.projectDir, pendingOpen: w.pendingOpen }));
+  windows.map((w) => ({ id: w.window.id, local: environmentOf(w).kind === "local", projectDir: w.projectDir, pendingOpen: w.pendingOpen ?? openingDir(w) }));
 const byId = (id: number) => windows.find((w) => w.window.id === id);
 
 /** The menu shows the focused window's state; its commands go there. */
@@ -176,8 +179,11 @@ function openProject(rawDir: string) {
   const entry = byId(route.id)!;
   if (route.kind === "open") {
     // A page that hasn't asked yet ignores commands: it takes the project when it asks.
-    if (entry.askedOpen) entry.window.webContents.send(MENU_COMMAND_CHANNEL, { type: "open-recent", dir } satisfies MenuCommand);
-    else entry.pendingOpen = dir;
+    if (!entry.askedOpen) entry.pendingOpen = dir;
+    else {
+      entry.opening = { dir, at: Date.now() };
+      entry.window.webContents.send(MENU_COMMAND_CHANNEL, { type: "open-recent", dir } satisfies MenuCommand);
+    }
   }
   showWindow(entry);
 }
@@ -216,6 +222,7 @@ const openFile = installOpenFile({
     if (environmentOf(entry).kind !== "local") return null;
     const dir = entry.pendingOpen;
     entry.pendingOpen = undefined;
+    if (dir) entry.opening = { dir, at: Date.now() };
     return dir ?? null;
   },
 });
@@ -367,12 +374,14 @@ app.whenReady().then(() => {
     entry.pendingDisplaySource = { id, systemAudio };
   });
   handle(SYSTEM_AUDIO_CHANNEL, () => systemAudioSupport(process.platform, process.getSystemVersion(), process.env));
-  // Several projects at once: opening a project another window has brings that window forward instead.
-  handle(PROJECT_WINDOW_CHANNEL, (entry, dir: unknown) => {
+  // Several projects at once: opening a project another window has brings that window forward
+  // instead; so does one the server refused as open in another window's server (holderPid).
+  handle(PROJECT_WINDOW_CHANNEL, (entry, dir: unknown, holderPid: unknown) => {
     if (typeof dir !== "string" || !path.isAbsolute(dir) || environmentOf(entry).kind !== "local") return false;
-    const other = windowWithProject(routed(), entry.window.id, realDir(dir));
+    const holder = typeof holderPid === "number" ? windows.find((w) => w !== entry && w.server?.pid === holderPid) : undefined;
+    const other = holder ?? byId(windowWithProject(routed(), entry.window.id, realDir(dir))?.id ?? -1);
     if (!other) return false;
-    showWindow(byId(other.id)!);
+    showWindow(other);
     return true;
   });
   // A background test window plays its preview to no output device (sinkId "none"): no sound, and
@@ -388,7 +397,11 @@ app.whenReady().then(() => {
     const entry = fromAppWindow(event);
     if (!entry) return;
     entry.appState = state;
-    entry.projectDir = typeof state?.projectDir === "string" && path.isAbsolute(state.projectDir) ? realDir(state.projectDir) : undefined;
+    // A page on a remote doesn't say what its local server has open: that stays as last reported.
+    if (environmentOf(entry).kind === "local") {
+      entry.projectDir = typeof state?.projectDir === "string" && path.isAbsolute(state.projectDir) ? realDir(state.projectDir) : undefined;
+      entry.opening = undefined;
+    }
     if (entry === currentWindow()) refreshMenu();
   });
   // D209: the mini recorder's state comes from the window recording; its buttons go back there.

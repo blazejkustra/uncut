@@ -149,6 +149,15 @@ test("two projects in two windows, each with its own server; closing one ends on
     projectA(),
   );
   assert.equal(moved, true);
+  // A server refusing a project as open in another server's window (open-elsewhere) names its pid: that window comes forward.
+  const afterRefusal = app.output().length;
+  const byHolder = await second.evaluate(
+    (dir, pid) => (window as unknown as { uncut: { focusProjectWindow: (d: string, p: number) => Promise<boolean> } }).uncut.focusProjectWindow(dir, pid),
+    join(root, "Elsewhere.uncut"),
+    firstServer!,
+  );
+  assert.equal(byHolder, true);
+  await until(() => app!.output().slice(afterRefusal).includes(`[test] window forward: ${projectA()}`), "the holder's window brought forward");
   await sleep(500);
   assert.equal((await appPages()).length, 2, "still two windows");
   assert.equal(await second.evaluate(() => document.title), "Beta", "Beta's window kept its project");

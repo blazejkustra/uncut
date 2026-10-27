@@ -19,10 +19,12 @@ export interface AppWindow {
   connectedServer: string | undefined;
   /** What the renderer last reported (the menu shows the focused window's). */
   appState: AppState | undefined;
-  /** The project it shows on This Mac (the renderer's AppState), resolved. */
+  /** The project its local server has open (the renderer's AppState while it showed Local), resolved; kept while it shows a remote. */
   projectDir: string | undefined;
   /** D252: a project to open that the page takes when it asks (PENDING_OPEN_CHANNEL). */
   pendingOpen: string | undefined;
+  /** A project handed to the page (taken, or sent as Open Recent) that it hasn't reported open yet. */
+  opening: { readonly dir: string; readonly at: number } | undefined;
   /** The page has asked for its pending project since it last loaded. */
   askedOpen: boolean;
   mode: WindowMode;

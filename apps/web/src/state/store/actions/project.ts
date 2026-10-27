@@ -50,6 +50,9 @@ export const projectActions = {
       void refreshRecents();
       return;
     }
+    // Another window's server has it open: that window comes forward.
+    const holder = result.error.reason === "open-elsewhere" ? result.error.holderPid : undefined;
+    if (holder !== undefined && (await bridge.focusProjectWindow?.(dir, holder).catch(() => false))) return;
     const text = `Couldn't open ${dir.split("/").pop()}. ${plainError(result.error)}`;
     if (state.snapshot) set({ notice: { text, transport: isTransportError(result.error) } });
     else set({ welcomeError: text });

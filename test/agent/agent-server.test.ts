@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { BUNDLE, MEDIA, connect, killAll, projectCopy, startServer } from "../helpers/server.ts";
 import { readAgentHistory } from "../helpers/history.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -312,7 +312,7 @@ test("without Claude Code a turn is refused with how to install it, and setup sh
   const bare = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data-bare"), UNCUT_CLAUDE: "", PATH: "/usr/bin:/bin" } });
   try {
     const c = await connect(bare.ready.port, bare.ready.token);
-    await c.ok("project.open", { dir });
+    await c.ok("project.open", { dir: projectCopy(dir) });
     const error = await c.fail("agent.send", { prompt: "hello" });
     assert.equal(error.reason, "not-installed");
     assert.match(error.message, /isn't installed/);

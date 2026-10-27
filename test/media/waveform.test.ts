@@ -8,7 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { BUNDLE, MEDIA, connect, killAll, projectCopy, startServer } from "../helpers/server.ts";
 import { isWaveformFileOf, makeLimiter, PeakMeter } from "../../apps/server/src/media/waveforms.ts";
 import { chmodSync, mkdirSync } from "node:fs";
 
@@ -177,7 +177,7 @@ test("a cache folder that can't be written still gets its peaks; a missing ffmpe
   const bare = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data-bare"), PATH: "/usr/bin:/bin" } });
   const c = await connect(bare.ready.port, bare.ready.token);
   try {
-    await c.ok("project.open", { dir });
+    await c.ok("project.open", { dir: projectCopy(dir) });
     const r = await fetch(`http://127.0.0.1:${bare.ready.port}/media/waveform/m-talk?token=${encodeURIComponent(bare.ready.token)}`);
     assert.equal(r.status, 503);
     assert.equal(r.headers.get("retry-after"), "30");

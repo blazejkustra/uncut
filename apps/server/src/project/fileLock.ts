@@ -1,10 +1,10 @@
 // A lock shared by every server on one data dir (one per window), or on one project:
-// `<file>.lock`, created exclusively and holding its owner's pid, process start time and a token
-// for this taking. A live owner's lock is never taken: it is stale only when the owner is gone
-// (its pid is dead, or after a long hold the pid belongs to a process that started at another
-// time). Breaking a stale lock runs one breaker at a time (`<file>.lock.break`) and removes the
-// lock only if it is still the one judged stale, so two waiters never both take it. A release
-// removes the lock only while it is still its own.
+// `<file>.lock`, created exclusively and holding its owner's pid and a token for this taking. A
+// live owner's lock is never taken: it is stale only when the owner is gone (its pid is dead, or
+// after a long hold the pid belongs to a process that started after the lock was made). Breaking
+// a stale lock runs one breaker at a time (`<file>.lock.break`) and removes the lock only if it is
+// still the one judged stale, so two waiters never both take it. A release removes the lock only
+// while it is still its own.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
@@ -13,7 +13,7 @@ import { dirname } from "node:path";
 import * as Effect from "effect/Effect";
 
 const POLL_MS = 15;
-/** Past this a live pid's start time is checked (a crashed owner whose pid was reused). */
+/** Past this a live pid's start time is checked (an owner that died and whose pid was reused). */
 const LONG_HOLD_MS = 10_000;
 /** How long acquireFileLock waits for a live owner before it goes ahead without the lock. */
 const WAIT_MS = 10_000;
@@ -21,14 +21,12 @@ const WAIT_MS = 10_000;
 const UNREADABLE_MS = 1000;
 let counter = 0;
 
-const myStart = Math.round(Date.now() - process.uptime() * 1000);
-const lockText = () => JSON.stringify({ pid: process.pid, start: myStart, token: randomBytes(8).toString("hex") });
+const lockText = () => JSON.stringify({ pid: process.pid, token: randomBytes(8).toString("hex") });
 const noLock = async () => {};
 
 interface Held {
   readonly text: string;
   readonly pid: number | undefined;
-  readonly start: number | undefined;
   readonly mtimeMs: number;
 }
 
@@ -60,10 +58,9 @@ async function readHeld(path: string): Promise<Held | undefined> {
     try {
       parsed = JSON.parse(text);
     } catch {}
-    const owner = typeof parsed === "number" ? { pid: parsed } : (parsed as { pid?: unknown; start?: unknown } | undefined);
+    const owner = typeof parsed === "number" ? { pid: parsed } : (parsed as { pid?: unknown } | undefined);
     const pid = typeof owner?.pid === "number" && Number.isInteger(owner.pid) && owner.pid > 0 ? owner.pid : undefined;
-    const start = typeof owner?.start === "number" ? owner.start : undefined;
-    return { text, pid, start, mtimeMs: info.mtimeMs };
+    return { text, pid, mtimeMs: info.mtimeMs };
   } catch {
     return undefined;
   }
@@ -72,9 +69,10 @@ async function readHeld(path: string): Promise<Held | undefined> {
 function isStale(held: Held) {
   if (held.pid === undefined) return Date.now() - held.mtimeMs > UNREADABLE_MS;
   if (!alive(held.pid)) return true;
-  if (held.start === undefined || Date.now() - held.mtimeMs < LONG_HOLD_MS) return false;
+  if (Date.now() - held.mtimeMs < LONG_HOLD_MS) return false;
+  // Its owner made it after starting: a process that started later only has the owner's old pid.
   const started = startOf(held.pid);
-  return started !== undefined && Math.abs(started - held.start) > 2000;
+  return started !== undefined && started > held.mtimeMs + 1000;
 }
 
 async function tryCreate(path: string, text: string) {

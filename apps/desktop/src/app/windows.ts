@@ -299,6 +299,7 @@ export function createWindow(options: WindowOptions = {}): AppWindow {
     appState: undefined,
     projectDir: undefined,
     pendingOpen: options.pendingOpen,
+    opening: undefined,
     askedOpen: false,
     mode: "welcome",
     closeAllowed: false,

@@ -102,7 +102,7 @@ test("a download lock is never taken from a live holder, however long it has hel
   }
 });
 
-const dead = () => JSON.stringify({ pid: 999999, start: 0, token: "gone" });
+const dead = () => JSON.stringify({ pid: 999999, token: "gone" });
 
 test("many waiters on a dead owner's lock: one holder at a time, every trial", { timeout: 120000 }, async () => {
   let worst = 0;
@@ -134,23 +134,23 @@ test("a release never removes a lock it no longer owns; a reused pid's long-held
   try {
     const file = join(dir, "recents.json");
     const release = await acquireFileLock(file);
-    const someoneElse = JSON.stringify({ pid: process.ppid, start: 0, token: "other" });
+    const someoneElse = JSON.stringify({ pid: process.ppid, token: "other" });
     writeFileSync(`${file}.lock`, someoneElse);
     await release();
     assert.equal(readFileSync(`${file}.lock`, "utf8"), someoneElse, "the other owner's lock stays");
 
-    // Held for a long time by a pid that is alive but started at another time: the owner is gone.
-    const old = new Date(Date.now() - 60_000);
+    // Made long before the process that has its pid now started: the owner is gone.
+    const old = new Date(Date.now() - 24 * 3600_000);
     utimesSync(`${file}.lock`, old, old);
     const taken = await tryFileLock(file);
     assert.ok(taken, "a reused pid's lock is taken over");
     await taken();
 
-    // This process, held for a long time: still its own.
-    const mine = await acquireFileLock(file);
-    utimesSync(`${file}.lock`, old, old);
+    // Held for a minute by a process that started before it (launchd, pid 1): never taken.
+    writeFileSync(`${file}.lock`, JSON.stringify({ pid: 1, token: "launchd" }));
+    const minute = new Date(Date.now() - 60_000);
+    utimesSync(`${file}.lock`, minute, minute);
     assert.equal(await tryFileLock(file), undefined, "a live owner's lock is never taken, however old");
-    await mine();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

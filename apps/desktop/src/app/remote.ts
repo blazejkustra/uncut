@@ -37,7 +37,15 @@ export async function activeConnection(entry: AppWindow) {
       throw new Error(`Can't read the token for ${env.name}: ${(error as Error).message}`);
     }
     if (!secret) throw new Error(`${env.name} isn't in the environments list any more`);
-    entry.relay = { id: env.id, relay: await startRelay({ target: secret.url, token: secret.token, allowedOrigins: devOrigins }) };
+    const started = await startRelay({ target: secret.url, token: secret.token, allowedOrigins: devOrigins });
+    // The window closed or switched away while the relay started: nobody will close it later.
+    if (entry.window.isDestroyed() || entry.envId !== env.id) {
+      await started.close().catch(() => {});
+      throw new Error("the window changed while connecting");
+    }
+    // Another ask for the connection started one too: keep the first.
+    if (entry.relay?.id === env.id) await started.close().catch(() => {});
+    else entry.relay = { id: env.id, relay: started };
   }
   const relay = entry.relay.relay;
   return { url: relay.wsUrl, token: relay.token, environment: { id: env.id, name: env.name, kind: "remote" as const, ...(env.url ? { url: env.url } : {}) } };

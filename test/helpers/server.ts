@@ -1,9 +1,10 @@
 // Starts the bundled server (apps/server/dist/server.mjs) and talks Effect RPC to it over
 // WebSocket with plain JSON frames.
 import { spawn, type ChildProcess } from "node:child_process";
+import { cpSync, rmSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
 import { createInterface } from "node:readline";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 export const BUNDLE = resolve("apps/server/dist/server.mjs");
 export const MEDIA = resolve("native/media/target/release/uncut-media");
@@ -14,6 +15,18 @@ const running = new Set<ChildProcess>();
 export const killAll = () => {
   for (const proc of running) proc.kill("SIGKILL");
 };
+
+let copies = 0;
+/**
+ * A copy of a project another test server has open, for a second server to open: one server per
+ * project (<project>/.cache/open.lock), so the copy leaves the first server's lock behind.
+ */
+export function projectCopy(dir: string) {
+  const copy = dir.replace(/\.uncut$/, `-copy${++copies}.uncut`);
+  cpSync(dir, copy, { recursive: true });
+  rmSync(join(copy, ".cache", "open.lock"), { force: true });
+  return copy;
+}
 
 /** `command` replaces `node <entry>` entirely (e.g. to start the server through `env -i`). */
 export interface StartOptions {
