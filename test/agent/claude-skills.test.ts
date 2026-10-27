@@ -164,7 +164,7 @@ test('sessionArgs: the user\'s settings stay out (--setting-sources ""), the ski
 });
 
 test("decide: a loaded skill's files in ~/.claude are read without a card; the rest of ~/.claude still isn't", () => {
-  const home = "/Users/u";
+  const home = "/Users/me";
   const skillDir = `${home}/.claude/skills/tone`;
   const ctx = {
     access: "ask" as const,
