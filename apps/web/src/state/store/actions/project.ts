@@ -40,6 +40,8 @@ export const projectActions = {
 
   /** Opens a project. The error shows where the user is: the welcome card or the editor banner. */
   async openProject(dir: string) {
+    // Several projects at once: a project another window has open comes forward there instead.
+    if (state.snapshot?.dir !== dir && !isRemote() && (await bridge.focusProjectWindow?.(dir).catch(() => false))) return;
     if (state.snapshot && state.snapshot.dir !== dir && !(await confirmLeave("open-project"))) return;
     const result = await call((c) => c["project.open"]({ dir }));
     if (result.ok) {

@@ -1,11 +1,10 @@
-// The native open and save dialogs (tests: answers from UNCUT_TEST_DIALOG).
+// The native open and save dialogs, on the window that asked (tests: answers from UNCUT_TEST_DIALOG).
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { dialog, app } from "electron";
+import { dialog, app, type BrowserWindow } from "electron";
 import type { AppInfo, FolderPurpose } from "../ipc.ts";
 import { testDialogs } from "./testMode.ts";
-import { win } from "./state.ts";
 
 const home = homedir();
 export const appInfo: AppInfo = {
@@ -16,12 +15,11 @@ export const appInfo: AppInfo = {
 const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp", "srt", "vtt"];
 
 /** Native multi-select for footage, music and images; [] when cancelled. */
-export async function chooseMedia(): Promise<Array<string>> {
+export async function chooseMedia(win: BrowserWindow): Promise<Array<string>> {
   if (testDialogs) {
     const next = testDialogs.shift();
     return Array.isArray(next) ? next : typeof next === "string" ? [next] : [];
   }
-  if (!win) return [];
   const result = await dialog.showOpenDialog(win, {
     title: "Import media",
     buttonLabel: "Import",
@@ -36,12 +34,11 @@ export async function chooseMedia(): Promise<Array<string>> {
 }
 
 /** Where to save an export (or, D109, a remote export's download): the native save panel (it asks before replacing a file); null when cancelled. */
-export async function chooseSavePath(defaultPath: string, title = "Export video"): Promise<string | null> {
+export async function chooseSavePath(win: BrowserWindow, defaultPath: string, title = "Export video"): Promise<string | null> {
   if (testDialogs) {
     const next = testDialogs.shift();
     return typeof next === "string" ? next : null;
   }
-  if (!win) return null;
   const result = await dialog.showSaveDialog(win, {
     title,
     buttonLabel: "Choose",
@@ -52,12 +49,11 @@ export async function chooseSavePath(defaultPath: string, title = "Export video"
   return result.canceled || !result.filePath ? null : result.filePath;
 }
 
-export async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
+export async function chooseFolder(win: BrowserWindow, purpose: FolderPurpose): Promise<string | null> {
   if (testDialogs) {
     const next = testDialogs.shift();
     return typeof next === "string" ? next : null;
   }
-  if (!win) return null;
   if (purpose === "brand") {
     const picked = await dialog.showOpenDialog(win, {
       title: "Import into the kit",

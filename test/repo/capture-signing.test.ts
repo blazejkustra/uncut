@@ -114,8 +114,8 @@ test("test media: only with UNCUT_CDP, fake devices, states from the test (grant
 });
 
 test("the desktop shell asks macOS, lists screens and opens System Settings only outside test media", () => {
-  // app.ts and the module its media-access functions moved to (#54).
-  const app = [read("apps/desktop/src/app.ts"), read("apps/desktop/src/app/mediaAccess.ts")].join("\n");
+  // app.ts, the module its media-access functions moved to (#54) and the windows' (session handlers).
+  const app = [read("apps/desktop/src/app.ts"), read("apps/desktop/src/app/mediaAccess.ts"), read("apps/desktop/src/app/windows.ts")].join("\n");
   // Each real call sits after a test-media early return in its function.
   const body = (name: string) => {
     const start = app.indexOf(`function ${name}(`);
@@ -131,7 +131,9 @@ test("the desktop shell asks macOS, lists screens and opens System Settings only
     assert.ok(b.indexOf("if (mediaTest)") >= 0 && b.indexOf("if (mediaTest)") < b.indexOf(real), `${fn}: test media returns before ${real}`);
   }
   assert.match(app, /if \(mediaTest\) console\.log\(`\[test\] open \$\{url\}`\);\n\s*else void shell\.openExternal\(url\);/);
-  assert.match(app, /if \(!wanted \|\| mediaTest \|\| !frame \|\| !fromAppFrame\(frame\)\) return callback\(\{\}\);/, "getDisplayMedia never records in tests");
+  // wanted is only ever an app window's (the frame's own window, its top-level app page).
+  assert.match(app, /const entry = request\.frame \? windowOfFrame\(request\.frame\) : undefined;\n\s*const wanted = entry\?\.pendingDisplaySource;/);
+  assert.match(app, /if \(!wanted \|\| mediaTest\) return callback\(\{\}\);/, "getDisplayMedia never records in tests");
   assert.equal(app.match(/systemPreferences\.askForMediaAccess/g)?.length, 1);
   assert.equal(app.match(/desktopCapturer\s*\.getSources/g)?.length, 2, "the list and the display-media handler");
 });

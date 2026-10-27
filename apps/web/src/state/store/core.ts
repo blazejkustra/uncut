@@ -135,6 +135,7 @@ function syncShell() {
     },
     // #94 (D263, D280): File › Import from Link… only while its plugin is installed and allowed.
     importLink: linkImportReady(state.plugins),
+    ...(state.snapshot && !isRemote() ? { projectDir: state.snapshot.dir } : {}),
   });
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }
