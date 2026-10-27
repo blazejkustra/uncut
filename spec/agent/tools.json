@@ -65,7 +65,7 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the current edit exactly as export would, and return them as images to look at (768 px on the longest side by default; scale 1 for full size when a detail matters). Up to 12 per call: pick the moments that matter. For motion pass run instead: up to 48 consecutive frames as one contact sheet, measured at full size for text shaking by a pixel and 1 px lines along the frame's edges, which stills miss.",
+      "description": "Render frames of the edit exactly as export would, as images (768 px on the longest side; scale 1 for full size). Up to 12 per call: pick the moments that matter. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines that stills miss.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -90,7 +90,7 @@
           },
           "run": {
             "type": "object",
-            "description": "Consecutive frames from start (instead of frames): count of them, 2 to 48.",
+            "description": "Instead of frames: count frames in a row from start.",
             "required": [
               "start",
               "count"
@@ -1281,7 +1281,7 @@
     },
     {
       "name": "brand_write",
-      "description": "Write into a brand kit, merged into what's there (a field you pass replaces that field): colours, fonts (with their font files), logos, tone and the rest. Changing an existing kit's colours or fonts needs the user's OK on a before and after card. A style from a reference goes in style (its own guide attached to the kit), never in colors or fonts. A new name and no kit makes a new kit (scope says where), the project's kit if it has none. Logos and font files: a path, a folder or an https address; SVG stays vector. Only what the user gave or approved or the brand's own site shows, never invented brand facts.",
+      "description": "Write into a brand kit (a field you pass replaces that field): colours, fonts (with their font files), logos, tone and the rest. Changing an existing kit's colours or fonts needs the user's OK on a before and after card. A style from a reference goes in style (its own guide attached to the kit), never in colors or fonts. A new name and no kit makes a new kit (scope says where), the project's kit if it has none. Logos and font files: a path, a folder or an https address; SVG stays vector. Only what the user gave or approved or the brand's own site shows, never invented brand facts.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
