@@ -9,6 +9,7 @@
 // input, cache read and cache write; cached tokens fill the window like fresh ones); amber and red
 // are measured against where Claude Code compacts on its own when it says so.
 import { useApp } from "../state/store.ts";
+import { useSelectedAgent } from "../state/agents.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./token-meter.css";
 
@@ -25,7 +26,8 @@ const R = 5.5;
 const RING = 2 * Math.PI * R;
 
 export function TokenMeter() {
-  const { agent, agentDraft } = useApp();
+  const { agentDraft } = useApp();
+  const agent = useSelectedAgent();
   const c = agent?.context;
   if (!c || !(c.used > 0)) return null;
   const window = c.window && c.window > 0 ? c.window : undefined;

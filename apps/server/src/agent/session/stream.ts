@@ -11,7 +11,7 @@ import { agentFailCode } from "../../telemetry/events.ts";
 import { assistantUsage, contextOf, contextUsageReply, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
-  const { publish, closeSession, view, st, persist, trackPending, plugins } = ctx;
+  const { publish, closeSession, view, persist, trackPending, plugins } = ctx;
   // D269: the context windows results reported this app run, by windowKey (init's model, "[1m]" kept).
   const learnedWindows = new Map<string, number>();
 
@@ -63,9 +63,9 @@ export const makeStream = (ctx: RunCtx) => {
     if (now && now.openId === r.openId) r.owner.bounds.set(r.turn.id, { ...r.owner.bounds.get(r.turn.id), end: now.session.revision });
     if (r.session.turn === r) r.session.turn = undefined;
     // D218: a limit notice belongs to the turn it paused.
-    st.limitWarning = undefined;
+    r.owner.limitWarning = undefined;
     armIdle(r.session);
-    if (st.running === r) st.running = undefined;
+    if (r.owner.running === r) r.owner.running = undefined;
     persist(r.owner);
     publishNow();
     // Telemetry (D223): the turn's outcome and size; a failure as a fixed code, never its words.

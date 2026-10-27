@@ -302,6 +302,8 @@ export interface LogEntry {
   /** ISO time. */
   readonly at: string;
   readonly actor: Actor;
+  /** C12: which agent of the project made it (an agent entry); conflicts are checked by it. */
+  readonly agentId?: string;
   readonly ops: ReadonlyArray<Op>;
   readonly turnId?: string;
   readonly summary?: string;
@@ -317,6 +319,7 @@ export interface Session {
 /** One edit: a list of ops applied atomically by one actor. */
 export interface Edit {
   readonly actor: Actor;
+  readonly agentId?: string;
   readonly ops: ReadonlyArray<Op>;
   /** The revision the actor last saw; defaults to the session's. */
   readonly baseRevision?: number;

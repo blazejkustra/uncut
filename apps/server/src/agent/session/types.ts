@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
-import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
+import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext, AgentFocus } from "@uncut/contracts";
+import type { Approval } from "./state.ts";
 import type { Access } from "../agentPermissions.ts";
 import type { TurnLimits } from "../agentLimits.ts";
 import type { ClaudeSkill } from "../claudeSkills.ts";
@@ -23,6 +24,19 @@ export type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<
 
 export interface Loaded {
   readonly dir: string;
+  // C12: which of the project's agents this is, and what the user named it and set it to do.
+  readonly agentId: string;
+  name: string;
+  focus: AgentFocus;
+  colour: string;
+  running: Running | undefined;
+  session: ClaudeSession | undefined;
+  // The running turn's one open approval card (D99).
+  approval: Approval | undefined;
+  // D194: shown in its tab while its last claude didn't answer initialize (approvals fail closed).
+  initWarning: string | undefined;
+  // D218: shown in its tab while its running turn is paused on a Claude usage limit.
+  limitWarning: string | undefined;
   // The opening of the project this belongs to. The same folder opened again keeps its Loaded
   // (one turns array, one owner of turns.json) with the new opening's id.
   openId: number;

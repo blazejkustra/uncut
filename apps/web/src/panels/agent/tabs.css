@@ -1,0 +1,34 @@
+.agent { position: relative; }
+.agent-add svg.lucide { width: 15px; height: 15px; }
+.agent-add:disabled { cursor: not-allowed; }
+.agent-add.floating { position: absolute; top: 6px; right: 8px; z-index: 3; width: 24px; height: 24px; opacity: 0.7; }
+.agent-add.floating:hover { opacity: 1; }
+
+.agent-tabs { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.agent-tabs-list { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.agent-tab { flex: none; display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); }
+.agent-tab:hover { background: var(--raised); }
+.agent-tab.on { border-color: var(--border-strong); background: var(--raised); color: var(--fg); }
+.agent-tab-main { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; font-size: 12px; cursor: pointer; }
+.agent-tab-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.agent-tab-dot.waiting { box-shadow: 0 0 0 2px var(--warn); }
+.agent-tab-spin { width: 12px; height: 12px; flex: none; }
+.agent-tab-name { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-tab-focus { font-size: 11px; color: var(--dim); }
+.agent-tab-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--select); flex: none; }
+.agent-tab-close { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 20px; padding: 0; overflow: hidden; border-radius: 4px; color: var(--dim); cursor: pointer; }
+.agent-tab:hover .agent-tab-close, .agent-tab:focus-within .agent-tab-close { width: 20px; margin: 0 3px 0 -4px; }
+.agent-tab-close:not(:disabled):hover { background: var(--panel); color: var(--fg); }
+.agent-tab-close:disabled { cursor: not-allowed; }
+.agent-tab-close svg { width: 12px; height: 12px; }
+
+.agent-add-form { display: flex; flex-direction: column; gap: 8px; }
+.agent-add-focus { display: flex; flex-direction: column; gap: 2px; }
+.agent-add-preset { display: grid; grid-template-columns: 16px auto 1fr; align-items: baseline; gap: 6px; padding: 5px 6px; border-radius: var(--radius-sm); text-align: left; font-size: 12px; cursor: pointer; }
+.agent-add-preset:hover { background: var(--raised); }
+.agent-add-preset.on { background: var(--raised); }
+.agent-add-check svg { width: 12px; height: 12px; color: var(--select); }
+.agent-add-label { color: var(--fg); }
+.agent-add-detail { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-add-error { color: var(--error); }
+.agent-add-form .btn:disabled { cursor: not-allowed; }

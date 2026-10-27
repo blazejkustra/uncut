@@ -72,6 +72,8 @@ export const RPC_METHODS = {
   agentScreenTake: "agent.screenTake",
   agentRestoreCleanup: "agent.restoreCleanup",
   agentNewThread: "agent.newThread",
+  agentCreate: "agent.create",
+  agentArchive: "agent.archive",
   mediaRecent: "media.recent",
   mediaRecentImport: "media.recentImport",
   generateList: "generate.list",

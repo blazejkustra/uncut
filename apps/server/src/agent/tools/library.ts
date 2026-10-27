@@ -38,7 +38,7 @@ export const SOUNDS_SHOWN = 16;
 export const YOURS_SHOWN = 12;
 
 export const makeLibraryTools = (ctx: BrandCtx) => {
-  const { textResult, requestAndWait, pendingOut, cancelledNote, config, brandDirs, view, projects, persist, publish, sounds } = ctx;
+  const { textResult, requestAndWait, pendingOut, cancelledNote, config, brandDirs, view, projects, persist, publish, sounds, seeOwn } = ctx;
 
   // media_rank (D67): the video analysis of several takes (run, joined or cached), ranked by
   // clean score (or one component), each with its best stretch inside one shot.
@@ -432,7 +432,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       });
       persist(r.owner);
       publish();
-      r.owner.seen.add(snapshot.revision);
+      seeOwn(r, snapshot.revision);
       return textResult({
         media: media.id,
         path: media.path,

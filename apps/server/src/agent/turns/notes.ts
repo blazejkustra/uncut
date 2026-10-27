@@ -1,9 +1,11 @@
 import type { AgentTurn } from "@uncut/contracts";
 import {
+  byUser,
   EditConflict,
+  type LogEntry,
   manualEditsNote,
-  netEditsNote,
   netZeroNote,
+  othersEditsNote,
   type Project,
   redoTurn,
   speechItem,
@@ -18,6 +20,12 @@ import type { StoredTurn } from "../session/types.ts";
 
 // ---- notes and undo states ----
 
+/** C12: the agent a note is for (its own edits aren't news) and the other agents' names. */
+export interface Reader {
+  readonly agentId: string;
+  readonly nameOf: (agentId: string) => string;
+}
+
 /**
  * D6: what the user changed since the agent last looked, as the net result: the project the agent
  * saw at `since` (plus its own edits after it) against the project now (core netEditsNote). Undo
@@ -25,12 +33,15 @@ import type { StoredTurn } from "../session/types.ts";
  * back or brought back the agent's edits. Without the state at `since` in the history, the log's
  * entries are listed as they are (manualEditsNote).
  */
-export function noteFor(view: ProjectView, since: number): string {
+export function noteFor(view: ProjectView, since: number, reader?: Reader): string {
   // The log goes back to earlier openings (history.db); what happened then reached the note that
   // was carried over (pendingNote), so only this opening's edits count here.
   const from = Math.max(since, view.openRevision);
   const before = view.stateAt(from);
-  const base = before ? netEditsNote(before, view.session, from) : manualEditsNote(view.session, from);
+  const reported = reader ? (e: LogEntry) => e.actor === "user" || (e.agentId !== undefined && e.agentId !== reader.agentId) : byUser;
+  const agentName = (e: LogEntry) =>
+    reader && e.actor === "agent" && e.agentId !== undefined && e.agentId !== reader.agentId ? reader.nameOf(e.agentId) : undefined;
+  const base = before ? othersEditsNote(before, view.session, from, reported, agentName) : manualEditsNote(view.session, from, reported, agentName);
   const happened = view.unlogged.filter((u) => u.revision > since);
   const extra = happened.filter((u) => !u.quiet).map((u) => `- ${u.what}`);
   const zero = netZeroNote(view.session.revision);

@@ -30,7 +30,7 @@ import { analyzeWaitMs } from "./common.ts";
 import type { MediaCtx } from "./media.ts";
 
 export const makeTranscriptTools = (ctx: MediaCtx) => {
-  const { textResult, requestAndWait, pendingOut, cancelledNote, silencesOf, view, projects, persist, publish, exporter } = ctx;
+  const { textResult, requestAndWait, pendingOut, cancelledNote, silencesOf, view, projects, persist, publish, exporter, othersSince, readerOf } = ctx;
 
   // transcript_read (D68): starts (or joins) the transcript job like media_analyze (the first one
   // may download the speech model first), then the words in project frames of the media, paged.
@@ -270,7 +270,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
         );
       if (!outcome2.ok) {
         const now = view();
-        const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+        const userChanges = now ? noteFor(now, r.owner.agentSeen, readerOf(r.owner)) : "";
         return textResult(
           {
             refused: outcome2.error.message,
@@ -290,10 +290,8 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
       pushEdit(r, { revision: snapshot.revision, summary: plan.summary, lines });
       persist(r.owner);
       publish();
-      // As media_import: the new revision is read; user edits since the agent's read come back with it.
-      r.owner.seen.add(snapshot.revision);
-      const now = view();
-      const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+      // As media_import: others' edits since the agent's read come back with it.
+      const userChanges = othersSince(r);
       const end = projectSummary(snapshot.project as Project, snapshot.revision).duration;
       return textResult({
         ...base,
@@ -305,7 +303,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
         ...(retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, fps) } : {}),
         note: "One edit on your turn (Undo turn reverts it). Word ids don't change (they belong to the media's transcript): transcript_read still lists every word of the file, including the ones now cut; project_read shows the clips that are left.",
         ...(userChanges
-          ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." }
+          ? { userChanges, userNote: "The user or another agent changed the project since your read; the revision above includes their changes. Keep them." }
           : {}),
       });
     });
@@ -439,7 +437,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
         );
       if (!outcome2.ok) {
         const now = view();
-        const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+        const userChanges = now ? noteFor(now, r.owner.agentSeen, readerOf(r.owner)) : "";
         return textResult(
           {
             refused: outcome2.error.message,
@@ -465,9 +463,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
       });
       persist(r.owner);
       publish();
-      r.owner.seen.add(snapshot.revision);
-      const now = view();
-      const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+      const userChanges = othersSince(r);
       return textResult({
         media: m.id,
         item: plan.itemId,
@@ -496,7 +492,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
             }),
         note: `One edit on your turn (Undo turn reverts it). Frames are the edit's. Fix words with timeline_edit {"op":"edit_captions","item":"${plan.itemId}","words":[{"word":"w12","text":"…"}]}; look at a card with render_frames.`,
         ...(userChanges
-          ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." }
+          ? { userChanges, userNote: "The user or another agent changed the project since your read; the revision above includes their changes. Keep them." }
           : {}),
       });
     });

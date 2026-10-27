@@ -1,7 +1,7 @@
 import { existsSync, renameSync } from "node:fs";
 import { readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { type AgentCard, type AgentEdit, type AgentMention, AGENT_IMAGE_NAME, type AgentFolder } from "@uncut/contracts";
+import { type AgentCard, type AgentEdit, type AgentMention, AGENT_IMAGE_NAME, type AgentFolder, DEFAULT_AGENT_ID } from "@uncut/contracts";
 import { normBrief, normStoryboard, normReview } from "../../brand/store.ts";
 import { withHistory, type TurnRecord } from "../../project/history.ts";
 import type { StoredTurn } from "../session/types.ts";
@@ -122,6 +122,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     ...(typeof t.spend === "number" && Number.isFinite(t.spend) && t.spend > 0 ? { spend: t.spend } : {}),
     ...(Array.isArray(t.graphics) ? { graphics: t.graphics.filter(isString).slice(-200) } : {}),
     ...(t.cleanup && typeof t.cleanup === "object" ? { cleanup: cleanupOf(t.cleanup) } : {}),
+    ...(isString(t.agentId) ? { agentId: t.agentId } : {}),
   };
 }
 
@@ -184,7 +185,18 @@ const byStart = (a: StoredTurn, b: StoredTurn) => Date.parse(a.startedAt) - Date
  * then renamed so it's read once. A turns.json that can't be read stops here (turns are refused, the
  * file is left alone). A history in memory (history.db unusable) reads turns.json but keeps it.
  */
-export async function loadAgentHistory(dir: string): Promise<History> {
+export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AGENT_ID): Promise<History> {
+  if (agentId !== DEFAULT_AGENT_ID) {
+    return withHistory(dir, (db) => {
+      const stored = db.agent(agentId);
+      return {
+        sessionId: stored.sessionId,
+        turns: stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined),
+        pendingNote: stored.pendingNote,
+        threadStart: stored.threadStart,
+      };
+    });
+  }
   const legacy = await readHistory(dir);
   if (legacy.readError) return legacy;
   return withHistory(dir, (db) => {

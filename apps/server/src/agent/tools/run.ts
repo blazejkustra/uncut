@@ -106,6 +106,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     publish,
     askUser,
     config,
+    readerOf,
+    seeOwn,
   } = ctx;
 
   const exportVideo = makeExportVideo(ctx);
@@ -340,9 +342,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const rules = Array.isArray(args.rules) ? args.rules.filter((x): x is string => typeof x === "string") : undefined;
           if (args.severity !== undefined && args.severity !== "warn" && args.severity !== "info")
             return textResult('severity must be "warn" or "info".', true);
-          // Its fixes are planned on this revision, so it may be passed back as baseRevision (the
-          // user's edits stay news for the next note: agentSeen doesn't move).
-          r.owner.seen.add(v.session.revision);
+          // Its fixes are planned on this revision, so it may be passed back as baseRevision when
+          // nobody else changed the project since the agent's last look (C12: else it reads again).
+          seeOwn(r, v.session.revision);
           // The allowed plugins' rules too (D103): data rules run here, process plugins are asked (5 s each).
           const contributed = yield* plugins.contributions;
           const asked = yield* plugins.processChecks(v.session.project, v.dir);
@@ -461,7 +463,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           );
           if (!outcome.ok) {
             const now = view();
-            const userChanges = now ? noteFor(now, baseRevision) : "";
+            const userChanges = now ? noteFor(now, baseRevision, readerOf(r.owner)) : "";
             // The refusal gives the revision now and what the user changed since the agent's base: it
             // may edit from there when that shows every change (D6: else it reads again).
             if (now && noteShowsAll(now, baseRevision)) r.owner.seen.add(now.session.revision);
@@ -532,8 +534,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // touch what this edit touched, or it would have been refused) are still news. They
           // come back with the result; with none, the new revision is as good as read.
           const now = view();
-          const userChanges = now ? noteFor(now, baseRevision) : "";
+          const userChanges = now ? noteFor(now, baseRevision, readerOf(r.owner)) : "";
           if (!userChanges) r.owner.seen.add(snapshot.revision);
+          else if (now && noteShowsAll(now, baseRevision)) r.owner.seen.add(now.session.revision);
           const end = projectSummary(project, snapshot.revision).duration;
           // Ducking (D85) needs its key media's loudness: a mixer change starts the analysis
           // where it's missing (waits up to SILENCES_WAIT_MS, as transcript_edit) and says so.
@@ -548,7 +551,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             duration: end,
             seconds: Number((end / project.canvas.fps).toFixed(2)),
             ...(ducking ? { ducking } : {}),
-            ...(userChanges ? { userChanges, note: "The user changed the project since your read. project_read before your next edit." } : {}),
+            ...(userChanges
+              ? { userChanges, note: "The user or another agent changed the project since your read: userChanges shows what. Keep their changes." }
+              : {}),
           });
         }
         default: {
@@ -573,7 +578,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             pushEdit(r, { revision: snapshot.revision, summary, lines });
             persist(r.owner);
             publish();
-            r.owner.seen.add(snapshot.revision);
+            seeOwn(r, snapshot.revision);
           }
           const fps = ((snapshot?.project ?? v.session.project) as Project).canvas.fps;
           return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify(appliedNote(applied, fps)) }] };

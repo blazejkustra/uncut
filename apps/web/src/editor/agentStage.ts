@@ -6,6 +6,7 @@ import { useSyncExternalStore } from "react";
 
 import type { AgentState } from "@uncut/contracts";
 import type { Project } from "../state/store.ts";
+import { anyAgentRunning } from "../state/agents.ts";
 
 export const STAGE_DISMISSED_KEY = "uncut.stage.dismissed";
 const MAX_REMEMBERED = 50;
@@ -34,7 +35,7 @@ const save = (next: ReadonlyArray<string>) => {
 export const projectEmpty = (project: Project) => project.media.length === 0 && project.tracks.every((t) => t.items.length === 0);
 
 /** The agent has been used in this project (a turn, or one running). Unknown (not loaded yet) counts as used. */
-export const agentUsed = (agent: AgentState | null, dir: string) => !agent || agent.dir !== dir || agent.running !== null || agent.turns.length > 0;
+export const agentUsed = (agent: AgentState | null, dir: string) => !agent || agent.dir !== dir || anyAgentRunning(agent) || agent.turns.length > 0;
 
 /** Whether the stage shows: an empty project whose agent hasn't run, not sent to the editor. */
 export const stageWanted = (project: Project, dir: string, agent: AgentState | null, list: ReadonlyArray<string>) =>

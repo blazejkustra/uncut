@@ -5,6 +5,8 @@ import { LibrarySearchResult, LibraryError, LibraryState, SoundFolderSchema } fr
 import { ImportJob, ProxyState, SetupCheck, MediaRecentEntry } from "../media.ts";
 import {
   AgentState,
+  AgentFocus,
+  AgentInfo,
   AgentMention,
   AgentEffort,
   AgentProvider,
@@ -167,13 +169,15 @@ export const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     images: Schema.optional(Schema.Array(AgentImage)),
     // export_video's range: the In/Out marks and the selected clips' span now, as the Export dialog reads them.
     ranges: Schema.optional(Schema.Struct({ marks: Schema.optional(ExportRange), selection: Schema.optional(ExportRange) })),
+    // C12: the agent to send it to (absent: the first one).
+    agentId: Schema.optional(Schema.String),
   }),
   success: Schema.Struct({ turnId: Schema.String }),
   error: AgentError,
 });
 
 // Stops the running turn (a no-op when none is running). Edits it already made stay.
-export const AgentCancelRpc = Rpc.make(RPC_METHODS.agentCancel, { payload: Empty });
+export const AgentCancelRpc = Rpc.make(RPC_METHODS.agentCancel, { payload: Schema.Struct({ agentId: Schema.optional(Schema.String) }) });
 
 // Reverts one turn's edits as one undoable step, keeping later edits (D7).
 export const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
@@ -204,10 +208,19 @@ export const MediaRecentImportRpc = Rpc.make(RPC_METHODS.mediaRecentImport, {
 // D295: a new chat: the next message starts a fresh Claude conversation; earlier turns stay in the
 // history (undo still works) and the panel folds them away. Refused while a turn runs.
 export const AgentNewThreadRpc = Rpc.make(RPC_METHODS.agentNewThread, {
-  payload: Empty,
+  payload: Schema.Struct({ agentId: Schema.optional(Schema.String) }),
   success: Schema.Struct({ threadStart: Schema.String }),
   error: AgentError,
 });
+
+// C12: another agent in the open project, with a name (default: from its focus) and a focus preset.
+export const AgentCreateRpc = Rpc.make(RPC_METHODS.agentCreate, {
+  payload: Schema.Struct({ name: Schema.optional(Schema.String), focus: AgentFocus }),
+  success: AgentInfo,
+  error: AgentError,
+});
+// C12: an agent out of the tab row (its turns stay in the history). Refused while it runs, and for the last one.
+export const AgentArchiveRpc = Rpc.make(RPC_METHODS.agentArchive, { payload: Schema.Struct({ agentId: Schema.String }), error: AgentError });
 
 // D206: puts back the graphics a turn's clean-up moved to the trash (those still there).
 export const AgentRestoreCleanupRpc = Rpc.make(RPC_METHODS.agentRestoreCleanup, {

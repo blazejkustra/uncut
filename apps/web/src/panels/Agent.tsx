@@ -13,12 +13,18 @@ import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
 import { ProjectSkillsCard } from "./agent/projectSkills.tsx";
 import { splitThread } from "./agent/thread.ts";
+import { AddAgent, AgentTabs } from "./agent/tabs.tsx";
+import { agentsOf, selectedAgent, selectedAgentId } from "../state/agents.ts";
 import { projectEmpty, stage, useStageDismissed } from "../editor/agentStage.ts";
 import { panels } from "../editor/layout.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 
 export function AgentPanel({ project, online }: { project: Project; online: boolean }) {
-  const { agent, setupChecks, setupChecking, agentError, snapshot } = useApp();
+  const app = useApp();
+  const { setupChecks, setupChecking, agentError, snapshot } = app;
+  const agent = selectedAgent(app);
+  const agentId = selectedAgentId(app);
+  const several = agentsOf(app.agent).length > 1;
   // #75 (D255): sent to the editor while still empty: the empty state can bring the stage back.
   const dir = snapshot?.dir;
   const canRestage = useStageDismissed().some((d) => d === dir) && projectEmpty(project);
@@ -31,6 +37,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   }, []);
   const claude = setupChecks?.find((c) => c.id === "claude");
   const blocked = claude?.status === "missing" || claude?.status === "needs-login";
+  const projectTurns = app.agent?.turns ?? [];
   const allTurns = agent?.turns ?? [];
   const running = agent?.running ?? null;
   // D295: the current chat's turns; earlier chats fold behind a line that opens them.
@@ -69,14 +76,15 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
     </Tooltip>
   );
   // D9: the session's estimated spend on the user's API keys (generators), when there is any.
-  const sessionSpend = allTurns.reduce((n, t) => n + (t.spend ?? 0), 0);
+  const sessionSpend = projectTurns.reduce((n, t) => n + (t.spend ?? 0), 0);
   // D197: the latest brief and storyboard cards (edit, approve there), as "turn:item".
   const latest = new Set<string>();
   for (const type of ["brief", "storyboard"] as const) {
     let at: string | undefined;
-    for (const t of allTurns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
+    for (const t of projectTurns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
     if (at) latest.add(at);
   }
+  const strip = allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0));
   const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null } : undefined;
 
   // Follow the newest turn as it streams in, but only while the thread is scrolled to its end: someone
@@ -85,6 +93,11 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   const stuck = useRef(true);
   const [away, setAway] = useState(false);
   const lastCount = useRef(turns.length);
+  useLayoutEffect(() => {
+    stuck.current = true;
+    setAway(false);
+    setShowEarlier(false);
+  }, [agentId]);
   useLayoutEffect(() => {
     const el = thread.current;
     if (!el || !turns.length) return;
@@ -115,15 +128,19 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
             {agent.warning}
           </p>
         )}
+        <AgentTabs online={online} />
         <ProjectSkillsCard />
         {/* An empty plan and no turns: no strip (it left a bare rule above the empty state). */}
-        {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
+        {strip ? (
           <div className="plan-strip agent-strip" data-testid="agent-strip">
             {newChat}
             {compact}
+            {!several && <AddAgent online={online} />}
             <span className="spacer" />
             {agent?.plan && (agent.plan.brief || agent.plan.storyboard) && <PlanChip plan={agent.plan} />}
           </div>
+        ) : (
+          !several && <AddAgent online={online} floating />
         )}
         <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
           {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
@@ -197,7 +214,15 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
             </Tooltip>
           </div>
         )}
-        <Composer project={project} online={online} blocked={blocked} turns={allTurns} running={running} provider={agent?.provider ?? "Claude Code"} />
+        <Composer
+          project={project}
+          online={online}
+          blocked={blocked}
+          agentId={agentId}
+          turns={allTurns}
+          running={running}
+          provider={agent?.provider ?? "Claude Code"}
+        />
       </div>
     </ProjectContext.Provider>
   );

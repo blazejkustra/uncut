@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import type { ProjectModel } from "../state/project.ts";
 import { useAppSelect, type AppStateShape } from "../state/store.ts";
+import { runningTurns } from "../state/agents.ts";
 
-/** The revisions of the running turn's edits, as one string (the same string while they don't change). */
-const turnRevisions = ({ agent }: AppStateShape) => {
-  const turn = agent?.running ? agent.turns.find((t) => t.id === agent.running) : undefined;
-  return turn ? turn.edits.map((e) => e.revision).join(",") : "";
-};
+/** The revisions of the running turns' edits, as one string (the same string while they don't change). */
+const turnRevisions = ({ agent }: AppStateShape) =>
+  runningTurns(agent)
+    .flatMap((t) => t.edits.map((e) => e.revision))
+    .join(",");
 
 /**
  * U6 (D185): the items an agent edit just added or changed, for a moment. An edit is the agent's

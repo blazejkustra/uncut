@@ -149,7 +149,7 @@ const handlersLayer = ({
     [RPC_METHODS.telemetryCrash]: ({ name, stack }) => Effect.sync(() => trackRendererCrash(name, stack)),
     [RPC_METHODS.agentSubscribe]: () => agent.changes,
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
-    [RPC_METHODS.agentCancel]: () => agent.cancel,
+    [RPC_METHODS.agentCancel]: ({ agentId }) => agent.cancel(agentId),
     [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
     [RPC_METHODS.agentRedoTurn]: ({ turnId }) => agent.redoTurn(turnId),
     [RPC_METHODS.agentApprove]: ({ id, allow, source, answer, beats, note, always }) => agent.approve(id, allow, source, { answer, beats, note, always }),
@@ -170,7 +170,9 @@ const handlersLayer = ({
     [RPC_METHODS.templatesFill]: ({ id }) => templates.fill(id),
     [RPC_METHODS.agentScreenTake]: (answer) => agent.screenTake(answer),
     [RPC_METHODS.agentRestoreCleanup]: ({ turnId }) => agent.restoreCleanup(turnId),
-    [RPC_METHODS.agentNewThread]: () => agent.newThread,
+    [RPC_METHODS.agentNewThread]: ({ agentId }) => agent.newThread(agentId),
+    [RPC_METHODS.agentCreate]: (input) => agent.create(input),
+    [RPC_METHODS.agentArchive]: ({ agentId }) => agent.archive(agentId),
     // D205: the user's media index (other projects' captures, imports and generations).
     [RPC_METHODS.mediaRecent]: (opts) => Effect.map(mediaIndex.search(opts), (found) => ({ entries: found.map(shownEntry) })),
     [RPC_METHODS.mediaRecentImport]: ({ id }) =>

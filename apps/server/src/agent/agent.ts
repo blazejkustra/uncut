@@ -13,10 +13,13 @@
 // .cache/: wiping the cache must not lose the history. An agent/turns.json from before (D51) is
 // moved in on first open and renamed agent/turns.migrated-<time>.json; one that can't be read is
 // left alone and turns are refused until it can be.
+import { randomBytes } from "node:crypto";
 import { rm } from "node:fs/promises";
 
 import {
   AgentError,
+  type AgentFocus,
+  type AgentInfo,
   type AgentAccess,
   type AgentEffort,
   type AgentProvider,
@@ -59,6 +62,9 @@ import { Keys } from "../generate/keys.ts";
 import { Library } from "../library/library.ts";
 import { isTestRun } from "../generate/providers.ts";
 import { Projects } from "../project/projects.ts";
+import { withHistory } from "../project/history.ts";
+import { AGENT_COLOURS, type StoredAgent, storedAgents } from "../project/history/agents.ts";
+import { FOCUS_NAMES } from "./agentTeam.ts";
 import { agentEnv } from "../app/shellEnv.ts";
 import { type ClaudeSession, type Running } from "./session/types.ts";
 import { APPROVAL_MS, canonical } from "./session/config.ts";
@@ -122,8 +128,10 @@ export interface AgentShape {
     access?: AgentAccess | undefined;
     images?: ReadonlyArray<AgentImage> | undefined;
     ranges?: Running["ranges"] | undefined;
+    agentId?: string | undefined;
   }) => Effect.Effect<{ turnId: string }, AgentError>;
-  readonly cancel: Effect.Effect<void>;
+  /** Stops the agent's running turn (absent: the first agent). */
+  readonly cancel: (agentId?: string) => Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
   readonly approve: (id: string, allow: boolean, source?: string, extra?: CardAnswer) => Effect.Effect<{ readonly accepted: boolean }>;
   /** D188: the user's own edit of the brief or the storyboard. */
@@ -145,7 +153,11 @@ export interface AgentShape {
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */
   readonly restoreCleanup: (turnId: string) => Effect.Effect<{ readonly restored: ReadonlyArray<string> }, AgentError>;
   /** D295: a new chat: the next message starts a fresh Claude conversation (earlier turns stay in the history). */
-  readonly newThread: Effect.Effect<{ readonly threadStart: string }, AgentError>;
+  readonly newThread: (agentId?: string) => Effect.Effect<{ readonly threadStart: string }, AgentError>;
+  /** C12: another agent in the open project, with its focus preset. */
+  readonly create: (input: { readonly name?: string | undefined; readonly focus: AgentFocus }) => Effect.Effect<AgentInfo, AgentError>;
+  /** C12: an agent out of the tab row (its turns stay in the history). */
+  readonly archive: (agentId: string) => Effect.Effect<void, AgentError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the live session's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
   /** For the bridge: whether `token` is the running turn's (no rescan, unlike tools). */
@@ -173,6 +185,21 @@ export { agentEnv };
 // ---- the service ----
 
 /** A turn by its prompt, quoted and cut at 80 characters, for the history's labels and the agent's note. */
+/** C12: a name no other agent of the project has ("Graphics", else "Graphics 2", ...). */
+const freeName = (name: string, taken: ReadonlyArray<string>) => {
+  let n = 1;
+  let candidate = name;
+  while (taken.includes(candidate)) candidate = `${name} ${++n}`;
+  return candidate;
+};
+
+/** C12: the project's saved agent list changed by `change` (archived agents kept). */
+const saveAgentList = (dir: string, change: (saved: Array<StoredAgent>) => Array<StoredAgent>) =>
+  Effect.try({
+    try: () => withHistory(dir, (db) => db.saveAgentList(JSON.stringify(change(storedAgents(db.agentList()))))),
+    catch: (error) => new AgentError({ reason: "failed", message: `Couldn't save the project's agents: ${(error as Error).message}` }),
+  });
+
 const turnName = (prompt: string) => `"${prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt}"`;
 
 export const layer = Layer.effect(
@@ -199,7 +226,7 @@ export const layer = Layer.effect(
 
     const stateRef = yield* SubscriptionRef.make<AgentState | null>(null);
     const loadLock = yield* Semaphore.make(1);
-    const st: AgentVars = { loaded: undefined, running: undefined, initWarning: undefined, limitWarning: undefined, session: undefined, approval: undefined };
+    const st: AgentVars = { agents: [], closing: [] };
     // Every claude still running, the live one and any closing (graceful or killed, not yet gone).
     const sessions = new Set<ClaudeSession>();
     // UNCUT_APPROVAL_MS shortens the approval wait in test runs only (as D99's base URLs).
@@ -238,7 +265,7 @@ export const layer = Layer.effect(
       view,
     };
     const core = { ...services, ...makeCore(services) };
-    const { ensureLoaded, trackPending, publish, killRunning, persist, stop, sessionTokenOk, tokenOk, closeSession } = core;
+    const { ensureLoaded, agentOf, addLoaded, trackPending, publish, killRunning, persist, stop, sessionFor, runningFor, closeSession, infoOf } = core;
 
     // Follow the open project: another opening loads its history, every change refreshes the
     // undo states, a close stops the running turn.
@@ -280,22 +307,36 @@ export const layer = Layer.effect(
     const { send } = makeSend(withSpawn);
     const { allowed, runTool, publishNow } = withSpawn;
 
+    /** The agent that ran a turn of the open project, and the turn. */
+    const turnOf = (turnId: string) =>
+      Effect.gen(function* () {
+        const agents = yield* ensureLoaded;
+        if (!agents) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+        for (const owner of agents) {
+          const turn = owner.turns.find((t) => t.id === turnId);
+          if (turn) return { owner, turn };
+        }
+        return yield* new AgentError({ reason: "unknown-turn", message: "That turn isn't in this project's history." });
+      });
+
     return Agent.of({
       changes: SubscriptionRef.changes(stateRef),
       send,
-      cancel: Effect.sync(() => {
-        if (st.running) stop(st.running);
-      }),
+      cancel: (agentId) =>
+        Effect.sync(() => {
+          const owner = agentId === undefined ? st.agents[0] : st.agents.find((a) => a.agentId === agentId);
+          if (owner?.running) stop(owner.running);
+        }),
       approve: (id, allow, source, extra) =>
         Effect.sync(() => {
-          if (st.approval?.card.id !== id) return { accepted: false };
-          st.approval.answer(allow ? "allow" : "deny", source, extra);
+          const approval = st.agents.find((a) => a.approval?.card.id === id)?.approval;
+          if (!approval) return { accepted: false };
+          approval.answer(allow ? "allow" : "deny", source, extra);
           return { accepted: true };
         }),
       planSave: ({ brief, storyboard, intended }) =>
         Effect.gen(function* () {
-          const owner = yield* ensureLoaded;
-          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+          const owner = yield* agentOf(undefined);
           const saved = yield* Effect.tryPromise({
             try: async () => {
               if (brief) await writeBrief(owner.dir, { ...brief, by: "user" });
@@ -326,11 +367,10 @@ export const layer = Layer.effect(
         }),
       undoTurn: (turnId) =>
         Effect.gen(function* () {
-          const owner = yield* ensureLoaded;
-          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-          if (st.running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before undoing a turn." });
-          const turn = owner.turns.find((t) => t.id === turnId);
-          if (!turn) return yield* new AgentError({ reason: "unknown-turn", message: "That turn isn't in this project's history." });
+          const { owner, turn } = yield* turnOf(turnId);
+          // C12: other agents may go on working (their next edit based before the undo is refused, and they read again).
+          if (owner.running)
+            return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before undoing its turn.` });
           // Partly beyond what history.db keeps (or not in the history at all): say why, change nothing.
           const state = undoState(turn, view(), owner.openId, format.validate);
           if (state.state === "unavailable") return yield* new AgentError({ reason: "failed", message: `This turn can't be undone. ${state.reason}` });
@@ -348,11 +388,10 @@ export const layer = Layer.effect(
         }),
       redoTurn: (turnId) =>
         Effect.gen(function* () {
-          const owner = yield* ensureLoaded;
-          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-          if (st.running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before redoing a turn." });
-          const turn = owner.turns.find((t) => t.id === turnId);
-          if (!turn?.undoneAt) return yield* new AgentError({ reason: "unknown-turn", message: "That turn wasn't undone." });
+          const { owner, turn } = yield* turnOf(turnId);
+          if (owner.running)
+            return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before redoing its turn.` });
+          if (!turn.undoneAt) return yield* new AgentError({ reason: "unknown-turn", message: "That turn wasn't undone." });
           const snapshot = yield* projects.redoTurn(owner.openId, turnId, `Redid your turn ${turnName(turn.prompt)} (its edits are back)`);
           delete turn.undoneAt;
           turn.redoneAt = new Date().toISOString();
@@ -364,10 +403,8 @@ export const layer = Layer.effect(
       // D206: the turn's Restore: its trashed graphics back in graphics/.
       restoreCleanup: (turnId) =>
         Effect.gen(function* () {
-          const owner = yield* ensureLoaded;
-          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-          const turn = owner.turns.find((t) => t.id === turnId);
-          if (!turn?.cleanup) return yield* new AgentError({ reason: "unknown-turn", message: "That turn moved nothing to the trash." });
+          const { owner, turn } = yield* turnOf(turnId);
+          if (!turn.cleanup) return yield* new AgentError({ reason: "unknown-turn", message: "That turn moved nothing to the trash." });
           const restored = yield* Effect.promise(() => restoreGraphics(owner.dir, turnId, turn.cleanup!.graphics).catch(() => [] as Array<string>));
           turn.cleanup = { ...turn.cleanup, restored: true };
           persist(owner);
@@ -378,47 +415,83 @@ export const layer = Layer.effect(
       // forgotten, so the next message spawns one without --resume and gets the brand and plan
       // blocks whole (a new session has sent none). The note of edits by hand stays for it. What
       // D194 keeps "for this chat" (Always answers, added folders, web use) starts over too.
-      newThread: Effect.gen(function* () {
-        const owner = yield* ensureLoaded;
-        if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-        if (st.running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before starting a new chat." });
-        if (st.session) closeSession(st.session, "graceful");
-        owner.sessionId = undefined;
-        owner.context = undefined;
-        owner.threadStart = new Date().toISOString();
-        owner.grants.clear();
-        owner.dirs.length = 0;
-        owner.mentioned.length = 0;
-        owner.webUsed = false;
-        owner.tainted.clear();
-        persist(owner);
-        publish();
-        return { threadStart: owner.threadStart };
-      }),
+      newThread: (agentId) =>
+        Effect.gen(function* () {
+          const owner = yield* agentOf(agentId);
+          if (owner.running)
+            return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before starting a new chat.` });
+          if (owner.session) closeSession(owner.session, "graceful");
+          owner.sessionId = undefined;
+          owner.context = undefined;
+          owner.threadStart = new Date().toISOString();
+          owner.grants.clear();
+          owner.dirs.length = 0;
+          owner.mentioned.length = 0;
+          owner.webUsed = false;
+          owner.tainted.clear();
+          persist(owner);
+          publish();
+          return { threadStart: owner.threadStart };
+        }),
+      create: ({ name, focus }) =>
+        Effect.gen(function* () {
+          const agents = yield* ensureLoaded;
+          const v = view();
+          if (!agents || !v || v.openId !== agents[0]?.openId) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+          if (agents.length >= AGENT_COLOURS.length)
+            return yield* new AgentError({ reason: "failed", message: `A project has at most ${AGENT_COLOURS.length} agents. Close one first.` });
+          const used = new Set(agents.map((a) => a.colour));
+          const info: StoredAgent = {
+            id: `ag-${randomBytes(3).toString("hex")}`,
+            name: freeName(
+              name?.trim().slice(0, 40) || FOCUS_NAMES[focus],
+              agents.map((a) => a.name),
+            ),
+            focus,
+            colour: AGENT_COLOURS.find((c) => !used.has(c)) ?? AGENT_COLOURS[0],
+            createdAt: new Date().toISOString(),
+          };
+          yield* saveAgentList(v.dir, (saved) => [...saved, info]);
+          const added = addLoaded(v, info);
+          publish();
+          return infoOf(added);
+        }),
+      archive: (agentId) =>
+        Effect.gen(function* () {
+          const owner = yield* agentOf(agentId);
+          if (st.agents.length <= 1) return yield* new AgentError({ reason: "failed", message: "A project keeps at least one agent." });
+          if (owner.running) return yield* new AgentError({ reason: "busy", message: `Stop ${owner.name} before closing it.` });
+          yield* saveAgentList(owner.dir, (saved) => saved.map((a) => (a.id === owner.agentId ? { ...a, archivedAt: new Date().toISOString() } : a)));
+          if (owner.session) closeSession(owner.session, "graceful");
+          st.agents = st.agents.filter((a) => a !== owner);
+          publish();
+        }),
       // The built-in tools, then the plugins' (D97; the folders are scanned again for each list).
       // Any time the session lives: claude lists its tools when it starts.
       tools: (token) =>
         Effect.suspend(() => {
-          if (!sessionTokenOk(token)) return Effect.succeed(undefined);
+          const s = sessionFor(token);
+          if (!s) return Effect.succeed(undefined);
           return Effect.andThen(
             plugins.refresh,
             Effect.map(plugins.tools, (extra) => {
               const list = [...mcpTools(), ...extra];
               // D261: the tool list claude got, for the context meter's system + tools estimate.
-              if (st.session) st.session.toolsChars = JSON.stringify(list).length;
+              s.toolsChars = JSON.stringify(list).length;
               return list;
             }),
           );
         }),
-      authorized: (token) => Effect.sync(() => tokenOk(token, st.running)),
-      // A call goes to the running turn only: none while idle, none while a stopped turn's result
-      // is still pending (r.cancelled). The next turn is written only after this one's result
-      // (send refuses while one runs, writeTurn checks), so a call can only reach the turn running
-      // when it arrives (gen). Announcements are a soft log: a call not announced still runs.
+      authorized: (token) => Effect.sync(() => runningFor(token) !== undefined),
+      // A call goes to the running turn of the agent whose session the token is: none while idle,
+      // none while a stopped turn's result is still pending (r.cancelled). The next turn is written
+      // only after this one's result (send refuses while one runs, writeTurn checks), so a call can
+      // only reach the turn running when it arrives (gen). Announcements are a soft log: a call not
+      // announced still runs.
       call: (token, name, args) =>
         Effect.suspend(() => {
-          const r = st.running;
-          if (!tokenOk(token, r)) return Effect.succeed(undefined);
+          const r = runningFor(token);
+          if (!r) return Effect.succeed(undefined);
           const input = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
           const key = canonical(input);
           const slot = r.announced.find((x) => !x.used && x.name === String(name).replace(/^mcp__uncut__/, "") && x.args === key);

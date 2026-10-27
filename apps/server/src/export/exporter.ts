@@ -21,6 +21,7 @@ import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Semaphore from "effect/Semaphore";
 import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
@@ -120,6 +121,8 @@ export interface ExporterShape {
 export class Exporter extends Context.Service<Exporter, ExporterShape>()("uncut/Exporter") {}
 
 const MAX_JOBS_KEPT = 10;
+/** C12: frame sessions (render_frames, contact_sheet, the critic) open at once; more wait for one to close. */
+export const FRAME_SESSIONS_MAX = 2;
 
 export const layer = Layer.effect(
   Exporter,
@@ -337,37 +340,40 @@ export const layer = Layer.effect(
         });
       });
 
+    const frameSlots = yield* Semaphore.make(FRAME_SESSIONS_MAX);
     const frameSession = <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options: FrameSessionOptions = {}) =>
-      Effect.gen(function* () {
-        const { dir, project, mediaPath } = yield* current;
-        const bin = yield* Effect.promise(ffmpegBin);
-        if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
-        const failed = (error: unknown) => new ExportError({ reason: "missing-media", message: (error as Error).message });
-        return yield* Effect.acquireUseRelease(
-          Effect.tryPromise({
-            try: async () => {
-              const { graphics, fonts } = await projectGraphics(config, dir, project);
-              const life = new AbortController();
-              const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, options);
-              return { session, life };
-            },
-            catch: failed,
-          }),
-          ({ session }) =>
-            use({
-              render: (frames, width, o) => Effect.tryPromise({ try: (signal) => session.render(frames, width, { ...o, signal }), catch: failed }),
-              // A sheet the session can't draw gets the sheet's own rasteriser.
-              sheet: (cells, layout) =>
-                Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
-              rehearse: (budgetMs) => Effect.tryPromise({ try: (signal) => session.rehearse(budgetMs, { signal }), catch: failed }),
+      frameSlots.withPermits(1)(
+        Effect.gen(function* () {
+          const { dir, project, mediaPath } = yield* current;
+          const bin = yield* Effect.promise(ffmpegBin);
+          if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
+          const failed = (error: unknown) => new ExportError({ reason: "missing-media", message: (error as Error).message });
+          return yield* Effect.acquireUseRelease(
+            Effect.tryPromise({
+              try: async () => {
+                const { graphics, fonts } = await projectGraphics(config, dir, project);
+                const life = new AbortController();
+                const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, options);
+                return { session, life };
+              },
+              catch: failed,
             }),
-          ({ session, life }) =>
-            Effect.promise(async () => {
-              life.abort();
-              await session.close();
-            }),
-        );
-      });
+            ({ session }) =>
+              use({
+                render: (frames, width, o) => Effect.tryPromise({ try: (signal) => session.render(frames, width, { ...o, signal }), catch: failed }),
+                // A sheet the session can't draw gets the sheet's own rasteriser.
+                sheet: (cells, layout) =>
+                  Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
+                rehearse: (budgetMs) => Effect.tryPromise({ try: (signal) => session.rehearse(budgetMs, { signal }), catch: failed }),
+              }),
+            ({ session, life }) =>
+              Effect.promise(async () => {
+                life.abort();
+                await session.close();
+              }),
+          );
+        }),
+      );
 
     // ---- the agent's contact sheets ----
 

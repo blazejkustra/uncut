@@ -11,6 +11,7 @@ import { bridge } from "./bridge.ts";
 import { leaveWords, pendingWork, type LeaveReason, type PendingItem } from "./pending.ts";
 import { actions, getState, isTextEntry, pendingSaves, setLeaveGate } from "./store.ts";
 import { justClosedProject } from "./store/actions/project.ts";
+import { agentsOf, anyAgentRunning } from "./agents.ts";
 
 // As ExportDialog's exportRunning (not imported: that module pulls in half the app).
 const EXPORT_RUNNING = new Set(["queued", "preparing", "rendering"]);
@@ -57,7 +58,7 @@ export function pendingNow(reason: LeaveReason): Array<PendingItem> {
     saving: pendingSaves(),
     draft: currentDraft(),
     message: s.snapshot !== null && s.agentDraft.trim() !== "",
-    agentRunning: s.agent !== null && s.agent.dir === dir && s.agent.running !== null,
+    agentRunning: s.agent !== null && s.agent.dir === dir && anyAgentRunning(s.agent),
     exports: s.exportJobs
       .filter((j) => EXPORT_RUNNING.has(j.phase))
       .map((j) => ({ id: j.id, name: j.output.slice(j.output.lastIndexOf("/") + 1) || "the video" })),
@@ -116,6 +117,10 @@ function keep(items: ReadonlyArray<PendingItem>) {
   setAsking({ ...asking, waiting: true });
 }
 
+function stopAgents() {
+  for (const a of agentsOf(getState().agent)) if (a.running !== null) void actions.agentCancel(a.id);
+}
+
 /** Discard / Stop: stop what runs, drop the rest, and go. */
 function drop(items: ReadonlyArray<PendingItem>) {
   const now = asking;
@@ -123,7 +128,7 @@ function drop(items: ReadonlyArray<PendingItem>) {
   for (const item of items) {
     if (item.id === "draft") dropDraft();
     else if (item.stop === "take") cancelTake();
-    else if (item.stop === "agent") void actions.agentCancel();
+    else if (item.stop === "agent") stopAgents();
     else if (item.stop === "export" && item.target) void actions.cancelExport(item.target);
   }
   now.answer(true);

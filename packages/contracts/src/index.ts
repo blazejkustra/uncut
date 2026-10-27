@@ -123,6 +123,11 @@ export {
   AgentUi,
   AgentApproval,
   AgentContext,
+  AGENT_FOCUSES,
+  AgentFocus,
+  DEFAULT_AGENT_ID,
+  AGENTS_RUNNING_MAX,
+  AgentInfo,
   AgentState,
   AgentError,
 } from "./agent.ts";

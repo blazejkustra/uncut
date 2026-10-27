@@ -12,7 +12,7 @@ import { type Running, pushEdit } from "../session/types.ts";
 import type { AskCtx } from "./ask.ts";
 
 export const makeGenerateTools = (ctx: AskCtx) => {
-  const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, view, projects } = ctx;
+  const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, view, projects, seeOwn } = ctx;
 
   /**
    * generate_media (D99): a generator's result imported as media, an edit of this turn (Undo
@@ -93,7 +93,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)],
           media: [entry.id],
         });
-        r.owner.seen.add(snapshot.revision);
+        seeOwn(r, snapshot.revision);
       }
       persist(r.owner);
       publish();
@@ -176,7 +176,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)],
           media: [entry.id],
         });
-        r.owner.seen.add(snapshot.revision);
+        seeOwn(r, snapshot.revision);
       }
       persist(r.owner);
       publish();
@@ -351,7 +351,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           );
         if (done) {
           pushEdit(r, { revision: done.revision, summary, lines: empty.map((id) => `Removed the empty track ${id}`) });
-          r.owner.seen.add(done.revision);
+          seeOwn(r, done.revision);
           tracks = empty;
         }
       }

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENT_IMAGE_MAX, AGENT_IMAGES_MAX, AgentError, type AgentFolder } from "@uncut/contracts";
+import { AGENT_IMAGE_MAX, AGENT_IMAGES_MAX, AGENTS_RUNNING_MAX, AgentError, type AgentFolder } from "@uncut/contracts";
 import { type Project, sectionsNote } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
@@ -13,7 +13,8 @@ import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
-import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
+import type { ClaudeSession, Loaded, Running, StoredTurn } from "./types.ts";
+import { teamBlock } from "../agentTeam.ts";
 import { capNote, joinNotes, noteFor, noteShowsAll } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT, sessionEnv } from "./config.ts";
 import { findCodex } from "./codex.ts";
@@ -65,7 +66,7 @@ export const isCompact = (text: string) => /^\/compact(\s|$)/.test(text);
 const NO_PLAN = { planBlock: "", skillsBlock: "", called: [] as Array<string> };
 
 export const makeSend = (ctx: SpawnCtx) => {
-  const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, spawnCodex, persist, publishNow, writeTurn, writeCodexTurn } = ctx;
+  const { plugins, agentOf, readerOf, st, config, view, closeSession, spawnSession, spawnCodex, persist, publishNow, writeTurn, writeCodexTurn } = ctx;
 
   /** The plugins' tool names now (D97): a session started with other ones is started again. */
   // D232: and the installed skills' names (the system prompt lists them), so installing one starts a new session.
@@ -85,22 +86,41 @@ export const makeSend = (ctx: SpawnCtx) => {
     ),
   );
 
-  const send: AgentShape["send"] = ({
-    prompt,
-    frame,
-    selected,
-    mentions,
-    provider = "claude",
-    model: askedModel,
-    effort,
-    access = "auto",
-    images = [],
-    ranges,
-  }) =>
+  /** C12: why this agent can't start a turn now (its own turn runs, or AGENTS_RUNNING_MAX others do), or undefined. */
+  const busyWhy = (owner: Loaded) => {
+    if (owner.running || starting.has(owner)) return `${owner.name} is still working on the last message.`;
+    const working = st.agents.filter((a) => a.running || starting.has(a));
+    if (working.length < AGENTS_RUNNING_MAX) return undefined;
+    return `${working.map((a) => a.name).join(" and ")} are working already: at most ${AGENTS_RUNNING_MAX} agents work at once. Wait for one to finish, or stop one, then send again.`;
+  };
+  // Agents whose message is being prepared (send waits for the shell, skills, the plan): they count as working.
+  const starting = new Set<Loaded>();
+
+  const send: AgentShape["send"] = (input) =>
     Effect.gen(function* () {
-      const owner = yield* ensureLoaded;
-      if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-      if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
+      const owner = yield* agentOf(input.agentId);
+      const busy = busyWhy(owner);
+      if (busy) return yield* new AgentError({ reason: "busy", message: busy });
+      starting.add(owner);
+      return yield* start(owner, input).pipe(Effect.ensuring(Effect.sync(() => starting.delete(owner))));
+    });
+
+  const start = (
+    owner: Loaded,
+    {
+      prompt,
+      frame,
+      selected,
+      mentions,
+      provider = "claude",
+      model: askedModel,
+      effort,
+      access = "auto",
+      images = [],
+      ranges,
+    }: Parameters<AgentShape["send"]>[0],
+  ) =>
+    Effect.gen(function* () {
       if (owner.readError) {
         return yield* new AgentError({
           reason: "failed",
@@ -110,7 +130,8 @@ export const makeSend = (ctx: SpawnCtx) => {
       const text = prompt.trim();
       if (!text) return yield* new AgentError({ reason: "failed", message: "Write what you'd like the agent to do." });
       const compacting = isCompact(text);
-      if (compacting && !owner.sessionId && !st.session) return yield* new AgentError({ reason: "failed", message: "There's no conversation to compact yet." });
+      if (compacting && !owner.sessionId && !owner.session)
+        return yield* new AgentError({ reason: "failed", message: "There's no conversation to compact yet." });
       if (images.length > AGENT_IMAGES_MAX)
         return yield* new AgentError({ reason: "failed", message: `Attach at most ${AGENT_IMAGES_MAX} images to a message.` });
       const decoded = images.map((img) => ({ ...img, bytes: Buffer.from(img.data, "base64") }));
@@ -137,12 +158,12 @@ export const makeSend = (ctx: SpawnCtx) => {
       const { skills: claudeSkills } =
         provider === "codex" ? { skills: [] } : yield* Effect.promise(() => claudeSkillsFor(bin, owner.dir, sessionEnv(process.env), config.dataDir));
       const toolsKey = `${yield* toolsKeyNow}|claude:${claudeSkills.map((x) => `${x.plugin}:${x.name}`).join(",")}`;
-      if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
       const v = view();
-      if (!v || v.openId !== owner.openId) return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
+      if (!v || v.openId !== owner.openId || !st.agents.includes(owner))
+        return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
 
       // A /compact goes to Claude Code as it is: the note waits for the next message.
-      const changes = compacting ? "" : noteFor(v, owner.agentSeen);
+      const changes = compacting ? "" : noteFor(v, owner.agentSeen, readerOf(owner));
       const note = compacting ? "" : joinNotes(owner.carried, changes);
       // The note names the revision the project is at now ("now at revision N"): the agent may edit
       // from it when it shows every change (noteShowsAll) and no earlier opening's note comes with it.
@@ -155,6 +176,8 @@ export const makeSend = (ctx: SpawnCtx) => {
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
       // Issue #118: the sections the user locked and flagged "not OK", with every message.
       const sections = sectionsNote(project);
+      const teammate = (a: Loaded) => ({ agentId: a.agentId, name: a.name, focus: a.focus, working: !!a.running || starting.has(a) });
+      const team = compacting ? "" : teamBlock(teammate(owner), st.agents.filter((a) => a !== owner).map(teammate));
       const context = [
         frame !== undefined ? playheadLine(project, frame) : "",
         selected ? `Selected item: ${selected}.` : "",
@@ -251,7 +274,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
       const model = modelFor(askedModel, provider);
-      let s = st.session;
+      let s = owner.session;
       if (
         s &&
         (s.closed ||
@@ -274,7 +297,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         yield* Effect.promise(() => shellAuthReady());
         const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access, claudeSkills });
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
-        s = st.session = started;
+        s = owner.session = started;
       }
       // D260: the brand kit and plan whole only when they changed since this session last saw them.
       // What it has seen: the last message's blocks once claude read that message (a turn stopped or
@@ -292,6 +315,7 @@ export const makeSend = (ctx: SpawnCtx) => {
             contextBlock(project, pointed),
             foldersBlock,
             planBlock ? lean.text : "",
+            team,
             context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
           ]
             .filter(Boolean)
@@ -328,6 +352,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         ...(note ? { note } : {}),
         ...(folderList.length ? { folders: folderList } : {}),
         ...(compacting ? { kind: "compact" as const } : {}),
+        agentId: owner.agentId,
         startedAt: new Date().toISOString(),
         status: "running",
         items: [],
@@ -373,7 +398,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         ...(ranges ? { ranges } : {}),
       };
       if (planBlock) blocks.pending = { sent: lean.sent, r };
-      st.running = r;
+      owner.running = r;
       persist(owner);
       publishNow();
       (s.provider === "codex" ? writeCodexTurn : writeTurn)(s, r);
