@@ -1,6 +1,7 @@
 // Trim, split and delete planners (edit.ts), ripple delete and group trims.
 import { overlaps } from "@uncut/core/transitions";
 import { busySpans, keepMainTimes, rippleMainGaps } from "@uncut/core/arrange";
+import { withGraphicRetime } from "@uncut/core/retime";
 import type { Op } from "@uncut/core/types";
 import { type Track, type ProjectModel, uniqueId } from "../../state/project.ts";
 import { type Plan, findItem, type Placed, lockOf, dropTransitions, draftOf, withGroups } from "./base.ts";
@@ -47,7 +48,11 @@ export function planRippleDelete(project: ProjectModel, ids: ReadonlyArray<strin
       }
     }
   }
-  return { ops, summary: placed.length > 1 ? `Ripple delete ${placed.length} items` : `Ripple delete ${placed[0]!.item.id}` };
+  // C6: graphics the closed-up stretch ran through lose it too.
+  return {
+    ops: withGraphicRetime(project, ops).ops,
+    summary: placed.length > 1 ? `Ripple delete ${placed.length} items` : `Ripple delete ${placed[0]!.item.id}`,
+  };
 }
 
 export interface TrimPlan extends Plan {

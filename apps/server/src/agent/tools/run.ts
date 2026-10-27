@@ -1,6 +1,6 @@
 // runTool: one Uncut tool call of the running turn; allowed: what the turn's access lets it do.
 import type { BrandKit } from "@uncut/contracts";
-import { brandColourRule, LAYOUT_RULES, type Project, describeOp, type Op, pluginCheckRules, type Problem } from "@uncut/core";
+import { brandColourRule, LAYOUT_RULES, type Project, describeOp, type Op, pluginCheckRules, type Problem, retimeNotes, withGraphicRetime } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
@@ -366,8 +366,11 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // D213: effect.shader entries named by id get their definition (a plugin's or the project's).
           const shaded = expandShaderEffects(placed.ops, yield* shaderDefsOf(v));
           if ("problem" in shaded) return refuse(shaded.problem);
-          const ops = shaded.ops;
+          // C6: graphics a ripple cut runs through lose the same stretch of their own time.
+          const retime = withGraphicRetime(v.session.project as Project, shaded.ops as ReadonlyArray<Op>);
+          const ops = retime.ops;
           const placements = placed.notes.length ? { placed: placed.notes } : {};
+          const retimed = retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, v.session.project.canvas.fps) } : {};
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(
               {
@@ -429,6 +432,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               }),
               diff: projectDiff(v.session.project as Project, planned),
               ...placements,
+              ...retimed,
               duration: end,
               seconds: Number((end / planned.canvas.fps).toFixed(2)),
               note: "Nothing changed. Send the same edit without dryRun to make it.",
@@ -463,6 +467,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             ok: true,
             revision: snapshot.revision,
             ...placements,
+            ...retimed,
             duration: end,
             seconds: Number((end / project.canvas.fps).toFixed(2)),
             ...(ducking ? { ducking } : {}),

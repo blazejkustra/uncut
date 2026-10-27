@@ -203,6 +203,72 @@ test(
   },
 );
 
+test("C6: a ripple trim on Main re-times the panel graphic over it, and timeline_edit says so", { skip, timeout: 180000 }, async () => {
+  const start = results().length;
+  const html = "<div id=b></div><script>function render(t){document.getElementById('b').textContent=t.toFixed(2)}</script>";
+  const turn = await ask("cut 1 s from the second card", [
+    { tool: "graphic_write", args: { name: "panel.html", html } },
+    { tool: "project_read", args: {} },
+    {
+      tool: "timeline_edit",
+      args: {
+        baseRevision: "$rev",
+        summary: "Two cards and a panel",
+        ops: [
+          {
+            op: "insert_item",
+            track: "main",
+            item: { id: "card-1", type: "component", component: "component.solid", duration: 150, props: { color: "#202020" } },
+          },
+          {
+            op: "insert_item",
+            track: "main",
+            item: { id: "card-2", type: "component", component: "component.solid", duration: 150, props: { color: "#303030" } },
+          },
+          { op: "add_track", track: { id: "panel-track", kind: "video", name: "Panel" }, index: 0 },
+          {
+            op: "insert_item",
+            track: "panel-track",
+            item: {
+              id: "panel",
+              type: "graphic",
+              src: "graphics/panel.html",
+              start: 150,
+              duration: 300,
+              keys: [
+                { frame: 200, opacity: 1 },
+                { frame: 210, opacity: 0 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    { tool: "project_read", args: {} },
+    {
+      tool: "timeline_edit",
+      args: { baseRevision: "$rev", summary: "Shorter first card", ops: [{ op: "trim_item", item: "card-1", edge: "end", frames: 30 }] },
+    },
+  ]);
+  assert.equal(turn.status, "done", turn.error);
+  const cut = answer(results().slice(start).at(-1));
+  assert.equal(cut.ok, true, JSON.stringify(cut));
+  assert.equal(cut.graphicsRetimed.length, 1);
+  assert.match(
+    cut.graphicsRetimed[0],
+    /^panel \(graphics\/panel\.html\): 1\.0 s of its own time went with the footage at 9\.0 s .*Don't shift its render\(t\) times by hand\.$/,
+  );
+  const panel = onDisk().tracks.find((t) => t.id === "panel-track")!.items[0]!;
+  assert.deepEqual([panel.start, panel.duration, panel.skips], [150, 270, [{ at: 120, frames: 30 }]]);
+  assert.deepEqual(
+    panel.keys!.filter((k) => k.frame >= 160).map((k) => [k.frame, k.opacity]),
+    [
+      [170, 1],
+      [180, 0],
+    ],
+  );
+});
+
 test("D274: no bundled music; library_search with source included finds the user's own music, or says to ask", { skip, timeout: 180000 }, async () => {
   const start = results().length;
   const turn = await ask("add some calm music", [{ tool: "library_search", args: { kind: "music", source: "included" } }]);

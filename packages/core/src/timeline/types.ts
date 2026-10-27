@@ -159,6 +159,8 @@ export interface Item {
   readonly props?: { readonly [key: string]: unknown };
   // graphic
   readonly src?: string;
+  /** Graphic (C6): at the item's frame `at` its own time jumps ahead `frames` (a ripple cut took that stretch out with the footage). In `at` order. */
+  readonly skips?: ReadonlyArray<{ readonly at: Frame; readonly frames: Frame }>;
   /** D291: false keeps this item sharp in an export with motion blur on (graphics, for now). */
   readonly motionBlur?: boolean;
   // text

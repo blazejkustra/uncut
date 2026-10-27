@@ -96,6 +96,16 @@ export const mentionLabel = (label: string) =>
 
 const secs = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
 
+/** The items that play a media (but `except`), as "cam-b (track main, 17.30 s)". */
+function usesOf(project: Project, mediaId: string, except?: string): Array<string> {
+  const { starts } = layout(project);
+  return project.tracks.flatMap((t) =>
+    t.items.filter((i) => i.media === mediaId && i.id !== except).map((i) => `${i.id} (track ${t.id}, ${secs(starts.get(i.id) ?? 0, project.canvas.fps)})`),
+  );
+}
+const listOf = (uses: ReadonlyArray<string>, max = 12) =>
+  uses.length > max ? `${uses.slice(0, max).join(", ")} and ${uses.length - max} more` : uses.join(", ");
+
 // D264 (#77): an effect's mention id is "<item id>/<module>" (an item has each effect once); a
 // transition's is the id of the item it leads into (an item has one transitionIn).
 /** The mention id of an item's effect. */
@@ -129,14 +139,15 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
         lines.push(`@${m.label} = media ${m.id} (no longer in the project)`);
         continue;
       }
-      const used = project.tracks.reduce((n, t) => n + t.items.filter((i) => i.media === media.id).length, 0);
+      const uses = usesOf(project, media.id);
       const facts = [
         media.kind,
         media.probe?.frames ? secs(media.probe.frames, fps) : "",
         media.probe?.width ? `${media.probe.width}x${media.probe.height}` : "",
-        used ? `used ${used}x on the timeline` : "not on the timeline",
+        uses.length ? `used ${uses.length}x on the timeline` : "not on the timeline",
       ].filter(Boolean);
-      lines.push(`@${m.label} = media ${media.id} (${facts.join(", ")})${at}`);
+      const every = uses.length > 1 ? `; it plays in ${listOf(uses)}: a change asked for it goes to every one of them unless the user names one` : "";
+      lines.push(`@${m.label} = media ${media.id} (${facts.join(", ")})${at}${every}`);
     } else if (m.kind === "item") {
       const track = project.tracks.find((t) => t.items.some((i) => i.id === m.id));
       const item = track?.items.find((i) => i.id === m.id);
@@ -150,7 +161,14 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
         media ? `media ${media.id}` : "",
         typeof item.text === "string" ? `text "${cut(oneLine(item.text), 60)}"` : "",
       ].filter(Boolean);
-      lines.push(`@${m.label} = item ${item.id} (${facts.join(", ")})${at}`);
+      // C6: a clip's chip reads as its media (a take), which may play in several clips.
+      const others = media ? usesOf(project, media.id, item.id) : [];
+      const siblings = !others.length
+        ? ""
+        : item.name
+          ? `; the same media also plays in ${listOf(others)}`
+          : `; its chip names the media "${media!.name}", which also plays in ${listOf(others)}: a change asked for it goes to all of them unless the user means only this clip`;
+      lines.push(`@${m.label} = item ${item.id} (${facts.join(", ")})${at}${siblings}`);
     } else if (m.kind === "moment") {
       const frame = m.frame ?? 0;
       lines.push(`@${m.label} = the moment at frame ${frame} (${secs(frame, fps)}): ${describeAt(project, frame, frame + 1)}`);

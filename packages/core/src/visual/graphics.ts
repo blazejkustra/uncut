@@ -48,22 +48,29 @@ export interface GraphicInfo {
   readonly props: { readonly [key: string]: unknown };
 }
 
+type GraphicTiming = Pick<Item, "duration" | "in" | "skips">;
+
+/** The graphic's own frame at the item's frame `local`, unclamped: its `in`, plus the stretches its `skips` jump over up to there. */
+export const graphicTime = (item: Pick<Item, "in" | "skips">, local: number): number =>
+  (item.in ?? 0) + local + (item.skips ?? []).reduce((sum, s) => sum + (s.at <= local ? s.frames : 0), 0);
+
 /**
  * The graphic's own frame shown `local` frames into its item: from the item's `in` (frames of the
  * graphic before what the item shows: a cut-off start, a split's second half, a range export's
- * slice), held at the item's first and last frame before and after it.
+ * slice), past the stretches its `skips` jump over (C6: what ripple cuts removed with the footage),
+ * held at the item's first and last frame before and after it.
  */
-export const graphicLocal = (item: Pick<Item, "duration" | "in">, local: number): number => (item.in ?? 0) + Math.max(0, Math.min(item.duration - 1, local));
+export const graphicLocal = (item: GraphicTiming, local: number): number => graphicTime(item, Math.max(0, Math.min(item.duration - 1, local)));
 
-/** What render(t, info) gets at the graphic's own frame `local` (graphicLocal); its duration counts from the graphic's start, `in` included. */
+/** What render(t, info) gets at the graphic's own frame `local` (graphicLocal); its duration counts from the graphic's start, `in` and skips included. */
 export const graphicInfo = (
-  item: Pick<Item, "duration" | "props" | "in">,
+  item: GraphicTiming & Pick<Item, "props">,
   canvas: Pick<Canvas, "width" | "height"> & { readonly fps: number },
   local: number,
 ): GraphicInfo => ({
   frame: local,
   fps: canvas.fps,
-  duration: (item.in ?? 0) + item.duration,
+  duration: graphicTime(item, item.duration - 1) + 1,
   width: canvas.width,
   height: canvas.height,
   props: item.props ?? {},
