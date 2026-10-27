@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
 
 import { writeFileAtomic } from "../project/atomicWrite.ts";
+import { withFileLock } from "../project/fileLock.ts";
 import { ServerConfig } from "./config.ts";
 
 export interface SettingsShape {
@@ -114,18 +115,22 @@ export const layer = Layer.effect(
       Effect.catch(() => Effect.succeed<Record<string, unknown>>({})),
       Effect.catchDefect(() => Effect.succeed<Record<string, unknown>>({})),
     );
-    // One write at a time: each reads the file and writes it back, so two at once could drop one's change.
+    // One write at a time, in this server and across every window's server (settings.json.lock):
+    // each reads the file and writes it back, so two at once could drop one's change.
     const writeLock = yield* Semaphore.make(1);
     // The patch is worked out from the settings as read under the lock (approvals are one object).
     // A failure is the caller's to handle (an approval must not look saved when it isn't).
     const updateOrFail = (patchOf: (settings: Record<string, unknown>) => Record<string, unknown>) =>
       writeLock
         .withPermits(1)(
-          Effect.gen(function* () {
-            const settings = yield* read;
-            yield* fs.makeDirectory(dataDir, { recursive: true });
-            yield* writeFileAtomic(file, `${JSON.stringify({ ...settings, ...patchOf(settings) }, null, 2)}\n`);
-          }),
+          withFileLock(
+            file,
+            Effect.gen(function* () {
+              yield* fs.makeDirectory(dataDir, { recursive: true });
+              const settings = yield* read;
+              yield* writeFileAtomic(file, `${JSON.stringify({ ...settings, ...patchOf(settings) }, null, 2)}\n`);
+            }),
+          ),
         )
         .pipe(Effect.mapError((error) => new Error(error.message)));
     const updateWith = (patchOf: (settings: Record<string, unknown>) => Record<string, unknown>) =>

@@ -11,6 +11,9 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/prom
 import { dirname, join } from "node:path";
 
 import { Cancelled } from "./analysisRunner.ts";
+import { tryFileLock } from "../project/fileLock.ts";
+
+const noLock = async () => {};
 
 export interface ModelInfo {
   readonly id: string;
@@ -159,11 +162,17 @@ const fsSentence = (error: unknown, dir: string) => {
  * keeps it too; a size or checksum mismatch, or a full disk, removes it.
  */
 export async function downloadFile(options: DownloadOptions): Promise<void> {
+  // Every window's server shares the models folder: one download of a model at a time. A folder
+  // that can't take the lock fails in downloadOnce, which says why.
+  const release = await tryFileLock(`${options.dest}.part`).catch(() => noLock);
+  if (!release) throw new Error("Another Uncut window is downloading this speech model. Try again once it has finished.");
   try {
     return await downloadOnce(options);
   } catch (error) {
     if (error instanceof Restart) return downloadOnce(options);
     throw error;
+  } finally {
+    await release();
   }
 }
 
