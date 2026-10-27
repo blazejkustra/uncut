@@ -535,8 +535,6 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .turn-cleanup { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 11px; color: var(--dim); }
 .turn-cleanup-done { color: var(--muted); }
 .turn-undo-reason { padding: 0 4px 4px; font-size: 11px; color: var(--muted); line-height: 1.4; }
-.turn-compact { display: flex; align-items: center; gap: 8px; padding: 4px; font-size: 11px; }
-.turn-compact svg.lucide { width: 12px; height: 12px; flex: none; }
 .composer { flex: none; margin: 0 12px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; }
 .composer:focus-within { border-color: rgb(255 255 255 / 22%); }
 .composer-ctx { display: flex; align-items: center; gap: 6px; padding: 7px 10px 0; font-size: 11px; color: var(--dim); min-width: 0; }

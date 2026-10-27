@@ -10,6 +10,7 @@ import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./wor
 import { CopyButton } from "./copy.tsx";
 import { tokens } from "../TokenMeter.tsx";
 import { ScreenApprovalCard, BootCard, PermissionCard, BrandDiffCard, ApprovalCard, CleanupLine } from "./approvals.tsx";
+import "./turnCompact.css";
 
 export function TurnCard({
   turn: t,

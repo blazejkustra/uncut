@@ -127,7 +127,7 @@ test("meter tooltip, Redo turn and Compact in the Agent panel", { skip, timeout:
   await page.waitForSelector("[data-testid=agent-compact-row][data-status=done]", { timeout: 15000 });
   const row = await page.$eval("[data-testid=agent-compact-row]", (el) => (el as HTMLElement).innerText);
   assert.match(row, /Compacted the conversation: 384k → 15k tokens/);
-  await page.waitForFunction(() => /^18k/.test(document.querySelector("[data-testid=agent-token-used]")?.textContent ?? ""), { timeout: 5000 });
+  await page.waitForFunction(() => (document.querySelector("[data-testid=agent-token-used]")?.textContent ?? "").startsWith("18k"), { timeout: 5000 });
   await page.screenshot({ path: out("compact-row") });
   assert.deepEqual(app.errors, []);
 });
