@@ -1,12 +1,18 @@
 // The user's own Claude Code skills for the agent's session: found where Claude Code keeps them
 // and handed to claude as small skills-only plugins (--plugin-dir), so --setting-sources "" still
-// keeps the user's settings, hooks, permissions, MCP servers and CLAUDE.md out.
+// keeps the user's settings, hooks, permissions, MCP servers and CLAUDE.md out. Each SKILL.md is
+// rewritten with only its plain front matter (name, description, when to use): a skill's
+// allowed-tools would add session allow rules past Uncut's approvals and its hooks would run shell
+// unasked (security review of 9d372be). A project's own skills load only inside the home folder,
+// and only once the user said yes to them (skillTrust.ts).
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 import { claudeConfigDirs } from "./agentPermissions.ts";
+import { realProject, trustedSkills, type ProjectSkillsAsk } from "./skillTrust.ts";
 
 export interface ClaudeSkill {
   /** What the user types after / (a user or project skill by its name; others as plugin:name). */
@@ -15,8 +21,11 @@ export interface ClaudeSkill {
   readonly plugin: string;
   readonly name: string;
   readonly description: string;
-  /** The skill's folder (with SKILL.md), as found. */
+  /** The skill's folder (with SKILL.md), its real path. */
   readonly dir: string;
+  /** SKILL.md as read, and its sha256 (a project's skills are trusted by these). */
+  readonly text: string;
+  readonly hash: string;
 }
 
 export interface InstalledPlugin {
@@ -52,16 +61,44 @@ function indentedAfter(lines: ReadonlyArray<string>, at: number): Array<string> 
   return out;
 }
 
-/** The front matter's description: on its line, or a folded/literal block (`>` or `|`) under it. */
-export function skillDescription(text: string): string {
-  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
-  const lines = front.split(/\r?\n/);
-  const at = lines.findIndex((l) => /^description:/.test(l));
+const FRONT = /^---\r?\n([\s\S]*?)\r?\n---[^\n]*(?:\r?\n|$)/;
+
+/** A front matter key's text value: on its line, or a folded/literal block (`>` or `|`) under it. */
+function frontValue(text: string, key: string): string {
+  const lines = (FRONT.exec(text)?.[1] ?? "").split(/\r?\n/);
+  const at = lines.findIndex((l) => l.startsWith(`${key}:`));
   if (at < 0) return "";
-  const first = lines[at]!.slice("description:".length).trim();
-  const value = (/^[>|][+-]?$/.test(first) ? indentedAfter(lines, at).join(" ") : first).replace(/^(["'])(.*)\1$/, "$2").trim();
+  const first = lines[at]!.slice(key.length + 1).trim();
+  return (/^[>|][+-]?$/.test(first) ? indentedAfter(lines, at).join(" ") : first).replace(/^(["'])(.*)\1$/, "$2").trim();
+}
+
+/** The front matter's description, cut for the / menu. */
+export function skillDescription(text: string): string {
+  const value = frontValue(text, "description");
   return value.length > DESCRIPTION_CHARS ? `${value.slice(0, DESCRIPTION_CHARS - 3)}...` : value;
 }
+
+/** Front matter keys that only describe a skill; every other key (allowed-tools, hooks, model, agent, ...) is left out. */
+const PLAIN_TEXT_KEYS = ["description", "when_to_use", "argument-hint"] as const;
+const PLAIN_FLAG_KEYS = ["user-invocable", "disable-model-invocation"] as const;
+
+/**
+ * SKILL.md as the session gets it: a front matter Uncut writes itself (the name, and the plain keys
+ * as JSON strings or booleans, which YAML reads as they are), then the body. Nothing else of the
+ * user's front matter survives, whatever its spelling or YAML tricks.
+ */
+export function plainSkillText(text: string, name: string): string {
+  const lines = [`name: ${JSON.stringify(name)}`];
+  for (const key of PLAIN_TEXT_KEYS) {
+    const value = frontValue(text, key);
+    if (value) lines.push(`${key}: ${JSON.stringify(value)}`);
+  }
+  for (const key of PLAIN_FLAG_KEYS) if (/^(true|yes)$/i.test(frontValue(text, key))) lines.push(`${key}: true`);
+  const body = FRONT.test(text) ? text.replace(FRONT, "") : text;
+  return `---\n${lines.join("\n")}\n---\n${body}`;
+}
+
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
 /** The skills in one skills folder: each child folder with a SKILL.md (dot folders left out). */
 function skillsIn(dir: string, plugin: string): Array<Omit<ClaudeSkill, "id">> {
@@ -74,26 +111,31 @@ function skillsIn(dir: string, plugin: string): Array<Omit<ClaudeSkill, "id">> {
   const out: Array<Omit<ClaudeSkill, "id">> = [];
   for (const name of names) {
     if (!NAME.test(name)) continue;
-    const skillDir = join(dir, name);
+    let skillDir: string;
     let text: string;
     try {
+      skillDir = realpathSync.native(join(dir, name));
       text = readFileSync(join(skillDir, "SKILL.md"), "utf8");
     } catch {
       continue;
     }
-    out.push({ plugin, name, description: skillDescription(text), dir: skillDir });
+    out.push({ plugin, name, description: skillDescription(text), dir: skillDir, text, hash: sha256(text) });
   }
   return out;
 }
 
-/** The project's skills folders, nearest first: <dir>/.claude/skills from the project up to (not including) the home folder. */
-function projectSkillDirs(projectDir: string, home: string): Array<string> {
+const inHome = (dir: string, home: string) => {
+  const rel = relative(home, dir);
+  return rel !== "" && !rel.startsWith("..") && !rel.startsWith(sep) && !/^[A-Za-z]:/.test(rel);
+};
+
+/**
+ * The project's skills folders, nearest first: <dir>/.claude/skills from the project up to (not
+ * including) the home folder; none for a project outside it (/tmp, /Users/Shared and / are anyone's).
+ */
+export function projectSkillDirs(projectDir: string, home: string): Array<string> {
   const out: Array<string> = [];
-  let dir = projectDir;
-  while (dir !== home && dir !== dirname(dir)) {
-    out.push(join(dir, ".claude", "skills"));
-    dir = dirname(dir);
-  }
+  for (let dir = projectDir; inHome(dir, home); dir = dirname(dir)) out.push(join(dir, ".claude", "skills"));
   return out;
 }
 
@@ -127,7 +169,7 @@ export function findClaudeSkills(o: {
   const env = o.env ?? process.env;
   const configDir = claudeConfigDirs(env, home)[0] ?? join(home, ".claude");
   const found = [
-    ...(o.projectDir ? projectSkillDirs(o.projectDir, home).flatMap((d) => skillsIn(d, PROJECT_PLUGIN)) : []),
+    ...(o.projectDir ? projectSkillDirs(realProject(o.projectDir), home).flatMap((d) => skillsIn(d, PROJECT_PLUGIN)) : []),
     ...skillsIn(join(configDir, "skills"), USER_PLUGIN),
     ...[syncedSkillsDir(configDir, home, env)].flatMap((d) => (d ? skillsIn(d, SYNCED_PLUGIN) : [])),
     ...o.plugins
@@ -148,8 +190,9 @@ export function findClaudeSkills(o: {
 
 /**
  * The skills as plugins claude loads with --plugin-dir: in `root`, one folder per plugin with its
- * manifest and a skills/ folder of links to the skill folders (nothing else of a plugin: no hooks,
- * MCP servers, agents or commands). The plugin folders, for the command line.
+ * manifest and a skills/ folder (nothing else of a plugin: no hooks, MCP servers, agents or
+ * commands). Each skill is a folder with its plainSkillText SKILL.md and links to its other files.
+ * The plugin folders, for the command line.
  */
 export function writeSkillPlugins(root: string, skills: ReadonlyArray<ClaudeSkill>): Array<string> {
   rmSync(root, { recursive: true, force: true });
@@ -162,21 +205,24 @@ export function writeSkillPlugins(root: string, skills: ReadonlyArray<ClaudeSkil
       join(dir, ".claude-plugin", "plugin.json"),
       JSON.stringify({ name: plugin, description: "The user's Claude Code skills, for Uncut's agent." }),
     );
-    for (const s of skills.filter((x) => x.plugin === plugin)) symlinkSync(s.dir, join(dir, "skills", s.name), "dir");
+    for (const s of skills.filter((x) => x.plugin === plugin)) writeSkill(join(dir, "skills", s.name), s);
     dirs.push(dir);
   }
   return dirs;
 }
 
+/** One skill's folder in a plugin: its SKILL.md rewritten, every other entry a link to the original. */
+function writeSkill(to: string, s: ClaudeSkill) {
+  mkdirSync(to);
+  writeFileSync(join(to, "SKILL.md"), plainSkillText(s.text, s.name));
+  for (const entry of readdirSync(s.dir)) {
+    if (/^skill\.md$/i.test(entry)) continue;
+    symlinkSync(join(s.dir, entry), join(to, entry));
+  }
+}
+
 /** The skill folders' real paths: the agent reads files there (a skill's references and scripts) without a card. */
-export const skillReadDirs = (skills: ReadonlyArray<ClaudeSkill>): Array<string> =>
-  skills.flatMap((s) => {
-    try {
-      return [realpathSync.native(s.dir)];
-    } catch {
-      return [];
-    }
-  });
+export const skillReadDirs = (skills: ReadonlyArray<ClaudeSkill>): Array<string> => skills.map((s) => s.dir);
 
 const PLUGINS_TTL_MS = 60_000;
 const PLUGINS_TIMEOUT_MS = 5000;
@@ -209,9 +255,16 @@ export function enabledPlugins(bin: string, env: NodeJS.ProcessEnv): Promise<Rea
   });
 }
 
-/** Every skill of the user's for a session of `bin` in `projectDir` (findClaudeSkills with the enabled plugins). */
-export const claudeSkillsFor = (bin: string, projectDir: string | undefined, env: NodeJS.ProcessEnv): Promise<Array<ClaudeSkill>> =>
-  enabledPlugins(bin, env).then((plugins) => findClaudeSkills({ projectDir, plugins }));
+/** The skills a session of `bin` in `projectDir` loads (findClaudeSkills with the enabled plugins; the project's once trusted), and the project's waiting for a yes. */
+export async function claudeSkillsFor(
+  bin: string,
+  projectDir: string | undefined,
+  env: NodeJS.ProcessEnv,
+  dataDir: string,
+): Promise<{ skills: Array<ClaudeSkill>; ask?: ProjectSkillsAsk }> {
+  const plugins = await enabledPlugins(bin, env);
+  return trustedSkills(findClaudeSkills({ projectDir, plugins }), dataDir, projectDir);
+}
 
 /** The system prompt's few lines on the user's own Claude Code skills (empty when there are none). */
 export function claudeSkillsPrompt(skills: ReadonlyArray<ClaudeSkill>): string {

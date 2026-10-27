@@ -90,6 +90,7 @@ export const RPC_METHODS = {
   brandSaveSkill: "brand.saveSkill",
   brandDeleteSkill: "brand.deleteSkill",
   brandSetActive: "brand.setActive",
+  brandTrustProjectSkills: "brand.trustProjectSkills",
   brandAddFile: "brand.addFile",
   brandImport: "brand.import",
   templatesList: "templates.list",

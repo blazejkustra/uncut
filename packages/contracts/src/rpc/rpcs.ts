@@ -257,6 +257,12 @@ export const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, {
   error: BrandError,
 });
 export const BrandSetActiveRpc = Rpc.make(RPC_METHODS.brandSetActive, { payload: BrandActive, success: BrandState, error: BrandError });
+// The user's answer to "Load this project's skills?" (key: BrandState.projectSkillsAsk's).
+export const BrandTrustProjectSkillsRpc = Rpc.make(RPC_METHODS.brandTrustProjectSkills, {
+  payload: Schema.Struct({ key: Schema.String, load: Schema.Boolean }),
+  success: BrandState,
+  error: BrandError,
+});
 export const BrandImportRpc = Rpc.make(RPC_METHODS.brandImport, {
   payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, source: Schema.String }),
   success: Schema.Struct({ files: Schema.Array(BrandImported), state: BrandState }),

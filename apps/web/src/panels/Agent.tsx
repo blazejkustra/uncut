@@ -11,6 +11,7 @@ import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ProjectContext } from "./agent/context.ts";
 import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
+import { ProjectSkillsCard } from "./agent/projectSkills.tsx";
 import { splitThread } from "./agent/thread.ts";
 import { projectEmpty, stage, useStageDismissed } from "../editor/agentStage.ts";
 import { panels } from "../editor/layout.ts";
@@ -114,6 +115,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
             {agent.warning}
           </p>
         )}
+        <ProjectSkillsCard />
         {/* An empty plan and no turns: no strip (it left a bare rule above the empty state). */}
         {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
           <div className="plan-strip agent-strip" data-testid="agent-strip">

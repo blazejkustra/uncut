@@ -12,6 +12,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { Agent } from "../agent/agent.ts";
 import { brandRpc } from "../brand/brandRpc.ts";
 import { claudeSkillsFor } from "../agent/claudeSkills.ts";
+import { answerProjectSkills, realProject } from "../agent/skillTrust.ts";
 import { findClaude, sessionEnv } from "../agent/session/config.ts";
 import { templatesRpc } from "../templates/templates.ts";
 import { Analysis } from "../analysis/analysis.ts";
@@ -63,9 +64,9 @@ interface Services {
 }
 
 /** The user's Claude Code skills for a project (none when Claude Code isn't installed). */
-const claudeSkillsOnMachine = async (projectDir: string | undefined) => {
+const claudeSkillsOnMachine = (dataDir: string) => async (projectDir: string | undefined) => {
   const bin = await findClaude();
-  return bin ? claudeSkillsFor(bin, projectDir, sessionEnv(process.env)) : [];
+  return bin ? claudeSkillsFor(bin, projectDir, sessionEnv(process.env), dataDir) : { skills: [] };
 };
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
@@ -90,7 +91,9 @@ const handlersLayer = ({
   proxies,
   links,
 }: Services) => {
-  const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow, claudeSkillsOnMachine);
+  const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow, claudeSkillsOnMachine(config.dataDir), (dir, key, load) =>
+    answerProjectSkills(config.dataDir, realProject(dir), key, load),
+  );
   const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
@@ -157,6 +160,7 @@ const handlersLayer = ({
     [RPC_METHODS.brandSaveSkill]: ({ skill }) => brand.saveSkill(skill),
     [RPC_METHODS.brandDeleteSkill]: ({ id, scope }) => brand.deleteSkill(id, scope),
     [RPC_METHODS.brandSetActive]: (active) => brand.setActive(active),
+    [RPC_METHODS.brandTrustProjectSkills]: ({ key, load }) => brand.trustProjectSkills(key, load),
     [RPC_METHODS.brandAddFile]: ({ kit, scope, path }) => brand.addFile(kit, scope, path),
     [RPC_METHODS.brandImport]: ({ kit, scope, source }) => brand.importFiles(kit, scope, source),
     // Issue #111: creative briefs for the composer's / menu, filled from the open project.

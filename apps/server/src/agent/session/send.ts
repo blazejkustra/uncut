@@ -85,7 +85,18 @@ export const makeSend = (ctx: SpawnCtx) => {
     ),
   );
 
-  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, provider = "claude", model: askedModel, effort, access = "auto", images = [], ranges }) =>
+  const send: AgentShape["send"] = ({
+    prompt,
+    frame,
+    selected,
+    mentions,
+    provider = "claude",
+    model: askedModel,
+    effort,
+    access = "auto",
+    images = [],
+    ranges,
+  }) =>
     Effect.gen(function* () {
       const owner = yield* ensureLoaded;
       if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -123,7 +134,8 @@ export const makeSend = (ctx: SpawnCtx) => {
         });
       }
       // The user's own Claude Code skills (user, 2026-10-27): installing one starts a new session too.
-      const claudeSkills = provider === "codex" ? [] : yield* Effect.promise(() => claudeSkillsFor(bin, owner.dir, sessionEnv(process.env)));
+      const { skills: claudeSkills } =
+        provider === "codex" ? { skills: [] } : yield* Effect.promise(() => claudeSkillsFor(bin, owner.dir, sessionEnv(process.env), config.dataDir));
       const toolsKey = `${yield* toolsKeyNow}|claude:${claudeSkills.map((x) => `${x.plugin}:${x.name}`).join(",")}`;
       if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
       const v = view();

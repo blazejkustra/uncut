@@ -15,7 +15,15 @@ export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcl
  * rules refused claude's own saved output twice.
  */
 export const CLAUDE_DIR = ".claude";
-const CLAUDE_ASK_RULES = [`Read(~/${CLAUDE_DIR}/**)`, `Bash(*/${CLAUDE_DIR}/*)`, `Bash(*/${CLAUDE_DIR})`, `Bash(*~/${CLAUDE_DIR}*)`];
+// A command naming any .claude folder (the project's own included, `mkdir -p .claude/skills`) comes to Uncut too.
+const CLAUDE_ASK_RULES = [
+  `Read(~/${CLAUDE_DIR}/**)`,
+  `Bash(*/${CLAUDE_DIR}/*)`,
+  `Bash(*/${CLAUDE_DIR})`,
+  `Bash(*~/${CLAUDE_DIR}*)`,
+  `Bash(*${CLAUDE_DIR}/*)`,
+  `Bash(*${CLAUDE_DIR})`,
+];
 export const SECRET_FILES = [".netrc", ".npmrc", ".git-credentials", ".claude.json", ".pypirc"] as const;
 /** A secret file as a file rule's pattern: Claude Code's own config with its backups (.claude.json.backup, …). */
 const secretPattern = (f: string) => (f === ".claude.json" ? `${f}*` : f);

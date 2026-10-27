@@ -89,6 +89,8 @@ export const BrandState = Schema.Struct({
   skills: Schema.Array(BrandSkill),
   // The user's Claude Code skills the agent loads too (the composer's / menu offers them).
   claudeSkills: Schema.optional(Schema.Array(ClaudeCodeSkill)),
+  // The open project's own Claude Code skills, waiting for the user's yes before they load (key: what the answer is for).
+  projectSkillsAsk: Schema.optional(Schema.Struct({ key: Schema.String, names: Schema.Array(Schema.String) })),
   active: BrandActive,
   // Absolute paths of each kit's files by kit id then file name, for thumbnails and the agent.
   files: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),
