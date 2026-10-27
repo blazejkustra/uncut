@@ -731,6 +731,38 @@
       "returns": "{ revision, warnings, notes, checks: [{ rule, severity, message, items, frame, seconds, range, fix | hint }], disabled }"
     },
     {
+      "name": "measure",
+      "description": "sound: the exported mix by role, each effect against the voice with a verdict and gain change; level sound by it only. colour: luma, black/white points, RGB, saturation, white balance cast and the temperature and tint that remove it, for frames or clips (2+ clips: a match). temperature + is warmer, tint + magenta.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["what"],
+        "additionalProperties": false,
+        "properties": {
+          "what": {
+            "enum": ["sound", "colour"]
+          },
+          "frames": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "colour: frames of the edit."
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string"
+            },
+            "description": "colour: clip ids."
+          }
+        }
+      },
+      "returns": "sound: { levels, master, roles, music, effects: [{ item, label, kind, at, peak, against, under, verdict }], overTime }; colour: { directions, frames | items: [{ frame | item, luma, blackPoint, whitePoint, meanRgb, saturationPercent, whiteBalance, neutralise }], match }"
+    },
+    {
       "name": "library_search",
       "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound when the user stored that key), CC0 and CC BY only (CC BY needs credit, project_read lists it), or with source \"included\": for sfx Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…); for music the user's own sound folders and Music library (`yours`; Uncut ships no music, so look there first). Search by what it sounds like, its meme name, or for music a genre or mood: docs_read sound has the search words, meme clips and Openverse's limits.",
       "inputSchema": {

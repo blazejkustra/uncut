@@ -76,6 +76,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     argentBoot,
     mediaSearch,
     mediaAnalyze,
+    measure,
     mediaRank,
     transcriptRead,
     transcriptEdit,
@@ -315,6 +316,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* mediaSearch(args);
         case "media_analyze":
           return yield* mediaAnalyze(v, args);
+        case "measure":
+          return yield* measure(v, args);
         case "media_rank":
           return yield* mediaRank(v, args);
         case "transcript_read":

@@ -28,6 +28,7 @@ import { type Running, pushEdit } from "../session/types.ts";
 import { noteFor } from "../turns/notes.ts";
 import { realOr, analyzeWaitMs, SILENCES_WAIT_MS, columnsNote, loudnessOut } from "./common.ts";
 import type { CoreCtx } from "../session/core.ts";
+import type { makeMeasureTools } from "./measure.ts";
 
 export const makeMediaTools = (ctx: CoreCtx) => {
   const { textResult, media, persist, publish, view, analysis, exporter } = ctx;
@@ -490,4 +491,4 @@ export const makeMediaTools = (ctx: CoreCtx) => {
   return { requestAndWait, pendingOut, cancelledNote, silencesOf, mediaImport, entryInfo, contactSheet, mediaAnalyze, duckAnalysis };
 };
 
-export type MediaCtx = CoreCtx & ReturnType<typeof makeMediaTools>;
+export type MediaCtx = CoreCtx & ReturnType<typeof makeMediaTools> & ReturnType<typeof makeMeasureTools>;

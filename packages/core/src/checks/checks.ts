@@ -37,6 +37,8 @@ export {
   soundHard,
 } from "./soundSheet.ts";
 export type { SoundProfile, SoundLimits, SfxKind, PlacedSfx, VisualEvent } from "./soundSheet.ts";
+export { soundRoles, SOUND_ROLES } from "./soundRoles.ts";
+export type { SoundRole, RoledSound } from "./soundRoles.ts";
 
 export const CHECK_RULES: ReadonlyArray<CheckRule> = [...TEXT_RULES, ...MOTION_RULES, ...FRAMING_RULES, ...SOUND_RULES, ...CANVAS_RULES];
 

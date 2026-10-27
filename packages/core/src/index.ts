@@ -494,11 +494,13 @@ export {
   SOUND_PROFILES,
   soundHard,
   soundProfileText,
+  soundRoles,
+  SOUND_ROLES,
   soundSheet,
   textLabel,
   visualEvents,
 } from "./checks/checks.ts";
-export type { SoundProfile } from "./checks/checks.ts";
+export type { SoundProfile, SoundRole, RoledSound } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
 export { LAYOUT_HARD, LAYOUT_RULES } from "./checks/layout.ts";
 export {

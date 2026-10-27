@@ -40,6 +40,8 @@ import { projectGraphics } from "./exporter/graphics.ts";
 import { makeDuckEnvelopes } from "./exporter/duckEnvelopes.ts";
 import { makeRunJob } from "./exporter/runJob.ts";
 import { makePreviewLoudness } from "./exporter/previewLoudness.ts";
+import { makeMixMeasure, type MixTraces } from "./exporter/mixMeasure.ts";
+import { jpegPixels, type RgbImage } from "./exporter/framePixels.ts";
 export type { RenderedFrame, FrameSessionOptions } from "./exporter/frames.ts";
 export { NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
 export type { SavedSubtitles } from "./exporter/subtitles.ts";
@@ -109,6 +111,10 @@ export interface ExporterShape {
   readonly saveSubtitles: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedSubtitles, ExportError>;
   /** D246: the loudness gain the export would use for `targetLufs` (the preview's At target). */
   readonly previewLoudness: (targetLufs: number) => Effect.Effect<{ gainDb?: number; lufs?: number; cancelled?: boolean }, ExportError>;
+  /** The open project's mix as the export plays it, measured whole and by role (undefined: nothing sounds). */
+  readonly measureMix: () => Effect.Effect<MixTraces | undefined, ExportError>;
+  /** JPEGs (rendered or pulled frames) as pixels, for the colour readout. */
+  readonly jpegPixels: (jpegs: ReadonlyArray<Buffer>) => Effect.Effect<ReadonlyArray<RgbImage>, ExportError>;
 }
 
 export class Exporter extends Context.Service<Exporter, ExporterShape>()("uncut/Exporter") {}
@@ -403,6 +409,28 @@ export const layer = Layer.effect(
         return r;
       });
 
+    const mixMeasure = makeMixMeasure();
+    const measureMix = () =>
+      Effect.gen(function* () {
+        const { dir, project, mediaPath } = yield* current;
+        const bin = yield* Effect.promise(ffmpegBin);
+        if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to measure the sound." });
+        const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, project, true));
+        const r = yield* Effect.promise(() => mixMeasure(bin, project, mediaPath, envelopes));
+        if (r && "problem" in r) return yield* new ExportError({ reason: "empty", message: r.problem });
+        return r;
+      });
+
+    const pixelsOf = (jpegs: ReadonlyArray<Buffer>) =>
+      Effect.gen(function* () {
+        const bin = yield* Effect.promise(ffmpegBin);
+        if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be read." });
+        return yield* Effect.tryPromise({
+          try: (signal) => jpegPixels(bin, jpegs, signal),
+          catch: (error) => new ExportError({ reason: "missing-media", message: (error as Error).message }),
+        });
+      });
+
     const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
     return Exporter.of({
       start,
@@ -416,6 +444,8 @@ export const layer = Layer.effect(
       sheetImage,
       saveSubtitles,
       previewLoudness,
+      measureMix,
+      jpegPixels: pixelsOf,
     });
   }),
 );
