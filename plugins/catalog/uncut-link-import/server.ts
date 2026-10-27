@@ -59,5 +59,5 @@ async function downloadTool(args: Json, { signal, progress }: ToolContext) {
   return text(`Downloaded ${result.file}.`, { file: result.file, ...(result.title ? { title: result.title } : {}) });
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === import.meta.filename;
 if (isMain) serve({ manifest: new URL("./uncut.module.json", import.meta.url), tools: { check, download: downloadTool }, onExit: killAll });

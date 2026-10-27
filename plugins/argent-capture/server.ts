@@ -760,7 +760,7 @@ const handler =
 // A cancelled call (notifications/cancelled) aborts its signal: its recording is stopped, the take
 // dropped, and it gets no answer. On the way out (stdin closed: Uncut is done with us; SIGTERM:
 // Uncut is stopping; an uncaught error) every recording still running is stopped.
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === import.meta.filename;
 if (isMain) {
   serve({
     manifest: new URL("./uncut.module.json", import.meta.url),

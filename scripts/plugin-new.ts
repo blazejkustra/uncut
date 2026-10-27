@@ -143,7 +143,7 @@ export function renameSkills(manifest: Record<string, unknown>, fromId: string, 
   return { ...manifest, contributes: { ...contributes, skills: renamed } };
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === import.meta.filename;
 if (isMain) {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) {
