@@ -68,9 +68,12 @@ async function setup(name: string) {
     info: (id: string) => latest()?.agents?.find((a: { id: string }) => a.id === id),
     onDisk: () => JSON.parse(readFileSync(join(snap.dir, "project.json"), "utf8")),
     /** Sends to an agent and waits until its claude has the message (so the next plan turn is the next agent's). */
-    start: async (prompt: string, steps: Array<unknown>, agentId?: string) => {
+    plan: (steps: Array<unknown>) => {
       turns.push(steps);
       writeFileSync(plan, JSON.stringify(turns));
+    },
+    start: async (prompt: string, steps: Array<unknown>, agentId?: string) => {
+      self.plan(steps);
       const had = prompts().length;
       const { turnId } = await client.ok("agent.send", { prompt, ...(agentId ? { agentId } : {}) });
       await agent.until(() => prompts().length > had, 15000);
@@ -191,6 +194,27 @@ test(
     }
   },
 );
+
+test("an agent whose message is still being prepared can't be closed or start a new chat: its turn runs to the end", { skip, timeout: 60000 }, async () => {
+  const s = await setup("starting");
+  try {
+    const cuts = await s.client.ok("agent.create", { focus: "cuts" });
+    s.plan([{ text: "ok" }]);
+    const [sent, archived, fresh] = await Promise.allSettled([
+      s.client.ok("agent.send", { prompt: "go", agentId: cuts.id }),
+      s.client.fail("agent.archive", { agentId: cuts.id }),
+      s.client.fail("agent.newThread", { agentId: cuts.id }),
+    ]);
+    assert.equal(sent.status, "fulfilled");
+    assert.equal(archived.status === "fulfilled" && archived.value.reason, "busy");
+    assert.equal(fresh.status === "fulfilled" && fresh.value.reason, "busy");
+    const done = await s.done((sent as PromiseFulfilledResult<{ turnId: string }>).value.turnId);
+    assert.equal(done.status, "done", done.error);
+    assert.ok(s.info(cuts.id), "still in the tab row");
+  } finally {
+    await s.stop();
+  }
+});
 
 test("two approval cards at once, one per agent, answered in either order", { skip, timeout: 90000 }, async () => {
   const s = await setup("cards");

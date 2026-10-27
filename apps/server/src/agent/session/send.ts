@@ -88,21 +88,19 @@ export const makeSend = (ctx: SpawnCtx) => {
 
   /** C12: why this agent can't start a turn now (its own turn runs, or AGENTS_RUNNING_MAX others do), or undefined. */
   const busyWhy = (owner: Loaded) => {
-    if (owner.running || starting.has(owner)) return `${owner.name} is still working on the last message.`;
-    const working = st.agents.filter((a) => a.running || starting.has(a));
+    if (owner.running || st.starting.has(owner)) return `${owner.name} is still working on the last message.`;
+    const working = st.agents.filter((a) => a.running || st.starting.has(a));
     if (working.length < AGENTS_RUNNING_MAX) return undefined;
     return `${working.map((a) => a.name).join(" and ")} are working already: at most ${AGENTS_RUNNING_MAX} agents work at once. Wait for one to finish, or stop one, then send again.`;
   };
-  // Agents whose message is being prepared (send waits for the shell, skills, the plan): they count as working.
-  const starting = new Set<Loaded>();
 
   const send: AgentShape["send"] = (input) =>
     Effect.gen(function* () {
       const owner = yield* agentOf(input.agentId);
       const busy = busyWhy(owner);
       if (busy) return yield* new AgentError({ reason: "busy", message: busy });
-      starting.add(owner);
-      return yield* start(owner, input).pipe(Effect.ensuring(Effect.sync(() => starting.delete(owner))));
+      st.starting.add(owner);
+      return yield* start(owner, input).pipe(Effect.ensuring(Effect.sync(() => st.starting.delete(owner))));
     });
 
   const start = (
@@ -176,7 +174,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
       // Issue #118: the sections the user locked and flagged "not OK", with every message.
       const sections = sectionsNote(project);
-      const teammate = (a: Loaded) => ({ agentId: a.agentId, name: a.name, focus: a.focus, working: !!a.running || starting.has(a) });
+      const teammate = (a: Loaded) => ({ agentId: a.agentId, name: a.name, focus: a.focus, working: !!a.running || st.starting.has(a) });
       const team = compacting ? "" : teamBlock(teammate(owner), st.agents.filter((a) => a !== owner).map(teammate));
       const context = [
         frame !== undefined ? playheadLine(project, frame) : "",

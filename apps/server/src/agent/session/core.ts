@@ -93,7 +93,15 @@ export const makeCore = (ctx: AgentServices) => {
       .map((t) => t.id);
     try {
       withHistory(owner.dir, (db) =>
-        db.saveAgent({ agentId: owner.agentId, sessionId: owner.sessionId, pendingNote, threadStart: owner.threadStart, turns, order }),
+        db.saveAgent({
+          agentId: owner.agentId,
+          sessionId: owner.sessionId,
+          pendingNote,
+          threadStart: owner.threadStart,
+          turns,
+          order,
+          turnIds: owner.turns.map((t) => t.id),
+        }),
       );
       for (const [id, json] of changed) owner.saved.set(id, json);
     } catch (error) {

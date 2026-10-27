@@ -8,7 +8,7 @@ import type { ProjectFormatShape } from "../format.ts";
 import type { NewRow } from "../history.ts";
 import { authorWords, storedAgents } from "../history/agents.ts";
 import { MAX_NAME_LENGTH, refused, serialize, toProblems } from "./helpers.ts";
-import type { OpenProject } from "./service.ts";
+import { type OpenProject, unloggedWords } from "./service.ts";
 
 export interface EditCtx<E> {
   readonly format: ProjectFormatShape;
@@ -46,14 +46,16 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       }
       // D6: undo, redo and reload aren't log entries, so the engine can't tell what they
       // touched. Any agent edit planned before one of them is refused: read again first.
+      const agentId = agent ? p.history.turnAgent(agent.turnId) : undefined;
       const unseen = agent && baseRevision !== undefined ? p.unlogged.filter((u) => u.revision > baseRevision) : [];
       if (unseen.length) {
-        const what = unseen.map((u) => u.what).join("; ");
+        const agents = storedAgents(p.history.agentList());
+        const reader = agentId ? { agentId, nameOf: (id: string) => authorWords(id, agents) } : undefined;
+        const what = unseen.map((u) => unloggedWords(u, reader)).join("; ");
         return yield* refused(`The project changed after revision ${baseRevision} (${what}). Read it again before editing.`, [
           { code: "conflict", path: "/", message: what },
         ]);
       }
-      const agentId = agent ? p.history.turnAgent(agent.turnId) : undefined;
       const applied = yield* Effect.try({
         // validateOps above checked every op against the edit-ops schema.
         try: () =>

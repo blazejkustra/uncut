@@ -8,7 +8,7 @@
 // revision, and ⌘Z stops there (History can still go back past it, as a new revision).
 import { isAbsolute, join } from "node:path";
 
-import { type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
+import { DEFAULT_AGENT_ID, type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
 import { EditConflict, EditError, TurnDependency, redoTurn, undoTurn, type LogEntry, type Project, type Session } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -284,8 +284,13 @@ export const layer = Layer.effect(
       const agents = longer.filter((e) => e.actor === "agent" && !kept.has(e.revision));
       const what = undo ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)";
       if (!agents.length) return { revision, what, quiet: true };
-      const edits = agents.map((e) => (e.summary ? `"${e.summary}"` : `revision ${e.revision}`)).join(", ");
-      return { revision, what: `${what}, which ${undo ? "took back" : "brought back"} your edit${agents.length === 1 ? "" : "s"} ${edits}` };
+      const labels = agents.map((e) => ({ agentId: e.agentId ?? DEFAULT_AGENT_ID, label: e.summary ? `"${e.summary}"` : `revision ${e.revision}` }));
+      const verb = undo ? "took back" : "brought back";
+      return {
+        revision,
+        what: `${what}, which ${verb} your edit${agents.length === 1 ? "" : "s"} ${labels.map((l) => l.label).join(", ")}`,
+        step: { did: what, verb, edits: labels },
+      };
     };
 
     const step = (from: "past" | "future") =>

@@ -226,7 +226,7 @@ export const layer = Layer.effect(
 
     const stateRef = yield* SubscriptionRef.make<AgentState | null>(null);
     const loadLock = yield* Semaphore.make(1);
-    const st: AgentVars = { agents: [], closing: [] };
+    const st: AgentVars = { agents: [], closing: [], starting: new Set() };
     // Every claude still running, the live one and any closing (graceful or killed, not yet gone).
     const sessions = new Set<ClaudeSession>();
     // UNCUT_APPROVAL_MS shortens the approval wait in test runs only (as D99's base URLs).
@@ -369,7 +369,7 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const { owner, turn } = yield* turnOf(turnId);
           // C12: other agents may go on working (their next edit based before the undo is refused, and they read again).
-          if (owner.running)
+          if (owner.running || st.starting.has(owner))
             return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before undoing its turn.` });
           // Partly beyond what history.db keeps (or not in the history at all): say why, change nothing.
           const state = undoState(turn, view(), owner.openId, format.validate);
@@ -389,7 +389,7 @@ export const layer = Layer.effect(
       redoTurn: (turnId) =>
         Effect.gen(function* () {
           const { owner, turn } = yield* turnOf(turnId);
-          if (owner.running)
+          if (owner.running || st.starting.has(owner))
             return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before redoing its turn.` });
           if (!turn.undoneAt) return yield* new AgentError({ reason: "unknown-turn", message: "That turn wasn't undone." });
           const snapshot = yield* projects.redoTurn(owner.openId, turnId, `Redid your turn ${turnName(turn.prompt)} (its edits are back)`);
@@ -418,7 +418,7 @@ export const layer = Layer.effect(
       newThread: (agentId) =>
         Effect.gen(function* () {
           const owner = yield* agentOf(agentId);
-          if (owner.running)
+          if (owner.running || st.starting.has(owner))
             return yield* new AgentError({ reason: "busy", message: `Wait for ${owner.name} to finish, or stop it, before starting a new chat.` });
           if (owner.session) closeSession(owner.session, "graceful");
           owner.sessionId = undefined;
@@ -460,7 +460,7 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const owner = yield* agentOf(agentId);
           if (st.agents.length <= 1) return yield* new AgentError({ reason: "failed", message: "A project keeps at least one agent." });
-          if (owner.running) return yield* new AgentError({ reason: "busy", message: `Stop ${owner.name} before closing it.` });
+          if (owner.running || st.starting.has(owner)) return yield* new AgentError({ reason: "busy", message: `Stop ${owner.name} before closing it.` });
           yield* saveAgentList(owner.dir, (saved) => saved.map((a) => (a.id === owner.agentId ? { ...a, archivedAt: new Date().toISOString() } : a)));
           if (owner.session) closeSession(owner.session, "graceful");
           st.agents = st.agents.filter((a) => a !== owner);

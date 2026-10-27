@@ -41,6 +41,10 @@ export type { RowKind, Author, ListedKind, HistoryOptions, Row, NewRow, Cursor, 
 
 export const HISTORY_FILE = "history.db";
 
+/** C12: a saved turn's agent: from the meta record of other agents' turns, else its data, else the default agent. */
+const ownerOf = (data: { readonly id?: unknown; readonly agentId?: unknown }, owners: ReadonlyMap<string, string>) =>
+  (typeof data.id === "string" ? owners.get(data.id) : undefined) ?? (typeof data.agentId === "string" ? data.agentId : DEFAULT_AGENT_ID);
+
 const agentKey = (agentId: string) => (name: string) => (agentId === DEFAULT_AGENT_ID ? `agent.${name}` : `agent.${agentId}.${name}`);
 /** Revisions kept (a project with more drops its oldest, keeping their result as a snapshot). */
 export const MAX_ROWS = 1000;
@@ -541,10 +545,12 @@ export class HistoryDb {
    * default agent, as before; "agent.<id>.<key>" for the others).
    */
   agent(agentId: string = DEFAULT_AGENT_ID): AgentRecord {
+    const owners = this.turnOwners();
     const turns = (this.stmt("SELECT data FROM turns ORDER BY ord").all() as Array<{ data: string }>).flatMap((t) => {
       try {
-        const data = JSON.parse(t.data) as { agentId?: unknown };
-        return (typeof data.agentId === "string" ? data.agentId : DEFAULT_AGENT_ID) === agentId ? [data as unknown] : [];
+        const data = JSON.parse(t.data) as { id?: unknown; agentId?: unknown };
+        if (ownerOf(data, owners) !== agentId) return [];
+        return [(agentId === DEFAULT_AGENT_ID ? data : { ...data, agentId }) as unknown];
       } catch {
         return [];
       }
@@ -561,8 +567,26 @@ export class HistoryDb {
 
   /** C12: the agent that ran a turn (the default agent for one saved before several agents, or not saved). */
   turnAgent(turnId: string): string {
+    const owner = this.turnOwners().get(turnId);
+    if (owner) return owner;
     const row = this.stmt("SELECT json_extract(data, '$.agentId') AS agent FROM turns WHERE id = ?").get(turnId) as { agent: unknown } | undefined;
     return typeof row?.agent === "string" ? row.agent : DEFAULT_AGENT_ID;
+  }
+
+  /**
+   * C12: each other agent's turn ids (meta "agent.<id>.turns"), the record of whose a turn is: an
+   * older build that saves the turns again drops their agentId, but never touches these keys.
+   */
+  private turnOwners(): Map<string, string> {
+    const owners = new Map<string, string>();
+    for (const [k, v] of this.meta) {
+      const agentId = /^agent\.(.+)\.turns$/.exec(k)?.[1];
+      if (!agentId) continue;
+      try {
+        for (const id of JSON.parse(v) as Array<unknown>) if (typeof id === "string") owners.set(id, agentId);
+      } catch {}
+    }
+    return owners;
   }
 
   /** C12: the project's agents as saved (JSON, meta "agents"); undefined: only the default agent. */
@@ -590,6 +614,8 @@ export class HistoryDb {
     readonly turns: ReadonlyArray<TurnRecord>;
     readonly order?: ReadonlyArray<string> | undefined;
     readonly migratedAt?: string | undefined;
+    /** C12: every turn id of an agent other than the default one (kept in meta, see turnOwners). */
+    readonly turnIds?: ReadonlyArray<string> | undefined;
   }) {
     this.write(() => {
       const upsert = this.stmt(
@@ -620,6 +646,9 @@ export class HistoryDb {
         [key("pendingNote"), input.pendingNote || undefined],
         ...(input.migratedAt ? ([["agent.turnsJsonMigratedAt", input.migratedAt]] as Array<[string, string]>) : []),
         ...("threadStart" in input ? ([[key("threadStart"), input.threadStart]] as Array<[string, string | undefined]>) : []),
+        ...(input.turnIds && input.agentId && input.agentId !== DEFAULT_AGENT_ID
+          ? ([[key("turns"), JSON.stringify(input.turnIds)]] as Array<[string, string]>)
+          : []),
       ];
       for (const [k, v] of changes) v === undefined ? delMeta.run(k) : setMeta.run(k, v);
       return () => {

@@ -50,6 +50,12 @@ function touches(op: Op): Array<string> {
   return ["project"];
 }
 
+/** The items an op removes along with their track, as the project is now: a newer edit of any of them by someone else (an insert) refuses it. */
+function removedItems(project: Project, op: Op): Array<string> {
+  if (op.op !== "delete_track") return [];
+  return project.tracks.find((t) => t.id === op.track)?.items.map((i) => i.id) ?? [];
+}
+
 function locate(project: Draft, itemId: Id): { track: DraftTrack; index: number; item: DraftItem } {
   for (const track of project.tracks) {
     const index = track.items.findIndex((i) => i.id === itemId);
@@ -327,7 +333,7 @@ export function applyEdit(
 ): Session {
   if (!["user", "agent"].includes(actor)) throw new EditError(`Unknown actor "${actor}"`);
   if (baseRevision < session.revision) {
-    const mine = new Set(ops.flatMap(touches));
+    const mine = new Set([...ops.flatMap(touches), ...ops.flatMap((op) => removedItems(session.project, op))]);
     const me = authorOf({ actor, agentId });
     const by = new Map<string, string>();
     for (const e of session.log) {

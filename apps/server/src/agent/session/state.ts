@@ -10,6 +10,8 @@ export interface AgentVars {
   // The agents of a project that closed while one of them still ran (its turn is stopping): the
   // same folder opened again takes them back.
   closing: Array<Loaded>;
+  // Agents whose message send is still preparing (the shell, skills, the plan): they count as working.
+  readonly starting: Set<Loaded>;
 }
 
 /** An agent's open approval card (D99) and how to answer it. */

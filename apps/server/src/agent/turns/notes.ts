@@ -16,6 +16,7 @@ import {
   describeOp,
 } from "@uncut/core";
 import type { ProjectView } from "../../project/projects.ts";
+import { unloggedWords } from "../../project/projects/service.ts";
 import type { StoredTurn } from "../session/types.ts";
 
 // ---- notes and undo states ----
@@ -43,7 +44,7 @@ export function noteFor(view: ProjectView, since: number, reader?: Reader): stri
     reader && e.actor === "agent" && e.agentId !== undefined && e.agentId !== reader.agentId ? reader.nameOf(e.agentId) : undefined;
   const base = before ? othersEditsNote(before, view.session, from, reported, agentName) : manualEditsNote(view.session, from, reported, agentName);
   const happened = view.unlogged.filter((u) => u.revision > since);
-  const extra = happened.filter((u) => !u.quiet).map((u) => `- ${u.what}`);
+  const extra = happened.filter((u) => !u.quiet).map((u) => `- ${unloggedWords(u, reader)}`);
   const zero = netZeroNote(view.session.revision);
   if (!extra.length) return base || (happened.length ? zero : "");
   if (!base || base === zero) {

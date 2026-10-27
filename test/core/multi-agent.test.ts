@@ -13,6 +13,7 @@ import { netEditsNote, othersEditsNote } from "../../packages/core/src/timeline/
 import type { LogEntry, Op, Project, Session } from "../../packages/core/src/timeline/types.ts";
 import { HistoryDb, SCHEMA_VERSION } from "../../apps/server/src/project/history.ts";
 import { storedAgents } from "../../apps/server/src/project/history/agents.ts";
+import { unloggedWords } from "../../apps/server/src/project/projects/service.ts";
 
 const project = (): Project =>
   ({
@@ -51,6 +52,50 @@ test("agent B's stale edit of an item agent A changed is refused, saying A chang
   assert.equal(text(afterB, "b"), "by B");
   // An agent's own newer edit never conflicts with itself.
   assert.doesNotThrow(() => byAgent(afterB, "ag-a", 0, retitle("a", "A again")));
+});
+
+test("a stale delete_track is refused when someone else put an item on that track since; nobody's newer items: it applies", () => {
+  const start = createSession(project());
+  const insert = { op: "insert_item", track: "text", item: { id: "bnew", type: "text", start: 80, duration: 30, text: "B" } } as unknown as Op;
+  const afterB = byAgent(start, "ag-b", 0, insert);
+  assert.throws(
+    () => byAgent(afterB, "ag-a", 0, { op: "delete_track", track: "text" } as Op),
+    (e: unknown) => e instanceof EditConflict && e.by.get("bnew") === "ag-b",
+  );
+  const afterUser = applyEdit(start, { actor: "user", ops: [insert] });
+  assert.throws(
+    () => byAgent(afterUser, "ag-a", 0, { op: "delete_track", track: "text" } as Op),
+    (e: unknown) => e instanceof EditConflict && e.by.get("bnew") === "user",
+  );
+  const own = byAgent(start, "ag-a", 0, insert);
+  assert.equal(byAgent(own, "ag-a", 0, { op: "delete_track", track: "text" } as Op).project.tracks.length, 0, "its own insert doesn't stop it");
+});
+
+test("an undo of several agents' edits says 'your' only to the agent whose edits they were and names the others", () => {
+  const u = {
+    revision: 5,
+    what: 'Used undo (⌘Z), which took back your edits "Title", "Cut"',
+    step: {
+      did: "Used undo (⌘Z)",
+      verb: "took back" as const,
+      edits: [
+        { agentId: "ag-main", label: '"Title"' },
+        { agentId: "ag-gfx", label: '"Cut"' },
+      ],
+    },
+  };
+  const names: Record<string, string> = { "ag-main": "Editor", "ag-gfx": "Graphics" };
+  const nameOf = (id: string) => names[id]!;
+  assert.equal(unloggedWords(u, { agentId: "ag-main", nameOf }), 'Used undo (⌘Z), which took back your edit "Title" and Graphics\' edit "Cut"');
+  assert.equal(unloggedWords(u, { agentId: "ag-gfx", nameOf }), 'Used undo (⌘Z), which took back your edit "Cut" and Editor\'s edit "Title"');
+  assert.equal(
+    unloggedWords(
+      { revision: 6, what: "Used undo (⌘Z)", step: { did: "Used undo (⌘Z)", verb: "took back", edits: [{ agentId: "ag-gfx", label: '"Cut"' }] } },
+      { agentId: "ag-main", nameOf },
+    ),
+    'Used undo (⌘Z), which took back Graphics\' edit "Cut"',
+  );
+  assert.equal(unloggedWords(u), u.what, "no reader: the words as before");
 });
 
 test("the user and agent cases are as before: a user edit refuses a stale agent edit, the agent's own edits and agent entries without an id agree", () => {
@@ -147,11 +192,34 @@ test("history.db: an existing db opens with no schema change, its turns belong t
             data: { id: "turn-gfx", agentId: "ag-gfx", prompt: "style", status: "done", startedAt: "2026-10-02T10:00:00.000Z", items: [], edits: [] },
           },
         ],
+        turnIds: ["turn-gfx"],
       });
       assert.equal(again.turnAgent("turn-gfx"), "ag-gfx");
       assert.deepEqual([again.agent("ag-gfx").sessionId, again.agent("ag-gfx").pendingNote, again.agent("ag-gfx").turns.length], ["sess-gfx", "news", 1]);
       assert.equal(again.agent().sessionId, "sess-old", "the default agent's session is untouched");
       assert.equal(again.agent().turns.length, 1);
+      // An older build saves every turn again as its one agent's (agentId dropped): the meta record keeps whose it is.
+      const strip = (id: string, prompt: string, startedAt: string) => ({
+        id,
+        prompt,
+        status: "done",
+        startedAt,
+        data: { id, prompt, status: "done", startedAt, items: [], edits: [] },
+      });
+      again.saveAgent({
+        sessionId: "sess-old",
+        pendingNote: undefined,
+        turns: [strip("turn-old", "retitle", "2026-10-01T10:00:00.000Z"), strip("turn-gfx", "style", "2026-10-02T10:00:00.000Z")],
+      });
+      assert.equal(again.turnAgent("turn-gfx"), "ag-gfx");
+      assert.deepEqual(
+        again.agent("ag-gfx").turns.map((t: any) => [t.id, t.agentId]),
+        [["turn-gfx", "ag-gfx"]],
+      );
+      assert.deepEqual(
+        again.agent().turns.map((t: any) => t.id),
+        ["turn-old"],
+      );
     } finally {
       again.close();
     }
