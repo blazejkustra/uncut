@@ -165,9 +165,13 @@ export function capNote(note: string, max = NOTE_LINES): string {
   const lines = note.split("\n");
   let listed = 0;
   let dropped = 0;
+  // An added item's "  - " field lines go with their item.
+  let keeping = true;
   const out = lines.filter((l) => {
+    if (l.startsWith("  - ")) return keeping;
     if (!l.startsWith("- ")) return true;
-    if (listed < max) return ++listed > 0;
+    keeping = listed < max;
+    if (keeping) return ++listed > 0;
     dropped++;
     return false;
   });

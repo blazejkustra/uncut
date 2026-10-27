@@ -77,8 +77,7 @@ test("added, removed and reordered items and a deleted track read as the final s
   s = user(s, { op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", text: "Hi", start: 30, duration: 60 } });
   const lines = netChanges(start.project, s, 0);
   assert.ok(lines.includes("Deleted track v2"), lines.join("\n"));
-  assert.ok(lines.includes("Added text txt-new on track t1 at 1.0s, 2.0s long"), lines.join("\n"));
-  assert.ok(lines.includes('Changed the text of txt-new to "Hi"'), lines.join("\n"));
+  assert.ok(lines.includes('Added text txt-new on track t1 at 1.0s, 2.0s long\n  - Changed the text of txt-new to "Hi"'), lines.join("\n"));
   assert.ok(
     lines.some((l) => l.startsWith("Removed ") && l.includes("(cmp-tap) from track v2")),
     lines.join("\n"),
@@ -140,9 +139,14 @@ test("an item added since says what it was given, in the edit log's words, with 
   s = user(s, { op: "update_item", item: "audio-1", set: { fadeOut: 60 } });
   s = user(s, { op: "update_item", item: "audio-1", set: { fadeIn: 90 } });
   assert.deepEqual(netChanges(start.project, s, 0), [
-    "Added audio audio-1 on track a3 (Cozy Rhodes) at 0.0s, 8.0s long",
-    "Set volume of Cozy Rhodes (audio-1) to −6 dB",
-    "Faded in Cozy Rhodes (audio-1) over 3.0 s",
-    "Faded out Cozy Rhodes (audio-1) over 2.0 s",
+    [
+      "Added audio audio-1 on track a3 (Cozy Rhodes) at 0.0s, 8.0s long",
+      "  - Set volume of Cozy Rhodes (audio-1) to −6 dB",
+      "  - Faded in Cozy Rhodes (audio-1) over 3.0 s",
+      "  - Faded out Cozy Rhodes (audio-1) over 2.0 s",
+    ].join("\n"),
   ]);
+  const note = netEditsNote(start.project, s, 0);
+  assert.match(note, /^The user changed 1 thing by hand/, "an added item with its fields is one change");
+  assert.equal(note.split("\n").filter((l) => l.startsWith("- ")).length, 1, "one '- ' line: the card counts one change");
 });

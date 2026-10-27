@@ -52,12 +52,15 @@ const TIMING = new Set(["id", "type", "start", "duration", "in"]);
 /** The fields of an added item the add line says (where and what it plays), or that only say what it is. */
 const ADDED_SKIP = new Set(["id", "type", "start", "duration", "in", "media", "src", "component", "source", "words", "linkedTo"]);
 
+/** Under an added item, a field it was given: an indented "  - " line, so the item counts as one change. */
+export const SUB_LINE = "\n  - ";
+
 /**
  * An added item as the edit log says it ("Added audio audio-1 on track audio"), with its name and
- * where it plays, then a line per field it was given (its text, style, position, volume, fades, …)
- * as the edit log words a change of that field.
+ * where it plays, then a SUB_LINE per field it was given (its text, style, position, volume,
+ * fades, …) as the edit log words a change of that field. One change, one entry.
  */
-function addedItem(after: Project, { track, item }: Placed): Array<string> {
+function addedItem(after: Project, { track, item }: Placed): string {
   const fps = after.canvas.fps;
   const at = track.role === "main" ? `at position ${track.items.indexOf(item) + 1}` : `at ${seconds(item.start ?? 0, fps)}`;
   const label = itemLabel(after, item.id);
@@ -66,7 +69,8 @@ function addedItem(after: Project, { track, item }: Placed): Array<string> {
   const added = describeOp({ op: "insert_item", track: track.id, item }, after);
   const solid = item.type === "component" && item.component === "component.solid";
   const own = Object.fromEntries(Object.entries(item).filter(([k]) => !ADDED_SKIP.has(k) && !(solid && k === "props")));
-  return [`${added}${name && !added.includes(name) ? ` (${name})` : ""} ${at}, ${seconds(item.duration, fps)} long`, ...fieldLines(after, item, own)];
+  const head = `${added}${name && !added.includes(name) ? ` (${name})` : ""} ${at}, ${seconds(item.duration, fps)} long`;
+  return [head, ...fieldLines(after, item, own)].join(SUB_LINE);
 }
 
 const CAPTION_FIELDS = new Set(["edits", "breaks", "mode", "lines", "hideFillers", "words", "coversMain"]);
@@ -106,7 +110,7 @@ function itemLines(before: Project, after: Project): Array<string> {
   const lines: Array<string> = [];
   for (const [id, now] of b) {
     const was = a.get(id);
-    if (!was) lines.push(...addedItem(after, now));
+    if (!was) lines.push(addedItem(after, now));
     else if (!same(was.item, now.item) || was.track.id !== now.track.id) lines.push(...changedItem(after, was, now));
   }
   for (const [id, was] of a) if (!b.has(id)) lines.push(`Removed ${itemLabel(before, id)} from track ${was.track.id}`);
@@ -161,7 +165,7 @@ function projectLines(before: Project, after: Project): Array<string> {
   return Object.entries(set).map(([k, v]) => describeOp({ op: "update_project", set: { [k]: v } }, after));
 }
 
-/** Every difference from `before` to `after`, in words, one line each (no "- "). */
+/** Every difference from `before` to `after`, in words, one entry each (no "- "; an added item's fields as SUB_LINEs). */
 export function projectChanges(before: Project, after: Project): Array<string> {
   return [...projectLines(before, after), ...trackLines(before, after), ...mediaLines(before, after), ...itemLines(before, after)];
 }
