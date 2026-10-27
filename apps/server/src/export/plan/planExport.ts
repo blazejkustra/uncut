@@ -205,7 +205,8 @@ export function planExport(
         const frames = Array.from({ length: f1 - f0 }, (_, k) => graphicLocal(item, f0 + k - start));
         // Motion blur (D291): each frame's sub-frames; a held frame stays sharp.
         const blur = itemMotionBlur(item, project, motionBlur);
-        const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, local !== (item.in ?? 0) + f0 + k - start)) } : undefined;
+        const held = (k: number) => f0 + k - start < 0 || f0 + k - start >= item.duration;
+        const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, held(k))) } : undefined;
         const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
         visuals.push(
           ...split(

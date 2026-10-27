@@ -2,6 +2,7 @@
 // them, and refuses an agent edit that would overwrite newer user edits (D6).
 import { keyDbAt } from "../audio/audio.ts";
 import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
+import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
@@ -102,6 +103,15 @@ function fitAnimation<T extends { duration: number }>(animation: { in?: T; out?:
   return animation;
 }
 
+type Skips = NonNullable<Item["skips"]>;
+/** A graphic's skips after its frame `from`, counted from there (a trimmed start, a split's second half). */
+const skipsFrom = (skips: Skips, from: number): Skips => skips.filter((s) => s.at > from).map((s) => ({ ...s, at: s.at - from }));
+
+function setSkips(item: DraftItem, skips: Skips) {
+  if (skips.length) item.skips = skips.map((s) => ({ ...s }));
+  else delete item.skips;
+}
+
 function applyOp(project: Draft, op: Op) {
   switch (op.op) {
     case "insert_item": {
@@ -128,8 +138,9 @@ function applyOp(project: Draft, op: Op) {
         // The source moves with the start, at the clip's speed. A still image has no source time.
         if (item.type === "graphic") {
           // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
-          const at = Math.max(0, (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1)));
+          const at = op.frames > 0 ? graphicTime(item, op.frames) : Math.max(0, (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1)));
           if (at > 0 || item.in !== undefined) item.in = at;
+          if (item.skips) setSkips(item, skipsFrom(item.skips, op.frames));
         } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
         if (item.start !== undefined) item.start += op.frames;
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
@@ -145,8 +156,15 @@ function applyOp(project: Draft, op: Op) {
           const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
           item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
         }
-      } else if (item.keys?.some((k) => k.frame > item.duration))
-        item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
+      } else {
+        if (item.keys?.some((k) => k.frame > item.duration))
+          item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
+        if (item.skips)
+          setSkips(
+            item,
+            item.skips.filter((s) => s.at < item.duration),
+          );
+      }
       if (item.keys?.length === 0) delete item.keys;
       return;
     }
@@ -156,7 +174,15 @@ function applyOp(project: Draft, op: Op) {
       const second = structuredClone(item);
       second.id = op.newId;
       second.duration = item.duration - op.at;
-      if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + Math.round(op.at * (item.speed ?? 1));
+      if (item.type === "graphic") second.in = graphicTime(item, op.at);
+      else if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + Math.round(op.at * (item.speed ?? 1));
+      if (item.skips) {
+        setSkips(second, skipsFrom(item.skips, op.at));
+        setSkips(
+          item,
+          item.skips.filter((s) => s.at < op.at),
+        );
+      }
       if (item.start !== undefined) second.start = item.start + op.at;
       delete second.transitionIn;
       // D224: the second half follows the first; the gap stays before the first.
@@ -359,6 +385,19 @@ export function undoTurn(initialProject: Project, session: Session, turnId: stri
 }
 
 type Keys = NonNullable<Item["keys"]>;
+
+/**
+ * Box keys of an item `duration` frames long with its frames [from, to) taken out (C6: a ripple cut
+ * through a graphic): the frame before the cut and the one after it keep their values (withCutKey),
+ * keys inside go, and the ones after move `to - from` earlier.
+ */
+export function keysWithoutSpan(input: Keys, from: number, to: number, fps: number, duration: number): Keys {
+  let keys = input;
+  if (to < duration) keys = withCutKey(keys, to, fps, duration);
+  if (from > 0) keys = withCutKey(keys, from - 1, fps, duration);
+  return keys.filter((k) => k.frame < from || k.frame >= to).map((k) => (k.frame >= to ? { ...k, frame: k.frame - (to - from) } : k));
+}
+
 /**
  * Box keys (D75) prepared for a cut at `at`: each keyed property gets its value there on a key at
  * `at`, so neither side jumps; and when the segment crossing the cut is eased (in / out / inOut),

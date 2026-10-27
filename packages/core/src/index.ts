@@ -71,6 +71,7 @@ export {
   graphicDocument,
   graphicInfo,
   graphicLocal,
+  graphicTime,
   graphicLibsUsed,
   graphicLogosUsed,
   MAX_GRAPHIC_BYTES,
@@ -530,6 +531,8 @@ export {
 } from "./audio/library.ts";
 export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, LibraryLicense, LibraryQuery, LibrarySource, SfxSound } from "./audio/library.ts";
 export { planReshoot } from "./timeline/reshoot.ts";
+export { retimeNotes, rippleSpans, withGraphicRetime } from "./timeline/retimeGraphics.ts";
+export type { GraphicRetime, RippleSpan } from "./timeline/retimeGraphics.ts";
 export { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, videoEnd } from "./timeline/mediaPlan.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
 export { checkPluginIcon, MAX_ICON_BYTES } from "./plugins/icon.ts";

@@ -294,6 +294,11 @@
             "type": { "const": "graphic" },
             "src": { "type": "string", "pattern": "^graphics/[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$", "description": "Agent-written HTML/CSS exposing render(t), in the project's graphics/ folder." },
             "in": { "$ref": "#/$defs/frame", "description": "Frames of the graphic before what this item shows (a trimmed start, a split's second half): render(t) gets t from there." },
+            "skips": {
+              "type": "array",
+              "description": "C6: stretches of the graphic's own time that ripple cuts removed with the footage: at the item's frame `at`, render(t) jumps ahead `frames`. In `at` order.",
+              "items": { "type": "object", "required": ["at", "frames"], "additionalProperties": false, "properties": { "at": { "type": "integer", "minimum": 1 }, "frames": { "type": "integer", "minimum": 1 } } }
+            },
             "props": { "type": "object" }
           },
           "required": ["src"]

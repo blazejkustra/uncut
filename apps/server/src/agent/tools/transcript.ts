@@ -10,6 +10,8 @@ import {
   DEFAULT_PAUSE_MIN_S,
   planMakeCaptions,
   planTextCut,
+  retimeNotes,
+  withGraphicRetime,
   type CaptionLines,
   type CaptionMode,
   type TextCutRequest,
@@ -258,8 +260,10 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
               : "Nothing to cut, so nothing changed.",
         });
       }
+      // C6: graphics the cut runs through lose the same stretch of their own time.
+      const retime = withGraphicRetime(fresh.session.project as Project, plan.ops);
       const outcome2 = yield* projects
-        .agentEdit(r.openId, { turnId: r.turn.id, ops: plan.ops, baseRevision: fresh.session.revision, summary: plan.summary })
+        .agentEdit(r.openId, { turnId: r.turn.id, ops: retime.ops, baseRevision: fresh.session.revision, summary: plan.summary })
         .pipe(
           Effect.map((snapshot) => ({ ok: true as const, snapshot })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
@@ -298,6 +302,7 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
         duration: end,
         seconds: secs(end),
         durationBefore: plan.before,
+        ...(retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, fps) } : {}),
         note: "One edit on your turn (Undo turn reverts it). Word ids don't change (they belong to the media's transcript): transcript_read still lists every word of the file, including the ones now cut; project_read shows the clips that are left.",
         ...(userChanges
           ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." }
