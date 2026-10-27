@@ -4,6 +4,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
@@ -42,6 +43,7 @@ before(async () => {
     "mp4",
     clip,
   ]);
+  copyFileSync(clip, join(root, "Kept.MP4"));
   writeFileSync(join(root, "secret.txt"), "not media");
   server = await startServer({ env: { UNCUT_DATA_DIR: join(root, "data") } });
   client = await connect(server.ready.port, server.ready.token);
@@ -167,4 +169,34 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   // A referenced file that went missing is a 404 too, not a crash.
   rmSync(clip);
   assert.equal((await get("/media/file/m-clip-one")).status, 404);
+});
+
+/** The server's open descriptors on `file` (lsof), or undefined where lsof isn't there. */
+const openOn = (pid: number, file: string) => {
+  const r = spawnSync("lsof", ["-p", String(pid), "-Fn"], { encoding: "utf8" });
+  return r.error ? undefined : r.stdout.split("\n").filter((l) => l === `n${file}`).length;
+};
+
+/** A request the client drops right after sending it, as <video> does on a seek. */
+const dropped = (path: string) =>
+  new Promise<void>((done) => {
+    const req = httpGet(`${base}${path}?token=${encodeURIComponent(token)}`, { headers: { range: "bytes=0-" } }, (res) => {
+      res.destroy();
+      done();
+    });
+    req.on("error", () => done());
+    setImmediate(() => {
+      req.destroy();
+      done();
+    });
+  });
+
+test("requests dropped while the file opens leave no handle open (DEP0137)", T, async (t) => {
+  const kept = join(root, "Kept.MP4");
+  const probe = { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false };
+  await client!.ok("project.edit", { ops: [{ op: "add_media", media: { id: "m-kept", kind: "video", name: "Kept.MP4", path: kept, probe } }] });
+  if (openOn(server!.proc.pid!, kept) === undefined) return t.skip("needs lsof");
+  for (let i = 0; i < 300; i++) await dropped("/media/file/m-kept");
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(openOn(server!.proc.pid!, kept), 0);
 });
