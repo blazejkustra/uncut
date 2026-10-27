@@ -46,7 +46,7 @@ interface Spawned {
 
 function start(bin: string, args: ReadonlyArray<string>, stdin: "ignore" | "pipe"): Spawned {
   const child = spawn(bin, localInputs(bin, args), { stdio: [stdin, "pipe", "pipe"] });
-  lowerPriority(child.pid);
+  lowerPriority(child);
   const s: Spawned = {
     child,
     stderr: "",

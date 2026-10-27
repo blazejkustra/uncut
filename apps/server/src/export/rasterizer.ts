@@ -178,7 +178,7 @@ export async function startRasterizer(
   let child: ChildProcess;
   try {
     child = spawn(command.bin, [...command.args, `--uncut-profile=${profile}`], { env: rasterizerEnv(env), stdio: ["pipe", "pipe", "pipe"] });
-    lowerPriority(child.pid);
+    lowerPriority(child);
   } catch (error) {
     rmSync(profile, { recursive: true, force: true });
     throw error;

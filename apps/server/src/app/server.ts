@@ -10,6 +10,7 @@ import { HttpRouter, HttpServer } from "effect/http";
 
 import * as Agent from "../agent/agent.ts";
 import { installGate } from "./auth.ts";
+import { droppedBecause } from "./liveness.ts";
 import { pairingText } from "./pairing.ts";
 import * as Remote from "./remote.ts";
 import * as AgentBridge from "../agent/agentBridge.ts";
@@ -79,6 +80,8 @@ const createServer = (config: Config.ServerConfigShape) => () => {
     // The window's socket (never its query: the token is there): when it drops, and after how long.
     const path = (request.url ?? "").split("?")[0];
     const opened = Date.now();
+    const dropped = path === WS_PATH ? droppedBecause(request.url ?? "") : undefined;
+    if (dropped) console.error(`[uncut] a window reconnected; its last socket dropped: ${dropped}`);
     socket.once("close", () => {
       upgraded.delete(socket);
       if (path === WS_PATH) console.error(`[uncut] a window's socket closed after ${Math.round((Date.now() - opened) / 1000)} s`);

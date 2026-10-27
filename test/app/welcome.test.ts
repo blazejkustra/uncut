@@ -263,6 +263,29 @@ test("a stalled connection shows Reconnecting… and recovers with the project s
   await typeInto(page, "[data-testid=inspector-name]", "After Reconnect");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.title === "After Reconnect", { timeout: 5000 });
+  // server.log says why: the window gave up on the silent socket, not a stall of its own.
+  assert.match(readFileSync(join(data, "server.log"), "utf8"), /a window reconnected; its last socket dropped: window,stall=0\.0s/);
   assert.deepEqual(app.errors, []);
+  await close(app);
+});
+
+test("a window that can't run for 8 s (starved by an export) keeps its socket", T, async () => {
+  const app = await launch();
+  const { page } = app;
+  await waitFor(page, "[data-testid=recent]");
+  await page.click("[data-testid=recent]");
+  await waitFor(page, "[data-testid=editor]");
+  const closes = () =>
+    readFileSync(join(data, "server.log"), "utf8")
+      .split("\n")
+      .filter((l) => /socket closed/.test(l)).length;
+  const before = closes();
+  await page.evaluate(() => {
+    const until = Date.now() + 8000;
+    while (Date.now() < until) {}
+  });
+  await new Promise((r) => setTimeout(r, 4000));
+  assert.equal(await page.$("[data-testid=connection-banner]"), null);
+  assert.equal(closes(), before, "the socket was never dropped");
   await close(app);
 });

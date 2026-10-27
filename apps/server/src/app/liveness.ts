@@ -4,6 +4,8 @@
 // - A heartbeat now and then with memory, so a log that stops shows when the server froze.
 import { getHeapStatistics } from "node:v8";
 
+import { DROPPED_QUERY_PARAM } from "@uncut/contracts";
+
 const MB = 1024 * 1024;
 
 export const memoryText = () => {
@@ -42,3 +44,9 @@ export function watchLiveness(options: {
   timer.unref();
   return () => clearInterval(timer);
 }
+
+/** Why a reconnecting window's last socket dropped (DROPPED_QUERY_PARAM), when it's a short plain note. */
+export const droppedBecause = (requestUrl: string) => {
+  const value = new URL(requestUrl, "http://localhost").searchParams.get(DROPPED_QUERY_PARAM);
+  return value && /^[\w.,=-]{1,64}$/.test(value) ? value : undefined;
+};

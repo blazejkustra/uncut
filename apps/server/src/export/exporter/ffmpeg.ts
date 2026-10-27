@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { availableParallelism, setPriority } from "node:os";
 import { join, dirname } from "node:path";
 import type { Project, Media } from "@uncut/core";
@@ -41,12 +41,23 @@ export const capsOf = (bin: string) => {
  */
 export const EXPORT_NICE = 10;
 
-/** Lowers a started helper's priority (EXPORT_NICE); a process already gone is left alone. */
-export const lowerPriority = (pid: number | undefined) => {
-  if (pid === undefined) return;
-  try {
-    setPriority(pid, EXPORT_NICE);
-  } catch {}
+/** How long after its start a helper's priority is set again (ms): see lowerPriority. */
+const PRIORITY_AGAIN_MS = 50;
+
+/**
+ * Lowers a started helper's priority (EXPORT_NICE); a process already gone is left alone. Set again
+ * a moment later: on macOS about 1 child in 200 still ended up at the app's priority when it was set
+ * only as spawn returned.
+ */
+export const lowerPriority = (child: ChildProcess) => {
+  const lower = () => {
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+    try {
+      setPriority(child.pid, EXPORT_NICE);
+    } catch {}
+  };
+  lower();
+  setTimeout(lower, PRIORITY_AGAIN_MS).unref();
 };
 
 /** Threads for the export's encoder: all but two of this Mac's cores, so the app always has some. */
@@ -94,7 +105,7 @@ export function run(bin: string, args: ReadonlyArray<string>, signal: AbortSigna
   return new Promise((resolvePromise, reject) => {
     if (signal?.aborted) return reject(new Cancelled());
     const child = spawn(bin, localInputs(bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
-    lowerPriority(child.pid);
+    lowerPriority(child);
     let stdout = "";
     let stderr = "";
     let partial = "";
