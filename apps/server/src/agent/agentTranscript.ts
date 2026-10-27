@@ -33,6 +33,9 @@ const secs = (s: number) => `${Math.round(s * 10) / 10} s`;
 export const TRANSCRIPT_NOTE =
   "Frames are project frames of the media (use them as in): a word runs from start (the frame it begins in) to end (the frame after it), a pause from start to end inside the gap. Text lines start with the index of their first word (w12) and its frames; {braces} mark fillers, (pause 1.2 s) a gap of at least 0.3 s. fillers: kind hesitation (um, uh, yyy, eee: safe to cut) or maybe (discourse words like no, znaczy, you know: judge in context). pauses: silent says whether the sound is below the silence threshold there (from the loudness analysis; absent when it hasn't run); edge start/end is before the first or after the last word. Times come from the speech model and are good to about 0.1 s; look at the frames before a tight cut.";
 
+export const PHRASES_NOTE =
+  "This long take was transcribed phrase by phrase (split at its silences, each phrase on its own, so a misheard stretch can't spread): each text line is one phrase, a retake is a line of its own. Pick the take to keep by its lines and cut whole phrases; caption timing follows the same words.";
+
 /** transcript_read's answer for a finished transcript. */
 export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
   if (!result.hasAudio) return { state: "done", cached: options.cached, hasAudio: false, note: "This media has no sound, so there's nothing to transcribe." };
@@ -49,6 +52,7 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
     ...(result.model ? { model: result.model } : {}),
     words: words.length,
     segments: segments.length,
+    ...(result.phrases ? { phrases: result.phrases.length } : {}),
   };
   if (!words.length) return { ...base, text: "", note: "No speech was found in it." };
   const fillers = fillersOf(words, result.language);
@@ -99,13 +103,19 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
       const f = fillerAt.get(i);
       return { i, text: w.text, start: wordStart(i), end: wordEnd(i), ...(w.p < 0.5 ? { unsure: true } : {}), ...(f ? { filler: f.kind } : {}) };
     });
+    if (result.phrases) {
+      out.phrases = result.phrases.flatMap((p) => {
+        const ids = picked.filter((i) => i >= p.words[0] && i < p.words[1]);
+        return ids.length ? [{ from: `w${p.words[0]}`, to: `w${p.words[1] - 1}`, start: wordStart(p.words[0]), end: wordEnd(p.words[1] - 1) }] : [];
+      });
+    }
   } else {
     const pauseAfter = new Map<number, Pause>();
     for (const p of listedPauses) if (p.edge !== "start") pauseAfter.set(p.after, p);
     const lines: Array<string> = [];
     const lead = listedPauses.find((p) => p.edge === "start");
     if (lead) lines.push(`(pause ${secs(lead.end - lead.start)} before the first word)`);
-    for (const s of segments) {
+    for (const s of result.phrases ?? segments) {
       const ids = picked.filter((i) => i >= s.words[0] && i < s.words[1]);
       if (!ids.length) continue;
       const parts = ids.map((i) => {
@@ -159,6 +169,7 @@ export function transcriptSummary(
     ...(result.model ? { model: result.model } : {}),
     words: words.length,
     segments: result.segments?.length ?? 0,
+    ...(result.phrases ? { phrases: result.phrases.length } : {}),
     fillers: { hesitation: fillers.filter((f) => f.kind === "hesitation").length, maybe: fillers.filter((f) => f.kind === "maybe").length },
     pauses: pauses.length,
     pauseSeconds: Math.round(pauses.reduce((s, p) => s + p.end - p.start, 0) * 10) / 10,
