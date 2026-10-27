@@ -245,7 +245,7 @@
               "text",
               "words"
             ],
-            "description": "text (default): one line per sentence, 'w<first word index> [start–end] words', {fillers} and (pause n s) inline. words: each word with start and end frames."
+            "description": "text (default): one line per sentence (per phrase on a long take), 'w<first word index> [start–end] words', {fillers} and (pause n s) inline. words: each word with start and end frames."
           },
           "from": {
             "type": "integer",
@@ -259,7 +259,7 @@
           }
         }
       },
-      "returns": "{ media, item?, state, cached, language, model, seconds, words (total), segments, shown: { from, to }, text (format text) | list: [{ i, text, start, end, unsure?, filler? }] (format words), fillers: [{ i, n, text, start, end, kind: hesitation | maybe }], pauses: [{ start, end, startSeconds, endSeconds, after, edge?, silent? }], next?: { from } } or { transcript: { state: running | queued, progress, stage? } } (frames are project frames of the media)"
+      "returns": "{ media, item?, state, cached, language, model, seconds, words (total), segments, shown: { from, to }, text (format text) | list: [{ i, text, start, end, unsure?, filler? }] (format words), fillers: [{ i, n, text, start, end, kind: hesitation | maybe }], pauses: [{ start, end, startSeconds, endSeconds, after, edge?, silent? }], phrases?: n (long take, see note), list phrases?: [{ from, to, start, end }] (format words), next?: { from } } or { transcript: { state: running | queued, progress, stage? } } (frames are project frames of the media)"
     },
     {
       "name": "transcript_edit",

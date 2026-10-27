@@ -32,6 +32,7 @@ import {
   sweepStaleTranscriptTemp,
   TEMP_PREFIX,
   transcribeDirect,
+  TRANSCRIPT_VERSION,
   type TranscriptResult,
 } from "../../apps/server/src/analysis/transcription.ts";
 import { transcriptOut, transcriptSummary } from "../../apps/server/src/agent/agentTranscript.ts";
@@ -283,7 +284,7 @@ test(
     const fp = await fingerprint(file);
     const cached = JSON.parse(readFileSync(cacheFile(project, fp, "transcript"), "utf8"));
     assert.equal(cached.analyzer, "transcript");
-    assert.equal(cached.version, 1);
+    assert.equal(cached.version, TRANSCRIPT_VERSION);
     assert.ok(isTranscriptResult(cached.result));
 
     // The re-ask: no job, nothing spawned. Naming the language it's in is a hit too.

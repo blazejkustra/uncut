@@ -163,6 +163,20 @@ test(
       assert.equal(run.argv[run.argv.indexOf("-m") + 1], model);
       assert.equal(run.argv[run.argv.indexOf("-of") + 1], join(wavDir, "transcript"), "whisper's JSON goes next to the WAV, in the folder Uncut owns");
 
+      // A long take's phrases: one whisper run, each WAV on its own, an answer per file.
+      const phrase = join(wavDir, "phrase-0001.wav");
+      writeFileSync(phrase, readFileSync(wav));
+      const files = await plugin.call({ files: [wav, phrase], model, bin: FAKE, language: "en" });
+      assert.ok(!files.isError, textOf(files));
+      assert.equal(files.structuredContent.files.length, 2);
+      assert.ok(files.structuredContent.files.every((f: { words: Array<unknown> }) => f.words.length === 16));
+      const filesRun = whisperRuns().at(-1)!.argv;
+      assert.deepEqual(
+        filesRun.flatMap((a, i) => (a === "-f" || a === "-of" ? [filesRun[i + 1]] : [])),
+        [wav, join(wavDir, "audio.whisper"), phrase, join(wavDir, "phrase-0001.whisper")],
+      );
+      assert.match(textOf(await plugin.call({ files: [wav, join(root, "nope.wav")], model, bin: FAKE })), /There's no audio file/);
+
       // Refusals and failures, as sentences.
       assert.match(textOf(await plugin.call({ model })), /Pass audio/);
       assert.match(textOf(await plugin.call({ audio: join(root, "nope.wav"), model, bin: FAKE })), /There's no audio file/);

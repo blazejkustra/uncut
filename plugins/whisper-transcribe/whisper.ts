@@ -32,8 +32,10 @@ export interface Speech {
   readonly words: Array<TranscriptWord>;
 }
 
+const defaultThreads = () => Math.max(1, Math.min(8, availableParallelism()));
+
 /** whisper-cli: full JSON (timed tokens), progress on stderr, Metal by default (whisper.cpp's default). */
-export const whisperArgs = (model: string, wav: string, out: string, language: string, threads = Math.max(1, Math.min(8, availableParallelism()))) => [
+export const whisperArgs = (model: string, wav: string, out: string, language: string, threads = defaultThreads()) => [
   "-m",
   model,
   "-f",
@@ -48,6 +50,18 @@ export const whisperArgs = (model: string, wav: string, out: string, language: s
   "-t",
   String(threads),
 ];
+
+/**
+ * whisper-cli over several WAVs in one run (the model loads once): each file is its own
+ * transcription with its own JSON; whisper.cpp starts every file without the text of the one
+ * before (no_context).
+ */
+export const whisperFilesArgs = (
+  model: string,
+  files: ReadonlyArray<{ readonly wav: string; readonly out: string }>,
+  language: string,
+  threads = defaultThreads(),
+) => ["-m", model, ...files.flatMap((f) => ["-f", f.wav, "-of", f.out]), "-ojf", "-l", language, "-pp", "-np", "-t", String(threads)];
 
 // ---- whisper's JSON into words ----
 
@@ -268,11 +282,54 @@ export async function transcribeWav(
     },
   });
   if (options.signal.aborted) throw new Stopped();
-  let json: string;
+  return parseWhisperJson(await readAnswer(out, run), input.seconds);
+}
+
+async function readAnswer(out: string, run: { readonly code: number | null; readonly stderrTail: string }) {
   try {
-    json = (await readFile(`${out}.json`)).toString("latin1");
+    return (await readFile(`${out}.json`)).toString("latin1");
   } catch {
     throw new Error(`whisper-cli couldn't transcribe it: ${whisperError(run.stderrTail) || `it exited with ${run.code}`}`);
   }
-  return parseWhisperJson(json, input.seconds);
+}
+
+export interface TranscribeFilesInput extends Omit<TranscribeInput, "audio" | "seconds"> {
+  /** 16 kHz mono WAVs (phrases of one take), each transcribed on its own; JSON is written next to each. */
+  readonly files: ReadonlyArray<string>;
+}
+
+/** The JSON whisper writes for a WAV: beside it, named after it. */
+const answerPath = (wav: string) => wav.replace(/\.wav$/i, "") + ".whisper";
+
+/**
+ * Transcribes several WAVs in one whisper-cli run, each on its own (times in seconds of each
+ * file). Progress is 0–1 over all of them. Rejects like transcribeWav.
+ */
+export async function transcribeWavs(
+  input: TranscribeFilesInput,
+  options: {
+    readonly signal: AbortSignal;
+    readonly run?: Run | undefined;
+    readonly onProgress?: ((fraction: number) => void) | undefined;
+    readonly timeoutMs?: number | undefined;
+  },
+): Promise<Array<Speech>> {
+  const bin = input.bin ?? (await onPath(WHISPER_BIN));
+  if (!bin) throw new Error(NO_WHISPER);
+  const files = input.files.map((wav) => ({ wav, out: answerPath(wav) }));
+  await Promise.all(files.map((f) => rm(`${f.out}.json`, { force: true })));
+  let started = 0;
+  const run = await (options.run ?? spawnRun)(bin, whisperFilesArgs(input.model, files, input.language), {
+    signal: options.signal,
+    ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    onStderr: (line) => {
+      if (line.startsWith("read_audio_data: reading audio data from")) started++;
+      const m = /progress\s*=\s*(\d+)%/.exec(line);
+      if (m && files.length) options.onProgress?.(Math.min(1, (Math.max(0, started - 1) + Number(m[1]) / 100) / files.length));
+    },
+  });
+  if (options.signal.aborted) throw new Stopped();
+  const answers: Array<Speech> = [];
+  for (const f of files) answers.push(parseWhisperJson(await readAnswer(f.out, run)));
+  return answers;
 }

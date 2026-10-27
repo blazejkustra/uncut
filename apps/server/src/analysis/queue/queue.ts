@@ -4,6 +4,7 @@ import type { Analyzer, AnalysisJob } from "@uncut/contracts";
 import { NO_BEATS_AUDIO, analyzeBeats } from "../beats.ts";
 import { type Runner, Cancelled } from "../analysisRunner.ts";
 import { type TranscriptResult, type Transcribe, NO_SPEECH_AUDIO, analyzeTranscript } from "../transcription.ts";
+import { briefNames } from "../names.ts";
 import { NO_VIDEO, analyzeVideo } from "../videoAnalysis.ts";
 import type { ResolveWhisper } from "../whisper.ts";
 import { type AnalysisResult, type AnalysisTarget, fingerprint, readCached, writeCached, removeCached } from "./cache.ts";
@@ -285,10 +286,12 @@ export class AnalysisQueue {
         });
         if (signal.aborted) throw new Cancelled();
         if (e.job.stage) this.patch(e, { stage: undefined, progress: 0 });
+        const names = await briefNames(e.target.dir);
         result = await analyzeTranscript(bin, whisper, e.target.path, {
           ...options,
           transcribe: this.options.transcribe,
           language: e.options?.language,
+          names,
           ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}),
         });
       } else if (e.job.analyzer === "video") result = await analyzeVideo(bin, e.target.path, options);

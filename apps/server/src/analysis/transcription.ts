@@ -11,12 +11,14 @@ import { tmpdir } from "node:os";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Stopped, transcribeWav, type Speech } from "../../../../plugins/whisper-transcribe/whisper.ts";
+import { Stopped, transcribeWav, transcribeWavs, type Speech } from "../../../../plugins/whisper-transcribe/whisper.ts";
 
 import { Cancelled, ffmpegError, NO_AUDIO_STREAM, spawnRunner, type Runner } from "./analysisRunner.ts";
+import { correctNames } from "./names.ts";
+import { PHRASE_TAKE_MIN_S, transcribeByPhrases, type TranscriptPhrase } from "./phrases.ts";
 
 /** Bumped when the transcript's shape or the way words are made changes, so older cache files are redone. */
-export const TRANSCRIPT_VERSION = 1;
+export const TRANSCRIPT_VERSION = 2;
 /** Temp folders are uncut-transcript-<server pid>-XXXXXX, so a sweep can tell whose they are. */
 export const TEMP_PREFIX = "uncut-transcript-";
 
@@ -55,7 +57,7 @@ export async function sweepStaleTranscriptTemp(dir = tmpdir(), now = Date.now())
 }
 
 import type { TranscriptSegment, TranscriptWord } from "../../../../plugins/whisper-transcribe/whisper.ts";
-export type { Speech, TranscriptSegment, TranscriptWord };
+export type { Speech, TranscriptPhrase, TranscriptSegment, TranscriptWord };
 export interface TranscriptResult {
   readonly hasAudio: boolean;
   readonly seconds?: number;
@@ -67,6 +69,8 @@ export interface TranscriptResult {
   readonly model?: string;
   readonly segments?: ReadonlyArray<TranscriptSegment>;
   readonly words?: ReadonlyArray<TranscriptWord>;
+  /** A long take's phrases (split at its silences, each transcribed on its own), in order. */
+  readonly phrases?: ReadonlyArray<TranscriptPhrase>;
 }
 
 export const NO_SPEECH_AUDIO: TranscriptResult = { hasAudio: false };
@@ -122,22 +126,36 @@ export interface SpeechRequest {
   readonly language: string;
   readonly seconds?: number | undefined;
   readonly timeoutMs: number;
+  /** Phrase WAVs to transcribe instead of audio, each on its own: the answer's files, in this order. */
+  readonly files?: ReadonlyArray<string> | undefined;
+}
+export interface SpeechAnswer extends Speech {
+  readonly files?: ReadonlyArray<Speech>;
 }
 export type Transcribe = (
   request: SpeechRequest,
   options: { readonly signal: AbortSignal; readonly onProgress: (fraction: number) => void; readonly runner?: Runner | undefined },
-) => Promise<Speech>;
+) => Promise<SpeechAnswer>;
 
 /** whisper-cli run here, through the analysis runner (tests: they watch what's spawned). */
-export const transcribeDirect: Transcribe = (request, { signal, onProgress, runner }) =>
-  transcribeWav(
-    { audio: request.audio, model: request.model, bin: request.bin, language: request.language, seconds: request.seconds },
-    { signal, onProgress, timeoutMs: request.timeoutMs, run: runner ?? spawnRunner },
-  );
+export const transcribeDirect: Transcribe = async (request, { signal, onProgress, runner }) => {
+  const run = runner ?? spawnRunner;
+  const common = { model: request.model, bin: request.bin, language: request.language };
+  if (request.files)
+    return {
+      segments: [],
+      words: [],
+      files: await transcribeWavs({ ...common, files: request.files }, { signal, onProgress, timeoutMs: request.timeoutMs, run }),
+    };
+  return transcribeWav({ ...common, audio: request.audio, seconds: request.seconds }, { signal, onProgress, timeoutMs: request.timeoutMs, run });
+};
 
 /** The bundled Whisper plugin's id and its one call. */
 export const WHISPER_PLUGIN = "whisper.transcribe";
 export const WHISPER_TOOL = "transcribe";
+
+const isSpeech = (value: unknown): value is Speech =>
+  !!value && typeof value === "object" && Array.isArray((value as Speech).words) && Array.isArray((value as Speech).segments);
 
 type CallResult = {
   readonly isError?: boolean;
@@ -157,15 +175,9 @@ export const pluginTranscribe =
     ) => Promise<CallResult>,
   ): Transcribe =>
   async (request, { signal, onProgress }) => {
+    const what = request.files ? { files: request.files } : { audio: request.audio, ...(request.seconds !== undefined ? { seconds: request.seconds } : {}) };
     const result = await call(
-      {
-        audio: request.audio,
-        model: request.model,
-        bin: request.bin,
-        language: request.language,
-        ...(request.seconds !== undefined ? { seconds: request.seconds } : {}),
-        timeoutSeconds: Math.ceil(request.timeoutMs / 1000),
-      },
+      { ...what, model: request.model, bin: request.bin, language: request.language, timeoutSeconds: Math.ceil(request.timeoutMs / 1000) },
       // A little longer than whisper's own limit, so the plugin's "took too long" is what's said.
       { signal, timeoutMs: request.timeoutMs + 30_000, onProgress: (progress, total) => onProgress(Math.min(1, Math.max(0, progress / (total ?? 100)))) },
     );
@@ -175,8 +187,14 @@ export const pluginTranscribe =
       .join(" ")
       .trim();
     if (result.isError) throw new Error(text || "The Whisper plugin couldn't transcribe it.");
-    const speech = result.structured as Speech | undefined;
-    if (!speech || !Array.isArray(speech.words) || !Array.isArray(speech.segments)) throw new Error("The Whisper plugin answered without words.");
+    if (request.files) {
+      const files = (result.structured as { files?: unknown } | undefined)?.files;
+      if (!Array.isArray(files) || files.length !== request.files.length || !files.every(isSpeech))
+        throw new Error("The Whisper plugin answered without words for each phrase.");
+      return { segments: [], words: [], files };
+    }
+    const speech = result.structured;
+    if (!isSpeech(speech)) throw new Error("The Whisper plugin answered without words.");
     return speech;
   };
 
@@ -192,12 +210,15 @@ export interface TranscribeOptions {
   readonly tmpRoot?: string;
   /** The speech model (the Whisper plugin in the app). */
   readonly transcribe: Transcribe;
+  /** Names the speech is likely to say (the project's brief): words that sound like one are written as it. */
+  readonly names?: ReadonlyArray<string> | undefined;
 }
 
 /**
  * Transcribes the first audio stream of `path`: ffmpeg extracts it here (a temp folder Uncut
  * owns and removes), the speech model (`options.transcribe`, with whisper-cli and `model`, a
- * ggml file) turns it into words.
+ * ggml file) turns it into words. A take longer than PHRASE_TAKE_MIN_S is transcribed phrase by
+ * phrase (phrases.ts).
  */
 export async function analyzeTranscript(
   ffmpeg: string,
@@ -234,23 +255,28 @@ export async function analyzeTranscript(
     }
     if (options.signal.aborted) throw new Cancelled();
     const seconds = decoded > 0 ? decoded : (options.seconds ?? duration);
-    const parsed = await options
-      .transcribe(
-        { audio: wav, bin: whisper.bin, model: whisper.model, modelId: whisper.modelId, language, seconds, timeoutMs },
-        { signal: options.signal, runner: options.runner, onProgress: (fraction) => options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * fraction)) },
-      )
-      .catch((error: unknown) => {
-        throw options.signal.aborted || error instanceof Stopped ? new Cancelled() : error;
-      });
+    const request: SpeechRequest = { audio: wav, bin: whisper.bin, model: whisper.model, modelId: whisper.modelId, language, seconds, timeoutMs };
+    const call = {
+      signal: options.signal,
+      runner: options.runner,
+      onProgress: (fraction: number) => options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * fraction)),
+    };
+    const byPhrases = seconds !== undefined && seconds > PHRASE_TAKE_MIN_S;
+    const parsed = await (byPhrases ? transcribeByPhrases(request, options.transcribe, call) : options.transcribe(request, call)).catch((error: unknown) => {
+      throw options.signal.aborted || error instanceof Stopped ? new Cancelled() : error;
+    });
     if (options.signal.aborted) throw new Cancelled();
+    const heard = correctNames(
+      { segments: parsed.segments, words: parsed.words, ...("phrases" in parsed ? { phrases: parsed.phrases } : {}) },
+      options.names ?? [],
+    );
     return {
       hasAudio: true,
       ...(seconds !== undefined ? { seconds: ms3(seconds) } : {}),
       ...(parsed.language ? { language: parsed.language } : language !== "auto" ? { language } : {}),
       requestedLanguage: language,
       model: whisper.modelId,
-      segments: parsed.segments,
-      words: parsed.words,
+      ...heard,
     };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -260,6 +286,24 @@ export async function analyzeTranscript(
 // ---- the cache's shape ----
 
 const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+/** A segment or phrase: text, start and end, and its words [first, end) within n words. */
+const isSpan = (value: unknown, n: number) => {
+  const x = value as TranscriptSegment;
+  return (
+    !!x &&
+    typeof x === "object" &&
+    typeof x.text === "string" &&
+    num(x.start) &&
+    num(x.end) &&
+    Array.isArray(x.words) &&
+    x.words.length === 2 &&
+    Number.isInteger(x.words[0]) &&
+    Number.isInteger(x.words[1]) &&
+    x.words[0] >= 0 &&
+    x.words[1] <= n &&
+    x.words[0] <= x.words[1]
+  );
+};
 /** Whether a cached value has the transcript's shape (anything else is a miss, redone and rewritten). */
 export function isTranscriptResult(value: unknown): value is TranscriptResult {
   if (!value || typeof value !== "object") return false;
@@ -279,24 +323,9 @@ export function isTranscriptResult(value: unknown): value is TranscriptResult {
       num((w as TranscriptWord).p),
   );
   const n = r.words.length;
-  const segmentsOk = r.segments.every((s) => {
-    const x = s as TranscriptSegment;
-    return (
-      x &&
-      typeof x === "object" &&
-      typeof x.text === "string" &&
-      num(x.start) &&
-      num(x.end) &&
-      Array.isArray(x.words) &&
-      x.words.length === 2 &&
-      Number.isInteger(x.words[0]) &&
-      Number.isInteger(x.words[1]) &&
-      x.words[0] >= 0 &&
-      x.words[1] <= n &&
-      x.words[0] <= x.words[1]
-    );
-  });
-  return wordsOk && segmentsOk;
+  const segmentsOk = r.segments.every((s) => isSpan(s, n));
+  const phrasesOk = r.phrases === undefined || (Array.isArray(r.phrases) && r.phrases.every((p) => isSpan(p, n)));
+  return wordsOk && segmentsOk && phrasesOk;
 }
 
 // ---- fillers and pauses (derived when read) ----

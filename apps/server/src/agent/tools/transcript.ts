@@ -16,7 +16,7 @@ import {
 } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { targetOf } from "../../analysis/analysis.ts";
-import { transcriptOut, TRANSCRIPT_NOTE } from "../agentTranscript.ts";
+import { PHRASES_NOTE, transcriptOut, TRANSCRIPT_NOTE } from "../agentTranscript.ts";
 import { isLanguage, type TranscriptResult } from "../../analysis/transcription.ts";
 import { MAX_CAPTION_CARDS, projectSummary } from "../agentTools.ts";
 import { canonicalPath } from "../../export/subtitleSources.ts";
@@ -104,7 +104,9 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
         media: m.id,
         ...(spoken ? { item: args.item } : {}),
         ...out,
-        note: ["note" in out && typeof out.note === "string" ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" "),
+        note: ["note" in out && typeof out.note === "string" ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : "", result.phrases ? PHRASES_NOTE : ""]
+          .filter(Boolean)
+          .join(" "),
       });
     });
 
