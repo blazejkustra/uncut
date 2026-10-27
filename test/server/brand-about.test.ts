@@ -21,7 +21,7 @@ test("about: kept by normKit, written by brand_write's merge (empty clears it), 
 });
 
 test("kits first: the context and the production docs say to use a matching kit and ask once, not search", () => {
-  const ctx = planContext({ files: {}, skills: [], others: [{ id: "uncut", name: "Uncut" }] }, { reviews: [] }, { closed: false, waiting: false, skip: false });
+  const ctx = planContext({ files: {}, skills: [], others: [{ id: "uncut", name: "Uncut" }] }, { reviews: [] });
   assert.match(ctx, /its kit \(brand_read\) if one matches; else ask_user once, don't search the disk or the web/);
   const withKit = planContext(
     {
@@ -34,7 +34,6 @@ test("kits first: the context and the production docs say to use a matching kit 
       ],
     },
     { reviews: [] },
-    { closed: false, waiting: false, skip: false },
   );
   assert.match(withKit, /Other kits: "Uncut" \(uncut\); brand_read one when the request names its product\./);
   const prod = docsRead("production").text;

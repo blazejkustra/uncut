@@ -1,8 +1,7 @@
 // The production process in the Agent tab (U8, U9, U15, U16; D187–D189, D197): the question card
-// (ask_user), the storyboard to approve, the cards a turn keeps in the conversation where they
-// happened (question and answer, brief, storyboard, review, brand; the latest brief is edited and
-// the latest storyboard approved on its card) and the pinned Plan chip that jumps to the latest
-// brief, storyboard and review cards.
+// (ask_user), the cards a turn keeps in the conversation where they happened (question and answer,
+// brief, storyboard, review, brand; the latest brief is edited on its card) and the pinned Plan chip
+// that jumps to the latest brief, storyboard and review cards.
 import { type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion, type Review } from "@uncut/contracts";
 import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, Gauge, HelpCircle, Palette, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -79,15 +78,6 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
   );
 }
 
-const OUTCOME: Readonly<Record<string, string>> = {
-  approved: "Approved",
-  declined: "Changes asked",
-  auto: "Approved by the setting",
-  self: "Approved by the agent",
-  skipped: "No answer",
-  answered: "Answered",
-};
-
 /** The review's chip: passed, its blockers, or under the bar. */
 const reviewOutcome = (r: Review) =>
   r.passed ? "Passed" : r.blockers?.length ? (r.blockers.length === 1 ? "1 blocker" : `${r.blockers.length} blockers`) : "Below 8";
@@ -136,7 +126,6 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
   }
   // The latest brief shows the brief as it is now (the user may have edited it since).
   const brief = live && card.type === "brief" ? (live.plan.brief ?? card.brief) : card.brief;
-  const sb = live && card.type === "storyboard" ? live.plan.storyboard : undefined;
   const head =
     card.type === "brief" ? (
       <>
@@ -148,11 +137,6 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       <>
         <Clapperboard />
         <span className="grow ellipsis">Storyboard, {card.storyboard?.beats.length ?? 0} beats</span>
-        {sb && sb.status === "approved" && card.outcome !== "approved" && card.outcome !== "auto" && card.outcome !== "self" ? (
-          <span className="card-outcome approved">Approved</span>
-        ) : (
-          card.outcome && <span className={`card-outcome ${card.outcome}`}>{OUTCOME[card.outcome] ?? card.outcome}</span>
-        )}
       </>
     ) : (
       <>
@@ -192,20 +176,6 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
           {card.storyboard.beats.map((b, i) => (
             <BeatRow key={i} beat={b} i={i} edit={false} />
           ))}
-        </div>
-      )}
-      {open && sb && sb.status !== "approved" && !live?.waiting && (
-        <div className="approval-btns card-btns">
-          {sb.note && <span className="small muted grow">You asked: {sb.note}</span>}
-          <button
-            className="btn primary"
-            data-testid="plan-storyboard-approve"
-            disabled={!live?.online || live.busy}
-            title={live?.busy ? "The agent is working" : undefined}
-            onClick={() => void actions.agentPlanSave({ storyboard: { ...sb, status: "approved" } })}
-          >
-            Approve
-          </button>
         </div>
       )}
       {open && card.review && <ReviewBody review={card.review} intended={intended} online={online} />}
@@ -256,7 +226,7 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
         <ClipboardList />
         Plan
         {last && state(last.passed ? "passed" : "low", reviewOutcome(last))}
-        {!last && sb && state(sb.status, sb.status === "approved" ? "Approved" : sb.status === "declined" ? "Changes asked" : "Waiting")}
+        {!last && sb && state("approved", "Planned")}
       </button>
       {open && (
         <div className="plan-menu" data-testid="plan-menu">
@@ -270,7 +240,7 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
             <button className="plan-row" data-testid="plan-storyboard" onClick={() => go("storyboard")}>
               <Clapperboard />
               <span className="grow">Storyboard, {sb.beats.length} beats</span>
-              {state(sb.status, sb.status === "approved" ? "Approved" : sb.status === "declined" ? "Changes asked" : "Waiting")}
+              {state("approved", "Planned")}
             </button>
           )}
           {last && (

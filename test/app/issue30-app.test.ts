@@ -192,8 +192,6 @@ test(
       ]);
       await waitFor("[data-testid=agent-input]");
       await send("build it and review");
-      await waitFor("[data-testid=agent-storyboard]", 30000);
-      await page.click("[data-testid=agent-storyboard-approve]");
       await lastDone();
       const review = "[data-testid=agent-card][data-type=review]";
       await waitFor(review, 30000);

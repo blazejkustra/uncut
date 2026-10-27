@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Storyboard, type Brief, type BrandKit, type BrandSkill } from "@uncut/contracts";
+import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Brief, type BrandKit, type BrandSkill } from "@uncut/contracts";
 import {
   CHECK_IDS,
   fontRule,
@@ -98,7 +98,6 @@ import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_REVIEW_MS = 30_000;
-import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
 
 /**
@@ -267,10 +266,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       return textResult({
         saved: "brief.json",
         ...skillsOut,
-        next:
-          sb?.status === "approved"
-            ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose."
-            : "Now propose the storyboard with storyboard_propose; build once the user approves it.",
+        next: sb
+          ? "If the brief changed the plan, propose the storyboard again with storyboard_propose."
+          : "Now propose the storyboard with storyboard_propose, then build it.",
       });
     });
 
@@ -293,7 +291,6 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       return reviewRubric(plan.brief, { skills: active.skills, hasKit: !!active.kit, ...(request ? { request } : {}) });
     });
 
-  /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
   /** A still asked for: a timeline frame, or a graphic file and a moment of it (seconds). */
   const stillOf = (f: unknown): { readonly frame: number } | { readonly graphic: string; readonly t: number } | undefined => {
     if (typeof f === "number") return Number.isInteger(f) && f >= 0 ? { frame: f } : undefined;
@@ -362,25 +359,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             stills: `Drew the first ${MAX_STILLS} stills; beat${skipped.length === 1 ? "" : "s"} ${skipped.join(", ")} asked for one too and ${skipped.length === 1 ? "was" : "were"} left out (${MAX_STILLS} at most: the open, the drop, the busiest state and the last frame).`,
           }
         : {};
-      // Round 2's A2: approve "self" is for a run in Auto where nobody can answer, on a first proposal
-      // nobody answered. Refused before anything renders or locks the edit (review of r3).
-      if (args.approve === "self") {
-        if (r.access !== "auto")
-          return textResult(
-            `approve "self" is for a run in Auto where nobody can answer; this chat is set to ${r.access === "look" ? "Look only" : "Ask first"}, so the user is here to approve it: propose it without approve.`,
-            true,
-          );
-        const sb = r.owner.plan.storyboard;
-        if (r.storyboardSentBack || (sb?.status === "declined" && sb.note))
-          return textResult(
-            `approve "self" is only for a first proposal nobody answered; the user sent the storyboard back${sb?.status === "declined" && sb.note ? ` ("${sb.note}")` : ""}, so they're here to approve it: change it as asked and propose it again without approve.`,
-            true,
-          );
-      }
-      // D296: from here the proposal locks the edit (run.ts): the stills render from this state and
-      // the user approves what they see. Set before rendering, so a parallel edit can't slip in.
       r.planned = true;
-      r.proposing = true;
       if (wanted.length) {
         const canvas = v.session.project.canvas;
         const width = Math.min(canvas.width, STILL_WIDTH);
@@ -393,7 +372,6 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: (error as Error).message })),
         );
         if (!rendered.ok) {
-          r.proposing = false;
           return textResult(`Couldn't render the stills: ${rendered.message}. Fix that, or propose without still.`, true);
         }
         r.stills = (r.stills ?? 0) + 1;
@@ -418,92 +396,13 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           if (beats[i]) beats[i] = { ...beats[i]!, still: name };
         });
       }
-      const write = (sb: Storyboard) =>
-        Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
-      r.planned = true;
-      // Round 2's A2: a prompt that says nobody can answer ("decide yourself") approves its own
-      // storyboard, shown as such on the card, rather than skipping it (and the critic with it).
-      if (args.approve === "self") {
-        r.proposing = false;
-        const sb = yield* write({ summary, beats, status: "approved", approvedBy: "agent" });
-        yield* refreshPlan(r, v);
-        addCard(r, { type: "storyboard", storyboard: sb, outcome: "self" }, summary || "Storyboard");
-        return textResult({
-          ...stillNote,
-          approved: true,
-          by: "you",
-          message:
-            "Approved by you (the user said they can't answer); say so in your reply. Build it scene by scene, then run the critic loop as always: review_submit before you end (the critic never needs the user).",
-        });
-      }
-      if (r.skipStoryboard) {
-        r.proposing = false;
-        const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
-        yield* refreshPlan(r, v);
-        addCard(r, { type: "storyboard", storyboard: sb, outcome: "auto" }, summary || "Storyboard");
-        return textResult({
-          ...stillNote,
-          approved: true,
-          by: "setting",
-          message: "Approved by the user's setting (Auto skips the storyboard approval). Build it scene by scene.",
-        });
-      }
-      const proposed = yield* write({ summary, beats, status: "proposed" });
+      const recorded = { summary, beats, status: "approved", approvedBy: "agent" } as const;
+      const sb = yield* Effect.promise(() =>
+        writeStoryboard(v.dir, recorded).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), recorded)),
+      );
       yield* refreshPlan(r, v);
-      let extra: CardAnswer | undefined;
-      const a = yield* askUser(
-        r,
-        summary || "Storyboard",
-        0,
-        undefined,
-        (_card, _a, _s, x) => {
-          extra = x;
-        },
-        undefined,
-        { storyboard: proposed },
-      );
-      // D296: approved or sent back, the edit is free again; unanswered, it stays locked for the turn.
-      if (a === "allow" || a === "deny") r.proposing = false;
-      if (a === "allow") {
-        const edited = extra?.beats ? normBeats(extra.beats) : [];
-        const final = yield* write({ summary, beats: edited.length ? edited : beats, status: "approved", approvedBy: "user" });
-        yield* refreshPlan(r, v);
-        addCard(r, { type: "storyboard", storyboard: final, outcome: "approved" }, summary || "Storyboard");
-        return textResult({
-          ...stillNote,
-          approved: true,
-          ...(edited.length
-            ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." }
-            : {
-                message:
-                  "Approved as the stills show it. Build it scene by scene to match them; keep the copy, logo and end card they show (to change those, propose again).",
-              }),
-        });
-      }
-      if (a === "deny") {
-        r.storyboardSentBack = true;
-        const note = extra?.note?.trim().slice(0, 2000) ?? "";
-        const final = yield* write({ summary, beats, status: "declined", ...(note ? { note } : {}) });
-        yield* refreshPlan(r, v);
-        addCard(r, { type: "storyboard", storyboard: final, outcome: "declined" }, summary || "Storyboard");
-        return textResult({
-          ...stillNote,
-          approved: false,
-          ...(note ? { change: note } : {}),
-          next: note
-            ? "Change the storyboard as asked and propose it again; don't build until it's approved."
-            : "The user didn't approve it and said nothing: ask what to change (ask_user); don't build.",
-        });
-      }
-      addCard(r, { type: "storyboard", storyboard: proposed, outcome: "skipped" }, summary || "Storyboard");
-      return textResult(
-        {
-          approved: false,
-          message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.",
-          next: "Don't build or edit (timeline_edit, graphic_write and shader_write are refused for the rest of this turn). End the turn now saying the storyboard waits for approval on the Plan card.",
-        },
-        a !== "timeout",
-      );
+      addCard(r, { type: "storyboard", storyboard: sb }, summary || "Storyboard");
+      return textResult({ ...stillNote, recorded: true, message: "Recorded and shown in the thread. Build it scene by scene." });
     });
 
   /**

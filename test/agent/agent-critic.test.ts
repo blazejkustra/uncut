@@ -15,7 +15,7 @@ import {
   reviewNext,
   type CriticInput,
 } from "../../apps/server/src/agent/agentCritic.ts";
-import { gateOf, planContext } from "../../apps/server/src/agent/agentPlan.ts";
+import { planContext } from "../../apps/server/src/agent/agentPlan.ts";
 
 const ev = (score: number) => ({ score, evidence: "f 0, f 30: fine" });
 const all = (n: number) => ({ hook: ev(n), readability: ev(n), motion: ev(n), variety: ev(n), sound: ev(n), brand: ev(n) });
@@ -166,7 +166,7 @@ test("the critic's message has the brief, kit, storyboard, rubric and claims onl
   // The builder's next message lists the critic's findings by id.
   const plan = { reviews: [{ ...input.previous!, by: "critic" as const }] };
   assert.match(
-    planContext({ files: {}, skills: [], others: [] }, plan, gateOf(plan, false)),
+    planContext({ files: {}, skills: [], others: [] }, plan),
     /Last review \(Uncut's critic\): round 1[\s\S]*\(not passed\)\.\nd1 blocker font: Helvetica\nd2 at 1 s: slow/,
   );
 });

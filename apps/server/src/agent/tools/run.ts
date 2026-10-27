@@ -15,7 +15,7 @@ import {
 import { friendlyText } from "@uncut/core/mentions";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
-import { gateOf, gateRefusal, planOnly, PROPOSE_LOCK } from "../agentPlan.ts";
+import { planOnly } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
 import {
   bigChange,
@@ -221,7 +221,6 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return textResult(kind === undefined ? modulesIndex(listed) : listed);
         }
         case "shader_write": {
-          if (r.proposing) return textResult(PROPOSE_LOCK, true);
           const out = yield* Effect.promise(() => writeProjectShader(v.dir, args as Parameters<typeof writeProjectShader>[1]));
           if (!out.ok) return textResult({ refused: out.problems.join(" ") }, true);
           const answer = {
@@ -308,7 +307,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // says "Unchanged" for them, and a compacted conversation may have lost them).
           const plan = yield* Effect.promise(() => readPlan(v.dir).catch(() => r.owner.plan));
           r.owner.plan = plan;
-          return textResult(planOnly(plan, gateOf(plan, r.skipStoryboard, r.planned)) || "Nothing is planned: no brief, storyboard or review yet.");
+          return textResult(planOnly(plan) || "Nothing is planned: no brief, storyboard or review yet.");
         }
         case "skill_read":
           return yield* skillRead(v, args);
@@ -376,7 +375,6 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "library_add":
           return yield* libraryAdd(r, v, args);
         case "graphic_write": {
-          if (r.proposing) return textResult(PROPOSE_LOCK, true);
           const out = yield* graphicWrite(v, args);
           if (!out.isError) {
             r.graphicWrites++;
@@ -410,13 +408,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "export_video":
           return yield* exportVideo(r, v, args);
         case "timeline_edit": {
-          // D188, D237: in a turn that wrote the brief or proposed the storyboard, the build waits for its approval.
-          // D206: a dry run checks the edit and changes nothing, so the storyboard gate doesn't apply.
           const dryRun = args.dryRun === true;
-          // D296: nothing changes under a storyboard waiting for the user.
-          if (!dryRun && r.proposing) return textResult(PROPOSE_LOCK, true);
-          const gated = dryRun ? undefined : gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard, r.planned), args.ops);
-          if (gated) return textResult(gated, true);
           const { baseRevision, summary } = args;
           if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision))
             return textResult("Pass baseRevision: the revision from your last project_read.", true);

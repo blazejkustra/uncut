@@ -8,7 +8,7 @@ import { type Project, sectionsNote } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { calledSkills, gateOf, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
+import { calledSkills, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
@@ -85,19 +85,7 @@ export const makeSend = (ctx: SpawnCtx) => {
     ),
   );
 
-  const send: AgentShape["send"] = ({
-    prompt,
-    frame,
-    selected,
-    mentions,
-    provider = "claude",
-    model: askedModel,
-    effort,
-    access = "auto",
-    images = [],
-    skipStoryboard = false,
-    ranges,
-  }) =>
+  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, provider = "claude", model: askedModel, effort, access = "auto", images = [], ranges }) =>
     Effect.gen(function* () {
       const owner = yield* ensureLoaded;
       if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -205,7 +193,6 @@ export const makeSend = (ctx: SpawnCtx) => {
         : "";
       const dirsKey = [...owner.dirs].sort().join("\n");
       // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
-      const skip = access === "auto" && skipStoryboard;
       // D232 (issue #60): a /name in the message calls that skill: its instructions come with the
       // message and the project uses it from now on (the critic follows it).
       const { planBlock, skillsBlock, called } = compacting
@@ -238,7 +225,6 @@ export const makeSend = (ctx: SpawnCtx) => {
                     others: all.kits.map((k) => ({ id: k.id, name: k.name })),
                   },
                   owner.plan,
-                  gateOf(owner.plan, skip),
                 ),
                 skillsBlock: [skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))), claudeSkillCallBlock(claudeCalled)]
                   .filter(Boolean)
@@ -358,7 +344,6 @@ export const makeSend = (ctx: SpawnCtx) => {
         access,
         images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),
         inputs: new Map(),
-        skipStoryboard: skip,
         looked: { sheet: false, phone: false },
         limits: turnLimits(),
         reviewRounds: 0,

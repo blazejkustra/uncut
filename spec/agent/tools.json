@@ -1075,7 +1075,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally a still shown with it (up to 4; docs_read production). Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
+      "description": "Record your storyboard / shot list (your plan for the film) and show it in the thread; it returns at once, nobody approves it. Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally a still shown with it (up to 4; docs_read production). Propose again whenever the plan changes.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1084,13 +1084,6 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "approve": {
-            "type": "string",
-            "enum": [
-              "self"
-            ],
-            "description": "Only when the user said nobody can answer (\"decide yourself\"): approve it yourself instead of waiting; the card says so. The critic loop still runs."
-          },
           "summary": {
             "type": "string",
             "maxLength": 600
@@ -1165,7 +1158,7 @@
           }
         }
       },
-      "returns": "approved with the beats to build, or the change asked for"
+      "returns": "recorded, with the beats and any note on the stills"
     },
     {
       "name": "review_submit",

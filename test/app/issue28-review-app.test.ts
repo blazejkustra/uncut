@@ -140,7 +140,7 @@ test(
       await page.click("[data-testid=create]");
       await waitFor("[data-testid=agent-input]");
 
-      // ---- Turn 1: brief, storyboard (approved on its card), build, the agent's own 10s, the critic's blockers ----
+      // ---- Turn 1: brief, storyboard, build, the agent's own 10s, the critic's blockers ----
       const brief = {
         film: "Argent Cloud runs your app's QA on real devices in the cloud",
         audience: "React Native developers",
@@ -183,8 +183,6 @@ test(
         { text: "The critic found an empty phone and an off-centre title; fixing both next." },
       ]);
       await send("make a 2 s promo for Argent Cloud");
-      await waitFor("[data-testid=agent-storyboard]");
-      await page.click("[data-testid=agent-storyboard-approve]");
       await lastDone();
       await waitFor("[data-testid=agent-card][data-type=review]");
       // The cards are in the conversation, in the order they happened; no tabs over the thread.
@@ -227,7 +225,7 @@ test(
       await page.click("[data-testid=plan-chip]");
       await waitFor("[data-testid=plan-menu]");
       assert.match(await text(page, "[data-testid=plan-chip]"), /Plan\s*2 blockers/);
-      assert.match(await text(page, "[data-testid=plan-storyboard]"), /Approved/);
+      assert.match(await text(page, "[data-testid=plan-storyboard]"), /Planned/);
       assert.match(await text(page, "[data-testid=plan-review]"), /Review, round 1\s*2 blockers/);
       await page.screenshot({ path: out("chip") });
       await page.click("[data-testid=plan-brief]");

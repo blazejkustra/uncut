@@ -4,7 +4,7 @@
 // A fresh project ("Croatia, day four") in a temp folder imports six real drone clips from
 // UNCUT_HERO_FOOTAGE (the owner's footage: referenced in place, read only, nothing written next to
 // it) and a synthesised music bed, and the scripted fake claude runs one believable turn: import,
-// brief, storyboard (approved), a graphic, the cut, a passed review. Then the Media panel, the
+// brief, storyboard, a graphic, the cut, a passed review. Then the Media panel, the
 // playhead on the title and the thread scrolled to the end, with the composer's provider logo, the
 // "Agent changed" pill and the proxy badges hidden, and the preview playing the originals (not
 // the 1280 px proxies). Raw capture: test-output/readme-hero-raw.png; docs/hero.png is that,
@@ -370,8 +370,6 @@ test("stage the README hero and save docs/hero.png", { skip, timeout: 600000 }, 
   await page.click("[data-testid=agent-input]");
   await page.keyboard.type("Cut a 20 second travel film from today's drone clips. Golden hour to blue hour, a quiet title up front, soft music under it.");
   await page.keyboard.press("Enter");
-  await waitFor("[data-testid=agent-storyboard-approve]", 90000);
-  await page.click("[data-testid=agent-storyboard-approve]");
   await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=agent-turn]")].at(-1)?.getAttribute("data-status") === "done", {
     timeout: 240000,
   });

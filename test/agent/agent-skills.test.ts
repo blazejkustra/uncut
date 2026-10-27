@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { BUILTIN_IDS, skillChecklist, suggestSkills } from "../../packages/core/src/skills/skills.ts";
 import { readBrand, saveSkill, deleteSkill, writeActive } from "../../apps/server/src/brand/store.ts";
-import { gateOf, planContext } from "../../apps/server/src/agent/agentPlan.ts";
+import { planContext } from "../../apps/server/src/agent/agentPlan.ts";
 import { bundledSkill, bundledSkills } from "../helpers/skills.ts";
 import { CRITIC_SYSTEM, criticReview, criticText, parseCritic, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
 import { ALL_DOCS, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
@@ -159,15 +159,14 @@ test("the store (D232): a plugin's skills listed read-only, never saved, deleted
 
 test("planContext (D232): the skills the project uses by name, no bodies and no picking", () => {
   const plan = { reviews: [] };
-  const gate = gateOf(plan, false);
   const used = [BUILTIN_IDS.launch, BUILTIN_IDS.sound].map((id) => ({ id, name: bundledSkill(id).title }));
-  const text = planContext({ files: {}, skills: used, others: [] }, plan, gate);
+  const text = planContext({ files: {}, skills: used, others: [] }, plan);
   assert.match(
     text,
     /Skills this project uses: Launch promo \(launch-promo\), Sound design \(sound-design\)\. Follow their rules where the user's own direction doesn't decide \(skill_read gives one's instructions again\); the critic checks their review checklists\./,
   );
   assert.ok(!text.includes(bundledSkill(BUILTIN_IDS.launch).instructions.slice(0, 60)), "no bodies in every message");
-  const none = planContext({ files: {}, skills: [], others: [] }, plan, gate);
+  const none = planContext({ files: {}, skills: [], others: [] }, plan);
   assert.ok(!/Skills this project uses|No skills are on/.test(none));
   assert.match(AGENT_TEXT, /the critic checks its review checklist/);
   assert.match(AGENT_TEXT, /read it with skill_read before you start/);
@@ -284,7 +283,7 @@ test(
       const ask = async (prompt: string, steps: Array<unknown>) => {
         turns.push(steps);
         writeFileSync(plan, JSON.stringify(turns));
-        const { turnId } = await client.ok("agent.send", { prompt, access: "auto", skipStoryboard: true });
+        const { turnId } = await client.ok("agent.send", { prompt, access: "auto" });
         await agent.until(() => turn(turnId) && turn(turnId).status !== "running", 120000);
         return turn(turnId);
       };

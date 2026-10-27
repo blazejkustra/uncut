@@ -66,13 +66,11 @@ export function BriefBody({ brief, live }: { brief: Brief; live?: CardLive | und
   );
 }
 
-/** What the latest card of its type can do (D197): edit the brief, approve the storyboard. */
+/** What the latest card of its type can do (D197): edit the brief. */
 export interface CardLive {
   readonly plan: AgentPlan;
   readonly online: boolean;
   readonly busy: boolean;
-  /** A storyboard approval card is open. */
-  readonly waiting: boolean;
 }
 
 const lines = (v: string) =>

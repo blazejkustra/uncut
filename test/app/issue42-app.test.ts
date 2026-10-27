@@ -189,8 +189,6 @@ test(
         { text: "The critic passed it; a tutorial isn't judged on a hook." },
       ]);
       await send("build it and review");
-      await waitFor("[data-testid=agent-storyboard]", 30000);
-      await page.click("[data-testid=agent-storyboard-approve]");
       await turnsDone(2);
       await waitFor("[data-testid=agent-card][data-type=review]", 30000);
       const r1 = (await reviews())[0]!;

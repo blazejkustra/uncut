@@ -211,10 +211,9 @@ export const makeSpawn = (ctx: StreamCtx) => {
           graphicWrites: r.graphicWrites,
           edits: r.turn.edits.length,
           planned: r.planned,
-          proposing: r.proposing,
+          storyboard: !!r.owner.plan.storyboard,
           nudged: r.nudged,
           cancelled: r.cancelled,
-          storyboard: r.owner.plan.storyboard?.status,
         });
         if (nudge && s.child?.stdin && !s.closed && s.turn === r) {
           r.nudged = true;

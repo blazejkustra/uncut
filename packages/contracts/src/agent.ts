@@ -37,7 +37,7 @@ export const StoryboardBeat = Schema.Struct({
   still: Schema.optional(Schema.String),
 });
 export type StoryboardBeat = typeof StoryboardBeat.Type;
-/** The storyboard (`<project>/storyboard.json`): proposed by the agent, approved (maybe edited) by the user before the build. */
+/** The storyboard (`<project>/storyboard.json`): the agent's plan for the film, recorded by storyboard_propose (older ones may be proposed or declined). */
 export const Storyboard = Schema.Struct({
   summary: Schema.String,
   beats: Schema.Array(StoryboardBeat),
@@ -378,7 +378,7 @@ export const AgentApproval = Schema.Struct({
   edit: Schema.optional(Schema.Struct({ lines: Schema.Array(Schema.String) })),
   // D187: a question (ask_user): answered with agent.approve's answer; Skip is allow false.
   question: Schema.optional(AgentQuestion),
-  // D188: a storyboard to approve before the build: Approve (maybe with edited beats) or Change (a note).
+  // D188: a storyboard to approve. The agent no longer asks for this; uncutUI's storyboard part (ui.js) is still drawn from its card.
   storyboard: Schema.optional(Storyboard),
   // D198: the agent wants to change a kit's colours or fonts (brand_write): each field before and
   // after. Apply (allow) or Keep the kit (deny); no answer in 2 minutes keeps it.

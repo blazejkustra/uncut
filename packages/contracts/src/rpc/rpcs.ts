@@ -165,8 +165,6 @@ export const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     effort: Schema.optional(AgentEffort),
     access: Schema.optional(AgentAccess),
     images: Schema.optional(Schema.Array(AgentImage)),
-    // D188: Settings › App › Agent "Auto skips the storyboard approval".
-    skipStoryboard: Schema.optional(Schema.Boolean),
     // export_video's range: the In/Out marks and the selected clips' span now, as the Export dialog reads them.
     ranges: Schema.optional(Schema.Struct({ marks: Schema.optional(ExportRange), selection: Schema.optional(ExportRange) })),
   }),

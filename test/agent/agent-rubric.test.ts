@@ -371,7 +371,7 @@ test(
       const start = async (prompt: string, steps: Array<unknown>) => {
         turns.push(steps);
         writeFileSync(plan, JSON.stringify(turns));
-        return (await client.ok("agent.send", { prompt, access: "auto", skipStoryboard: true })).turnId as string;
+        return (await client.ok("agent.send", { prompt, access: "auto" })).turnId as string;
       };
       const done = async (id: string) => (await agent.until(() => turn(id) && turn(id).status !== "running", 120000), turn(id));
       const runs = () =>

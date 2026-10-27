@@ -76,7 +76,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
     for (const t of allTurns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
     if (at) latest.add(at);
   }
-  const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null, waiting: !!agent.approval?.storyboard } : undefined;
+  const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null } : undefined;
 
   // Follow the newest turn as it streams in, but only while the thread is scrolled to its end: someone
   // reading further up keeps their place (D203), and a "Latest" button takes them down. A new turn
