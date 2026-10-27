@@ -122,9 +122,11 @@ async function run(name: string, initModel: string | undefined) {
 
 test("issue #101: no guessed 200k; the window from the model's [1m] at once, else from the result", { skip, timeout: 180000 }, async () => {
   const plain = await run("Plain", undefined);
-  assert.equal(plain.early, "92k", "only the used count until the window is known");
+  assert.equal(plain.early, "92k / 1M", "Claude Code's get_context_usage said the window when the session started");
   assert.equal(plain.late, "92k / 1M", "the result's window");
-  assert.match(plain.tip, /Context: 92,312 of 1,000,000 tokens \(9%\) after the agent's last answer, as Claude Code reported/);
+  assert.match(plain.tip, /Context: 92,012 of 1,000,000 tokens \(9%\) after the agent's last answer, as Claude Code counts it/);
+  assert.match(plain.tip, /Cache read 88k, cache write 4k, fresh 12/);
+  assert.match(plain.tip, /compacts the conversation on its own at 967k \(97% of the window\)/);
 
   const marked = await run("Marked", "claude-opus-5-5[1m]");
   assert.equal(marked.early, "92k / 1M", "1M from the first answer: init's model has [1m]");
