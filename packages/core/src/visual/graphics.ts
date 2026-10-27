@@ -170,6 +170,28 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
   let fonts;
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
+  // Chromium draws text on whole pixels but a box's edges anywhere, so a translate with a fraction
+  // (a spring's tail) moves a card smoothly while its text jumps a pixel at a time and shakes in it.
+  // Such a translate is cut to whole pixels, towards zero, and a scale that changes the element's
+  // size by under a pixel is dropped: a pop's sub-pixel overshoot stays still.
+  const plainMatrix = (style) => style.translate !== "none" || style.rotate !== "none" || style.scale !== "none" ? undefined : new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
+  const nearShift = (el) => {
+    const m = plainMatrix(getComputedStyle(el));
+    const size = Math.max(el.offsetWidth || 0, el.offsetHeight || 0);
+    const unscaled = (k) => k === 1 || (size > 0 && Math.abs(k - 1) * size < 1);
+    return m !== undefined && m.is2D && m.b === 0 && m.c === 0 && unscaled(m.a) && unscaled(m.d) ? m : undefined;
+  };
+  const shiftedOnly = (el) => {
+    for (let a = el.parentElement; a; a = a.parentElement) if (!nearShift(a)) return false;
+    return true;
+  };
+  const snapTranslates = () => {
+    for (const el of document.querySelectorAll('[style*="transform"]')) {
+      const m = nearShift(el);
+      if (!m || (m.a === 1 && m.d === 1 && Number.isInteger(m.e) && Number.isInteger(m.f)) || !shiftedOnly(el)) continue;
+      el.style.transform = "translate(" + Math.trunc(m.e) + "px, " + Math.trunc(m.f) + "px)";
+    }
+  };
   // dry (a rehearsal, nothing captured): no frames waited for after render(t).
   window.__uncutRender = async (t, info, dry) => {
     await fontsReady();
@@ -185,6 +207,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
         throw new Error(text || "render(t) failed");
       }
     }
+    snapTranslates();
     await window.__uncutMedia.held();
     if (!dry) await frames();
     window.__uncutMedia.sweep();
