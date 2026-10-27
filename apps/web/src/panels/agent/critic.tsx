@@ -20,7 +20,8 @@ function useNow(on: boolean): number {
 }
 
 export function CriticItem({ card }: { card: AgentCard }) {
-  const [open, setOpen] = useState(false);
+  // A review saved before the live row (the uncutUI fixture's too) opens as review cards did; a live round starts closed.
+  const [open, setOpen] = useState(!card.critic && !!card.review);
   const app = useApp();
   const review = card.review;
   const critic = card.critic;
