@@ -130,7 +130,8 @@ test(
       const reopened = await s.client.ok("project.open", { dir: s.dir });
       await s.agent.until((v, i, all) => v?.dir === s.dir && all.slice(0, i).some((x) => x === null));
 
-      // Turn 2 tries the revision it remembers, and the current one it never read: both refused.
+      // Turn 2 tries the revision it remembers from the earlier opening (refused), then the one
+      // the turn's note names (overnight 2026-10-27, handoff 19: a revision it was given counts as read).
       const t2 = await s.ask("make the title shout", [
         {
           tool: "timeline_edit",
@@ -138,15 +139,17 @@ test(
         },
         {
           tool: "timeline_edit",
-          args: { baseRevision: reopened.revision, summary: "Shout (unread)", ops: [{ op: "update_item", item: "title-1", set: { text: "KRAKÓW" } }] },
+          args: { baseRevision: reopened.revision, summary: "Shout (from the note)", ops: [{ op: "update_item", item: "title-1", set: { text: "KRAKÓW" } }] },
         },
       ]);
       assert.deepEqual(
         t2.items.filter((i: any) => i.kind === "step").map((i: any) => i.status),
-        ["error", "error"],
+        ["error", "done"],
       );
-      assert.equal(item(s.onDisk(), "title-1").text, "Kraków, from the air", "the user's edit stands");
+      assert.match(t2.items.find((i: any) => i.kind === "step").error ?? "", /changed after revision|isn.t a revision you were given/);
+      assert.equal(item(s.onDisk(), "title-1").text, "KRAKÓW");
       const prompt = s.runs()[1]!.prompt;
+      assert.match(prompt, new RegExp(`now at revision ${reopened.revision}\\b`));
       assert.match(prompt, /Earlier, before the project was closed and reopened:/);
       assert.match(prompt, /Changed the text of title-1 to "Kraków, from the air"/);
       assert.match(prompt, /closed and opened again/);

@@ -690,3 +690,35 @@ test("sheet maths and step labels: frames, the grid, the clock, the turn card's 
   assert.equal(stepLabel("ui_show", { panel: "agent" }), "Opened the Agent tab");
   assert.equal(stepLabel("ui_show", { frame: 30, panel: "media" }), "Pointed at frame 30, opened the Media panel");
 });
+
+test(
+  "D310 follow-up: media_import takes the agent's scratch files in .cache/work/ as copies in media/imports (the project never points into the cache); a same-sized different file is a new copy; the rest of .cache stays refused",
+  { skip, timeout: 120000 },
+  async () => {
+    const work = join(dir, ".cache", "work", "chunks");
+    mkdirSync(work, { recursive: true });
+    const tone = (hz: number) =>
+      execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=${hz}:duration=1`, "-c:a", "pcm_s16le", join(work, "chunk-0.wav")]);
+    tone(440);
+    const { results: first } = await ask("import the chunk", [{ tool: "media_import", args: { path: join(work, "chunk-0.wav") } }]);
+    tone(880);
+    const { turn, results } = await ask("and the next one", [
+      { tool: "media_import", args: { path: join(work, "chunk-0.wav"), name: "Chunk B" } },
+      { tool: "media_import", args: { path: join(dir, ".cache", "thumbs") } },
+    ]);
+    assert.equal(turn.status, "done", turn.error);
+    assert.ok(!first[0]!.isError && !results[0]!.isError, `${textOf(first[0]!)} / ${textOf(results[0]!)}`);
+    const a = jsonOf(first[0]!);
+    const b = jsonOf(results[0]!);
+    assert.deepEqual(a.copied, ["media/imports/chunk-0.wav"]);
+    assert.deepEqual(b.copied, ["media/imports/chunk-0 2.wav"], "same size, other sound: another copy");
+    assert.match(a.copiedNote, /\.cache\/work/);
+    const paths = onDisk().media.map((m: any) => m.path);
+    assert.ok(paths.includes("media/imports/chunk-0.wav") && paths.includes("media/imports/chunk-0 2.wav"), JSON.stringify(paths));
+    assert.ok(
+      paths.every((p: string) => !p.includes(".cache")),
+      JSON.stringify(paths),
+    );
+    assert.ok(results[1]!.isError && /in the project's cache \(\.cache\).*\.cache\/work\/ can be imported/.test(textOf(results[1]!)), textOf(results[1]!));
+  },
+);

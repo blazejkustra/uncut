@@ -456,7 +456,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(
               {
-                refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`,
+                refused: `baseRevision ${baseRevision} isn't a revision you were given in this session (by project_read, an edit's result, the turn's note or a refusal). Call project_read and edit from what it returns.`,
                 revision: v.session.revision,
               },
               true,
@@ -470,6 +470,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           if (!outcome.ok) {
             const now = view();
             const userChanges = now ? noteFor(now, baseRevision) : "";
+            // The refusal gives the revision now and what the user changed since the agent's base: it may edit from there.
+            if (now) r.owner.seen.add(now.session.revision);
             // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
             const details =
               "details" in outcome.error && Array.isArray(outcome.error.details)

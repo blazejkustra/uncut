@@ -151,7 +151,6 @@ export const makeCore = (ctx: AgentServices) => {
         same.carried = joinNotes(same.carried, same.pending) || undefined;
         same.pending = "";
         same.openId = v.openId;
-        same.seen = new Set();
         same.agentSeen = Math.min(same.agentSeen, v.session.revision - 1);
         same.ui = undefined;
         // The history this opening writes to may not hold what was saved before (an in-memory

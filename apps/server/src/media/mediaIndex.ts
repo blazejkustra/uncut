@@ -8,6 +8,7 @@
 // copied into this project's media/imports/ (the other project may be moved or deleted); anything
 // else is referenced where it is.
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 
@@ -80,30 +81,44 @@ const real = async (path: string) => {
   }
 };
 
+/** A file's SHA-256, read as a stream. */
+const fileDigest = (path: string) =>
+  new Promise<string>((done, fail) => {
+    const hash = createHash("sha256");
+    createReadStream(path)
+      .on("error", fail)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("end", () => done(hash.digest("hex")));
+  });
+
 /**
  * D205/D12: what importing `path` into `projectDir` uses: a copy in media/imports/ when the file
- * lives inside another project's folder, else the file itself. The copy keeps the file's name
- * ("take 2.mp4" when taken); an identical copy already there is reused.
+ * lives inside another project's folder or in this project's scratch folder (.cache/work/, D310:
+ * the cache is disposable, so the project never points into it), else the file itself. The copy
+ * keeps the file's name ("take 2.mp4" when taken); an identical copy already there is reused (by
+ * size, and for scratch files by content: the agent cuts many same-sized pieces under one name).
  */
 export async function importablePath(path: string, projectDir: string): Promise<{ path: string; copied: boolean }> {
   const file = await real(path);
-  const other = await projectFolderOf(file);
   const here = await real(projectDir);
-  if (!other || (await real(other)) === here) return { path: file, copied: false };
+  const work = join(here, ".cache", "work");
+  const scratch = file.startsWith(work + sep);
+  const other = scratch ? undefined : await projectFolderOf(file);
+  if (!scratch && (!other || (await real(other)) === here)) return { path: file, copied: false };
   const folder = join(here, "media", "imports");
   await mkdir(folder, { recursive: true });
   const size = (await stat(file)).size;
+  const same = async (target: string) => !scratch || (await fileDigest(target)) === (await fileDigest(file));
   const ext = extname(file);
   const stem = basename(file, ext);
   for (let n = 1; n < 1000; n++) {
     const target = join(folder, n === 1 ? `${stem}${ext}` : `${stem} ${n}${ext}`);
-    try {
-      const s = await stat(target);
-      if (s.size === size) return { path: target, copied: true };
-    } catch {
+    const s = await stat(target).catch(() => undefined);
+    if (!s) {
       await copyFile(file, target);
       return { path: target, copied: true };
     }
+    if (s.size === size && (await same(target))) return { path: target, copied: true };
   }
   throw new Error("Too many copies with that name in media/imports.");
 }
