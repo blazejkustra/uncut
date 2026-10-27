@@ -141,6 +141,8 @@ export const makeSend = (ctx: SpawnCtx) => {
       // A /compact goes to Claude Code as it is: the note waits for the next message.
       const changes = compacting ? "" : noteFor(v, owner.agentSeen);
       const note = compacting ? "" : joinNotes(owner.carried, changes);
+      // The note names the revision the project is at now ("now at revision N"): the agent may edit from it.
+      if (changes) owner.seen.add(v.session.revision);
       const project = v.session.project as Project;
       // What the prompt's @labels point at (D140), only those still in the prompt.
       const pointed = (mentions ?? [])
@@ -356,6 +358,8 @@ export const makeSend = (ctx: SpawnCtx) => {
         reviewedStamp: undefined,
         picked: [],
         permissionQueue: Promise.resolve(),
+        turnGrants: new Set(),
+        turnRefusals: new Map(),
         toolNames: new Map(),
         downloads: { bytes: 0, count: 0 },
         ...(ranges ? { ranges } : {}),

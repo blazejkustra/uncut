@@ -289,11 +289,11 @@ test(
       const a = await s.done(await s.start("hello", [{ text: "hi" }]));
       assert.equal(a.status, "done", a.error);
       const read = { builtin: "Read", args: { file_path: join(assets, "logo.svg") } };
-      const id = await s.start(`use the logo in ${assets.replace(/ /g, "\\ ")}/logo.svg please`, [
-        read,
-        read,
-        { builtin: "Write", args: { file_path: join(assets, "notes.txt"), content: "x" } },
-      ]);
+      const id = await s.start(
+        `use the logo in ${assets.replace(/ /g, "\\ ")}/logo.svg please`,
+        [read, read, { builtin: "Write", args: { file_path: join(assets, "notes.txt"), content: "x" } }],
+        { access: "ask" },
+      );
       const card = await s.card(id);
       assert.equal(card.text, "Use a folder you mentioned");
       assert.equal(card.permission.target, "~/Marketing assets");
@@ -310,13 +310,51 @@ test(
         ["allow", "allow", "deny"],
         "the second read needs no card",
       );
-      const c = await s.done(await s.start("next", [{ text: "ok" }]));
+      const c = await s.done(await s.start("next", [{ text: "ok" }], { access: "ask" }));
       assert.equal(c.status, "done", c.error);
       const runs = s.runs();
       assert.deepEqual(flagValues(runs[1]!.argv, "--add-dir"), [], "not before it was confirmed");
       assert.deepEqual(flagValues(runs[2]!.argv, "--add-dir"), [assets]);
       assert.notEqual(runs[2]!.pid, runs[1]!.pid, "a new folder: another claude");
       assert.equal(flagValue(runs[2]!.argv, "--resume"), "fake-session");
+    } finally {
+      await s.stop();
+    }
+  },
+);
+
+test(
+  "overnight 2026-10-27: a permission card waits for the user with no deadline; a read allowed once isn't asked again in the turn, a read refused is refused again without a card",
+  { skip, timeout: 60000 },
+  async () => {
+    const s = await setup("turn-answers", { UNCUT_APPROVAL_MS: "" });
+    try {
+      const outside = join(s.base, "reference");
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(join(outside, "a.txt"), "a");
+      writeFileSync(join(outside, "b.txt"), "b");
+      const readA = { builtin: "Read", args: { file_path: join(outside, "a.txt") } };
+      const readA2 = { builtin: "Read", args: { file_path: join(outside, "a.txt"), offset: 1, limit: 10 } };
+      const readB = { builtin: "Read", args: { file_path: join(outside, "b.txt") } };
+      const id = await s.start("compare them", [readA, readA2, readB, readB, { text: "done" }]);
+      const first = await s.card(id);
+      assert.equal(first.text, "Read a file");
+      assert.equal(first.until, undefined, "no deadline: it waits for the user");
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.equal(s.agent.values.at(-1)?.approval?.id, first.id, "still open");
+      await s.client.ok("agent.approve", { id: first.id, allow: true });
+      const second = await s.card(id, first.id);
+      assert.match(second.permission.target, /b\.txt$/, "the same file with an offset needed no card");
+      await s.client.ok("agent.approve", { id: second.id, allow: false });
+      const t = await s.done(id);
+      assert.equal(t.status, "done", t.error);
+      const decisions = s.decisions();
+      assert.deepEqual(
+        decisions.map((x) => x.decision.behavior),
+        ["allow", "allow", "deny", "deny"],
+      );
+      assert.match(decisions[3]!.decision.message ?? "", /said no to "Read a file: .*b\.txt"/);
+      assert.ok(!s.agent.values.some((v: any) => v?.approval?.permission && ![first.id, second.id].includes(v.approval.id)), "two cards in all");
     } finally {
       await s.stop();
     }

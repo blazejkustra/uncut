@@ -10,13 +10,24 @@ import { homedir } from "node:os";
 import { join, relative, sep } from "node:path";
 
 import { type Access, ACCESS_NAME } from "./permissions/access.ts";
-import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
+import { realPath, inside, shownPath, str, toolPath, owned, referencePart } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
 import { simpleCommand, destructive, nonReads, pinnedToProject, shellSegments, shellWords } from "./permissions/shell.ts";
 import { CLAUDE_DIR } from "./permissions/settings.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
-export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders, claudeConfigDirs } from "./permissions/paths.ts";
+export {
+  absolute,
+  inside,
+  shownPath,
+  realPath,
+  owned,
+  rootProblem,
+  mentionedDirs,
+  namedFolders,
+  claudeConfigDirs,
+  referencePart,
+} from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
 export {
   shellSegments,
@@ -51,12 +62,14 @@ export type Decision =
   | { readonly kind: "deny"; readonly message: string }
   // A card: `title` ("Run a command"), `target` (the command or path), `grant`: the key "Always for
   // this session" remembers (undefined: it can't be granted, a destructive command always asks).
+  // `turnKey`: what the card's answer covers for the rest of the turn (a read of that path), so the same read never asks twice in one turn.
   | {
       readonly kind: "ask";
       readonly title: string;
       readonly target: string;
       readonly why?: string;
       readonly grant?: string;
+      readonly turnKey?: string;
       readonly updatedInput?: Record<string, unknown>;
     };
 
@@ -149,6 +162,13 @@ function claudePaths(command: string, named: (word: string) => boolean): Array<s
 
 /** D214: a command naming Uncut's own files in a project (Auto's ask rules send it here). */
 const NAMES_OWN = /project\.json|history\.db|brand\/active\.json|agent\/turns/i;
+/** A command hunting for a speech model or whisper (in apps' data). */
+const SPEECH_HUNT = /whisper|ggml|\.bin\b|\/models\b/i;
+const SPEECH_REFUSAL =
+  "Not done: Uncut's speech models in its data folder are for Uncut's own transcription, so there is no whisper to find or run by hand. transcript_read gives a clip's words with their times (Uncut transcribes it first when needed), transcript_edit cuts by words and captions_make makes captions.";
+/** Where plain reads may happen, for the refusals (the rule nonReads applies). */
+const PLAIN =
+  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files (not a kit's) into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
@@ -249,8 +269,9 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   const webUsed = ctx.webUsed === true && ctx.access !== "auto";
   // A path in a folder the user pasted but hasn't confirmed: the card offers to use it for this chat.
   const candidateOf = (r: string) => (ctx.candidates ?? []).find((d) => r !== d && inside(r, d) && !ctx.roots.includes(d));
-  const outsideCard = (title: string, r: string, grant: string | undefined): Decision => {
+  const outsideCard = (title: string, r: string, grant: string | undefined, turnKey?: string): Decision => {
     const cand = candidateOf(r);
+    const remembered = turnKey ? { turnKey } : {};
     if (cand)
       return {
         kind: "ask",
@@ -258,6 +279,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
         target: shownPath(cand, project, home),
         why: `${title}: ${shownPath(r, project, home)}. Always lets this chat read files in that folder (writing there still asks).`,
         grant: `Root:${cand}`,
+        ...remembered,
       };
     return {
       kind: "ask",
@@ -265,8 +287,15 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       target: shownPath(r, project, home),
       why: webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.",
       ...(grant ? { grant } : {}),
+      ...remembered,
     };
   };
+  // Another project read as a reference, and folders the user gave this chat (confirmed, or in Auto
+  // just pasted): read like the sanctioned folders, never after the web outside Auto.
+  const dataReal = ctx.dataDir ? real(ctx.dataDir, home) : undefined;
+  const reference = (r: string) => (webUsed ? undefined : referencePart(r, project, home, dataReal));
+  const given = (r: string) => !webUsed && [...ctx.roots, ...(ctx.access === "auto" ? (ctx.candidates ?? []) : [])].some((d) => inside(r, d));
+  const speechModels = (r: string) => !!dataReal && inside(r, join(dataReal, "models"));
   // Claude Code's own folder (CLAUDE_DIR): only this project's saved tool output is read (claude
   // saves a large result there and tells the agent to read it); the rest is other conversations and
   // settings. Claude names a project's folder by its path with every other character a dash.
@@ -331,10 +360,14 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       }
       const z = zone(r);
       if (z === "cache" || z === "project") continue;
-      // A confirmed folder or the active kit (and the bundled libraries): like the project, until the turn reads the web.
+      // A confirmed folder or the brand kits (and the bundled libraries): like the project, until the turn reads the web.
       if ((z === "root" || z === "sanctioned") && !webUsed) continue;
+      if (given(r)) continue;
+      const part = reference(r);
+      if (part === "read" || (part === "list" && (tool === "Glob" || tool === "LS"))) continue;
+      if (speechModels(r)) return { kind: "deny", message: SPEECH_REFUSAL };
       if (ctx.grants.has(`Read:${r}`)) continue;
-      return outsideCard(tool === "Read" ? "Read a file" : "Look in a folder", r, `Read:${r}`);
+      return outsideCard(tool === "Read" ? "Read a file" : "Look in a folder", r, `Read:${r}`, `Read:${r}`);
     }
     return { kind: "allow" };
   }
@@ -360,7 +393,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       };
     const z = zone(r);
     if (z === "cache") return { kind: "allow" };
-    // The active kit's folder and the bundled libraries are only read (D296): never written, not even on a card.
+    // The brand kits and the bundled libraries are only read (D296): never written, not even on a card.
     if (z === "sanctioned")
       return {
         kind: "deny",
@@ -396,22 +429,20 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
         message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read, Glob, Grep and the web tools instead, or say what you would run; the user can switch the access in the composer.`,
       };
     const target = shownCommand(command);
-    // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
-    // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
-    // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
-    const notRead =
-      tool === "Bash"
-        ? nonReads(command, (p, base) => real(p, base), {
-            project,
-            sanctioned: webUsed ? [] : (ctx.sanctioned ?? []),
-            readable: toolOutput,
-            list: ctx.readdir ?? ((dir) => readdirSync(dir)),
-          })
-        : ["the line"];
+    // Issue A/B 2026-10-17: reads in the project, the sanctioned folders (the brand kits, the graphic
+    // libraries), another project (its plan, graphics, brand, reviews; its folder and media listed)
+    // and folders the user gave (none of those after the web outside Auto), and mkdir -p in the
+    // project, also a few joined by ; or && after a cd, run in Auto without a card; Ask first asks.
+    const zones = {
+      project,
+      sanctioned: webUsed ? [] : (ctx.sanctioned ?? []),
+      readable: (r: string) => toolOutput(r) || given(r) || reference(r) === "read",
+      listable: (r: string) => reference(r) === "list",
+      list: ctx.readdir ?? ((dir: string) => readdirSync(dir)),
+    };
+    const notRead = tool === "Bash" ? nonReads(command, (p, base) => real(p, base), zones) : ["the line"];
     const reads = notRead.length === 0;
     // Round 3: the refusals below name the pieces that kept the line from being a plain read (round 9: every one, not just the first).
-    const PLAIN =
-      "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null";
     const offending = offendingText(notRead);
     const grant = `Bash:${command.trim()}`;
     // It was judged from the project; claude's shell may sit in another folder (a cd into an added
@@ -436,16 +467,18 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
-    if (namesAppData(command, ctx.dataDir))
+    if (namesAppData(command, ctx.dataDir)) {
+      if (SPEECH_HUNT.test(command)) return { kind: "deny", message: SPEECH_REFUSAL };
       return {
         kind: "deny",
-        message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of the active brand kit's files and Uncut's graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.`,
+        message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of Uncut's brand kits and graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.`,
       };
+    }
     // D214: in Auto, a command naming Uncut's own files that isn't a plain read is refused (it would fight the open project).
     if (ctx.access === "auto" && NAMES_OWN.test(command))
       return {
         kind: "deny",
-        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; change the project with timeline_edit and the other Uncut tools.`,
+        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; to run another program on a project.json, copy it first (cp <path>/project.json .cache/work/) and use the copy; change the project with timeline_edit and the other Uncut tools.`,
       };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);

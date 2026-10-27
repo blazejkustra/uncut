@@ -360,6 +360,7 @@ export type AgentUi = typeof AgentUi.Type;
 /**
  * Something the running turn waits on the user for (D99): a generation billed to their key over
  * $1. Allow or Don't (agent.approve); unanswered in about 2 minutes, or the turn stopped, is no.
+ * A permission card waits until the user answers or the turn stops.
  */
 export const AgentApproval = Schema.Struct({
   id: Schema.String,
@@ -367,8 +368,8 @@ export const AgentApproval = Schema.Struct({
   // "Generate a 4 s Veo video, about $1.60 on your Google key"
   text: Schema.String,
   estimate: Schema.Number,
-  // ISO time it stops waiting.
-  until: Schema.String,
+  // ISO time it stops waiting; absent: it waits for the user.
+  until: Schema.optional(Schema.String),
   // D144: a screen recording the agent asks for (screen_record): the card picks the screen or
   // window (the agent's `source` preselected by name), Record or Don't. The renderer records and
   // answers with agent.screenTake. Absent: a spend card (D99).
