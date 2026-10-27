@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../../state/store.ts";
 import { criticLabel, elapsedText, statusOf } from "./criticWords.ts";
 import { ReviewBody } from "./review.tsx";
+import "./critic.css";
 
 /** Now, every second while `on`. */
 function useNow(on: boolean): number {

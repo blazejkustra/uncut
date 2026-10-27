@@ -6,7 +6,7 @@ import { type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion 
 import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, HelpCircle, Palette, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { actions, useApp } from "../state/store.ts";
+import { actions } from "../state/store.ts";
 import { type CardLive, BriefForm, BriefBody } from "./agent/brief.tsx";
 import { BeatRow } from "./agent/storyboard.tsx";
 import { CriticItem } from "./agent/critic.tsx";
