@@ -3,6 +3,8 @@ import * as Schema from "effect/Schema";
 export const WS_PATH = "/ws";
 // Browsers can't set headers on a WebSocket, so the token travels as a query parameter.
 export const TOKEN_QUERY_PARAM = "token";
+// On a reconnect, why the window's last socket dropped (for server.log): "window" when the window gave up on it (no answer in time), else "close-<code>"; and its longest stall.
+export const DROPPED_QUERY_PARAM = "dropped";
 
 export const RPC_METHODS = {
   serverHello: "server.hello",

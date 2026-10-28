@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import * as readline from "node:readline";
 import { besideServer } from "../paths.ts";
+import { lowerPriority } from "./exporter/ffmpeg.ts";
 
 export interface RasterizerCommand {
   readonly bin: string;
@@ -177,6 +178,7 @@ export async function startRasterizer(
   let child: ChildProcess;
   try {
     child = spawn(command.bin, [...command.args, `--uncut-profile=${profile}`], { env: rasterizerEnv(env), stdio: ["pipe", "pipe", "pipe"] });
+    lowerPriority(child);
   } catch (error) {
     rmSync(profile, { recursive: true, force: true });
     throw error;

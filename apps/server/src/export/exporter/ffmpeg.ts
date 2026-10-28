@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { availableParallelism, setPriority } from "node:os";
 import { join, dirname } from "node:path";
 import type { Project, Media } from "@uncut/core";
 import type { Caps, ExportPlan } from "../exportPlan.ts";
@@ -34,6 +35,62 @@ export const capsOf = (bin: string) => {
   return caps;
 };
 
+/**
+ * How much less CPU an export's helpers (ffmpeg, the rasteriser) get than the app (a nice value):
+ * the window and the server stay smooth while they use what's left, and an idle Mac is as fast.
+ */
+export const EXPORT_NICE = 10;
+
+/** How long after its start a helper's priority is set again (ms): see lowerPriority. */
+const PRIORITY_AGAIN_MS = 50;
+
+/**
+ * Lowers a started helper's priority (EXPORT_NICE); a process already gone is left alone. Set again
+ * a moment later: on macOS about 1 child in 200 still ended up at the app's priority when it was set
+ * only as spawn returned.
+ */
+export const lowerPriority = (child: ChildProcess) => {
+  const lower = () => {
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+    try {
+      setPriority(child.pid, EXPORT_NICE);
+    } catch {}
+  };
+  lower();
+  setTimeout(lower, PRIORITY_AGAIN_MS).unref();
+};
+
+/** Threads for the export's encoder: all but two of this Mac's cores, so the app always has some. */
+export const encoderThreads = (cores = availableParallelism()) => Math.max(1, cores - 2);
+
+/**
+ * Each input of `inputs` (ffmpeg input arguments) decoded with at most `threads` threads. ffmpeg
+ * gives every input a thread (and its frames) per core: an export with 30 layers held over 4 GB.
+ */
+export const boundedDecoders = (inputs: ReadonlyArray<string>, threads = 2) =>
+  inputs.flatMap((arg) => (arg === "-i" ? ["-threads", String(threads), "-i"] : [arg]));
+
+/** The export's encode: its inputs (boundedDecoders), the graph, encoderThreads and the output, progress on stdout. */
+export const encodeArgs = (
+  cmd: { readonly inputs: ReadonlyArray<string>; readonly outputArgs: ReadonlyArray<string> },
+  graphArgs: ReadonlyArray<string>,
+  cores?: number,
+) => [
+  "-hide_banner",
+  "-nostdin",
+  "-y",
+  "-nostats",
+  "-progress",
+  "pipe:1",
+  "-stats_period",
+  "0.25",
+  ...boundedDecoders(cmd.inputs),
+  ...graphArgs,
+  "-threads:v",
+  String(encoderThreads(cores)),
+  ...cmd.outputArgs,
+];
+
 interface RunResult {
   readonly code: number | null;
   readonly stdout: string;
@@ -48,6 +105,7 @@ export function run(bin: string, args: ReadonlyArray<string>, signal: AbortSigna
   return new Promise((resolvePromise, reject) => {
     if (signal?.aborted) return reject(new Cancelled());
     const child = spawn(bin, localInputs(bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
+    lowerPriority(child);
     let stdout = "";
     let stderr = "";
     let partial = "";

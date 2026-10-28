@@ -2,6 +2,7 @@
 export {
   WS_PATH,
   TOKEN_QUERY_PARAM,
+  DROPPED_QUERY_PARAM,
   RPC_METHODS,
   ServerHello,
   PING_PATH,

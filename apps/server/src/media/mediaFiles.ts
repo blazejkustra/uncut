@@ -4,6 +4,7 @@
 // (D12), never copied. Single byte ranges are honoured (206), which <video> needs to seek.
 import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
+import type { ReadStream } from "node:fs";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
 import {
@@ -17,6 +18,7 @@ import {
   SFX_FILE_PATH,
 } from "@uncut/contracts";
 import { SFX_SOUNDS } from "@uncut/core/library";
+import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -99,15 +101,29 @@ export function parseRange(header: string | undefined, size: number): { start: n
   return { start, end };
 }
 
+/**
+ * Calls `release` once the request's response has closed (sent, or the client gone). A request the
+ * client drops while the file is opening (a <video> seek) is interrupted before any body is piped,
+ * and its handle would otherwise be left to the garbage collector (DEP0137).
+ */
+const onResponseClosed = (request: HttpServerRequest.HttpServerRequest, release: () => void) => {
+  const response = NodeHttpServerRequest.toServerResponse(request);
+  if (response.closed) release();
+  else response.once("close", release);
+};
+
 /** A file streamed with Range support (see the header), or 403/404 when it can't be opened. */
 export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: string) =>
   Effect.gen(function* () {
+    let body: ReadStream | undefined;
     // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
     // connection reset halfway through a response.
     const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number; modified: Date } | "forbidden" | undefined> => {
       let file: FileHandle | undefined;
       try {
         file = await openFile(path, "r");
+        const handle = file;
+        onResponseClosed(request, () => (body ? body.destroy() : void handle.close().catch(() => {})));
         const s = await file.stat();
         if (!s.isFile()) throw new Error("not a regular file");
         return { file, size: s.size, modified: s.mtime };
@@ -141,7 +157,7 @@ export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: st
     }
     // A stream per request (it closes the file when done); the HTTP server destroys it if
     // the client hangs up, which <video> does on every seek.
-    const body = file.createReadStream({ start, end, autoClose: true });
+    body = file.createReadStream({ start, end, autoClose: true });
     return HttpServerResponse.raw(body, {
       status: range ? 206 : 200,
       contentType: contentType(path),
