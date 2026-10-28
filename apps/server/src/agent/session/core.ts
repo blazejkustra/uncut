@@ -209,7 +209,9 @@ export const makeCore = (ctx: AgentServices) => {
     const holder = shared;
     return Object.defineProperty(a, "plan", {
       get: () => holder.plan,
-      set: (plan: AgentPlan) => void (holder.plan = plan),
+      set: (plan: AgentPlan) => {
+        holder.plan = plan;
+      },
       enumerable: true,
       configurable: true,
     });

@@ -25,13 +25,12 @@ import { importablePath } from "../../media/mediaIndex.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { VideoResult } from "../../analysis/videoAnalysis.ts";
 import { type Running, pushEdit } from "../session/types.ts";
-import { noteFor } from "../turns/notes.ts";
 import { realOr, analyzeWaitMs, SILENCES_WAIT_MS, columnsNote, loudnessOut } from "./common.ts";
 import type { CoreCtx } from "../session/core.ts";
 import type { makeMeasureTools } from "./measure.ts";
 
 export const makeMediaTools = (ctx: CoreCtx) => {
-  const { textResult, media, persist, publish, view, analysis, exporter, othersSince } = ctx;
+  const { textResult, media, persist, publish, analysis, exporter, othersSince } = ctx;
 
   // ---- tools ----
 
