@@ -267,7 +267,8 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard card, re
     assert.equal(sb.approvedBy, "agent");
 
     // ---- U16: the review card ----
-    await waitFor("[data-testid=agent-card][data-type=review][data-passed]");
+    // The critic row shows while the review runs; it passes once Uncut has rendered and measured the edit (slow on CI runners).
+    await waitFor("[data-testid=agent-card][data-type=review][data-passed]", 60000);
     await page.click("[data-testid=agent-card][data-type=review] .card-head");
     await waitFor("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]");
     assert.equal(await page.$$eval("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]", (els) => els.length), 6);
