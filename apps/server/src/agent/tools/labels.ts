@@ -19,6 +19,9 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "modules_list":
       return typeof args.kind === "string" ? `Checked the ${args.kind} modules` : "Checked the installed modules";
     case "render_frames": {
+      const run = args.run && typeof args.run === "object" ? (args.run as { start?: unknown; count?: unknown }) : undefined;
+      if (run && typeof run.start === "number" && typeof run.count === "number")
+        return `Looked at frames ${run.start} to ${run.start + run.count - 1} in a row`;
       const frames = Array.isArray(args.frames) ? args.frames.filter((f): f is number => typeof f === "number") : [];
       const list = frames.length > 4 ? `${frames.slice(0, 3).join(", ")} and ${frames.length - 3} more` : frames.join(", ");
       return frames.length === 1 ? `Looked at frame ${list}` : frames.length ? `Looked at frames ${list}` : "Looked at the edit";

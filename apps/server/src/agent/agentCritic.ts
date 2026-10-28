@@ -774,3 +774,19 @@ export async function runCritic(o: {
     await rm(cwd, { recursive: true, force: true });
   }
 }
+
+/**
+ * The critic's label for a fast move drawn with the project's motion blur: the export's quality is
+ * picked at export time (Draft draws it sharp unless the project turns blur on), so it's the
+ * project's blur, not "the export's".
+ */
+export function blurStripLabel(
+  run: { readonly start: number; readonly end: number },
+  fps: number,
+  blur: { readonly samples: number; readonly shutter: number },
+  frames: ReadonlyArray<number>,
+  forced: boolean,
+): string {
+  const when = forced ? "the project turns it on for every export" : "as a Standard or High export draws it; a Draft export draws it sharp";
+  return `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the project's motion blur (${blur.samples} sub-frames, more on a fast move, over a ${blur.shutter}° shutter; ${when}): frames ${frames.join(", ")} left to right`;
+}

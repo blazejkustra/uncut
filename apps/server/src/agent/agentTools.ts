@@ -68,6 +68,8 @@ export const TOOL_NAMES = [
  */
 export const MAX_FRAMES = 12;
 export const FRAME_EDGE = 768;
+/** render_frames' run: at most this many consecutive frames, rendered at the canvas size (about 0.4 s each at 1080p) and shown as one contact sheet. */
+export const MAX_RUN = 48;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface McpTool {

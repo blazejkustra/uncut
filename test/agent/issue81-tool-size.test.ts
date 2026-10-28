@@ -160,6 +160,9 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
           { tool: "library_search", args: { kind: "sfx", source: "included" } },
           { tool: "render_frames", args: { frames: [0] } },
           { tool: "render_frames", args: { frames: Array.from({ length: 13 }, (_, i) => i) } },
+          { tool: "render_frames", args: { run: { start: 58, count: 6 } } },
+          { tool: "render_frames", args: { run: { start: 0, count: 49 } } },
+          { tool: "render_frames", args: { frames: [0], run: { start: 0, count: 4 } } },
         ],
       ]),
     );
@@ -209,6 +212,14 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
     assert.equal(one!.result.content.filter((c) => c.type === "image").length, 1);
     assert.equal(many!.result.isError, true);
     assert.match(many!.result.content[0]!.text!, /frames must be 1 to 12/);
+    // Handoff 16: a run of consecutive frames comes back as one contact sheet, measured at full size.
+    const [run, long, both] = all.filter((x) => x.tool === "render_frames").slice(2);
+    assert.equal(run!.result.isError, undefined);
+    assert.equal(run!.result.content.filter((c) => c.type === "image").length, 1);
+    assert.match(run!.result.content[0]!.text!, /Frames 58 to 63 of the edit .*every frame, as one contact sheet/);
+    assert.match(run!.result.content[0]!.text!, /Measured at 1920×1080: no text shaking by a pixel and no 1 px line along the frame's edges/);
+    assert.match(long!.result.content[0]!.text!, /run must be \{ start, count \}: a frame from 0 and 2 to 48 frames/);
+    assert.match(both!.result.content[0]!.text!, /Pass frames or run, not both/);
   } finally {
     client.close();
     await server.stop();

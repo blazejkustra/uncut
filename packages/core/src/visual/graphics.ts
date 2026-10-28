@@ -170,6 +170,29 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
   let fonts;
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
+  // Chromium draws text on whole pixels but a box's edges anywhere, so a move's sub-pixel tail (a
+  // spring settling or overshooting its place by under a pixel) left the box still while its text
+  // jumped a pixel up and back. An element within a pixel of its place (a translate under 1 px,
+  // a scale changing its size by under 1 px, no scaled parent) is put exactly there; real moves
+  // stay fractional, so drifts and motion blur keep their sub-pixel steps.
+  const plainMatrix = (style) => style.translate !== "none" || style.rotate !== "none" || style.scale !== "none" ? undefined : new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
+  const nearShift = (el) => {
+    const m = plainMatrix(getComputedStyle(el));
+    const size = Math.max(el.offsetWidth || 0, el.offsetHeight || 0);
+    const unscaled = (k) => k === 1 || (size > 0 && Math.abs(k - 1) * size < 1);
+    return m !== undefined && m.is2D && m.b === 0 && m.c === 0 && unscaled(m.a) && unscaled(m.d) ? m : undefined;
+  };
+  const shiftedOnly = (el) => {
+    for (let a = el.parentElement; a; a = a.parentElement) if (!nearShift(a)) return false;
+    return true;
+  };
+  const settleTails = () => {
+    for (const el of document.querySelectorAll('[style*="transform"]')) {
+      const m = nearShift(el);
+      if (!m || Math.abs(m.e) >= 1 || Math.abs(m.f) >= 1 || (m.a === 1 && m.d === 1 && m.e === 0 && m.f === 0) || !shiftedOnly(el)) continue;
+      el.style.transform = "translate(0px, 0px)";
+    }
+  };
   // dry (a rehearsal, nothing captured): no frames waited for after render(t).
   window.__uncutRender = async (t, info, dry) => {
     await fontsReady();
@@ -185,6 +208,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
         throw new Error(text || "render(t) failed");
       }
     }
+    settleTails();
     await window.__uncutMedia.held();
     if (!dry) await frames();
     window.__uncutMedia.sweep();

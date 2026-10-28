@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "project_read",
-      "description": "Read the project and its revision (pass it as timeline_edit's baseRevision). 'summary' (default) gives the canvas, media, tracks with their mixer and items, the master and notes; a long project's items come as compact lines (id, type, start, duration, media, text) unless you pass range or items. 'items' gives every field of every item (or of the ids in items): read an item this way before update_item, which replaces style, transform and effects whole. 'full' gives project.json.",
+      "description": "Read the project and its revision (pass it as timeline_edit's baseRevision). 'summary' (default) gives the canvas, media, tracks with their mixer and items, the master and notes; a long project's items come as compact lines unless you pass range or items. 'items' gives every field of every item (or of the ids in items): read an item this way before update_item, which replaces style, transform and effects whole. 'full' gives project.json.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -65,12 +65,9 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the current edit exactly as export would, and return them as images to look at (768 px on the longest side by default; scale 1 for full size when a detail matters). Up to 12 per call: pick the moments that matter.",
+      "description": "Render frames of the edit exactly as export would, as images (768 px on the longest side; scale 1 for full size). Up to 12 per call: pick the moments that matter. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines stills miss.",
       "inputSchema": {
         "type": "object",
-        "required": [
-          "frames"
-        ],
         "additionalProperties": false,
         "properties": {
           "frames": {
@@ -90,14 +87,34 @@
           "phone": {
             "type": "boolean",
             "description": "Draw them 360 px wide, the size of a phone in a feed, to judge readability (overrides scale)."
+          },
+          "run": {
+            "type": "object",
+            "description": "Instead of frames: count frames in a row from start.",
+            "required": [
+              "start",
+              "count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 48
+              }
+            }
           }
         }
       },
-      "returns": "one image per frame"
+      "returns": "one image per frame, or one contact sheet and the motion measured for a run"
     },
     {
       "name": "contact_sheet",
-      "description": "One image with a grid of frames, each captioned with its frame and time: from a media file (pulled from the original) or from the edit (drawn as the export draws it). Cheaper than many render_frames for scanning footage. 'every' samples every N frames; without it, 'max' frames (default 24) are spread evenly. 'at: shots' (with media) shows one frame per shot (the middle of each), from the video analysis (run now if needed, cached after). At most 60 cells.",
+      "description": "One image with a grid of frames, each captioned with its frame and time: from a media file (pulled from the original) or from the edit (drawn as the export draws it). Cheaper than many render_frames for scanning footage. 'every' samples every N frames; without it, 'max' frames (default 24) are spread evenly. 'at: shots' (with media): one frame per shot (its middle), from the video analysis (cached). At most 60 cells.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -138,7 +155,7 @@
     },
     {
       "name": "media_analyze",
-      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Waits up to a minute; if it answers running, call again. Cached by content. 'transcript': the speech transcribed on this Mac (a summary: language, word, filler and pause counts; transcript_read gives the words). 'beats' (also 'rhythm', 'onsets', 'tempo'): tempo (bpm), a confidence 0-1 and the beats in project frames of the media (the first ones, or those in range with the onsets there).",
+      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Waits up to a minute; if it answers running, call again. Cached by content. 'transcript': a summary of the speech (language, word, filler and pause counts; transcript_read gives the words). 'beats' (also 'rhythm', 'onsets', 'tempo'): tempo (bpm), a confidence 0-1 and the beats in project frames of the media (the first ones, or those in range with the onsets there).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -500,7 +517,7 @@
     },
     {
       "name": "generate_media",
-      "description": "Make an image, video or sound with a generator into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo, generate.sound and plugins' generators (modules_list kind generator) bill the user's own API key; without it the result says which key is needed. Over $1 asks the user on a card.",
+      "description": "Make an image, video or sound with a generator into Media › Generated, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo, generate.sound and plugins' generators (modules_list kind generator) bill the user's own API key; without it the result says which key is needed. Over $1 asks the user on a card.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -893,7 +910,7 @@
     },
     {
       "name": "media_search",
-      "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and when it was made. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
+      "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and date. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -969,7 +986,7 @@
     },
     {
       "name": "brief_write",
-      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. It records the video's type (the critic's rubric and the sound limits follow it) and suggests the skills that fit: read them with skill_read.",
+      "description": "Save the production brief (brief.json), shown as a Brief card the user can edit. Co-write it with the user before building a new video; write it again when it changes. It records the video's type (the critic's rubric and the sound limits follow it) and suggests the skills that fit: read them with skill_read.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1201,7 +1218,7 @@
     },
     {
       "name": "docs_read",
-      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. edits: every timeline_edit op; production: the steps for a new video (brand, brief, storyboard, build, sound, critic, checks), skills, styles; text; picture (also effects, shaders); sound (also music, the sound library); components; graphics (graphic_write, libraries, fonts, generate_media); footage (import, transcripts, captions, subtitles, recording). Read a topic before you first work in that area in a conversation.",
+      "description": "Uncut's reference for one area, with exact JSON examples and limits. edits: every timeline_edit op; production: the steps for a new video (brand, brief, storyboard, build, sound, critic, checks), skills, styles; text; picture (also effects, shaders); sound (also music, the sound library); components; graphics (graphic_write, libraries, fonts, generate_media); footage (import, transcripts, captions, subtitles, recording). Read a topic before first working in that area.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1264,7 +1281,7 @@
     },
     {
       "name": "brand_write",
-      "description": "Write into a brand kit, merged into what's there (a field you pass replaces that field): colours, fonts (with their font files), logos, tone and the rest. Changing an existing kit's colours or fonts needs the user's OK on a before and after card. A style from a reference goes in style (its own guide attached to the kit), never in colors or fonts. A new name and no kit makes a new kit (scope says where), the project's kit if it has none. Logos and font files: a path, a folder or an https address; SVG stays vector. Only what the user gave or approved or the brand's own site shows, never invented brand facts.",
+      "description": "Write into a brand kit (a field you pass replaces that field): colours, fonts (with their font files), logos, tone and the rest. Changing an existing kit's colours or fonts needs the user's OK on a before and after card. A style from a reference goes in style (its own guide attached to the kit), never in colors or fonts. A new name and no kit makes a new kit (scope says where), the project's kit if it has none. Logos and font files: a path, a folder or an https address; SVG stays vector. Only what the user gave or approved or the brand's own site shows, never invented brand facts.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
