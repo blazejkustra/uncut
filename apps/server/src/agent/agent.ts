@@ -68,6 +68,7 @@ import type { AgentVars } from "./session/state.ts";
 import type { AgentServices } from "./session/context.ts";
 import { makeCore } from "./session/core.ts";
 import { makeMediaTools } from "./tools/media.ts";
+import { makeMeasureTools } from "./tools/measure.ts";
 import { makeTranscriptTools } from "./tools/transcript.ts";
 import { makeAskTools } from "./tools/ask.ts";
 import { makeGenerateTools } from "./tools/generate.ts";
@@ -261,7 +262,7 @@ export const layer = Layer.effect(
 
     // ---- tools, then running claude: each factory gets what the ones before it made ----
 
-    const withMedia = { ...core, ...makeMediaTools(core) };
+    const withMedia = { ...core, ...makeMediaTools(core), ...makeMeasureTools(core) };
     const withTranscript = { ...withMedia, ...makeTranscriptTools(withMedia) };
     const withAsk = { ...withTranscript, ...makeAskTools(withTranscript) };
     const withGenerate = { ...withAsk, ...makeGenerateTools(withAsk) };

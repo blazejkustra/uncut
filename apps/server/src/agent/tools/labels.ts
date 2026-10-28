@@ -146,6 +146,12 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
         : "Looked through other projects' media";
     case "project_check":
       return "Checked the video against the taste checks";
+    case "measure":
+      return args.what === "colour"
+        ? Array.isArray(args.items) && args.items.length > 1
+          ? "Compared the clips' colour"
+          : "Measured the colour"
+        : "Measured the sound mix";
     case "library_search": {
       const what = typeof args.query === "string" ? `"${args.query}"` : "";
       return `Searched the ${args.kind === "sfx" ? "sound effects" : "music"} library${what ? ` for ${what}` : ""}`;
@@ -287,6 +293,7 @@ const PRESENT: ReadonlyArray<[string, string]> = [
   ["Analysed ", "Analysing "],
   ["Transcribed ", "Transcribing "],
   ["Measured ", "Measuring "],
+  ["Compared ", "Comparing "],
   ["Scored ", "Scoring "],
   ["Ranked ", "Ranking "],
   ["Planned ", "Planning "],

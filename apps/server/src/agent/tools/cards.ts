@@ -3,8 +3,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
-import { REVIEW_SCORES } from "@uncut/contracts";
+import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Storyboard, type Brief, type BrandKit, type BrandSkill } from "@uncut/contracts";
 import {
   CHECK_IDS,
   fontRule,
@@ -90,6 +89,7 @@ import {
 } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
+import { measuredMixLines } from "./measure.ts";
 import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
 import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
@@ -1033,7 +1033,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           r.owner.turns.map((t) => t.prompt),
           r.turn.prompt,
         ),
-        sound: soundSheet(project, { sound: rubric.sound }),
+        sound: [...soundSheet(project, { sound: rubric.sound }), ...(yield* measuredMixLines(exporter, project))],
         rubric,
         intended,
         motion: { lines: motionFacts, strips: motion.images.length },

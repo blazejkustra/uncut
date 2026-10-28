@@ -59,6 +59,7 @@ export const TOOL_NAMES = [
   "media_download",
   "docs_read",
   "plan_read",
+  "measure",
 ] as const;
 
 /**
