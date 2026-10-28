@@ -367,7 +367,7 @@ export function Composer({
                 onMouseEnter={() => setPick(i)}
               >
                 {x.kind === "template" ? <FileText /> : <BookOpen />}
-                <span className="ellipsis grow">{x.name}</span>
+                <span className="ellipsis skill-name">{x.name}</span>
                 <span className="skill-call">{x.kind === "template" ? (x.builtin ? "template" : "yours") : `/${x.id}`}</span>
               </button>
             </Fragment>

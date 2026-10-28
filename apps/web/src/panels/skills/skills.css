@@ -5,7 +5,8 @@
 .brand-hero { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--panel-2); }
 .brand-hero-title { font-weight: 600; font-size: 13px; }
 .brand-hero .btn { justify-content: center; }
-.mention-option .skill-call { margin-left: auto; }
+.mention-option .skill-name { flex: 0 1 auto; }
+.mention-option .skill-call { flex: 1 1 0; min-width: 4em; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Issue #111: the Templates group in the composer's / menu, and the Templates section of the Skills tab. */
 .slash-group { padding: 6px 8px 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--dim); text-transform: uppercase; }
 .slash-group:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
