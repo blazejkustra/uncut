@@ -82,7 +82,7 @@ export const codexInterrupt = (s: ClaudeSession): boolean => {
 };
 
 export const makeCodex = (ctx: StreamCtx) => {
-  const { persist, closeSession, st, publishNow, publishSoon, label, doing, delivered, finish, turnCleanup, permit, bridgeUrl, sessions } = ctx;
+  const { persist, closeSession, publishNow, publishSoon, label, doing, delivered, finish, turnCleanup, permit, bridgeUrl, sessions } = ctx;
 
   /** The turn's item for a Codex item id (text, thinking or a step). */
   const itemAt = (r: Running, id: string) => {
@@ -334,8 +334,8 @@ export const makeCodex = (ctx: StreamCtx) => {
       case "account/rateLimits/updated": {
         const { notice, resetsAt } = codexLimitNotice(params.rateLimits, Date.now());
         if (resetsAt) limits.resetsAt = resetsAt;
-        if ((notice ?? undefined) !== st.limitWarning) {
-          st.limitWarning = notice;
+        if ((notice ?? undefined) !== s.owner.limitWarning) {
+          s.owner.limitWarning = notice;
           publishNow();
         }
         return;
@@ -343,7 +343,7 @@ export const makeCodex = (ctx: StreamCtx) => {
       case "error":
         // A retry Codex makes on its own is shown, not ended on: turn/completed ends the turn.
         if (params.willRetry) {
-          st.limitWarning = `Codex is retrying: ${String(params.error?.message ?? "the request failed").slice(0, 200)}`;
+          s.owner.limitWarning = `Codex is retrying: ${String(params.error?.message ?? "the request failed").slice(0, 200)}`;
           publishNow();
         }
         return;
@@ -552,7 +552,7 @@ export const makeCodex = (ctx: StreamCtx) => {
       sessions.delete(s);
       clearTimeout(s.idleTimer);
       clearTimeout(s.killTimer);
-      if (st.session === s) st.session = undefined;
+      if (s.owner.session === s) s.owner.session = undefined;
       rmSync(s.dir, { recursive: true, force: true });
       const r = s.turn;
       s.turn = undefined;

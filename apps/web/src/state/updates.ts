@@ -8,6 +8,7 @@ import { getRecorder, listeners as recorderListeners } from "../capture/recorder
 import { bridge, type UpdateStatus } from "./bridge.ts";
 import { confirmLeave } from "./leave.tsx";
 import { getState, subscribeApp } from "./store.ts";
+import { anyAgentRunning } from "./agents.ts";
 import { updateBusy } from "./updateBusy.ts";
 
 const busyNow = () => {
@@ -16,7 +17,7 @@ const busyNow = () => {
     exportPhases: s.exportJobs.map((j) => j.phase),
     recorderPhase: getRecorder().phase,
     capturing: s.capture?.recording.length ?? 0,
-    agentRunning: s.agent !== null && s.agent !== undefined && s.agent.running !== null,
+    agentRunning: anyAgentRunning(s.agent),
   });
 };
 

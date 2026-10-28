@@ -18,6 +18,7 @@
 import { join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
+import { DEFAULT_AGENT_ID } from "@uncut/contracts";
 import type { LogEntry, Op, Project } from "@uncut/core";
 
 import { applyPatch, diff } from "./jsonPatch.ts";
@@ -39,6 +40,12 @@ export { SCHEMA_VERSION, problemFor } from "./history/schema.ts";
 export type { RowKind, Author, ListedKind, HistoryOptions, Row, NewRow, Cursor, TurnRecord, AgentRecord } from "./history/rows.ts";
 
 export const HISTORY_FILE = "history.db";
+
+/** C12: a saved turn's agent: from the meta record of other agents' turns, else its data, else the default agent. */
+const ownerOf = (data: { readonly id?: unknown; readonly agentId?: unknown }, owners: ReadonlyMap<string, string>) =>
+  (typeof data.id === "string" ? owners.get(data.id) : undefined) ?? (typeof data.agentId === "string" ? data.agentId : DEFAULT_AGENT_ID);
+
+const agentKey = (agentId: string) => (name: string) => (agentId === DEFAULT_AGENT_ID ? `agent.${name}` : `agent.${agentId}.${name}`);
 /** Revisions kept (a project with more drops its oldest, keeping their result as a snapshot). */
 export const MAX_ROWS = 1000;
 /** Compaction runs once this many rows are over the limit, so it isn't a cost on every edit. */
@@ -352,6 +359,7 @@ export class HistoryDb {
         revision: e.revision,
         at: e.at,
         actor: e.author === "agent" ? "agent" : "user",
+        ...(e.author === "agent" ? { agentId: e.turnId ? this.turnAgent(e.turnId) : DEFAULT_AGENT_ID } : {}),
         ops: stored?.ops ? (JSON.parse(stored.ops) as Array<Op>) : [],
         ...(e.turnId ? { turnId: e.turnId } : {}),
         ...(e.summary ? { summary: e.summary } : {}),
@@ -531,21 +539,66 @@ export class HistoryDb {
 
   // ---- agent ----
 
-  agent(): AgentRecord {
+  /**
+   * C12: one agent's record: its turns (a turn without an agentId is the default agent's, from
+   * before several agents) and its session, note and chat start (meta "agent.<key>" for the
+   * default agent, as before; "agent.<id>.<key>" for the others).
+   */
+  agent(agentId: string = DEFAULT_AGENT_ID): AgentRecord {
+    const owners = this.turnOwners();
     const turns = (this.stmt("SELECT data FROM turns ORDER BY ord").all() as Array<{ data: string }>).flatMap((t) => {
       try {
-        return [JSON.parse(t.data) as unknown];
+        const data = JSON.parse(t.data) as { id?: unknown; agentId?: unknown };
+        if (ownerOf(data, owners) !== agentId) return [];
+        return [(agentId === DEFAULT_AGENT_ID ? data : { ...data, agentId }) as unknown];
       } catch {
         return [];
       }
     });
+    const key = agentKey(agentId);
     return {
-      sessionId: this.meta.get("agent.sessionId"),
-      pendingNote: this.meta.get("agent.pendingNote"),
-      threadStart: this.meta.get("agent.threadStart"),
+      sessionId: this.meta.get(key("sessionId")),
+      pendingNote: this.meta.get(key("pendingNote")),
+      threadStart: this.meta.get(key("threadStart")),
       turns,
       migratedAt: this.meta.get("agent.turnsJsonMigratedAt"),
     };
+  }
+
+  /** C12: the agent that ran a turn (the default agent for one saved before several agents, or not saved). */
+  turnAgent(turnId: string): string {
+    const owner = this.turnOwners().get(turnId);
+    if (owner) return owner;
+    const row = this.stmt("SELECT json_extract(data, '$.agentId') AS agent FROM turns WHERE id = ?").get(turnId) as { agent: unknown } | undefined;
+    return typeof row?.agent === "string" ? row.agent : DEFAULT_AGENT_ID;
+  }
+
+  /**
+   * C12: each other agent's turn ids (meta "agent.<id>.turns"), the record of whose a turn is: an
+   * older build that saves the turns again drops their agentId, but never touches these keys.
+   */
+  private turnOwners(): Map<string, string> {
+    const owners = new Map<string, string>();
+    for (const [k, v] of this.meta) {
+      const agentId = /^agent\.(.+)\.turns$/.exec(k)?.[1];
+      if (!agentId) continue;
+      try {
+        for (const id of JSON.parse(v) as Array<unknown>) if (typeof id === "string") owners.set(id, agentId);
+      } catch {}
+    }
+    return owners;
+  }
+
+  /** C12: the project's agents as saved (JSON, meta "agents"); undefined: only the default agent. */
+  agentList(): string | undefined {
+    return this.meta.get("agents");
+  }
+
+  saveAgentList(json: string) {
+    this.write(() => {
+      this.stmt("INSERT INTO meta (key, value) VALUES ('agents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(json);
+      return () => void this.meta.set("agents", json);
+    });
   }
 
   /**
@@ -553,6 +606,7 @@ export class HistoryDb {
    * ones given), the claude session and the pending note.
    */
   saveAgent(input: {
+    readonly agentId?: string | undefined;
     readonly sessionId: string | undefined;
     readonly pendingNote: string | undefined;
     /** D295: the current chat's start; left as it is when not given. */
@@ -560,6 +614,8 @@ export class HistoryDb {
     readonly turns: ReadonlyArray<TurnRecord>;
     readonly order?: ReadonlyArray<string> | undefined;
     readonly migratedAt?: string | undefined;
+    /** C12: every turn id of an agent other than the default one (kept in meta, see turnOwners). */
+    readonly turnIds?: ReadonlyArray<string> | undefined;
   }) {
     this.write(() => {
       const upsert = this.stmt(
@@ -584,11 +640,15 @@ export class HistoryDb {
       );
       const setMeta = this.stmt("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
       const delMeta = this.stmt("DELETE FROM meta WHERE key = ?");
+      const key = agentKey(input.agentId ?? DEFAULT_AGENT_ID);
       const changes: Array<[string, string | undefined]> = [
-        ["agent.sessionId", input.sessionId],
-        ["agent.pendingNote", input.pendingNote || undefined],
+        [key("sessionId"), input.sessionId],
+        [key("pendingNote"), input.pendingNote || undefined],
         ...(input.migratedAt ? ([["agent.turnsJsonMigratedAt", input.migratedAt]] as Array<[string, string]>) : []),
-        ...("threadStart" in input ? ([["agent.threadStart", input.threadStart]] as Array<[string, string | undefined]>) : []),
+        ...("threadStart" in input ? ([[key("threadStart"), input.threadStart]] as Array<[string, string | undefined]>) : []),
+        ...(input.turnIds && input.agentId && input.agentId !== DEFAULT_AGENT_ID
+          ? ([[key("turns"), JSON.stringify(input.turnIds)]] as Array<[string, string]>)
+          : []),
       ];
       for (const [k, v] of changes) v === undefined ? delMeta.run(k) : setMeta.run(k, v);
       return () => {

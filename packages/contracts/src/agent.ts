@@ -353,6 +353,8 @@ export const AgentTurn = Schema.Struct({
   compacted: Schema.optional(Schema.Struct({ trigger: Schema.String, before: Schema.optional(Schema.Number), after: Schema.optional(Schema.Number) })),
   // Redo turn: when the user put an undone turn's edits back.
   redoneAt: Schema.optional(Schema.String),
+  // C12: the agent that ran it (absent: the project's first agent, from before there were several).
+  agentId: Schema.optional(Schema.String),
 });
 export type AgentTurn = typeof AgentTurn.Type;
 
@@ -445,8 +447,36 @@ export const AgentContext = Schema.Struct({
 export type AgentContext = typeof AgentContext.Type;
 
 /** The open project's agent: its turns (oldest first) and the one running, if any. */
+/** C12: what an agent of the project is for (a paragraph of its prompt; it steers, never forbids). */
+export const AGENT_FOCUSES = ["general", "cuts", "graphics", "look", "sound", "captions"] as const;
+export const AgentFocus = Schema.Literals(AGENT_FOCUSES);
+export type AgentFocus = typeof AgentFocus.Type;
+/** C12: the default agent every project has (all turns from before several agents belong to it). */
+export const DEFAULT_AGENT_ID = "ag-main";
+/** C12: at most this many agents work at once in a project. */
+export const AGENTS_RUNNING_MAX = 2;
+
+/** C12: one agent of the open project, with its own conversation, running turn and approval card. */
+export const AgentInfo = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  focus: AgentFocus,
+  colour: Schema.String,
+  status: Schema.Literals(["idle", "working", "waiting"]),
+  running: Schema.NullOr(Schema.String),
+  approval: Schema.optional(AgentApproval),
+  screenTake: Schema.optional(Schema.String),
+  warning: Schema.optional(Schema.String),
+  context: Schema.optional(AgentContext),
+  threadStart: Schema.optional(Schema.String),
+});
+export type AgentInfo = typeof AgentInfo.Type;
+
 export const AgentState = Schema.Struct({
   dir: Schema.String,
+  // C12: the project's agents, oldest first. The fields below (running, approval, warning, context,
+  // threadStart, screenTake) are the first agent's, for clients from before several agents.
+  agents: Schema.optional(Schema.Array(AgentInfo)),
   provider: Schema.String,
   running: Schema.NullOr(Schema.String),
   turns: Schema.Array(AgentTurn),

@@ -53,6 +53,34 @@ export interface UnloggedChange {
   readonly quiet?: boolean;
   /** A reopen that found the project as it was: the state didn't change. */
   readonly unchanged?: true;
+  /** C12: an undo or redo that took back or brought back agents' edits: whose, so each agent's note says "your" only for its own. */
+  readonly step?: {
+    readonly did: string;
+    readonly verb: "took back" | "brought back";
+    readonly edits: ReadonlyArray<{ readonly agentId: string; readonly label: string }>;
+  };
+}
+
+/** C12: who an unlogged change is told to: an agent of the project, and the other agents' names. */
+export interface UnloggedReader {
+  readonly agentId: string;
+  readonly nameOf: (agentId: string) => string;
+}
+
+const possessive = (name: string) => (name.endsWith("s") ? `${name}'` : `${name}'s`);
+const editsWords = (labels: ReadonlyArray<string>) => `edit${labels.length === 1 ? "" : "s"} ${labels.join(", ")}`;
+
+/** An unlogged change in words for one agent: an undo or redo of agents' edits says "your" for its own and names the others'. */
+export function unloggedWords(u: UnloggedChange, reader?: UnloggedReader): string {
+  if (!u.step || !reader) return u.what;
+  const byAgent = new Map<string, Array<string>>();
+  for (const e of u.step.edits) byAgent.set(e.agentId, [...(byAgent.get(e.agentId) ?? []), e.label]);
+  const mine = byAgent.get(reader.agentId);
+  const parts = [
+    ...(mine ? [`your ${editsWords(mine)}`] : []),
+    ...[...byAgent].filter(([id]) => id !== reader.agentId).map(([id, labels]) => `${possessive(reader.nameOf(id))} ${editsWords(labels)}`),
+  ];
+  return `${u.step.did}, which ${u.step.verb} ${parts.join(" and ")}`;
 }
 
 /** The open project as the agent service needs it: the session with its log. Read-only. */

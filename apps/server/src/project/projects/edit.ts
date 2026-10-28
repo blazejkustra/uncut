@@ -1,17 +1,32 @@
 // A user or agent edit to the open project: checked (schema, D6, names), then committed (the projects layer).
 import type { ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, describeOp, EditError, type Op, type Project, type Session } from "@uncut/core";
+import { applyEdit, describeOp, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
 import { withLinkedAudio } from "@uncut/core/arrange";
 import * as Effect from "effect/Effect";
 
 import type { ProjectFormatShape } from "../format.ts";
 import type { NewRow } from "../history.ts";
+import { authorWords, storedAgents } from "../history/agents.ts";
 import { MAX_NAME_LENGTH, refused, serialize, toProblems } from "./helpers.ts";
-import type { OpenProject } from "./service.ts";
+import { type OpenProject, unloggedWords } from "./service.ts";
 
 export interface EditCtx<E> {
   readonly format: ProjectFormatShape;
   readonly commit: (p: OpenProject, next: Session, moveStacks: (previous: Session) => void, row: NewRow) => Effect.Effect<ProjectSnapshot, E>;
+}
+
+/** C12: an agent's edit refused because someone else changed what it touches after its base: who changed what. */
+function conflictRefusal(p: OpenProject, error: EditConflict) {
+  const agents = storedAgents(p.history.agentList());
+  const byAuthor = new Map<string, Array<string>>();
+  for (const [id, author] of error.by) byAuthor.set(author, [...(byAuthor.get(author) ?? []), id]);
+  const said = [...byAuthor].map(([author, ids]) => `${ids.join(", ")} (changed by ${authorWords(author, agents)})`);
+  const details = [...error.by].map(([id, author]) => ({
+    code: "conflict",
+    path: id,
+    message: `"${id}" was changed by ${authorWords(author, agents)} after your baseRevision`,
+  }));
+  return refused(`Conflicts with newer edits to: ${said.join("; ")}. Read the project again and keep their changes.`, details);
 }
 
 export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
@@ -31,9 +46,12 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       }
       // D6: undo, redo and reload aren't log entries, so the engine can't tell what they
       // touched. Any agent edit planned before one of them is refused: read again first.
+      const agentId = agent ? p.history.turnAgent(agent.turnId) : undefined;
       const unseen = agent && baseRevision !== undefined ? p.unlogged.filter((u) => u.revision > baseRevision) : [];
       if (unseen.length) {
-        const what = unseen.map((u) => u.what).join("; ");
+        const agents = storedAgents(p.history.agentList());
+        const reader = agentId ? { agentId, nameOf: (id: string) => authorWords(id, agents) } : undefined;
+        const what = unseen.map((u) => unloggedWords(u, reader)).join("; ");
         return yield* refused(`The project changed after revision ${baseRevision} (${what}). Read it again before editing.`, [
           { code: "conflict", path: "/", message: what },
         ]);
@@ -49,15 +67,17 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
               ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>),
               baseRevision,
               summary,
-              ...(agent ? { turnId: agent.turnId } : {}),
+              ...(agent ? { turnId: agent.turnId, agentId } : {}),
             },
             format.validate,
           ),
         catch: (error) =>
-          error instanceof EditError
-            ? refused(error.message, toProblems(error))
-            : // Well-formed ops can still trip the engine (e.g. a field it doesn't expect).
-              refused("The edit is malformed", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
+          error instanceof EditConflict && agent
+            ? conflictRefusal(p, error)
+            : error instanceof EditError
+              ? refused(error.message, toProblems(error))
+              : // Well-formed ops can still trip the engine (e.g. a field it doesn't expect).
+                refused("The edit is malformed", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
       });
       // Validate exactly what will be written and read back, so nothing that wouldn't
       // reopen can be saved.

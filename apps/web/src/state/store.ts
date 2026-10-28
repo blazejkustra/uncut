@@ -13,6 +13,8 @@ import { setServerConnection, refreshHello, refreshRecents, setConnection, call 
 import { actions } from "./store/actions.ts";
 import { onJobs, onExportJobs, onAnalysisJobs, applyFromServer } from "./store/sync.ts";
 import { applyAgentUi } from "./store/agentUi.ts";
+import { agentsOf, noteAgentsSeen } from "./agents.ts";
+import type { AgentState } from "@uncut/contracts";
 export { MAX_NAME_LENGTH } from "./store/types.ts";
 export type { ConnectionState, Project, Notice, AppStateShape, PickerPurpose, RemotePickerRequest, GenerateDraft, SettingsSection } from "./store/types.ts";
 export {
@@ -73,6 +75,25 @@ function watchRemoteStatus() {
 }
 
 let askedPendingOpen = false;
+
+/** The agents whose running turn ended between two states. */
+function endedAgents(before: AgentState | null, after: AgentState | null): ReadonlyArray<string> {
+  if (!before || !after || before.dir !== after.dir) return [];
+  const now = agentsOf(after);
+  return agentsOf(before)
+    .filter((a) => a.running !== null && now.find((n) => n.id === a.id)?.running === null)
+    .map((a) => a.id);
+}
+
+/** The message queued for an agent goes once its turn ends (D140). */
+function sendQueued(agentId: string) {
+  const queued = state.agentQueued?.[agentId];
+  if (!queued) return;
+  actions.agentQueue(agentId, undefined);
+  void actions.agentSend(queued.prompt, queued.mentions, queued.images, { agentId }).then((ok) => {
+    if (!ok && !state.agentDraft) set({ agentDraft: queued.prompt, agentMentions: queued.mentions, agentImages: queued.images ?? [] });
+  });
+}
 
 export async function start() {
   // Only Local's own server can exit under the window (the desktop doesn't report it for a remote).
@@ -148,19 +169,13 @@ export async function start() {
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
         (agent) => {
-          const was = state.agent?.running ?? null;
+          const ended = endedAgents(state.agent, agent);
           set({ agent });
+          noteAgentsSeen();
           applyAgentUi(agent);
           // A turn ended: it may have written a kit's style guide (D186).
-          if (was !== null && agent?.running == null) void actions.brandGet();
-          // The turn ended: the queued message goes now (D140).
-          const queued = state.agentQueued;
-          if (queued && was !== null && agent?.running === null) {
-            set({ agentQueued: undefined });
-            void actions.agentSend(queued.prompt, queued.mentions, queued.images).then((ok) => {
-              if (!ok && !state.agentDraft) set({ agentDraft: queued.prompt, agentMentions: queued.mentions, agentImages: queued.images ?? [] });
-            });
-          }
+          if (ended.length) void actions.brandGet();
+          for (const id of ended) sendQueued(id);
         },
       );
       unsubscribeHistory?.();

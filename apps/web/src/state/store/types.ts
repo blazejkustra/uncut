@@ -118,8 +118,12 @@ export interface AppStateShape {
   // (D141) from the timeline, the canvas or the Inspector lands in it with the Agent tab closed.
   readonly agentDraft: string;
   readonly agentMentions: ReadonlyArray<AgentMention>;
-  // A message written while a turn runs: sent when that turn ends.
-  readonly agentQueued?: { readonly prompt: string; readonly mentions: ReadonlyArray<AgentMention>; readonly images?: ReadonlyArray<AgentImage> };
+  // A message written while a turn runs: sent when that turn ends, by agent id (C12).
+  readonly agentQueued?: Readonly<Record<string, AgentQueued>>;
+  // C12: the agent the Agent tab shows, by project dir (the first one when unset or archived).
+  readonly agentSelected: Readonly<Record<string, string>>;
+  // C12: each agent's latest turn and its status when the user last looked at it, for the tab row's unread dot.
+  readonly agentSeen: Readonly<Record<string, string>>;
   // Images attached in the composer (D184), sent with the next message.
   readonly agentImages: ReadonlyArray<AgentImage>;
   // Bumped to put the caret in the composer (after Add to chat).
@@ -166,6 +170,12 @@ export interface AppStateShape {
   readonly brandError?: string;
   /** Issue #111: the templates the composer's / menu offers (Uncut's built-ins, then the user's own). */
   readonly templates?: ReadonlyArray<TemplateInfo>;
+}
+
+export interface AgentQueued {
+  readonly prompt: string;
+  readonly mentions: ReadonlyArray<AgentMention>;
+  readonly images?: ReadonlyArray<AgentImage>;
 }
 
 /** What a remote environment's file browser is for (D107): each native dialog it stands in for. */

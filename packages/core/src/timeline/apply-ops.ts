@@ -6,7 +6,7 @@ import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
-import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
+import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
 type DraftTrack = Mutable<Track>;
@@ -22,11 +22,17 @@ export class EditError extends Error {
 }
 
 export class EditConflict extends EditError {
-  constructor(touched: ReadonlyArray<string>) {
+  /** Who made the newer edit of each touched id: "user", "agent" or an agent id (C12). */
+  readonly by: ReadonlyMap<string, string>;
+  constructor(touched: ReadonlyArray<string>, by: ReadonlyMap<string, string> = new Map()) {
     super(`Conflicts with newer edits to: ${touched.join(", ")}`, touched);
     this.name = "EditConflict";
+    this.by = by;
   }
 }
+
+/** Who made an entry, for conflict checks: its agent when it has one, else its actor. */
+export const authorOf = (e: { readonly actor: Actor; readonly agentId?: string | undefined }) => e.agentId ?? e.actor;
 
 export function createSession(project: Project): Session {
   return { project: structuredClone(project), revision: 0, log: [] };
@@ -42,6 +48,12 @@ function touches(op: Op): Array<string> {
   if (op.op === "update_media") return [`media:${op.media}`];
   if (op.op === "delete_media") return [`media:${op.media}`];
   return ["project"];
+}
+
+/** The items an op removes along with their track, as the project is now: a newer edit of any of them by someone else (an insert) refuses it. */
+function removedItems(project: Project, op: Op): Array<string> {
+  if (op.op !== "delete_track") return [];
+  return project.tracks.find((t) => t.id === op.track)?.items.map((i) => i.id) ?? [];
 }
 
 function locate(project: Draft, itemId: Id): { track: DraftTrack; index: number; item: DraftItem } {
@@ -316,15 +328,19 @@ function applyOp(project: Draft, op: Op) {
  */
 export function applyEdit(
   session: Session,
-  { actor, ops, baseRevision = session.revision, turnId, summary, at }: Edit,
+  { actor, agentId, ops, baseRevision = session.revision, turnId, summary, at }: Edit,
   validate?: (project: Project) => ReadonlyArray<Problem>,
 ): Session {
   if (!["user", "agent"].includes(actor)) throw new EditError(`Unknown actor "${actor}"`);
   if (baseRevision < session.revision) {
-    const mine = new Set(ops.flatMap(touches));
-    const newer = session.log.filter((e) => e.revision > baseRevision && e.actor !== actor).flatMap((e) => e.ops.flatMap(touches));
-    const clash = [...new Set(newer.filter((id) => mine.has(id)))];
-    if (clash.length) throw new EditConflict(clash);
+    const mine = new Set([...ops.flatMap(touches), ...ops.flatMap((op) => removedItems(session.project, op))]);
+    const me = authorOf({ actor, agentId });
+    const by = new Map<string, string>();
+    for (const e of session.log) {
+      if (e.revision <= baseRevision || authorOf(e) === me) continue;
+      for (const id of e.ops.flatMap(touches)) if (mine.has(id)) by.set(id, authorOf(e));
+    }
+    if (by.size) throw new EditConflict([...by.keys()], by);
   }
   const project = structuredClone(session.project) as Draft;
   for (const op of ops) applyOp(project, op);
@@ -342,6 +358,7 @@ export function applyEdit(
   }
   const revision = session.revision + 1;
   const entry: Mutable<LogEntry> = { revision, at: at ?? new Date().toISOString(), actor, ops: structuredClone(ops) as Array<Mutable<Op>> };
+  if (agentId) entry.agentId = agentId;
   if (turnId) entry.turnId = turnId;
   if (summary) entry.summary = summary;
   return { project, revision, log: [...session.log, entry] };

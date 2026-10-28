@@ -4,7 +4,7 @@
 import { componentInfo } from "../visual/components.ts";
 import { fxWords } from "../visual/fx.ts";
 import { DUCK, effectName, effectSummary, LIMITER, targetWords } from "../audio/effects.ts";
-import type { Id, Op, Project, Session } from "./types.ts";
+import type { Id, LogEntry, Op, Project, Session } from "./types.ts";
 
 const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
 
@@ -412,10 +412,25 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
 }
 
 /** The note the agent receives. Empty string when the user changed nothing. */
-export function manualEditsNote(session: Session, sinceRevision: number): string {
-  const entries = session.log.filter((e) => e.revision > sinceRevision && e.actor === "user");
-  const lines = entries.flatMap((e) => e.ops.map((op) => `- ${describeOp(op, session.project, e.summary)}`));
+export function manualEditsNote(
+  session: Session,
+  sinceRevision: number,
+  reported: (e: LogEntry) => boolean = (e) => e.actor === "user",
+  agentName: (e: LogEntry) => string | undefined = () => undefined,
+): string {
+  const entries = session.log.filter((e) => e.revision > sinceRevision && reported(e));
+  const lines = entries.flatMap((e) => {
+    const by = agentName(e);
+    return e.ops.map((op) => `- ${by ? `by ${by}: ` : ""}${describeOp(op, session.project, e.summary)}`);
+  });
   if (!lines.length) return "";
+  if (entries.some((e) => agentName(e) !== undefined)) {
+    return [
+      `The user and other agents made ${lines.length} edit${lines.length === 1 ? "" : "s"} since your last turn (now at revision ${session.revision}).`,
+      "Keep them and build on them: the user's are intentional; don't redo or revert another agent's (if you disagree, tell the user).",
+      ...lines,
+    ].join("\n");
+  }
   return [
     `The user made ${lines.length} edit${lines.length === 1 ? "" : "s"} by hand since your last turn (now at revision ${session.revision}).`,
     "They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.",

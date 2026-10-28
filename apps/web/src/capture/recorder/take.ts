@@ -3,6 +3,7 @@ import { muteOutput } from "../../audio/audio.ts";
 import { playback, getPlayback } from "../../preview/playback.ts";
 import { type CaptureSource, bridge } from "../../state/bridge.ts";
 import { actions, getState, subscribeApp } from "../../state/store.ts";
+import { agentScreenTakes, anyAgentRunning } from "../../state/agents.ts";
 import { type TakeMode, type Resolution, type PartKind, type RecorderState, set, stopStream, state, errorText, MIN_TAKE_MS, listeners } from "./state.ts";
 import { openParts, openStreams } from "./streams.ts";
 import { closeMonitor, closePreview } from "./devices.ts";
@@ -442,8 +443,9 @@ function watchAgentTake() {
   if (!r?.options.agent || r.cancelled) return;
   const app = getState();
   const id = r.options.agent.id;
-  if (app.agent?.screenTake === id) r.awaited = true;
-  const gone = app.snapshot?.dir !== r.dir || !app.agent || app.agent.dir !== r.dir || app.agent.running === null || (r.awaited && app.agent.screenTake !== id);
+  const awaited = agentScreenTakes(app.agent).includes(id);
+  if (awaited) r.awaited = true;
+  const gone = app.snapshot?.dir !== r.dir || !app.agent || app.agent.dir !== r.dir || !anyAgentRunning(app.agent) || (r.awaited && !awaited);
   if (gone) {
     // The server isn't listening any more: no answer goes back (an upload already on its way is deleted there).
     r.answered = true;

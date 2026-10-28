@@ -25,13 +25,12 @@ import { importablePath } from "../../media/mediaIndex.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { VideoResult } from "../../analysis/videoAnalysis.ts";
 import { type Running, pushEdit } from "../session/types.ts";
-import { noteFor } from "../turns/notes.ts";
 import { realOr, analyzeWaitMs, SILENCES_WAIT_MS, columnsNote, loudnessOut } from "./common.ts";
 import type { CoreCtx } from "../session/core.ts";
 import type { makeMeasureTools } from "./measure.ts";
 
 export const makeMediaTools = (ctx: CoreCtx) => {
-  const { textResult, media, persist, publish, view, analysis, exporter } = ctx;
+  const { textResult, media, persist, publish, analysis, exporter, othersSince } = ctx;
 
   // ---- tools ----
 
@@ -110,12 +109,10 @@ export const makeMediaTools = (ctx: CoreCtx) => {
                 });
                 persist(r.owner);
                 publish();
-                // The agent may edit from the revision it gets back: user edits made since its last
-                // read are in that state, and come back with the result (userChanges), so it knows.
-                r.owner.seen.add(snapshot.revision);
               }
-              const now = view();
-              return { ok: true as const, value, userChanges: snapshot && now ? noteFor(now, r.owner.agentSeen) : "" };
+              // The edits of the user and other agents since the agent's last read are in the revision
+              // it gets back and come back with the result (userChanges).
+              return { ok: true as const, value, userChanges: snapshot ? othersSince(r) : "" };
             }),
             Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
           ),
@@ -152,7 +149,7 @@ export const makeMediaTools = (ctx: CoreCtx) => {
         ...(outcome.userChanges
           ? {
               userChanges: outcome.userChanges,
-              userNote: "The user changed the project since your read; the revision above includes their changes. Keep them.",
+              userNote: "The user or another agent changed the project since your read; the revision above includes their changes. Keep them.",
             }
           : {}),
       });

@@ -6,6 +6,7 @@ import { type CardLive, CardItem, QuestionCard, StoryboardApproval } from "../Ag
 import { agentImageUrl, actions } from "../../state/store.ts";
 import { useFriendly } from "./context.ts";
 import { noteLines } from "./thread.ts";
+import { turnAgent } from "../../state/agents.ts";
 import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./workLog.tsx";
 import { CopyButton } from "./copy.tsx";
 import { tokens } from "../TokenMeter.tsx";
@@ -130,7 +131,7 @@ export function TurnCard({
         {spend}
         <span className="spacer" />
         {t.status === "running" && (
-          <button className="link-btn" data-testid="agent-cancel" disabled={!online} onClick={() => void actions.agentCancel()}>
+          <button className="link-btn" data-testid="agent-cancel" disabled={!online} onClick={() => void actions.agentCancel(turnAgent(t))}>
             <Square />
             Stop
           </button>

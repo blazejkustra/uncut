@@ -210,3 +210,40 @@ export function netEditsNote(before: Project, session: Session, since: number, r
     ...lines.map((l) => `- ${l}`),
   ].join("\n");
 }
+
+/** C12: the name of the other agent that made an entry, or undefined for the user's. */
+export type EntryAuthor = (entry: LogEntry) => string | undefined;
+
+const things = (n: number) => `${n} thing${n === 1 ? "" : "s"}`;
+
+/**
+ * C12: the note for one of several agents: the net edits of every entry `reported` accepts (the
+ * user's and the other agents'), the user's and each other agent's apart, each agent's lines
+ * named ("by Graphics: ..."). Each author's lines are what that author's entries change on top of
+ * everything else. With no other agent among them, netEditsNote's words.
+ */
+export function othersEditsNote(before: Project, session: Session, since: number, reported: EntryFilter, agentName: EntryAuthor): string {
+  const newer = session.log.filter((e) => e.revision > since && reported(e));
+  const names = [...new Set(newer.flatMap((e) => agentName(e) ?? []))];
+  if (!names.length) return netEditsNote(before, session, since, reported);
+  const userLines = netChanges(before, session, since, (e) => reported(e) && agentName(e) === undefined);
+  const agentLines = names.flatMap((name) => netChanges(before, session, since, (e) => reported(e) && agentName(e) === name).map((l) => `by ${name}: ${l}`));
+  if (!userLines.length && !agentLines.length) return netZeroNote(session.revision);
+  const user = userLines.length
+    ? [
+        `The user changed ${things(userLines.length)} by hand. They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.`,
+        ...userLines.map((l) => `- ${l}`),
+      ]
+    : [];
+  const agents = agentLines.length
+    ? [
+        `Other agents in this project changed ${things(agentLines.length)}. Build on their edits; don't redo or revert them (if you disagree, tell the user).`,
+        ...agentLines.map((l) => `- ${l}`),
+      ]
+    : [];
+  return [
+    `The project changed since your last turn (now at revision ${session.revision}). This is the net result: anything done and then undone or reverted isn't listed.`,
+    ...user,
+    ...agents,
+  ].join("\n");
+}

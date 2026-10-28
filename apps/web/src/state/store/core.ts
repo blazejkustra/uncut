@@ -30,6 +30,8 @@ export let state: AppStateShape = {
   agentMentions: [],
   agentImages: [],
   agentFocus: 0,
+  agentSelected: {},
+  agentSeen: {},
   history: null,
   exportOpen: false,
   exportJobs: [],

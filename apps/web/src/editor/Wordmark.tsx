@@ -5,6 +5,7 @@
 import { useId } from "react";
 
 import { useApp } from "../state/store.ts";
+import { anyAgentRunning } from "../state/agents.ts";
 import "./wordmark.css";
 
 /**
@@ -44,7 +45,7 @@ export function UncutMark({ className, tile = false }: { className?: string; til
 /** The title bar's brand and the project's name. */
 export function Wordmark({ dir, name }: { dir: string; name: string }) {
   const { agent } = useApp();
-  const busy = agent !== null && agent.dir === dir && agent.running !== null;
+  const busy = agent !== null && agent.dir === dir && anyAgentRunning(agent);
   return (
     <div className="wordmark" data-testid="wordmark" data-busy={busy}>
       <span className="brand wordmark-name">

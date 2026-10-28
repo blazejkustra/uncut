@@ -1,4 +1,6 @@
 import {
+  type AgentFocus,
+  type AgentInfo,
   type AgentMention,
   type AgentImage,
   type AgentAccess,
@@ -22,6 +24,8 @@ import { set, state, online, projectOf } from "../core.ts";
 import { call, plainError, uploadOne } from "../server.ts";
 import { applyFromCall } from "../sync.ts";
 import { nextPanelSeq } from "../agentUi.ts";
+import { type AgentQueued } from "../types.ts";
+import { noteAgentsSeen, selectedAgentId } from "../../agents.ts";
 import { actions } from "../actions.ts";
 
 export const agentActions = {
@@ -30,7 +34,7 @@ export const agentActions = {
     prompt: string,
     mentions: ReadonlyArray<AgentMention> = [],
     images: ReadonlyArray<AgentImage> = [],
-    opts: { readonly access?: AgentAccess } = {},
+    opts: { readonly access?: AgentAccess; readonly agentId?: string } = {},
   ): Promise<boolean> {
     if (!online()) return false;
     set({ agentError: undefined });
@@ -58,6 +62,7 @@ export const agentActions = {
         access: opts.access ?? prefs.access,
         ...(images.length ? { images: [...images] } : {}),
         ...(ranges.marks || ranges.selection ? { ranges } : {}),
+        agentId: opts.agentId ?? selectedAgentId(),
       }),
     );
     if (result.ok) return true;
@@ -66,7 +71,29 @@ export const agentActions = {
     if (result.error.reason === "not-installed") void actions.checkSetup();
     return false;
   },
-  agentCancel: () => call((c) => c["agent.cancel"]({})),
+  agentCancel: (agentId: string = selectedAgentId()) => call((c) => c["agent.cancel"]({ agentId })),
+  /** C12: the Agent tab shows this agent. */
+  agentSelect(agentId: string) {
+    if (!state.agent) return;
+    set({ agentSelected: { ...state.agentSelected, [state.agent.dir]: agentId } });
+    noteAgentsSeen();
+  },
+  /** C12: another agent in the open project, selected; the reason when it couldn't be made. */
+  async agentCreate(
+    name: string,
+    focus: AgentFocus,
+  ): Promise<{ readonly ok: true; readonly agent: AgentInfo } | { readonly ok: false; readonly message: string }> {
+    const result = await call((c) => c["agent.create"]({ focus, ...(name.trim() ? { name: name.trim() } : {}) }));
+    if (!result.ok) return { ok: false, message: plainError(result.error) };
+    actions.agentSelect(result.value.id);
+    return { ok: true, agent: result.value };
+  },
+  /** C12: an agent out of the tab row (its turns stay in the history). */
+  async agentArchive(agentId: string) {
+    set({ agentError: undefined });
+    const result = await call((c) => c["agent.archive"]({ agentId }));
+    if (!result.ok) set({ agentError: plainError(result.error) });
+  },
   /** The composer's text and chips (D140). */
   /** D202: the pill's jump: the playhead to where the agent changed things (playback carries on from there), its item selected. */
   agentJump: () => {
@@ -79,8 +106,10 @@ export const agentActions = {
   dismissAgentChange: () => set({ agentChange: undefined }),
   setAgentDraft: (agentDraft: string, agentMentions?: ReadonlyArray<AgentMention>) => set({ agentDraft, ...(agentMentions ? { agentMentions } : {}) }),
   /** Hold a message until the running turn ends (D140); undefined takes it back. */
-  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention>; images?: ReadonlyArray<AgentImage> } | undefined) =>
-    set({ agentQueued: queued }),
+  agentQueue(agentId: string, queued: AgentQueued | undefined) {
+    const { [agentId]: _, ...rest } = state.agentQueued ?? {};
+    set({ agentQueued: queued ? { ...rest, [agentId]: queued } : rest });
+  },
   /** The composer's attached images (D184). */
   setAgentImages: (agentImages: ReadonlyArray<AgentImage>) => set({ agentImages }),
   /** Add a moment (D183) or the In/Out range of the timeline to the chat, as a chip with its timecode. */
@@ -251,9 +280,9 @@ export const agentActions = {
   /** Compact: Claude Code's /compact in the agent's conversation (a row in the thread, the meter drops). */
   agentCompact: () => actions.agentSend("/compact"),
   /** D295: New chat: the next message starts a fresh Claude conversation. */
-  async agentNewThread() {
+  async agentNewThread(agentId: string = selectedAgentId()) {
     set({ agentError: undefined });
-    const result = await call((c) => c["agent.newThread"]({}));
+    const result = await call((c) => c["agent.newThread"]({ agentId }));
     if (!result.ok) set({ agentError: plainError(result.error) });
   },
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */

@@ -80,7 +80,7 @@ export async function intoFonts(
 }
 
 export const makeAskTools = (ctx: TranscriptCtx) => {
-  const { textResult, publish, testRun, approvalMs, st, mediaImport, config } = ctx;
+  const { textResult, publish, testRun, approvalMs, mediaImport, config } = ctx;
 
   let uiCount = 0;
   const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
@@ -180,7 +180,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
             settled = true;
             clearTimeout(timer);
             r.abort.signal.removeEventListener("abort", onStop);
-            if (st.approval?.card.id === card.id) st.approval = undefined;
+            if (r.owner.approval?.card.id === card.id) r.owner.approval = undefined;
             // Registered before the card goes away, so a take that comes back at once is heard.
             onAnswer?.(card, a, source, extra);
             publish();
@@ -190,8 +190,8 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
           const onStop = () => answer("stopped");
           if (r.abort.signal.aborted) return answer("stopped");
           r.abort.signal.addEventListener("abort", onStop, { once: true });
-          st.approval?.answer("deny");
-          st.approval = { card, answer };
+          r.owner.approval?.answer("deny");
+          r.owner.approval = { card, answer };
           publish();
         }),
     );
@@ -312,7 +312,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       // Its card is the one open (cards are shown one at a time).
       let showing = false;
       const close = () => {
-        if (showing && st.approval?.card.permission && st.approval.card.turnId === r.turn.id) st.approval.answer("stopped");
+        if (showing && r.owner.approval?.card.permission && r.owner.approval.card.turnId === r.turn.id) r.owner.approval.answer("stopped");
       };
       // claude gave up on it (an interrupt): no answer, and its card goes.
       s.prompts.set(requestId, () => {
@@ -323,7 +323,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const ask = async () => {
         if (answered) return;
         // Another card may be open (a question, a spend): this one waits for it.
-        while (st.approval && !r.abort.signal.aborted && !answered) await new Promise((done) => setTimeout(done, 150));
+        while (r.owner.approval && !r.abort.signal.aborted && !answered) await new Promise((done) => setTimeout(done, 150));
         if (answered) return;
         if (r.abort.signal.aborted) return deny("Not done: the turn was stopped.");
         // An "Always" given on the card before may cover it now.

@@ -105,6 +105,7 @@ export function Composer({
   project,
   online,
   blocked,
+  agentId,
   turns,
   running,
   provider,
@@ -112,11 +113,13 @@ export function Composer({
   project: Project;
   online: boolean;
   blocked: boolean;
+  agentId: string;
   turns: ReadonlyArray<AgentTurn>;
   running: string | null;
   provider: string;
 }) {
-  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot, brand, templates } = useApp();
+  const { agentDraft: draft, agentMentions: mentions, agentQueued, agentFocus, agentImages: images, snapshot, brand, templates } = useApp();
+  const queued = agentQueued?.[agentId];
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [dropping, setDropping] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -242,7 +245,7 @@ export function Composer({
     setAttachError(undefined);
     if (running) {
       // One message waits for the turn to end; a second one joins it.
-      actions.agentQueue({
+      actions.agentQueue(agentId, {
         prompt: queued ? `${queued.prompt}\n\n${text}` : text,
         mentions: [...(queued?.mentions ?? []), ...mentions],
         images: [...(queued?.images ?? []), ...attached].slice(0, AGENT_IMAGES_MAX),
@@ -253,7 +256,7 @@ export function Composer({
     }
     setDraft("", []);
     actions.setAgentImages([]);
-    if (!(await actions.agentSend(text, mentions, attached))) {
+    if (!(await actions.agentSend(text, mentions, attached, { agentId }))) {
       actions.setAgentDraft(text, mentions);
       actions.setAgentImages(attached);
     }
@@ -309,7 +312,7 @@ export function Composer({
         <div className="composer-queued" data-testid="agent-queued">
           <span className="ellipsis">Queued: {queued.prompt}</span>
           <Tooltip label="Don't send it">
-            <button className="icon-btn" data-testid="agent-unqueue" onClick={() => actions.agentQueue(undefined)}>
+            <button className="icon-btn" data-testid="agent-unqueue" onClick={() => actions.agentQueue(agentId, undefined)}>
               <X />
             </button>
           </Tooltip>
@@ -539,7 +542,7 @@ export function Composer({
         <span className="composer-spacer" />
         {running ? (
           <Tooltip label="Stop">
-            <button className="send stop" data-testid="agent-stop" disabled={!online} onClick={() => void actions.agentCancel()}>
+            <button className="send stop" data-testid="agent-stop" disabled={!online} onClick={() => void actions.agentCancel(agentId)}>
               <Square />
             </button>
           </Tooltip>

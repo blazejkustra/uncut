@@ -2,10 +2,20 @@
 export type * from "./timeline/types.ts";
 export { loadModules, lookProblems, validateModule, validateOps, validateProject } from "./timeline/validate.ts";
 export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
-export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
+export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
-export { byUser, knownProject, netChanges, netEditsNote, netZeroNote, projectChanges, type EntryFilter } from "./timeline/net-edits.ts";
+export {
+  byUser,
+  knownProject,
+  netChanges,
+  netEditsNote,
+  netZeroNote,
+  othersEditsNote,
+  projectChanges,
+  type EntryAuthor,
+  type EntryFilter,
+} from "./timeline/net-edits.ts";
 export {
   animationAt,
   moveEase,

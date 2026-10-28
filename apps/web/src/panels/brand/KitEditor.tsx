@@ -2,6 +2,7 @@ import type { BrandState, BrandKit } from "@uncut/contracts";
 import { X, FolderOpen, Plus, Type, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { actions, getState, brandFileUrl } from "../../state/store.ts";
+import { selectedAgent } from "../../state/agents.ts";
 import { type View, type KitDraft, HEX6, type LogoSlot, lines, LOGO_SLOTS, LOGO_BACKDROP, COLOR_ROLES, FONT_ROLES } from "./kit.ts";
 import { EditorFrame, ScopeChoice, Swatches } from "./parts.tsx";
 import { Tooltip } from "../../ui/Tooltip.tsx";
@@ -142,10 +143,10 @@ export function KitEditor({
 
   const fromReference = async () => {
     setNote(undefined);
-    if (getState().agent?.running) return setNote("The agent is busy");
+    if (selectedAgent(getState())?.running) return setNote("The agent is busy");
     const [path] = await actions.pickBrandFiles();
     if (!path) return;
-    if (getState().agent?.running) return setNote("The agent is busy");
+    if (selectedAgent(getState())?.running) return setNote("The agent is busy");
     await actions.agentSend(`Make a style guide for the kit "${saved?.name ?? (d.name.trim() || view.id)}" (${view.id}) from this reference: ${path}`, [], [], {
       access: "auto",
     });

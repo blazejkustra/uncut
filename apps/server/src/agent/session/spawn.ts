@@ -44,7 +44,6 @@ export const makeSpawn = (ctx: StreamCtx) => {
     persist,
     closeSession,
     canUseTool,
-    st,
     publishNow,
     watchData,
     delivered,
@@ -146,8 +145,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       const info = msg.rate_limit_info;
       if (!info || typeof info !== "object") return;
       const { notice, cleared } = onRateLimit(r.limits, info, Date.now());
-      if (notice) st.limitWarning = notice;
-      else if (cleared) st.limitWarning = undefined;
+      if (notice) s.owner.limitWarning = notice;
+      else if (cleared) s.owner.limitWarning = undefined;
       if (notice || cleared) publishNow();
       return;
     }
@@ -281,11 +280,11 @@ export const makeSpawn = (ctx: StreamCtx) => {
     if (!answered) {
       console.error(`[uncut] claude didn't answer initialize in ${initMs() / 1000} s; the message goes, and every call that needs an approval is refused`);
       s.initFailed = true;
-      st.initWarning =
+      s.owner.initWarning =
         "Claude Code didn't answer Uncut's setup, so approvals can't be asked: commands, file writes and anything else that needs your OK are refused in this session. Update Claude Code, or start a new message to try again.";
       publish();
-    } else if (st.initWarning) {
-      st.initWarning = undefined;
+    } else if (s.owner.initWarning) {
+      s.owner.initWarning = undefined;
       publish();
     }
     if (answered) askContextUsage(s, false);
@@ -459,7 +458,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       sessions.delete(s);
       clearTimeout(s.idleTimer);
       clearTimeout(s.killTimer);
-      if (st.session === s) st.session = undefined;
+      if (s.owner.session === s) s.owner.session = undefined;
       rmSync(s.dir, { recursive: true, force: true });
       const r = s.turn;
       s.turn = undefined;
@@ -473,7 +472,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
         const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
-        st.session = again;
+        s.owner.session = again;
         return writeTurn(again, r);
       }
       // D260 amended: a claude that doesn't take --system-prompt-snapshot: again without it (never again here).
@@ -484,7 +483,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         );
         const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
-        st.session = again;
+        s.owner.session = again;
         return writeTurn(again, r);
       }
       // A stored session can be gone (another Mac, a cleaned ~/.claude): start a fresh one, once.
@@ -495,7 +494,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         persist(s.owner);
         const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
-        st.session = fresh;
+        s.owner.session = fresh;
         return writeTurn(fresh, r);
       }
       // It died mid-turn (a crash, a kill): the next message starts another with --resume.
