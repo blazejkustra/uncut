@@ -69,6 +69,33 @@ export function owned(real: string, project: string): boolean {
   return OWNED_RE.some((re) => re.test(rel));
 }
 
+/** Another project's files a plain read may open: what it is made of, never its history, agent chats or cache. */
+const REFERENCE_READ = [/^project\.json$/i, /^brief\.json$/i, /^storyboard\.json$/i, /^(graphics|brand|reviews)(\/|$)/i];
+/** What may only be listed there: the project folder and its media. */
+const REFERENCE_LIST = [/^$/, /^media(\/|$)/i];
+
+/**
+ * Overnight 2026-10-27: another Uncut project read as a style reference. For a real path inside
+ * another project's folder (`<name>.uncut`, not this project, not in ~/Library, the data folder or
+ * a hidden folder, no hidden file in it): "read" for its project.json, brief.json, storyboard.json,
+ * graphics/, brand/ and reviews/, "list" for the folder itself and media/, else undefined.
+ */
+export function referencePart(real: string, project: string, home = homedir(), dataDir?: string): "read" | "list" | undefined {
+  const segs = real.split(sep);
+  const at = segs.findIndex((seg) => /\.uncut$/i.test(seg));
+  if (at < 0) return undefined;
+  const folder = segs.slice(0, at + 1).join(sep);
+  const lower = (p: string) => p.toLowerCase();
+  if (inside(lower(folder), lower(project)) || inside(lower(project), lower(folder))) return undefined;
+  if (inside(folder, join(home, "Library")) || (dataDir && inside(folder, dataDir))) return undefined;
+  if (segs.slice(0, at + 1).some((seg) => seg.startsWith("."))) return undefined;
+  const rel = segs.slice(at + 1).join("/");
+  if (rel.split("/").some((seg) => seg.startsWith("."))) return undefined;
+  if (REFERENCE_READ.some((re) => re.test(rel))) return "read";
+  if (REFERENCE_LIST.some((re) => re.test(rel))) return "list";
+  return undefined;
+}
+
 /**
  * Why a pasted folder can't become a root (D194), or undefined: it must be a real folder under the
  * home folder, at least one level down, not ~/Library, not a dot-folder anywhere on the way.

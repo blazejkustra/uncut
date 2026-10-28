@@ -65,10 +65,13 @@ export function capSkipped<T extends { readonly reason: string }>(
 /**
  * Why `real` (a path with symlinks resolved) can't be imported into the project at `projectReal`,
  * or undefined. The project's own folder and anything in it are refused (its cache, its history,
- * project.json), except its media/ folder, which is there for footage (D12).
+ * project.json), except its media/ folder, which is there for footage (D12), and the agent's
+ * scratch folder .cache/work/ (D310), whose files are copied into media/imports on import.
  */
 export function refusal(real: string, projectReal: string, shown: string): string | undefined {
-  if (inside(real, join(projectReal, ".cache"))) return `${shown} is in the project's cache (.cache), which holds Uncut's own files, not footage.`;
+  if (inside(real, join(projectReal, ".cache", "work"))) return undefined;
+  if (inside(real, join(projectReal, ".cache")))
+    return `${shown} is in the project's cache (.cache), which holds Uncut's own files, not footage. Files you made in .cache/work/ can be imported (they're copied into media/imports).`;
   if (real === projectReal) return `${shown} is the project's own folder. Import footage from the folder where it lives.`;
   if (inside(real, projectReal) && !inside(real, join(projectReal, "media")))
     return `${shown} is inside the project's folder, which holds Uncut's own files. Import footage from the folder where it lives.`;

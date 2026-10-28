@@ -230,7 +230,7 @@ export const layer = Layer.effect(
             initial = history.stateAt(from);
             cursor = history.cursor;
             // Nothing changed while it was closed; still, the agent re-reads before editing.
-            unlogged = { revision: head, what: "The project was closed and opened again (nothing changed in between)" };
+            unlogged = { revision: head, what: "The project was closed and opened again (nothing changed in between)", unchanged: true };
           } else {
             const revision = head + 1;
             const lines = externalLines(history.stateAt(head), project);

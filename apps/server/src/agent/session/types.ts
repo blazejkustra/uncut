@@ -29,9 +29,11 @@ export interface Loaded {
   readonly turns: Array<StoredTurn>;
   // The newest revision the agent has seen (its last project_read, or the note it got).
   agentSeen: number;
-  // Revisions the agent read in this opening: the only ones it may base an edit on. Revisions
-  // restart when the server does, so a number remembered from an earlier opening could name
-  // another state; this refuses it whatever it is.
+  // Revisions the agent was given (project_read, its edits' results, a turn note, a refusal's
+  // revision): the only ones it may base an edit on. Kept while this server runs, also when the
+  // same folder opens again: revisions never repeat for a folder here, and an edit based on one
+  // from before a reopen that changed anything is refused by the edit itself (unlogged changes).
+  // Revisions may restart when the server does, so this isn't saved.
   seen: Set<number>;
   // D6 note from an earlier opening (persisted as pendingNote), for the next turn.
   carried: string | undefined;
@@ -231,6 +233,10 @@ export interface Running {
   picked: Array<string>;
   // D194: permission cards one at a time (a parallel call's card waits for the one open).
   permissionQueue: Promise<unknown>;
+  // A read the user allowed once on a card (its turnKey): no second card for it in this turn.
+  readonly turnGrants: Set<string>;
+  // A read the user said no to (or didn't answer) in this turn: refused again without a card, with what they were told.
+  readonly turnRefusals: Map<string, string>;
   // D194: tool_use id → tool name in this turn (to tell web results from file data).
   readonly toolNames: Map<string, string>;
   // D194: media_download's spending in this turn.

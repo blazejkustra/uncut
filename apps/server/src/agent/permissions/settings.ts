@@ -89,7 +89,7 @@ const bashSafe = (p: string) => p.replace(/[\\*]/g, (c) => `\\${c}`);
  * file tool writes anywhere in it and the token isn't read or named by a command (deny rules). The
  * same for every app's data in ~/Library/Application Support (browsers' cookies, other apps'
  * tokens): no writes. A command naming apps' data goes to Uncut (appDataAskRules), which runs only
- * a plain read of the active kit or the graphic libraries and refuses the rest (decide).
+ * a plain read of the brand kits or the graphic libraries and refuses the rest (decide).
  */
 export function appDataRules(dataDir?: string): Array<string> {
   const rules = ["Edit(~/Library/Application Support/**)"];
@@ -102,7 +102,7 @@ export function appDataRules(dataDir?: string): Array<string> {
 /**
  * D219 (issue A/B 2026-10-17): commands naming apps' data are ask rules, not deny rules, in every
  * access: an ask rule is checked before claude's read-only auto-allow and its classifier, so the
- * command comes to Uncut over stdio and `decide` lets a plain read of the active kit's files run
+ * command comes to Uncut over stdio and `decide` lets a plain read of the brand kits' files run
  * (claude's deny rules refused `cat` of a kit SVG silently, with no card) and refuses the rest.
  */
 export function appDataAskRules(dataDir?: string, claudeConfig: ReadonlyArray<string> = []): Array<string> {

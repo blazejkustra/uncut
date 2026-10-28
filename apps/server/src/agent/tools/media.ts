@@ -64,8 +64,9 @@ export const makeMediaTools = (ctx: CoreCtx) => {
       let plan = planned;
       if (name && plan.files.length !== 1) return textResult("name is only for importing one file; leave it out for a folder or several paths.", true);
       if (!plan.files.length) return textResult({ imported: [], ...capSkipped(plan.skipped), failed: [], note: "Nothing to import: no media files there." });
-      // D205 (D12): a file inside another project's folder is copied into this one's media/imports
-      // (that project may move or go); anything else is referenced where it is.
+      // D205 (D12): a file inside another project's folder or this one's .cache/work/ is copied into
+      // this one's media/imports (that project may move or go, the cache is disposable); anything
+      // else is referenced where it is.
       const copied: Array<string> = [];
       const files: Array<string> = [];
       for (const f of plan.files) {
@@ -144,7 +145,9 @@ export const makeMediaTools = (ctx: CoreCtx) => {
           : {}),
         ...capSkipped(skippedOut),
         failed,
-        ...(copied.length ? { copied, copiedNote: "These lived inside another project, so they were copied into this project's media/imports (D12)." } : {}),
+        ...(copied.length
+          ? { copied, copiedNote: "These lived inside another project or in .cache/work/, so they were copied into this project's media/imports (D12)." }
+          : {}),
         ...(entries.length ? { note: "Frames, in and duration are project frames; probe frames is each file's length in them." } : {}),
         ...(outcome.userChanges
           ? {

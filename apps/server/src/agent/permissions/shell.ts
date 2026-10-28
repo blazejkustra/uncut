@@ -3,6 +3,9 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { absolute, inside, owned } from "./paths.ts";
 
+/** Whether the & at `i` belongs to a redirect (`2>&1`, `<&3`, `&>file`), not a background or `&&`. */
+const redirectAmp = (line: string, i: number) => line[i - 1] === ">" || line[i - 1] === "<" || (line[i + 1] === ">" && line[i - 1] !== "&");
+
 /** The commands of a shell line: split on ;, &&, ||, |, & and newlines (quotes kept together). */
 export function shellSegments(command: string): Array<string> {
   const out: Array<string> = [];
@@ -25,6 +28,10 @@ export function shellSegments(command: string): Array<string> {
     }
     if (c === "\\" && i + 1 < command.length) {
       cur += c + command[++i];
+      continue;
+    }
+    if (c === "&" && redirectAmp(command, i)) {
+      cur += c;
       continue;
     }
     if (c === ";" || c === "\n" || c === "|" || c === "&") {
@@ -142,7 +149,7 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
         .some((p) => !ok(p))
     )
       return "deletes files outside the project";
-    for (const m of segment.matchAll(/(?:^|[^<>&\d])>>?\s*("[^"]+"|'[^']+'|[^\s;&|]+)/g)) {
+    for (const m of segment.matchAll(/(?:^|[^<>&\d])(?:\d+|&)?>>?\s*("[^"]+"|'[^']+'|[^\s;&|]+)/g)) {
       const target = m[1]!.replace(/^["']|["']$/g, "");
       if (target === "/dev/null" || target.startsWith("&")) continue;
       if (!ok(target)) return `writes ${target} outside the project`;
@@ -216,10 +223,12 @@ const WC_FLAGS: ReadonlySet<string> = new Set(["-l", "-w", "-c", "-m", "-lc", "-
 /** Where an allowlisted command may read: the project, and (reads only) the sanctioned folders (D296). */
 export interface ReadZones {
   readonly project: string;
-  /** The active kit's folder and the bundled graphic libraries: read, never written. Real paths. */
+  /** The brand kits and the bundled graphic libraries: read, never written. Real paths. */
   readonly sanctioned?: ReadonlyArray<string>;
-  /** Further real paths that may be read (Claude Code's saved tool output of this project). */
+  /** Further real paths that may be read (Claude Code's saved tool output of this project, another project's plan and graphics, confirmed folders). */
   readonly readable?: (real: string) => boolean;
+  /** Further real paths that may only be listed (ls) or entered (cd): another project's folder and its media/. */
+  readonly listable?: (real: string) => boolean;
   /** A folder's entries (its real path), for a cp source's * or ? (copyIntoProject); without it a glob isn't taken. */
   readonly list?: (realDir: string) => ReadonlyArray<string>;
 }
@@ -227,7 +236,7 @@ export interface ReadZones {
 /**
  * Auto's commands that run without a card when claude asks Uncut (D194, after two security reviews;
  * issue A/B 2026-10-17): ls, cat, head, tail and stat of paths inside the project or a sanctioned
- * folder (the active kit, the graphic libraries), and mkdir -p of paths inside the project only.
+ * folder (the brand kits, the graphic libraries), and mkdir -p of paths inside the project only.
  * A path may be relative (to the project) or absolute; never ~, .., * ? [ ] { } or =; it is judged
  * by its real path (`real`, symlinks followed), so a link can't reach out. Only the flags in FLAGS
  * (head/tail: -n or -c and a number). Reading Uncut's own files (project.json, …) is fine; making a
@@ -237,7 +246,12 @@ export interface ReadZones {
  * and the rest always get a card (a cp only runs without one as copyIntoProject judges it).
  */
 export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
-  const { project, sanctioned = [], readable: extra } = typeof zones === "string" ? { project: zones, readable: undefined } : zones;
+  const {
+    project,
+    sanctioned = [],
+    readable: extra,
+    listable,
+  } = typeof zones === "string" ? { project: zones, readable: undefined, listable: undefined } : zones;
   const flags = FLAGS[name];
   if (!flags && name !== "grep" && name !== "wc") return false;
   const paths: Array<string> = [];
@@ -296,6 +310,7 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
       })
     );
   }
+  if (name === "ls") return paths.every((a) => readable(a) || (plain(a) && listable?.(real(a)) === true));
   return paths.every(readable);
 }
 
@@ -487,9 +502,12 @@ export function notReadOnly(command: string, real: (p: string, base: string) => 
   return nonReads(command, real, zones)[0];
 }
 
+/** Redirects that write no file: errors thrown away, or sent along with the output. */
+const HARMLESS_REDIRECTS = ["2>/dev/null", "2>&1"];
+
 /**
- * A line without each unquoted `2>/dev/null` word (errors thrown away: it writes nowhere). The line
- * still runs as typed; this is only what is judged.
+ * A line without each unquoted `2>/dev/null` or `2>&1` word (errors thrown away or joined to the
+ * output: it writes nowhere). The line still runs as typed; this is only what is judged.
  */
 function devNullDropped(c: string): string {
   let out = "";
@@ -502,9 +520,12 @@ function devNullDropped(c: string): string {
       continue;
     }
     if (ch === "'" || ch === '"') quote = ch;
-    else if ((i === 0 || /\s/.test(c[i - 1]!)) && c.startsWith("2>/dev/null", i) && /^(?:[\s;|&]|$)/.test(c.slice(i + 11, i + 12))) {
-      i += 10;
-      continue;
+    else if (i === 0 || /\s/.test(c[i - 1]!)) {
+      const word = HARMLESS_REDIRECTS.find((w) => c.startsWith(w, i) && /^(?:[\s;|&]|$)/.test(c.slice(i + w.length, i + w.length + 1)));
+      if (word) {
+        i += word.length - 1;
+        continue;
+      }
     }
     out += ch;
   }
@@ -625,7 +646,7 @@ export function nonReads(command: string, real: (p: string, base: string) => str
       const to = real(args[0]!, cwd);
       // Into the project or a sanctioned folder (round 3's A1: `cd <kit>; head -c 600 a.svg`). The line
       // runs pinnedToProject, in a subshell, so the cd doesn't outlast it.
-      if (!inside(to, zones.project) && !(zones.sanctioned ?? []).some((d) => inside(to, d))) out.push(shown);
+      if (!inside(to, zones.project) && !(zones.sanctioned ?? []).some((d) => inside(to, d)) && !zones.readable?.(to) && !zones.listable?.(to)) out.push(shown);
       else cwd = to;
       continue;
     }

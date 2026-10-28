@@ -271,9 +271,10 @@ test("D194 file writes: Look only refuses; .cache goes; the project goes in Auto
   assert.equal(kind("SomeNewTool", {}, "auto"), "ask", "an unknown tool asks in Auto too");
 });
 
-test("D194 a pasted folder is only offered: a card confirms it (Root grant); bad roots are never offered", () => {
-  const cand = d("Read", { file_path: `${ROOT}/logo.svg` }, "auto", { candidates: [ROOT] });
+test("D194 a pasted folder is only offered: a card confirms it (Root grant) in Ask first, Auto reads it as Bash would (overnight 2026-10-27); writes there ask; bad roots are never offered", () => {
+  const cand = d("Read", { file_path: `${ROOT}/logo.svg` }, "ask", { candidates: [ROOT] });
   assert.ok(cand.kind === "ask" && cand.title === "Use a folder you mentioned" && cand.target === "~/Marketing" && cand.grant === `Root:${ROOT}`);
+  assert.ok(cand.kind === "ask" && cand.turnKey === `Read:${ROOT}/logo.svg`);
   const fs: Record<string, "dir" | "file"> = {
     "/Users/me/Marketing assets": "dir",
     "/Users/me/Marketing assets/logo.svg": "file",
@@ -617,20 +618,18 @@ test("A/B 2026-10-17: Auto reads the project and the sanctioned folders with pla
   assert.equal(kind("Bash", { command: "cat link/key.txt" }, "auto", { ...extra, realpath: (p) => p.replace(`${PROJECT}/link`, "/Users/me/.secret") }), "ask");
 });
 
-test("D296: the active brand kit's folder and the bundled graphic libraries are read without a card; writes there and everything else stay gated", async () => {
+test("D296 (overnight 2026-10-27): the brand kits (all of them, active or not) and the bundled graphic libraries are read without a card; writes there and everything else stay gated", async () => {
   const { sanctionedDirs } = await import("../../apps/server/src/agent/tools/ask.ts");
   const DATA = `${HOME}/Library/Application Support/Uncut`;
   const LIBS = "/Applications/Uncut.app/Contents/Resources/graphic-libs";
-  const dirs = sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, "uncut");
-  assert.ok(dirs.includes(`${DATA}/brand/kits/uncut`) && dirs.includes(LIBS), JSON.stringify(dirs));
-  assert.deepEqual(sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, null), [LIBS], "no kit: only the libraries");
-  assert.deepEqual(sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, "../x"), [LIBS], "a kit id that isn't one is no folder");
-  const sanctioned = [`${DATA}/brand/kits/uncut`, LIBS];
+  assert.deepEqual(sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT), [LIBS, `${DATA}/brand/kits`]);
+  const sanctioned = [`${DATA}/brand/kits`, LIBS];
   for (const access of ["look", "ask", "auto"] as const) {
     assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/uncut/ui-editor.webp` }, access, { sanctioned }), "allow");
     assert.equal(kind("Read", { file_path: `${LIBS}/motion.js` }, access, { sanctioned }), "allow");
     assert.equal(kind("Glob", { pattern: "*", path: `${DATA}/brand/kits/uncut` }, access, { sanctioned }), "allow");
-    assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/other/logo.svg` }, access, { sanctioned }), "ask", "another kit still asks");
+    assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/argent/nav-logo.svg` }, access, { sanctioned }), "allow", "a kit the project doesn't use");
+    for (const file of ["keys.json", "settings.json"]) assert.equal(kind("Read", { file_path: `${DATA}/${file}` }, access, { sanctioned }), "ask");
     assert.equal(kind("Read", { file_path: `${DATA}/server-token` }, access, { sanctioned }), "ask");
     assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/uncut/../../../settings.json` }, access, { sanctioned }), "ask", "no climbing out");
     assert.equal(
@@ -644,7 +643,7 @@ test("D296: the active brand kit's folder and the bundled graphic libraries are 
   assert.equal(kind("Read", { file_path: `${LIBS}/motion.js` }, "ask", { sanctioned, webUsed: true }), "ask");
 });
 
-test("D296: a symlinked kit folder sanctions nothing it points at; a project's own kit isn't a sanctioned dir (it's the project)", async () => {
+test("D296: a symlinked kit folder opens nothing it points at, a symlinked kits folder sanctions nothing; a project's own kit isn't a sanctioned dir (it's the project)", async () => {
   const { sanctionedDirs } = await import("../../apps/server/src/agent/tools/ask.ts");
   const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-sanctioned-")));
   try {
@@ -657,11 +656,15 @@ test("D296: a symlinked kit folder sanctions nothing it points at; a project's o
     symlinkSync(docs, join(data, "brand", "kits", "evil"));
     symlinkSync(join(data, "brand", "kits", "real"), join(data, "brand", "kits", "alias"));
     const config = { dataDir: data, graphicLibsDir: libs };
-    assert.deepEqual(sanctionedDirs(config, project, "evil"), [libs], "a link out of the kits folder: only the libraries");
-    assert.deepEqual(sanctionedDirs(config, project, "real"), [libs, join(data, "brand", "kits", "real")]);
-    assert.deepEqual(sanctionedDirs(config, project, "alias"), [libs, join(data, "brand", "kits", "real")], "a link to another kit stays inside");
-    const sanctioned = sanctionedDirs(config, project, "evil");
-    assert.equal(decide("Read", { file_path: join(docs, "taxes.pdf") }, { access: "auto", project, roots: [], sanctioned, grants: new Set() }).kind, "ask");
+    const sanctioned = sanctionedDirs(config, project);
+    assert.deepEqual(sanctioned, [libs, join(data, "brand", "kits")]);
+    const read = (file: string) => decide("Read", { file_path: file }, { access: "auto", project, roots: [], sanctioned, grants: new Set() }).kind;
+    for (const file of [join(data, "brand", "kits", "evil", "taxes.pdf"), join(docs, "taxes.pdf")]) assert.equal(read(file), "ask", "judged where it points");
+    assert.equal(read(join(data, "brand", "kits", "alias", "kit.json")), "allow", "a link to another kit stays inside");
+    const linked = join(root, "linked");
+    mkdirSync(join(linked, "brand"), { recursive: true });
+    symlinkSync(docs, join(linked, "brand", "kits"));
+    assert.deepEqual(sanctionedDirs({ dataDir: linked, graphicLibsDir: libs }, project), [libs], "a kits folder that is a link: only the libraries");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1058,10 +1061,7 @@ test("round 9: this project's saved tool output is copied into the project (a pr
   ] as const) {
     const r = r9d(command);
     assert.ok(
-      r.kind === "deny" &&
-        r.message.includes(piece) &&
-        /Copy the files into the project first/.test(r.message) &&
-        r.message.includes("cp of such files into the project"),
+      r.kind === "deny" && r.message.includes(piece) && /Copy the files into the project first/.test(r.message) && r.message.includes("cp of such files"),
       r.kind === "deny" ? r.message : r.kind,
     );
   }
@@ -1248,7 +1248,7 @@ test("T4: a cd into the kit's quoted path with reads passes; joined to which, on
 
 test("D310 the agent's scratch folder: .cache/work/ in the project runs without a card in Auto (Ask first too, for files); /tmp still asks; a link out of it is outside; secrets stay refused", async () => {
   const { SYSTEM_PROMPT } = await import("../../apps/server/src/agent/agentTools.ts");
-  assert.match(SYSTEM_PROMPT, /scratch files \(scripts, renders, contact sheets\) go in \.cache\/work\/, never \/tmp/);
+  assert.match(SYSTEM_PROMPT, /scratch files \(scripts, renders, cut audio\) go in \.cache\/work\/, never \/tmp or media\//);
   const W = `${PROJECT}/.cache/work`;
   // D4's turn, done in the project's scratch folder: Write film.html, Read it and the contact sheets back, no card.
   for (const access of ["auto", "ask"] as const) {

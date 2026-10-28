@@ -51,6 +51,8 @@ export interface UnloggedChange {
   readonly what: string;
   /** Its effect shows in the note's net changes (D6), so it gets no line of its own. */
   readonly quiet?: boolean;
+  /** A reopen that found the project as it was: the state didn't change. */
+  readonly unchanged?: true;
 }
 
 /** The open project as the agent service needs it: the session with its log. Read-only. */

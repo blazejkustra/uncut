@@ -5,8 +5,8 @@ import { layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { QUESTION_MS } from "../agentPlan.ts";
 import { join } from "node:path";
-import { claudeConfigDirs, decide, inside, realPath, shownPath } from "../agentPermissions.ts";
-import { BRAND_ID, globalBrandDir, readActive } from "../../brand/store.ts";
+import { claudeConfigDirs, decide, realPath, shownPath } from "../agentPermissions.ts";
+import { globalBrandDir } from "../../brand/store.ts";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { FONT_FORMATS } from "@uncut/core";
@@ -20,23 +20,17 @@ import type { McpResult, CardAnswer } from "../agent.ts";
 import type { TranscriptCtx } from "./transcript.ts";
 
 /**
- * D296: the folders read without a card (agentPermissions sanctioned): the active kit's in the
- * user's kits and the bundled graphic libraries; real paths. A project's own kit is in the project
- * zone already. A kit folder that is a symlink out of the kits folder sanctions nothing, so a link
- * can't open up any folder it points at.
+ * D296: the folders read without a card (agentPermissions sanctioned): the bundled graphic
+ * libraries and the user's brand kits (all of them, active or not); real paths. A project's own kit
+ * is in the project zone already. Paths are judged by their real path, so a kit folder that is a
+ * symlink out of the kits folder opens nothing it points at; a kits folder that is itself a symlink
+ * sanctions nothing.
  */
-export const sanctionedDirs = (
-  config: { readonly dataDir: string; readonly graphicLibsDir: string },
-  projectDir: string,
-  kit: string | null,
-): Array<string> => {
+export const sanctionedDirs = (config: { readonly dataDir: string; readonly graphicLibsDir: string }, projectDir: string): Array<string> => {
   const dirs = [realPath(config.graphicLibsDir, projectDir)];
-  if (kit && BRAND_ID.test(kit)) {
-    const kits = join(globalBrandDir(config.dataDir), "kits");
-    const parent = realPath(kits, projectDir);
-    const dir = realPath(join(kits, kit), projectDir);
-    if (dir !== parent && inside(dir, parent)) dirs.push(dir);
-  }
+  const brand = globalBrandDir(config.dataDir);
+  const kits = realPath(join(brand, "kits"), projectDir);
+  if (kits === join(realPath(brand, projectDir), "kits")) dirs.push(kits);
   return dirs;
 };
 
@@ -133,7 +127,20 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     return textResult(`Shown: ${shown.join(", ")}.`);
   };
 
-  /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
+  /**
+   * How long a card waits (undefined: until the user answers, the turn stops or the project closes).
+   * A permission card waits for the user (they may be away during a long build; Claude Code's
+   * can_use_tool request has no deadline of its own); a question or a storyboard may take thinking
+   * over (QUESTION_MS); a spend card APPROVAL_MS. UNCUT_APPROVAL_MS shortens all of them in tests.
+   */
+  const cardWait = (more: { readonly question?: unknown; readonly storyboard?: unknown; readonly permission?: unknown } | undefined): number | undefined => {
+    const testMs = testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : undefined;
+    if (more?.permission) return testMs;
+    if (more?.question || more?.storyboard) return testMs ?? QUESTION_MS;
+    return approvalMs();
+  };
+
+  /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time (cardWait) or a stopped turn is no. */
   const askUser = (
     r: Running,
     text: string,
@@ -152,15 +159,13 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     Effect.promise(
       () =>
         new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
-          // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
-          const long = !!(more?.question || more?.storyboard);
-          const ms = long && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : long ? QUESTION_MS : approvalMs();
+          const ms = cardWait(more);
           const card: AgentApproval = {
             id: randomUUID(),
             turnId: r.turn.id,
             text,
             estimate,
-            until: new Date(Date.now() + ms).toISOString(),
+            ...(ms !== undefined ? { until: new Date(Date.now() + ms).toISOString() } : {}),
             ...(screen ? { screen } : {}),
             ...(edit ? { edit } : {}),
             ...(more?.question ? { question: more.question } : {}),
@@ -181,7 +186,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
             publish();
             resolve(a);
           };
-          const timer = setTimeout(() => answer("timeout"), ms);
+          const timer = ms !== undefined ? setTimeout(() => answer("timeout"), ms) : undefined;
           const onStop = () => answer("stopped");
           if (r.abort.signal.aborted) return answer("stopped");
           r.abort.signal.addEventListener("abort", onStop, { once: true });
@@ -283,39 +288,24 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         "Not done: Uncut couldn't set up approvals with Claude Code (it didn't answer initialize), so nothing that needs the user's OK runs in this session. Say what you would do.",
       );
     const project = realPath(r.owner.dir, r.owner.dir);
-    // D296: the active kit's folder (the user's, or the project's own) and the bundled graphic
+    // D296: the brand kits (the user's; a project's own are in it) and the bundled graphic
     // libraries are read without a card: Uncut points the agent at them.
-    let sanctioned: ReadonlyArray<string> = [];
+    const sanctioned = sanctionedDirs(config, r.owner.dir);
+    // "Always" answers of the session, and the reads allowed once in this turn.
+    const grants = () => new Set([...r.owner.grants, ...r.turnGrants]);
     const ctx = () => ({
       access: r.access,
       project,
       roots: r.owner.dirs,
       sanctioned,
       candidates: r.owner.mentioned,
-      grants: r.owner.grants,
+      grants: grants(),
       webUsed: r.owner.webUsed,
       tainted: r.owner.tainted,
       dataDir: config.dataDir,
       claudeConfig: claudeConfigDirs(),
     });
-    // claude may give up on it while the kit is looked up: then it's not answered at all.
-    s.prompts.set(requestId, () => {
-      answered = true;
-      s.prompts.delete(requestId);
-    });
-    void readActive(r.owner.dir)
-      .then(
-        (active) => (sanctioned = sanctionedDirs(config, r.owner.dir, active.kit)),
-        () => {},
-      )
-      .then(() => decideFirst())
-      .catch((error) => {
-        // Always answered: a decision that failed is a no.
-        console.error(`[uncut] permission check for ${tool} failed: ${(error as Error).message}`);
-        deny("Not done: Uncut couldn't check whether this may run.");
-      });
     const decideFirst = () => {
-      if (answered) return;
       const first = decide(tool, input, ctx());
       if (first.kind === "allow") return allow(first.updatedInput);
       if (first.kind === "deny") return deny(first.message);
@@ -340,6 +330,8 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         const d = decide(tool, input, ctx());
         if (d.kind === "allow") return allow(d.updatedInput);
         if (d.kind === "deny") return deny(d.message);
+        const refused = d.turnKey ? r.turnRefusals.get(d.turnKey) : undefined;
+        if (refused) return deny(refused);
         let always = false;
         showing = true;
         const answer = await Effect.runPromise(
@@ -362,18 +354,26 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
             const dir = d.grant.slice(5);
             if (!r.owner.dirs.includes(dir) && r.owner.dirs.length < 16) r.owner.dirs.push(dir);
           } else if (always && d.grant) r.owner.grants.add(d.grant);
+          if (d.turnKey) r.turnGrants.add(d.turnKey);
           return allow(d.updatedInput);
         }
         if (answer === "stopped") return deny("Not done: the turn was stopped.");
-        return deny(
-          `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`,
-        );
+        const refusal = `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn, with this tool or another (Read, Bash); say what you wanted to do and why.`;
+        if (d.turnKey) r.turnRefusals.set(d.turnKey, refusal);
+        return deny(refusal);
       };
       r.permissionQueue = r.permissionQueue.then(ask, ask).catch((error) => {
         console.error(`[uncut] permission prompt for ${tool} failed: ${(error as Error).message}`);
         deny("Not done: Uncut couldn't ask the user.");
       });
     };
+    try {
+      decideFirst();
+    } catch (error) {
+      // Always answered: a decision that failed is a no.
+      console.error(`[uncut] permission check for ${tool} failed: ${(error as Error).message}`);
+      deny("Not done: Uncut couldn't check whether this may run.");
+    }
   };
 
   return { askUser, mediaDownload, uiShow, canUseTool, permit };
