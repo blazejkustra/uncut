@@ -3,7 +3,9 @@
 // - rasterise hears every frame of a graphic as done of total, the first and the last included;
 // - the job's step goes out at least every couple of seconds while frames are drawn (a fake clock,
 //   100 ms a frame), not once per frame;
-// - the dialog's line says which frame it's on, and its bar follows; other steps say what they do.
+// - the dialog's line says which frame it's on, and its bar follows; other steps say what they do;
+// - the Export button counts too: "Preparing 19%" while frames are drawn (an export of argent-100s
+//   said only "Exporting…" for its first 334 s), "Exporting 40%" in the encode.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +17,7 @@ import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { rasterise } from "../../apps/server/src/export/exporter/rasterise.ts";
 import { stepReporter, STEP_MS } from "../../apps/server/src/export/exporter/runJob.ts";
 import type { Rasterizer } from "../../apps/server/src/export/rasterizer.ts";
-import { preparingStatus } from "../../apps/web/src/panels/exportDialog/format.ts";
+import { exportButtonText, preparingStatus } from "../../apps/web/src/panels/exportDialog/format.ts";
 
 const FRAMES = 1680;
 const project = {
@@ -110,4 +112,13 @@ test("the dialog says which frame it's drawing, and its bar follows", () => {
   assert.deepEqual(preparingStatus({ step: { kind: "graphics" } }), { text: "Drawing the graphics…", fraction: undefined });
   assert.deepEqual(preparingStatus({ step: { kind: "sound" } }), { text: "Measuring the sound…", fraction: undefined });
   assert.deepEqual(preparingStatus({ step: { kind: "loudness" } }), { text: "Measuring the loudness…", fraction: undefined });
+});
+
+test("the Export button shows how far preparing is, as the dialog's bar does", () => {
+  assert.equal(exportButtonText({ phase: "queued", progress: 0 }), "Exporting…");
+  assert.equal(exportButtonText({ phase: "preparing", progress: 0 }), "Preparing…");
+  assert.equal(exportButtonText({ phase: "preparing", progress: 0, step: { kind: "sound" } }), "Preparing…");
+  assert.equal(exportButtonText({ phase: "preparing", progress: 0, step: { kind: "graphics", done: 312, total: 1680 } }), "Preparing 19%");
+  assert.equal(exportButtonText({ phase: "preparing", progress: 0, step: { kind: "shaders", done: 5, total: 10 } }), "Preparing 50%");
+  assert.equal(exportButtonText({ phase: "rendering", progress: 0.4, step: { kind: "graphics", done: 10, total: 10 } }), "Exporting 40%");
 });

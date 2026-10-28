@@ -50,7 +50,7 @@ import {
 } from "./exportDialog/format.ts";
 import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
-export { exportRunning, folderName } from "./exportDialog/format.ts";
+export { exportRunning, exportButtonText, folderName } from "./exportDialog/format.ts";
 
 export function ExportDialog({ project, dir }: { project: Project; dir: string }) {
   const { appInfo, exportJobs, exportJobId, exportFolder, setupChecks, setupChecking, environment, downloads } = useApp();
