@@ -172,7 +172,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
   // Chromium draws text on whole pixels but a box's edges anywhere, so a move's sub-pixel tail (a
   // spring settling or overshooting its place by under a pixel) left the box still while its text
-  // jumped a pixel up and back. An element within a pixel of its place (a translate under 1 px,
+  // jumped a pixel up and back. An element within a pixel of its place (a translate of at most 1 px,
   // a scale changing its size by under 1 px, no scaled parent) is put exactly there; real moves
   // stay fractional, so drifts and motion blur keep their sub-pixel steps.
   const plainMatrix = (style) => style.translate !== "none" || style.rotate !== "none" || style.scale !== "none" ? undefined : new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
@@ -189,7 +189,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   const settleTails = () => {
     for (const el of document.querySelectorAll('[style*="transform"]')) {
       const m = nearShift(el);
-      if (!m || Math.abs(m.e) >= 1 || Math.abs(m.f) >= 1 || (m.a === 1 && m.d === 1 && m.e === 0 && m.f === 0) || !shiftedOnly(el)) continue;
+      if (!m || Math.abs(m.e) > 1 || Math.abs(m.f) > 1 || (m.a === 1 && m.d === 1 && m.e === 0 && m.f === 0) || !shiftedOnly(el)) continue;
       el.style.transform = "translate(0px, 0px)";
     }
   };

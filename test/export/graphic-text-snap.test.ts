@@ -9,7 +9,9 @@
 //   same move under a scale the bootstrap leaves alone (one that sizes the card 2 px bigger) still
 //   shakes, so the check would see it;
 // - a slow drift (0.3 px a frame) keeps its sub-pixel steps: the card's edge moves 0.3 px every frame;
-// - which transforms are put in place: a translate under 1 px, with a scale under a pixel of the
+// - a pop whose dy is rounded to whole pixels (argent100-v4-6's own patch) overshoots to exactly
+//   1 px: that settles too, so the card and its text don't go up a pixel and back;
+// - which transforms are put in place: a translate of at most 1 px, with a scale under a pixel of the
 //   element's size; not a longer translate, not one inside a scaled parent, not a real scale.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -118,6 +120,17 @@ test("a card scaling in on a spring (pop with s 0.96, as argent-100s' agent card
   assert.deepEqual(findShakes(frames, canvas.width, canvas.height), []);
 });
 
+test("a pop rounded to whole pixels, overshooting by exactly 1 px, settles without a shake", { skip, timeout: 120_000 }, async () => {
+  const rounded = pop("").replace("dy.toFixed(2)", "Math.round(dy)");
+  const frames = [];
+  for (const f of FRAMES) frames.push({ frame: f, gray: await grayAt(rounded, f, "rounded") });
+  assert.ok(
+    frames.some((x) => Math.abs(measure(x.gray).edge - CARD_TOP) < 0.5),
+    "the card reaches its place",
+  );
+  assert.deepEqual(findShakes(frames, canvas.width, canvas.height), []);
+});
+
 test("the same move under a scale left as it is shakes, and the check sees it", { skip, timeout: 120_000 }, async () => {
   const frames = [];
   for (const f of FRAMES) frames.push({ frame: f, gray: await grayAt(pop(" scale(1.004)"), f, "scaled") });
@@ -139,7 +152,7 @@ test("a slow drift keeps its sub-pixel steps", { skip, timeout: 120_000 }, async
 
 // The second frame reads what the bootstrap left after the first (graphics are drawn in order in one page): green when each is as expected.
 const RULES = `<div id="a" style="position:absolute"></div><div id="p" style="position:absolute;transform:scale(2)"><div id="b" style="position:absolute"></div></div>
-<div id="s" style="position:absolute"></div><div id="z" style="position:absolute;width:200px;height:20px"></div><div id="n" style="position:absolute"></div><div id="w" style="position:absolute"></div><div id="y" style="position:absolute;width:200px;height:20px"></div>
+<div id="s" style="position:absolute"></div><div id="z" style="position:absolute;width:200px;height:20px"></div><div id="n" style="position:absolute"></div><div id="w" style="position:absolute"></div><div id="y" style="position:absolute;width:200px;height:20px"></div><div id="r" style="position:absolute"></div>
 <canvas id="out" width="640" height="360"></canvas>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -152,9 +165,10 @@ window.render = (t) => {
     $("w").style.transform = "translateY(0.4px)";
     $("z").style.transform = "translate(2.5px, 0px) scale(1.001)";
     $("y").style.transform = "translate(0.6px, -0.3px) scale(1.001)";
+    $("r").style.transform = "translate(0px, -1px) scale(1.0000)";
     return;
   }
-  const want = { a: "translate(3.7px, -2.6px)", b: "translate(0.4px, 0px)", s: "translate(3.7px, 0px) scale(1.5)", n: "translate(4px, 5px)", w: "translate(0px, 0px)", z: "translate(2.5px, 0px) scale(1.001)", y: "translate(0px, 0px)" };
+  const want = { a: "translate(3.7px, -2.6px)", b: "translate(0.4px, 0px)", s: "translate(3.7px, 0px) scale(1.5)", n: "translate(4px, 5px)", w: "translate(0px, 0px)", z: "translate(2.5px, 0px) scale(1.001)", y: "translate(0px, 0px)", r: "translate(0px, 0px)" };
   const wrong = Object.keys(want).filter((id) => $(id).style.transform !== want[id]);
   const g = $("out").getContext("2d");
   g.fillStyle = wrong.length ? "rgb(255,0,0)" : "rgb(0,255,0)";

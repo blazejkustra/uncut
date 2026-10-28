@@ -21,7 +21,7 @@ import { useDuckLoading } from "../audio/ducking.ts";
 import { MixerPanel } from "../audio/Mixer.tsx";
 import { EnvironmentChip } from "../onboarding/Environments.tsx";
 import { NewProject } from "../onboarding/NewProject.tsx";
-import { ExportDialog, exportRunning } from "../panels/ExportDialog.tsx";
+import { ExportDialog, exportRunning, exportButtonText } from "../panels/ExportDialog.tsx";
 import { AgentPanel } from "../panels/Agent.tsx";
 import { Library, type LibraryTab } from "../panels/Library.tsx";
 import { usePlayback } from "../preview/playback.ts";
@@ -304,7 +304,7 @@ function TopBar({
         onClick={actions.openExport}
       >
         <Share />
-        {running && job ? (job.phase === "rendering" ? `Exporting ${Math.round(job.progress * 100)}%` : "Exporting…") : "Export"}
+        {running && job ? exportButtonText(job) : "Export"}
       </button>
       <Tooltip label="Settings" shortcut="settings">
         <button className="icon-btn" data-testid="open-settings" onClick={() => actions.openSettings()}>

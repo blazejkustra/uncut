@@ -81,3 +81,11 @@ export function preparingStatus(job: Pick<ExportJob, "step">, graphics = true): 
           : `Drawing the shader effects${frames}`;
   return { text, fraction: counted && (s!.kind === "graphics" || s!.kind === "shaders") ? counted.done / counted.total : undefined };
 }
+
+/** The Export button's label while a job runs: the encode's percentage, or the preparing step's as the dialog's bar shows it. */
+export function exportButtonText(job: Pick<ExportJob, "phase" | "progress" | "step">): string {
+  if (job.phase === "rendering") return `Exporting ${Math.round(job.progress * 100)}%`;
+  if (job.phase !== "preparing") return "Exporting…";
+  const { fraction } = preparingStatus(job);
+  return fraction === undefined ? "Preparing…" : `Preparing ${Math.round(fraction * 100)}%`;
+}
