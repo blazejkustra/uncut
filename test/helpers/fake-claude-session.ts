@@ -26,6 +26,9 @@
 //     for its control_response: allow → a tool_result with `result` (default "ok"), deny → an error
 //     tool_result with Uncut's message. $FAKE_RESULT_LOG gets { builtin, decision }.
 // $FAKE_LINGER: stdin closing doesn't end it.
+// "/compact" (handoff 9): status compacting, a compact_boundary (pre_tokens: the last usage step's
+// context, else 400k; post 15k) and a 0-turn result, without using a plan turn or the prompt log;
+// get_context_usage answers $FAKE_CONTEXT_WINDOW (1M) and $FAKE_COMPACT_AT (967k), 18k after a /compact.
 // D194: an initialize control_request is answered like the SDK expects ({ commands, models, ... }).
 // $FAKE_REQUIRE_INIT: a message before initialize fails its turn ("initialize first"), as a host
 //   that skipped the SDK handshake. $FAKE_IGNORE_INIT: initialize gets no answer at all.
@@ -146,6 +149,9 @@ const orStop = <T>(p: Promise<T>) =>
 
 let messages = 0;
 let initialized = false;
+// The last message's context (its usage step), and whether a /compact ran since.
+let lastContext = 0;
+let compacted = false;
 let continued: string | null = resume;
 let msgCount = 0;
 /** One assistant message: streamed first with partial messages, then whole. */
@@ -187,7 +193,37 @@ async function assistant(block: { type: "text"; text: string } | { type: "thinki
   return id;
 }
 
+/** /compact: claude's own compaction (status, compact_boundary, the replayed stdout, a 0-turn result); no plan turn is used. */
+function compactTurn() {
+  out({ type: "system", subtype: "status", status: "compacting", session_id: sessionId });
+  out({
+    type: "system",
+    subtype: "compact_boundary",
+    session_id: sessionId,
+    compact_metadata: { trigger: "manual", pre_tokens: lastContext || 400_000, post_tokens: 15_000 },
+  });
+  out({
+    type: "user",
+    message: { role: "user", content: "<local-command-stdout>Compacted </local-command-stdout>" },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    isReplay: true,
+  });
+  compacted = true;
+  out({ type: "result", subtype: "success", is_error: false, result: "", duration_ms: 5, num_turns: 0, session_id: sessionId });
+}
+
+/** get_context_usage ("summary"): the window and auto-compact point ($FAKE_CONTEXT_WINDOW, $FAKE_COMPACT_AT), the count after a /compact. */
+const contextUsage = () => ({
+  totalTokens: compacted ? 18_000 : lastContext,
+  maxTokens: Number(process.env.FAKE_CONTEXT_WINDOW ?? 1_000_000),
+  rawMaxTokens: Number(process.env.FAKE_CONTEXT_WINDOW ?? 1_000_000),
+  autoCompactThreshold: Number(process.env.FAKE_COMPACT_AT ?? 967_000),
+  isAutoCompactEnabled: true,
+});
+
 async function playTurn(prompt: string, images: Array<{ media_type: string; bytes: number }>) {
+  if (/^\/compact(\s|$)/.test(prompt)) return compactTurn();
   const counter = `${process.env.FAKE_PLAN}.turn`;
   const n = existsSync(counter) ? Number(readFileSync(counter, "utf8")) : 0;
   writeFileSync(counter, String(n + 1));
@@ -279,6 +315,8 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     }
     if ("usage" in step) {
       usage = step;
+      lastContext = ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].reduce((sum, k) => sum + (step.usage[k] ?? 0), 0);
+      compacted = false;
       continue;
     }
     if ("raw" in step) {
@@ -555,6 +593,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       for (const id of permissionWaits.keys()) out({ type: "control_cancel_request", request_id: id });
       permissionWaits.clear();
       abort?.abort();
+      return;
+    }
+    if (msg.request?.subtype === "get_context_usage") {
+      out({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: contextUsage() } });
       return;
     }
     out({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: {} } });

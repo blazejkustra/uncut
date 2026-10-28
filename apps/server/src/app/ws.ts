@@ -140,6 +140,7 @@ const handlersLayer = ({
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
     [RPC_METHODS.agentCancel]: () => agent.cancel,
     [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
+    [RPC_METHODS.agentRedoTurn]: ({ turnId }) => agent.redoTurn(turnId),
     [RPC_METHODS.agentApprove]: ({ id, allow, source, answer, beats, note, always }) => agent.approve(id, allow, source, { answer, beats, note, always }),
     [RPC_METHODS.agentPlanSave]: (input) => agent.planSave(input),
     [RPC_METHODS.brandGet]: () => brand.get,

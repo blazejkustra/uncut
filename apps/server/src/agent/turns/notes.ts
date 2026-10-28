@@ -1,21 +1,41 @@
 import type { AgentTurn } from "@uncut/contracts";
-import { manualEditsNote, type Project, speechItem, transcriptScope, type Session, undoTurn, TurnDependency, describeOp } from "@uncut/core";
+import {
+  EditConflict,
+  manualEditsNote,
+  netEditsNote,
+  netZeroNote,
+  type Project,
+  redoTurn,
+  speechItem,
+  transcriptScope,
+  type Session,
+  undoTurn,
+  TurnDependency,
+  describeOp,
+} from "@uncut/core";
 import type { ProjectView } from "../../project/projects.ts";
 import type { StoredTurn } from "../session/types.ts";
 
 // ---- notes and undo states ----
 
 /**
- * D6: what the user changed since the agent last looked. Item edits come from the log (core
- * manualEditsNote); undo, redo, reload and undone turns aren't log entries, so they're listed too.
+ * D6: what the user changed since the agent last looked, as the net result: the project the agent
+ * saw at `since` (plus its own edits after it) against the project now (core netEditsNote). Undo
+ * turn, a History jump and a reload get a line of their own too; ⌘Z and ⇧⌘Z only when they took
+ * back or brought back the agent's edits. Without the state at `since` in the history, the log's
+ * entries are listed as they are (manualEditsNote).
  */
 export function noteFor(view: ProjectView, since: number): string {
   // The log goes back to earlier openings (history.db); what happened then reached the note that
   // was carried over (pendingNote), so only this opening's edits count here.
-  const base = manualEditsNote(view.session, Math.max(since, view.openRevision));
-  const extra = view.unlogged.filter((u) => u.revision > since).map((u) => `- ${u.what}`);
-  if (!extra.length) return base;
-  if (!base) {
+  const from = Math.max(since, view.openRevision);
+  const before = view.stateAt(from);
+  const base = before ? netEditsNote(before, view.session, from) : manualEditsNote(view.session, from);
+  const happened = view.unlogged.filter((u) => u.revision > since);
+  const extra = happened.filter((u) => !u.quiet).map((u) => `- ${u.what}`);
+  const zero = netZeroNote(view.session.revision);
+  if (!extra.length) return base || (happened.length ? zero : "");
+  if (!base || base === zero) {
     return [
       `Since your last turn the user changed the project (now at revision ${view.session.revision}). Read it again before editing; keep what they did.`,
       ...extra,
@@ -24,9 +44,11 @@ export function noteFor(view: ProjectView, since: number): string {
   return [base, ...extra].join("\n");
 }
 
-/** A note carried over from an earlier opening, then the current one. */
+/** A note carried over from an earlier opening, then the current one (left out when the carried note already ends with it: a second reopen with nothing done in between). */
 export const joinNotes = (carried: string | undefined, current: string) =>
-  [carried ? `Earlier, before the project was closed and reopened:\n${carried}` : "", current].filter(Boolean).join("\n\n");
+  [carried ? `Earlier, before the project was closed and reopened:\n${carried}` : "", carried && current && carried.endsWith(current) ? "" : current]
+    .filter(Boolean)
+    .join("\n\n");
 
 type UndoState = AgentTurn["undo"];
 // Sessions are immutable, so a dry run per (session, turn) is computed once.
@@ -80,7 +102,7 @@ export function undoState(
   if (turn.status === "running" || turn.edits.length === 0) return { state: "none" };
   const logged = new Set(view && view.openId === openId ? view.session.log.filter((e) => e.turnId === turn.id).map((e) => e.revision) : []);
   if (!view || !logged.size) {
-    if (turn.undoneAt) return { state: "undone" };
+    if (turn.undoneAt) return { state: "undone", ...(view && view.openId === openId ? redoState(turn.id, view, validate) : {}) };
     return {
       state: "unavailable",
       reason:
@@ -109,6 +131,32 @@ export function undoState(
   return state;
 }
 
+/** Whether an undone turn can be redone now (a dry run, as the real redo, cached per session); nothing when it wasn't undone in this opening. */
+function redoState(
+  turnId: string,
+  view: ProjectView,
+  validate: (project: Project) => ReadonlyArray<{ readonly message: string }>,
+): Pick<UndoState, "redo" | "redoReason"> {
+  const undone = view.undone.get(turnId);
+  if (!undone) return {};
+  let cache = redoRuns.get(view.session);
+  if (!cache) redoRuns.set(view.session, (cache = new Map()));
+  const known = cache.get(turnId);
+  if (known) return known;
+  let state: Pick<UndoState, "redo" | "redoReason">;
+  try {
+    redoTurn(view.session, undone.entries, undone.revision, validate as Parameters<typeof redoTurn>[3]);
+    state = { redo: "available" };
+  } catch (error) {
+    const reason =
+      error instanceof EditConflict ? `A later edit changed what it changed (${error.details.join(", ")}). Undo that first.` : String((error as Error).message);
+    state = { redo: "blocked", redoReason: reason };
+  }
+  cache.set(turnId, state);
+  return state;
+}
+const redoRuns = new WeakMap<Session, Map<string, Pick<UndoState, "redo" | "redoReason">>>();
+
 /** D260 (issue #81): at most this many listed edits in a message's note. */
 export const NOTE_LINES = 30;
 
@@ -117,9 +165,13 @@ export function capNote(note: string, max = NOTE_LINES): string {
   const lines = note.split("\n");
   let listed = 0;
   let dropped = 0;
+  // An added item's "  - " field lines go with their item.
+  let keeping = true;
   const out = lines.filter((l) => {
+    if (l.startsWith("  - ")) return keeping;
     if (!l.startsWith("- ")) return true;
-    if (listed < max) return ++listed > 0;
+    keeping = listed < max;
+    if (keeping) return ++listed > 0;
     dropped++;
     return false;
   });

@@ -122,6 +122,11 @@ export interface ClaudeSession {
   apiKeySource?: string | undefined;
   readonly systemChars: number;
   toolsChars: number | undefined;
+  // What claude's get_context_usage said: the model's window and where it compacts on its own.
+  window?: number | undefined;
+  compactAt?: number | undefined;
+  // The get_context_usage request waiting for its answer (after a /compact: its count is the context now).
+  contextAsk?: { readonly id: string; readonly compacted: boolean } | undefined;
 }
 
 /**

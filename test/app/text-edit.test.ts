@@ -376,12 +376,12 @@ test(
       await page.keyboard.press("Enter");
       await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });
       const prompt: string = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!).prompt;
-      assert.match(prompt, /Changed the text of title-1 to "Krakow from above"/);
+      // The net result (handoff 7): the title's final text, not the "Krakow from above" it had on the way.
+      assert.doesNotMatch(prompt, /Changed the text of title-1 to "Krakow from above"/);
       assert.match(prompt, /Restyled .*\(title-1\): style text\.title, size 130, weight 700, colour #F5C26B/);
       assert.match(prompt, /Moved .*\(title-1\) on the canvas to x \d+, y \d+/);
       assert.match(prompt, /Changed the text of title-1 to "Krakow \/ from above"/);
-      assert.match(prompt, /Added background background-1 \(#0B1D3A\) on track main/);
-      assert.match(prompt, /Restyled background \(background-1\): colour #0B1D3A to #3B1E54 \(gradient\)/);
+      assert.match(prompt, /Added background background-1 \(gradient #0B1D3A to #3B1E54\) on track main/);
       assert.match(prompt, /Animated .*\(title-1\): fade in 0\.3s, no out animation/);
       await page.screenshot({ path: out("text-editor.png") });
 

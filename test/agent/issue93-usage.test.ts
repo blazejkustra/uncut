@@ -6,6 +6,7 @@ import {
   CLAUDE_CODE_BASE_TOKENS,
   assistantUsage,
   contextOf,
+  contextUsageReply,
   estimateTokens,
   messageContextEstimate,
   resultWindow,
@@ -20,21 +21,44 @@ const assistant = (usage: unknown, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-test("assistantUsage: the call's input, cache read, cache creation and output", () => {
+test("assistantUsage: as Claude Code's indicator counts it: input + cache read + cache creation; output kept apart", () => {
   assert.deepEqual(assistantUsage(assistant({ input_tokens: 12, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 1_500, output_tokens: 400 })), {
-    used: 31_912,
+    used: 31_512,
+    parts: { fresh: 12, cacheRead: 30_000, cacheWrite: 1_500, output: 400 },
     model: "claude-opus-5-5",
   });
 });
 
+test("assistantUsage: cached tokens fill the window like fresh ones (a 400k cache read is 400k of context)", () => {
+  assert.equal(
+    assistantUsage(assistant({ input_tokens: 3, cache_read_input_tokens: 400_000, cache_creation_input_tokens: 0, output_tokens: 2_000 }))?.used,
+    400_003,
+  );
+});
+
+test("contextUsageReply: Claude Code's window, auto-compact point and count", () => {
+  assert.deepEqual(
+    contextUsageReply({ totalTokens: 18_919, maxTokens: 1_000_000, rawMaxTokens: 1_000_000, autoCompactThreshold: 967_000, isAutoCompactEnabled: true }),
+    { window: 1_000_000, compactAt: 967_000, total: 18_919 },
+  );
+  assert.deepEqual(
+    contextUsageReply({ totalTokens: 5, rawMaxTokens: 200_000, autoCompactThreshold: 167_000, isAutoCompactEnabled: false }),
+    { window: 200_000, total: 5 },
+    "auto-compact off: no point",
+  );
+  assert.equal(contextUsageReply({}), undefined);
+  assert.equal(contextUsageReply(null), undefined);
+});
+
 test("assistantUsage: missing or odd fields count as 0; no usage or none at all is undefined", () => {
-  assert.deepEqual(assistantUsage(assistant({ input_tokens: 5000 })), { used: 5000, model: "claude-opus-5-5" });
-  assert.deepEqual(assistantUsage(assistant({ input_tokens: "7", cache_read_input_tokens: -3, output_tokens: 10 })), { used: 10, model: "claude-opus-5-5" });
+  assert.equal(assistantUsage(assistant({ input_tokens: 5000 }))?.used, 5000);
+  assert.equal(assistantUsage(assistant({ input_tokens: "7", cache_read_input_tokens: -3, cache_creation_input_tokens: 10, output_tokens: 10 }))?.used, 10);
+  assert.equal(assistantUsage(assistant({ output_tokens: 10 })), undefined, "output alone isn't context yet");
   assert.equal(assistantUsage(assistant(undefined)), undefined);
   assert.equal(assistantUsage(assistant({})), undefined);
   assert.equal(assistantUsage({ type: "user", message: { usage: { input_tokens: 9 } } }), undefined);
   const noModel = { type: "assistant", message: { usage: { input_tokens: 9 } } };
-  assert.deepEqual(assistantUsage(noModel), { used: 9, model: undefined });
+  assert.equal(assistantUsage(noModel)?.model, undefined);
 });
 
 test("assistantUsage: a subagent's message (parent_tool_use_id) isn't the conversation's context", () => {

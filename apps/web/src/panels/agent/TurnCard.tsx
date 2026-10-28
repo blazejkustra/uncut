@@ -1,5 +1,5 @@
 import { type AgentTurn, type AgentApproval, AGENT_MODELS, type AgentEdit } from "@uncut/contracts";
-import { ChevronDown, ChevronRight, FolderOpen, Square, Undo2, PencilLine, Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, FoldVertical, FolderOpen, Redo2, Square, Undo2, PencilLine, Pencil } from "lucide-react";
 import { useState, useRef, useEffect, type ReactNode, Fragment } from "react";
 import { withChips } from "../Composer.tsx";
 import { type CardLive, CardItem, QuestionCard, StoryboardApproval } from "../AgentCards.tsx";
@@ -8,7 +8,9 @@ import { useFriendly } from "./context.ts";
 import { noteLines } from "./thread.ts";
 import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./workLog.tsx";
 import { CopyButton } from "./copy.tsx";
+import { tokens } from "../TokenMeter.tsx";
 import { ScreenApprovalCard, BootCard, PermissionCard, BrandDiffCard, ApprovalCard, CleanupLine } from "./approvals.tsx";
+import "./turnCompact.css";
 
 export function TurnCard({
   turn: t,
@@ -26,6 +28,7 @@ export function TurnCard({
   live: CardLive | undefined;
 }) {
   const friendly = useFriendly();
+  if (t.kind === "compact") return <CompactRow turn={t} />;
   const undone = t.undo.state === "undone";
   const status =
     // While it runs, the now line in the card says what it's doing (D139).
@@ -110,6 +113,7 @@ export function TurnCard({
           ) : (
             <ApprovalCard approval={approval} online={online} />
           ))}
+        {t.compacted && <CompactedLine compacted={t.compacted} />}
         {t.cleanup && <CleanupLine turnId={t.id} cleanup={t.cleanup} online={online} />}
         {t.status === "running" && <NowLine turn={t} waiting={!!approval} />}
         {t.error && (
@@ -144,12 +148,62 @@ export function TurnCard({
             Undo<span className="undo-word"> turn</span>
           </button>
         )}
+        {undone && t.undo.redo && (
+          <button
+            className="link-btn"
+            data-testid="agent-redo-turn"
+            data-turn={t.id}
+            disabled={!online || busy || t.undo.redo !== "available"}
+            title={t.undo.redo === "available" ? "Put this turn's edits back" : (t.undo.redoReason ?? "Can't redo this turn")}
+            onClick={() => void actions.agentRedoTurn(t.id)}
+          >
+            <Redo2 />
+            Redo<span className="undo-word"> turn</span>
+          </button>
+        )}
       </div>
+      {undone && t.undo.redo === "blocked" && t.undo.redoReason && (
+        <div className="turn-undo-reason" data-testid="agent-redo-reason">
+          {t.undo.redoReason}
+        </div>
+      )}
       {(t.undo.state === "blocked" || t.undo.state === "unavailable") && t.undo.reason && (
         <div className="turn-undo-reason" data-testid="agent-undo-reason">
           {t.undo.reason}
         </div>
       )}
+    </div>
+  );
+}
+
+const compactedWords = (c: NonNullable<AgentTurn["compacted"]>) =>
+  c.before !== undefined && c.after !== undefined ? `: ${tokens(c.before)} → ${tokens(c.after)} tokens` : "";
+
+/** A Compact (/compact): one row in the thread, not a message to the agent. */
+function CompactRow({ turn: t }: { turn: AgentTurn }) {
+  const text =
+    t.status === "running"
+      ? "Compacting the conversation…"
+      : t.status === "error" || t.status === "cancelled"
+        ? `Didn't compact the conversation${t.error ? `: ${t.error}` : ""}`
+        : `Compacted the conversation${t.compacted ? compactedWords(t.compacted) : ""}`;
+  return (
+    <div className="turn-compact small muted" data-testid="agent-compact-row" data-turn={t.id} data-status={t.status}>
+      <FoldVertical />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/** Claude Code compacted the conversation during a turn on its own (auto-compact). */
+function CompactedLine({ compacted }: { compacted: NonNullable<AgentTurn["compacted"]> }) {
+  return (
+    <div className="turn-compact small muted" data-testid="agent-compacted">
+      <FoldVertical />
+      <span>
+        Claude Code compacted the conversation{compacted.trigger === "auto" ? " on its own" : ""}
+        {compactedWords(compacted)}. Earlier turns are summarised.
+      </span>
     </div>
   );
 }

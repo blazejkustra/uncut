@@ -126,6 +126,23 @@ test("#81: the manual-edits note is capped", () => {
   assert.equal(capNote(""), "");
 });
 
+test("#81: an added item's indented field lines go with it, kept or dropped", () => {
+  const note = [
+    "header",
+    "- Added text t1 on track text",
+    '  - Changed the text of t1 to "A"',
+    "- Added text t2 on track text",
+    '  - Changed the text of t2 to "B"',
+  ].join("\n");
+  assert.equal(
+    capNote(note, 1),
+    ["header", "- Added text t1 on track text", '  - Changed the text of t1 to "A"', "- and 1 more edit (project_read shows the project as it is now)"].join(
+      "\n",
+    ),
+  );
+  assert.equal(capNote(note, 2), note);
+});
+
 test("#81: project_read gives a long project's items as compact lines, every field on request", () => {
   const project: any = {
     format: "uncut/0",

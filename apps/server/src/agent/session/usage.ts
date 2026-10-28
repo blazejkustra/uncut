@@ -45,18 +45,49 @@ export function knownWindow(o: {
 
 const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
+/** What one API call read and wrote, as its usage says: fresh input, cache reads, cache writes and output. */
+export interface CallTokens {
+  readonly fresh: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly output: number;
+}
+
 /**
- * The context an assistant message shows: what the API call read (input, cache read, cache
- * creation) plus what it wrote (which joins the conversation). Undefined for a subagent's message
- * (parent_tool_use_id: its own context) or one without usage.
+ * The context an assistant message shows, counted as Claude Code's own context indicator counts it:
+ * what the API call read (fresh input + cache read + cache creation). Its output joins the context
+ * only as the next call's input. Cached tokens take the same room in the window as fresh ones (they
+ * cost about a tenth to read), so `parts` keeps the split for the meter's tooltip. Undefined for a
+ * subagent's message (parent_tool_use_id: its own context) or one without usage.
  */
-export function assistantUsage(msg: Record<string, any>): { used: number; model: string | undefined } | undefined {
+export function assistantUsage(msg: Record<string, any>): { used: number; parts: CallTokens; model: string | undefined } | undefined {
   if (msg?.type !== "assistant" || msg.parent_tool_use_id) return undefined;
   const usage = msg.message?.usage;
   if (!usage || typeof usage !== "object") return undefined;
-  const used = count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens) + count(usage.output_tokens);
+  const parts = {
+    fresh: count(usage.input_tokens),
+    cacheRead: count(usage.cache_read_input_tokens),
+    cacheWrite: count(usage.cache_creation_input_tokens),
+    output: count(usage.output_tokens),
+  };
+  const used = parts.fresh + parts.cacheRead + parts.cacheWrite;
   if (!used) return undefined;
-  return { used, model: typeof msg.message?.model === "string" ? msg.message.model : undefined };
+  return { used, parts, model: typeof msg.message?.model === "string" ? msg.message.model : undefined };
+}
+
+/**
+ * Claude Code's answer to a get_context_usage control request: the model's window (rawMaxTokens),
+ * where it compacts the conversation on its own (autoCompactThreshold, when auto-compact is on) and
+ * its own count of the context now (totalTokens: the last call's usage plus estimates).
+ */
+export function contextUsageReply(reply: unknown): { readonly window?: number; readonly compactAt?: number; readonly total?: number } | undefined {
+  if (!reply || typeof reply !== "object") return undefined;
+  const r = reply as Record<string, unknown>;
+  const window = count(r.rawMaxTokens) || count(r.maxTokens);
+  const compactAt = r.isAutoCompactEnabled === true ? count(r.autoCompactThreshold) : 0;
+  const total = count(r.totalTokens);
+  if (!window && !total) return undefined;
+  return { ...(window ? { window } : {}), ...(compactAt ? { compactAt } : {}), ...(total ? { total } : {}) };
 }
 
 /**
@@ -85,6 +116,8 @@ export const systemToolsEstimate = (systemChars: number, toolsJsonChars: number)
 export function contextOf(o: {
   readonly used: number;
   readonly window?: number | undefined;
+  readonly compactAt?: number | undefined;
+  readonly parts?: CallTokens | undefined;
   readonly systemTools: number;
   readonly message: number;
   readonly model?: string | undefined;
@@ -94,9 +127,11 @@ export function contextOf(o: {
   return {
     used: o.used,
     ...(o.window ? { window: o.window } : {}),
+    ...(o.compactAt ? { compactAt: o.compactAt } : {}),
     systemTools,
     conversation: Math.max(0, o.used - systemTools - message),
     message,
+    ...(o.parts ? { fresh: o.parts.fresh, cacheRead: o.parts.cacheRead, cacheWrite: o.parts.cacheWrite, output: o.parts.output } : {}),
     ...(o.model ? { model: o.model } : {}),
   };
 }

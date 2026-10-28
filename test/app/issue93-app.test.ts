@@ -148,7 +148,14 @@ const tooltip = async (page: Page) => {
 test("issue #93: the composer's context meter, its breakdown and the near-limit warning", { skip, timeout: 180000 }, async () => {
   app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(root, "plan.json") },
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir]),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: join(root, "plan.json"),
+      FAKE_CONTEXT_WINDOW: "200000",
+      FAKE_COMPACT_AT: "200000",
+    },
   });
   const { page } = app;
   await waitForWelcome(page);
@@ -158,7 +165,7 @@ test("issue #93: the composer's context meter, its breakdown and the near-limit 
   await page.waitForSelector("[data-testid=agent-input]", { timeout: 15000 });
   assert.equal(await page.$("[data-testid=agent-token-meter]"), null, "hidden until claude reported usage");
 
-  // ---- After one answer: 12 + 88,000 + 4,000 + 300 = 92,312 of 200,000 ----
+  // ---- After one answer: 12 + 88,000 + 4,000 = 92,012 of 200,000 (the 300 output tokens are context only for the next call) ----
   await sendAndWait(page, "Look at the project", 1);
   await page.waitForSelector("[data-testid=agent-token-meter]", { timeout: 5000 });
   let m = await meter(page);
@@ -174,14 +181,16 @@ test("issue #93: the composer's context meter, its breakdown and the near-limit 
   await page.waitForSelector("[data-testid=agent-token-draft]", { timeout: 3000 });
   assert.match(await page.$eval("[data-testid=agent-token-draft]", (el) => el.textContent ?? ""), /^\+~\d+(\.\d)?k?$/);
   const tip = await tooltip(page);
-  assert.match(tip, /Context: 92,312 of 200,000 tokens \(46%\)/);
+  assert.match(tip, /Context: 92,012 of 200,000 tokens \(46%\)/);
+  assert.match(tip, /Cache read 88k, cache write 4k, fresh 12: cached tokens fill the window like fresh ones/);
+  assert.match(tip, /compacts the conversation on its own at 200k \(100% of the window\)/);
   assert.match(tip, /System prompt \+ tools: ~\d+(\.\d)?k \(estimate\)/);
   assert.match(tip, /Conversation: ~\d+(\.\d)?k?/);
   assert.doesNotMatch(tip, /Conversation: ~0\n/, "the rest of the 92k is conversation");
   assert.doesNotMatch(tip, /This message's context: ~0 /, "Uncut's <editor-context> counts");
   assert.match(tip, /This message's context: ~\d+(\.\d)?k? \(estimate\)/);
   assert.match(tip, /Your draft adds ~\d+(\.\d)?k? \(estimate\)/);
-  assert.equal(tip.split("\n").length, 5, "one line per part");
+  assert.equal(tip.split("\n").length, 7, "one line per part");
   await page.screenshot({ path: out("tooltip") });
   const meterBox = await page.$eval("[data-testid=agent-token-meter]", (el) => el.getBoundingClientRect().toJSON() as DOMRect);
   await page.screenshot({ path: out("meter"), clip: { x: Math.max(0, meterBox.x - 260), y: Math.max(0, meterBox.y - 120), width: 420, height: 160 } });
@@ -194,7 +203,7 @@ test("issue #93: the composer's context meter, its breakdown and the near-limit 
   await sendAndWait(page, "Keep going", 2);
   await page.waitForFunction(() => document.querySelector("[data-testid=agent-token-meter]")?.getAttribute("data-level") === "high", { timeout: 5000 });
   m = await meter(page);
-  assert.equal(m.text, "169k / 200k");
+  assert.equal(m.text, "168k / 200k");
   assert.match(await tooltip(page), /Getting full/);
   await page.screenshot({ path: out("high") });
 
@@ -205,7 +214,7 @@ test("issue #93: the composer's context meter, its breakdown and the near-limit 
   assert.equal(m.text, "191k / 200k");
   assert.notEqual(m.color, "", "coloured");
   const full = await tooltip(page);
-  assert.match(full, /Context: 191,310 of 200,000 tokens \(96%\)/);
+  assert.match(full, /Context: 191,010 of 200,000 tokens \(96%\)/);
   assert.match(full, /Almost full/);
   await page.screenshot({ path: out("full") });
   assert.deepEqual(app.errors, []);

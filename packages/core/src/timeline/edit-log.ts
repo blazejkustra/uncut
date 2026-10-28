@@ -8,7 +8,8 @@ import type { Id, Op, Project, Session } from "./types.ts";
 
 const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
 
-function label(project: Project, id: Id) {
+/** An item by name and id, "rb.mp4 (clip-1)"; the bare id when it isn't in the project. */
+export function itemLabel(project: Project, id: Id) {
   for (const t of project.tracks) {
     const item = t.items.find((i) => i.id === id);
     if (item) {
@@ -313,7 +314,7 @@ function describeSound(id: Id, set: { readonly [key: string]: unknown }, it: (id
 /** An op in words, for the agent's note and turn cards. `hint` is the edit's summary, if any. */
 export function describeOp(op: Op, project: Project, hint?: string): string {
   const fps = project.canvas.fps;
-  const it = (id: Id) => label(project, id);
+  const it = (id: Id) => itemLabel(project, id);
   switch (op.op) {
     case "trim_item":
       return `${op.frames > 0 ? "Trimmed" : "Extended"} ${it(op.item)} by ${secs(op.frames, fps)} at the ${op.edge}`;

@@ -288,6 +288,9 @@ export type AgentMention = typeof AgentMention.Type;
 export const AgentUndo = Schema.Struct({
   state: Schema.Literals(["none", "available", "blocked", "unavailable", "undone"]),
   reason: Schema.optional(Schema.String),
+  // An undone turn: whether Redo can put its edits back now ("blocked": a later edit touches what it changed; redoReason says which).
+  redo: Schema.optional(Schema.Literals(["available", "blocked"])),
+  redoReason: Schema.optional(Schema.String),
 });
 
 /** D198: a folder the prompt named, as Uncut listed it for the agent ("Found 12 files in ~/x"), or why it didn't. */
@@ -325,6 +328,12 @@ export const AgentTurn = Schema.Struct({
   cleanup: Schema.optional(
     Schema.Struct({ graphics: Schema.Array(Schema.String), tracks: Schema.Array(Schema.String), restored: Schema.optional(Schema.Boolean) }),
   ),
+  // "compact": the user's /compact (the Compact action), Claude Code's own compaction of the conversation, not a message to the agent.
+  kind: Schema.optional(Schema.Literals(["compact"])),
+  // Claude Code compacted the conversation in this turn (its compact_boundary): manual (/compact) or auto, and the tokens before and after.
+  compacted: Schema.optional(Schema.Struct({ trigger: Schema.String, before: Schema.optional(Schema.Number), after: Schema.optional(Schema.Number) })),
+  // Redo turn: when the user put an undone turn's edits back.
+  redoneAt: Schema.optional(Schema.String),
 });
 export type AgentTurn = typeof AgentTurn.Type;
 
@@ -405,6 +414,13 @@ export const AgentContext = Schema.Struct({
   conversation: Schema.Number,
   message: Schema.Number,
   model: Schema.optional(Schema.String),
+  // The last call's split (cached tokens fill the window like fresh ones, at about a tenth of the
+  // price to read) and where Claude Code compacts the conversation on its own (get_context_usage).
+  fresh: Schema.optional(Schema.Number),
+  cacheRead: Schema.optional(Schema.Number),
+  cacheWrite: Schema.optional(Schema.Number),
+  output: Schema.optional(Schema.Number),
+  compactAt: Schema.optional(Schema.Number),
 });
 export type AgentContext = typeof AgentContext.Type;
 

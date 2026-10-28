@@ -1,0 +1,2 @@
+.turn-compact { display: flex; align-items: center; gap: 8px; padding: 4px; font-size: 11px; }
+.turn-compact svg.lucide { width: 12px; height: 12px; flex: none; }
