@@ -2,7 +2,7 @@
 import { systemPreferences, nativeImage, desktopCapturer } from "electron";
 import type { MediaAccessKind, MediaAccess, CaptureSource } from "../ipc.ts";
 import { mediaTest } from "./testMode.ts";
-import { win } from "./state.ts";
+import { windows } from "./state.ts";
 
 const MEDIA_KINDS: ReadonlyArray<MediaAccessKind> = ["microphone", "camera", "screen"];
 export const isMediaKind = (x: unknown): x is MediaAccessKind => MEDIA_KINDS.includes(x as MediaAccessKind);
@@ -45,7 +45,7 @@ function standinThumbnail(): string {
   return nativeImage.createFromBitmap(px, { width, height }).toDataURL();
 }
 
-/** Screens and windows to record, with small pictures; never Uncut's own window. Tests: stand-ins. */
+/** Screens and windows to record, with small pictures; never Uncut's own windows. Tests: stand-ins. */
 export async function captureSources(): Promise<Array<CaptureSource>> {
   if (mediaTest) {
     // D209: the stand-in screen has a picture drawn here (a data: URL like desktopCapturer's), the
@@ -55,13 +55,13 @@ export async function captureSources(): Promise<Array<CaptureSource>> {
       { id: "standin:window:1", name: "Test window", kind: "window", thumbnail: "" },
     ];
   }
-  const own = win?.getMediaSourceId();
+  const own = new Set(windows.map((w) => w.window.getMediaSourceId()));
   // thumbnailSize: without one the pictures are 150×150; the app icon is the fallback for a window
   // whose picture is empty (macOS gives none for a minimised one, or before Screen Recording is on).
   const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 480, height: 300 }, fetchWindowIcons: true });
   const url = (image: Electron.NativeImage | null | undefined) => (image && !image.isEmpty() ? image.toDataURL() : "");
   return sources
-    .filter((s) => s.id !== own)
+    .filter((s) => !own.has(s.id))
     .map((s) => ({
       id: s.id,
       name: s.name,

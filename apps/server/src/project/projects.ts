@@ -8,7 +8,7 @@
 // revision, and ⌘Z stops there (History can still go back past it, as a new revision).
 import { isAbsolute, join } from "node:path";
 
-import { DEFAULT_AGENT_ID, type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
+import { DEFAULT_AGENT_ID, ProjectError, type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
 import { EditConflict, EditError, TurnDependency, redoTurn, undoTurn, type LogEntry, type Project, type Session } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -18,6 +18,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { writeFileAtomic } from "./atomicWrite.ts";
+import { fileLockHolder, tryFileLock } from "./fileLock.ts";
 import { ServerConfig } from "../app/config.ts";
 import { ProjectFormat } from "./format.ts";
 import { HistoryDb, type NewRow, type Row } from "./history.ts";
@@ -53,8 +54,34 @@ export const layer = Layer.effect(
     const lock = yield* Semaphore.make(1);
     let current: OpenProject | undefined;
     let openCount = 0;
+    // One server per project (several windows, each with its own server): <project>/.cache/open.lock,
+    // held while the project is open here. Another server's open is refused with its pid.
+    let openLock: { readonly dir: string; readonly release: () => Promise<void> } | undefined;
+    const releaseOpenLock = Effect.promise(async () => {
+      const held = openLock;
+      openLock = undefined;
+      await held?.release();
+    });
+    const takeOpenLock = (dir: string) =>
+      Effect.gen(function* () {
+        if (openLock?.dir === dir) return;
+        const file = join(dir, ".cache", "open");
+        // A folder where no lock can be made (read-only) still opens, unguarded.
+        const release = yield* Effect.promise(() => tryFileLock(file).catch(() => async () => {}));
+        if (!release) {
+          const holderPid = yield* Effect.promise(() => fileLockHolder(file));
+          return yield* new ProjectError({ reason: "open-elsewhere", message: "This project is open in another Uncut window.", dir, details: [], holderPid });
+        }
+        yield* releaseOpenLock;
+        openLock = { dir, release };
+      });
     // A stopping server closes the history, so its WAL is checkpointed into history.db.
-    yield* Effect.addFinalizer(() => Effect.sync(() => current?.history.close()));
+    yield* Effect.addFinalizer(() =>
+      Effect.andThen(
+        Effect.sync(() => current?.history.close()),
+        releaseOpenLock,
+      ),
+    );
     const updates = yield* SubscriptionRef.make<ProjectSnapshot | null>(null);
     const historyUpdates = yield* SubscriptionRef.make<HistoryState | null>(null);
     // Tell subscribers what is open now. Called after every change, inside the same lock.
@@ -209,6 +236,7 @@ export const layer = Layer.effect(
      */
     const setOpen = (dir: string, project: Session["project"], diskText: string, created: boolean) =>
       Effect.gen(function* () {
+        yield* takeOpenLock(dir);
         if (current && current.dir !== dir) current.history.close();
         const history = HistoryDb.open(dir);
         let session: Session;
@@ -391,7 +419,7 @@ export const layer = Layer.effect(
         Effect.suspend(() => {
           current?.history.close();
           current = undefined;
-          return publish;
+          return Effect.andThen(releaseOpenLock, publish);
         }),
       ),
 

@@ -558,3 +558,34 @@ test("names must be non-blank and at most 100 characters", T, async () => {
     await s.end();
   }
 });
+
+test("one server per project: another server's open is refused with the holder's pid until it closes, quits or dies", T, async () => {
+  const a = await session();
+  const b = await session();
+  try {
+    const snap = await a.ok("project.create", { parentDir: root, name: "Shared" });
+    const refused = await b.fail("project.open", { dir: snap.dir });
+    assert.deepEqual([refused._tag, refused.reason, refused.holderPid], ["ProjectError", "open-elsewhere", a.server.proc.pid]);
+    assert.equal((await b.fail("project.get")).reason, "no-project", "nothing opened in the refused server");
+
+    await a.ok("project.close");
+    assert.equal((await b.ok("project.open", { dir: snap.dir })).dir, snap.dir, "free once closed");
+    assert.equal((await a.fail("project.open", { dir: snap.dir })).holderPid, b.server.proc.pid);
+
+    // Opening another project lets go of the first.
+    await b.ok("project.create", { parentDir: root, name: "Other" });
+    assert.equal((await a.ok("project.open", { dir: snap.dir })).dir, snap.dir);
+
+    // A holder killed outright leaves a lock whose pid is gone: the next open takes it over.
+    a.close();
+    a.server.proc.kill("SIGKILL");
+    await a.server.exited;
+    assert.ok(existsSync(join(snap.dir, ".cache", "open.lock")));
+    assert.equal((await b.ok("project.open", { dir: snap.dir })).dir, snap.dir);
+    await b.ok("project.close");
+    assert.equal(existsSync(join(snap.dir, ".cache", "open.lock")), false, "released on close");
+  } finally {
+    await a.end().catch(() => {});
+    await b.end();
+  }
+});

@@ -46,7 +46,12 @@ export interface AppState {
   readonly panels?: { readonly lib: boolean; readonly side: boolean; readonly bottom: boolean; readonly focus: boolean };
   /** #94 (D263, D280): File › Import from Link… shows (its plugin is installed and allowed). */
   readonly importLink?: boolean;
+  /** The open project's folder, so opening it again elsewhere brings this window forward. */
+  readonly projectDir?: string;
 }
+
+/** Several projects at once: the page asks before it opens a project; true when another window has it (now in front). */
+export const PROJECT_WINDOW_CHANNEL = "uncut:project-window";
 
 export interface EnvironmentInfo {
   readonly id: string;

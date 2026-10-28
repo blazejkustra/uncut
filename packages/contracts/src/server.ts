@@ -221,6 +221,7 @@ export const ProjectErrorReason = Schema.Literals([
   "no-project", // get/edit/undo/redo before a project is open
   "changed-on-disk", // edit/undo/redo: project.json was changed by hand; reload first
   "io", // reading or writing the folder failed
+  "open-elsewhere", // create/open: another Uncut window's server has it open (holderPid)
 ]);
 
 export class ProjectError extends Schema.TaggedError<ProjectError>()("ProjectError", {
@@ -228,6 +229,8 @@ export class ProjectError extends Schema.TaggedError<ProjectError>()("ProjectErr
   message: Schema.String,
   dir: Schema.optional(Schema.String),
   details: Schema.Array(Problem),
+  /** open-elsewhere: the pid of the server that has the project open. */
+  holderPid: Schema.optional(Schema.Number),
 }) {}
 
 /** The edit was not applied (malformed ops, invalid result, unknown item, bad baseRevision); the project is unchanged. */

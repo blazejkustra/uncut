@@ -1,19 +1,7 @@
+import { realpathSync } from "node:fs";
 import * as path from "node:path";
 
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  desktopCapturer,
-  dialog,
-  ipcMain,
-  Menu,
-  screen,
-  shell,
-  type IpcMainEvent,
-  type IpcMainInvokeEvent,
-  type WebFrameMain,
-} from "electron";
+import { app, clipboard, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 
 import {
   APP_INFO_CHANNEL,
@@ -26,7 +14,6 @@ import {
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
   CLOSE_ANSWER_CHANNEL,
-  CLOSE_REQUEST_CHANNEL,
   COPY_TEXT_CHANNEL,
   CLIPBOARD_PATHS_CHANNEL,
   DOWNLOAD_EXPORT_CHANNEL,
@@ -40,8 +27,8 @@ import {
   MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   OPEN_PRIVACY_SETTINGS_CHANNEL,
+  PROJECT_WINDOW_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
-  SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
   SILENT_AUDIO_CHANNEL,
   type AppInfo,
@@ -62,27 +49,36 @@ import {
   type UpdateStatus,
 } from "./ipc.ts";
 import { channelOf, productNameFor } from "./channel.ts";
-import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
-import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
-import { setAppMenu, setUpdateMenu } from "./menu.ts";
+import { BACKGROUND_SWITCHES, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
+import { setAppMenu, setUpdateMenu, type MenuActions } from "./menu.ts";
 import { updateMenuState } from "./updater/policy.ts";
 import { checkPendingInstall, startUpdater, type Updater } from "./updater/updater.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
-import { allowFrameNavigation, allowPermission } from "./permissions.ts";
-import { textMenu } from "./textMenu.ts";
-import { LOCAL_NAME, makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
+import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
 import { pingServer } from "./relay.ts";
-import { startServer } from "./server.ts";
-import { installCrashReports, reportServerExit } from "./crashReports.ts";
+import { installCrashReports } from "./crashReports.ts";
 import { installOpenFile } from "./openFile.ts";
-import { testBackground, mediaTest, devServerUrl, appUrl, testDialogs } from "./app/testMode.ts";
-import { win, environments, server, setWin, setEnvironments, setServer } from "./app/state.ts";
-import { downloads, activeConnection, closeRelay, relay, downloadExport } from "./app/remote.ts";
+import { projectDirFromOpenedPath } from "./projectPath.ts";
+import { routeProject, windowWithProject, type RoutedWindow } from "./windowRouter.ts";
+import { testBackground, mediaTest, testDialogs } from "./app/testMode.ts";
+import { currentWindow, environments, setEnvironments, windowOf, windows, type AppWindow } from "./app/state.ts";
+import { activeConnection, closeRelay, downloadExport, environmentOf } from "./app/remote.ts";
 import { showMini, mini, resendMini } from "./app/miniRecorder.ts";
 import { crypt } from "./app/crypt.ts";
-import { resources } from "./app/resources.ts";
 import { appInfo, chooseFolder, chooseMedia, chooseSavePath } from "./app/dialogs.ts";
 import { mediaAccess, isMediaKind, askMediaAccess, captureSources } from "./app/mediaAccess.ts";
+import {
+  answerClose,
+  beginQuit,
+  createWindow,
+  dataDir,
+  forceClose,
+  isAppUrl,
+  serversRunning,
+  setWindowMode,
+  showWindow,
+  stopEveryServer,
+} from "./app/windows.ts";
 
 // Lets tests drive the window with puppeteer (same switch as the phase 2 spike).
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
@@ -102,8 +98,9 @@ if (process.env.UNCUT_DATA_DIR) {
   app.setPath("sessionData", path.join(process.env.UNCUT_DATA_DIR, "electron"));
 }
 
-// One Uncut per profile: opening it again focuses the running window. The lock is per userData
-// directory, so test runs with their own UNCUT_DATA_DIR don't block each other.
+// One Uncut per profile: opening it again goes to the running app (its last focused window, or the
+// project it was given). The lock is per userData directory, so test runs with their own
+// UNCUT_DATA_DIR don't block each other.
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 }
@@ -129,341 +126,154 @@ else if (process.platform === "darwin") app.commandLine.appendSwitch("enable-fea
 // usable one (the server's rasteriser gets the same through UNCUT_TEST_NO_GPU).
 if (process.env.UNCUT_CDP && process.env.UNCUT_TEST_NO_GPU === "1") app.commandLine.appendSwitch("disable-gpu");
 
-// Our own page, ignoring query and hash (the dev server reloads itself in place).
-const isAppUrl = (raw: string) => {
+/** The sender's window, when the message comes from its own top-level app page (the server's token, dialogs, Finder). */
+function fromAppWindow(event: IpcMainInvokeEvent | IpcMainEvent): AppWindow | undefined {
+  const entry = windowOf(event.sender);
+  const frame = event.senderFrame;
+  return entry && frame !== null && frame.parent === null && isAppUrl(frame.url) ? entry : undefined;
+}
+
+/** One name per project folder, however it was reached (symlinks, /var vs /private/var). */
+const realDir = (dir: string) => {
   try {
-    const url = new URL(raw);
-    return devServerUrl ? url.origin === appUrl.origin : url.protocol === "file:" && url.pathname === appUrl.pathname;
+    return realpathSync(dir);
   } catch {
-    return false;
+    return dir;
   }
 };
 
-/** The http origin of the server the page was last given (SERVER_CONNECTION_CHANNEL), for allowFrameNavigation. */
-let connectedServer: string | undefined;
+// ---- windows, and which one a project opens in ----
 
-const openIfWeb = (raw: string) => {
-  if (/^https?:\/\//i.test(raw)) void shell.openExternal(raw);
-};
+const NO_PROJECT_STATE: AppState = { projectOpen: false, recents: [], environments: false };
 
-// ---- leaving with work in progress (U12, D178) ----
-// The window's close (its button, ⌘W with no project, and every quit: ⌘Q, the menu, the Dock) is
-// held while the renderer looks for pending work: nothing pending answers "close" at once; else it
-// answers "asking" and shows its dialog, and later "close" or "stay". A renderer that doesn't answer
-// in time, crashed, hung or isn't loaded never keeps the window open. SIGTERM / SIGINT don't ask.
-const CLOSE_ANSWER_MS = 2000;
-let closeAllowed = false;
-let quitting = false;
-let closeWait: { readonly timer: ReturnType<typeof setTimeout> | undefined } | undefined;
+/** How long a project handed to a page counts as opening there without the page saying so (an open that failed). */
+const OPENING_MS = 60_000;
+const openingDir = (w: AppWindow) => (w.opening && Date.now() - w.opening.at < OPENING_MS ? w.opening.dir : undefined);
+const routed = (): Array<RoutedWindow> =>
+  windows.map((w) => ({ id: w.window.id, local: environmentOf(w).kind === "local", projectDir: w.projectDir, pendingOpen: w.pendingOpen ?? openingDir(w) }));
+const byId = (id: number) => windows.find((w) => w.window.id === id);
 
-function goClose() {
-  if (closeWait?.timer) clearTimeout(closeWait.timer);
-  closeWait = undefined;
-  closeAllowed = true;
-  if (quitting) app.quit();
-  else win?.close();
+/** The menu shows the focused window's state; its commands go there. */
+const refreshMenu = () => setAppMenu(currentWindow()?.appState ?? NO_PROJECT_STATE, menuActions);
+
+function openWindow(options: { envId?: string; pendingOpen?: string } = {}) {
+  const entry = createWindow({ ...options, onClosed: () => windowClosed(entry) });
+  entry.window.on("focus", refreshMenu);
+  return entry;
 }
 
-function onWindowClose(event: Electron.Event) {
-  const w = win;
-  if (closeAllowed || !w) return;
-  const contents = w.webContents;
-  if (contents.isDestroyed() || contents.isCrashed() || contents.isLoading()) return;
-  event.preventDefault();
-  // Asked already: a dialog is up (the renderer brings it back), or an answer is due.
-  if (!closeWait) closeWait = { timer: setTimeout(goClose, CLOSE_ANSWER_MS) };
-  contents.send(CLOSE_REQUEST_CHANNEL, quitting ? "quit" : "window");
+function windowClosed(entry: AppWindow) {
+  if (miniOwner === entry) {
+    miniOwner = undefined;
+    showMini(null);
+  }
+  updater?.setBusy(windows.some((w) => w.busy));
+  if (windows.length) refreshMenu();
 }
 
-app.on("before-quit", () => {
-  quitting = true;
-});
+/** A project from Open Recent, Finder, the Dock or a second launch: the window that has it, an empty focused one, or a new one. */
+function openProject(rawDir: string) {
+  const dir = realDir(rawDir);
+  const route = routeProject(routed(), currentWindow()?.window.id, dir);
+  if (route.kind === "new") return void openWindow({ pendingOpen: dir });
+  const entry = byId(route.id)!;
+  if (route.kind === "open") {
+    // A page that hasn't asked yet ignores commands: it takes the project when it asks.
+    if (!entry.askedOpen) entry.pendingOpen = dir;
+    else {
+      entry.opening = { dir, at: Date.now() };
+      entry.window.webContents.send(MENU_COMMAND_CHANNEL, { type: "open-recent", dir } satisfies MenuCommand);
+    }
+  }
+  showWindow(entry);
+}
+
+function sendMenuCommand(command: MenuCommand) {
+  if (command.type === "open-recent") return openProject(command.dir);
+  currentWindow()?.window.webContents.send(MENU_COMMAND_CHANNEL, command);
+}
+
+const menuActions: MenuActions = { send: sendMenuCommand, newWindow: () => void openWindow() };
+
+app.on("before-quit", beginQuit);
 /**
  * Signals: SIGTERM / SIGINT quit without asking. Installed once the app is ready, after Chromium's
- * own handlers, so these replace them (Chromium's would quit through the window's close, which asks).
- * In tests (UNCUT_CDP) SIGUSR2 closes the window as its close button does, which tests can't press.
+ * own handlers, so these replace them (Chromium's would quit through the windows' close, which asks).
+ * In tests (UNCUT_CDP) SIGUSR2 closes the focused window as its close button does, which tests can't press.
  */
 function installSignals() {
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.on(signal, () => {
-      closeAllowed = true;
+      forceClose();
       app.quit();
     });
   }
-  if (process.env.UNCUT_CDP) process.on("SIGUSR2", () => win?.close());
+  if (process.env.UNCUT_CDP) process.on("SIGUSR2", () => currentWindow()?.window.close());
 }
 
-const sendMenuCommand = (command: MenuCommand) => win?.webContents.send(MENU_COMMAND_CHANNEL, command);
-
-// ---- the window's two sizes (D209) ----
-
-const windowDir = () => process.env.UNCUT_DATA_DIR || app.getPath("userData");
-let windowMode: WindowMode = "welcome";
-let windowSizes: Record<WindowMode, WindowSize> | undefined;
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
-
-/** The user resized or moved the window: remembered for the mode it's in. */
-function rememberWindow() {
-  if (!win || !windowSizes || win.isFullScreen() || win.isMaximized() || win.isMinimized()) return;
-  const [width, height] = win.getContentSize();
-  // A size on the way from one mode to the other isn't this mode's.
-  if (width! < WINDOW_MODES[windowMode].minWidth || height! < WINDOW_MODES[windowMode].minHeight) return;
-  const [x, y] = win.getPosition();
-  windowSizes = { ...windowSizes, [windowMode]: { width: width!, height: height!, x: x!, y: y! } };
-  clearTimeout(saveTimer);
-  const sizes = windowSizes;
-  saveTimer = setTimeout(() => writeWindowSizes(windowDir(), sizes), 300);
-}
-
-/** Welcome (compact) or editor (full): the minimum and the remembered size of that mode; its content size. */
-function setWindowMode(mode: WindowMode): { width: number; height: number } {
-  if (!win) return { width: 0, height: 0 };
-  windowSizes ??= readWindowSizes(windowDir());
-  if (mode === windowMode || win.isFullScreen()) {
-    const [width, height] = win.getContentSize();
-    return { width: width!, height: height! };
-  }
-  // The size the user left this mode at, before switching.
-  rememberWindow();
-  windowMode = mode;
-  const { minWidth, minHeight } = WINDOW_MODES[mode];
-  const want = windowSizes[mode];
-  if (win.isMaximized()) win.unmaximize();
-  win.setMinimumSize(0, 0);
-  win.setContentSize(want.width, want.height);
-  win.setMinimumSize(minWidth, minHeight);
-  const testAt = testWindowAt({ width: win.getSize()[0]!, height: win.getSize()[1]! });
-  if (testAt) win.setPosition(testAt.x, testAt.y);
-  else if (want.x !== undefined && want.y !== undefined) win.setPosition(want.x, want.y);
-  else win.center();
-  const [width, height] = win.getContentSize();
-  return { width: width!, height: height! };
-}
-
-/**
- * D216: in tests (UNCUT_CDP) the window always opens centred on the primary display, not on
- * whichever display macOS picks (the one with the focus); undefined for a release user's app
- * (remembered or macOS's choice). The helper also pins the scale and colour profile (TEST_DISPLAY_ARGS).
- */
-const testWindowAt = (size: { width: number; height: number }) => (process.env.UNCUT_CDP ? centredIn(screen.getPrimaryDisplay().workArea, size) : undefined);
-
-function createWindow() {
-  windowSizes = readWindowSizes(windowDir());
-  windowMode = "welcome";
-  const remembered = windowSizes.welcome;
-  const start = { ...remembered, ...testWindowAt(remembered) };
-  setWin(
-    new BrowserWindow({
-      width: start.width,
-      height: start.height,
-      useContentSize: true,
-      ...(start.x !== undefined && start.y !== undefined ? { x: start.x, y: start.y } : {}),
-      // D209: compact while no project is open; setWindowMode switches to the editor's size.
-      minWidth: WINDOW_MODES.welcome.minWidth,
-      minHeight: WINDOW_MODES.welcome.minHeight,
-      // Tests (UNCUT_CDP) get the window size they ask for even on a small screen (#89: GitHub's
-      // macOS runners have a 1280×800-ish display, which clamped the editor and pushed the timeline's
-      // lower tracks off the window). A release user's window stays within the screen.
-      enableLargerThanScreen: Boolean(process.env.UNCUT_CDP),
-      title: app.name,
-      titleBarStyle: "hiddenInset",
-      backgroundColor: "#0a0a0a",
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        sandbox: true,
-        // A background test window is inactive and transparent: keep its timers and frames running.
-        backgroundThrottling: !testBackground,
-      },
-    }),
-  );
-  if (!win) return;
-  const contents = win.webContents;
-  // The window only ever shows the app. Web links open in the default browser.
-  contents.on("will-navigate", (event, url) => {
-    if (isAppUrl(url)) return;
-    event.preventDefault();
-    openIfWeb(url);
-  });
-  // A frame in the page (a graphic's sandboxed iframe, D78) may only load a graphic's document from
-  // Uncut's server: never navigate itself elsewhere (a remote URL carrying a media frame, D290 review).
-  contents.on("will-frame-navigate", (event) => {
-    if (event.isMainFrame || allowFrameNavigation(event.url, connectedServer)) return;
-    event.preventDefault();
-  });
-  contents.setWindowOpenHandler(({ url }) => {
-    openIfWeb(url);
-    return { action: "deny" };
-  });
-  contents.on("will-attach-webview", (event) => event.preventDefault());
-  // D266: a reload (an environment switch) or navigation makes the new page ask for a Finder open again.
-  contents.on("did-start-navigation", (details) => {
-    if (details.isMainFrame && !details.isSameDocument) openFile.rendererReloaded();
-  });
-  // Issue #49: Cut, Copy, Paste and Select All on selected text and in text fields. Tests log the
-  // menu instead of opening it (a native menu would wait for a click nobody makes).
-  contents.on("context-menu", (_event, params) => {
-    const items = textMenu(params);
-    if (!items || !win) return;
-    if (process.env.UNCUT_CDP)
-      return void console.log(`[test] text menu ${items.map((i) => ("role" in i ? `${i.role}${i.enabled ? "" : ":off"}` : "-")).join(",")}`);
-    Menu.buildFromTemplate(items.map((i) => ({ ...i }))).popup({ window: win });
-  });
-  // The only downloads are the ones downloadExport asked for (D109); anything else is cancelled.
-  contents.session.on("will-download", (_event, item) => {
-    const wanted = downloads.get(item.getURL());
-    if (!wanted) return item.cancel();
-    downloads.delete(item.getURL());
-    item.setSavePath(wanted.path);
-    item.once("done", (_e, state) =>
-      wanted.done(
-        state === "completed"
-          ? { path: wanted.path }
-          : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." },
-      ),
-    );
-  });
-  // Camera, microphone and screen (D114), and the few other permissions the app uses (D219,
-  // permissions.ts), only for the app's own top-level page: a graphic's sandboxed iframe (D78) or
-  // any other page gets none, and nothing else is granted to anyone.
-  const session = contents.session;
-  session.setPermissionRequestHandler((requester, permission, callback, details) => {
-    callback(allowPermission(permission, requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? "")));
-  });
-  session.setPermissionCheckHandler((requester, permission, _origin, details) => {
-    return allowPermission(
-      permission,
-      requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL()),
-    );
-  });
-  // getDisplayMedia records the screen or window the Capture tab picked (chooseDisplaySource just before).
-  // D210: with systemAudio, this Mac's sound too ("loopback": the speakers keep playing); for a
-  // take of the sound alone the Capture tab asks for "any screen" (getDisplayMedia always has a
-  // picture) and records only the audio track.
-  session.setDisplayMediaRequestHandler((request, callback) => {
-    const wanted = pendingDisplaySource;
-    pendingDisplaySource = undefined;
-    const frame = request.frame;
-    if (!wanted || mediaTest || !frame || !fromAppFrame(frame)) return callback({});
-    desktopCapturer
-      .getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } })
-      .then((sources) => {
-        const source = wanted.id === ANY_SCREEN ? sources.find((s) => s.id.startsWith("screen:")) : sources.find((s) => s.id === wanted.id);
-        callback(source ? { video: source, ...(wanted.systemAudio && request.audioRequested ? { audio: "loopback" as const } : {}) } : {});
-      })
-      .catch(() => callback({}));
-  });
-  // A graphic item's sandboxed iframe (D78) can't reach anyone over WebRTC either: Chromium honours
-  // no CSP webrtc directive, and without a proxy this keeps UDP (STUN) off. The app uses no WebRTC.
-  contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
-  // A background test run is silent too (D83): the page's audio graph runs and meters as usual,
-  // but nothing reaches the speakers.
-  if (testBackground) contents.setAudioMuted(true);
-  win.once("ready-to-show", () => {
-    if (!testBackground) return win?.show();
-    win?.setOpacity(0);
-    // Invisible must also mean untouchable: the user's clicks pass through to what's behind it.
-    // (Puppeteer's input goes straight to the page over CDP, not through the window.)
-    win?.setIgnoreMouseEvents(true);
-    win?.showInactive();
-  });
-  win.on("resize", rememberWindow);
-  win.on("move", rememberWindow);
-  win.on("close", onWindowClose);
-  // A renderer that's gone or stuck can't answer: the close goes ahead.
-  contents.on("render-process-gone", () => closeWait && goClose());
-  win.on("unresponsive", () => closeWait && goClose());
-  win.on("closed", () => {
-    setWin(undefined);
-    showMini(null);
-  });
-  if (devServerUrl) void win.loadURL(devServerUrl);
-  else void win.loadFile(path.join(__dirname, "renderer", "index.html"));
-}
-
-// Only the app's own top-level page may use the bridge (the server's token, dialogs, Finder).
-const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
-  const frame = event.senderFrame;
-  return win !== undefined && event.sender === win.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url);
-};
-const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent === null && frame === win.webContents.mainFrame && isAppUrl(frame.url);
-
-// D252: a .uncut project opened from Finder or the Dock (before ready, so the first open-file isn't missed).
-// D266: only on Local; on a remote it's dropped with a notice, never opened later by surprise.
+// D252: a .uncut project opened from Finder or the Dock (before ready, so the first open-file isn't
+// missed). It never opens in a window on a remote environment: a path on this Mac opens in a Local window.
 const openFile = installOpenFile({
-  isAppWindow: fromAppWindow,
-  send: sendMenuCommand,
-  show: () => {
-    if (testBackground) return;
-    win?.show();
-    win?.focus();
+  route: openProject,
+  take: (event) => {
+    const entry = fromAppWindow(event);
+    if (!entry) throw new Error("not allowed");
+    entry.askedOpen = true;
+    if (environmentOf(entry).kind !== "local") return null;
+    const dir = entry.pendingOpen;
+    entry.pendingOpen = undefined;
+    if (dir) entry.opening = { dir, at: Date.now() };
+    return dir ?? null;
   },
-  isLocal: () => (environments ? environments.active().kind === "local" : undefined),
-  notifyRemote: (dir) => {
-    const name = path.basename(dir);
-    if (testBackground || process.env.UNCUT_CDP) return void console.log(`[test] open-file on a remote: ${name}`);
-    const options = {
-      type: "info" as const,
-      message: `Switch to ${LOCAL_NAME} to open this project`,
-      detail: `“${name}” is on this Mac, and Uncut is connected to ${environments?.active().name ?? "a remote environment"}. Switch to ${LOCAL_NAME} in Environments, then open it again.`,
-      buttons: ["OK"],
-    };
-    void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
-  },
+});
+
+// A second launch: the projects it was given open as above; with none, the last focused window comes forward.
+app.on("second-instance", (_event, argv) => {
+  const dirs = argv
+    .slice(1)
+    .map(projectDirFromOpenedPath)
+    .filter((dir): dir is string => dir !== undefined);
+  if (!app.isReady()) return;
+  if (dirs.length) return dirs.forEach(openProject);
+  const entry = currentWindow();
+  if (entry) showWindow(entry);
 });
 
 // ---- recording on this Mac (D114) ----
 
-// The screen or window the next getDisplayMedia records (set by the Capture tab just before), and
-// whether with this Mac's sound (D210).
-let pendingDisplaySource: { readonly id: string; readonly systemAudio: boolean } | undefined;
-/** D210: any screen (a take of this Mac's sound alone: the picture isn't kept). */
-const ANY_SCREEN = "screen:any";
+// D209: the window whose recording the floating mini recorder shows; its buttons go back there.
+let miniOwner: AppWindow | undefined;
 
-app.on("second-instance", () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  if (testBackground) return;
-  win.show();
-  win.focus();
-});
+function setMini(entry: AppWindow, state: MiniRecorderState | null) {
+  if (state) {
+    miniOwner = entry;
+    return showMini(state);
+  }
+  if (miniOwner !== entry) return;
+  miniOwner = undefined;
+  showMini(null);
+}
 
 app.whenReady().then(() => {
   installSignals();
   // D223: main's crashes go to the server's telemetry spool.
-  installCrashReports(process.env.UNCUT_DATA_DIR || app.getPath("userData"));
-  setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
-  openFile.environmentsReady();
-  setServer(
-    startServer({
-      ...resources,
-      // Tests point this at a temp dir so they never touch the real recents.
-      dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
-      // The local server going away matters to the window only while it shows Local.
-      onExit: (reason) => {
-        reportServerExit(process.env.UNCUT_DATA_DIR || app.getPath("userData"), reason);
-        if (environments?.active().kind !== "remote") win?.webContents.send(SERVER_EXIT_CHANNEL, reason);
-      },
-      // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
-      // ciphertext reaches the server's keys.json.
-      keys: crypt,
-    }),
-  );
-  const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
+  installCrashReports(dataDir());
+  setEnvironments(makeEnvironmentStore(dataDir(), crypt));
+  const handle = <A extends Array<unknown>, R>(channel: string, fn: (entry: AppWindow, ...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {
-      if (!fromAppWindow(event)) throw new Error("not allowed");
-      return fn(...(args as A));
+      const entry = fromAppWindow(event);
+      if (!entry) throw new Error("not allowed");
+      return fn(entry, ...(args as A));
     });
-  handle(SERVER_CONNECTION_CHANNEL, () =>
-    activeConnection().then((c) => {
+  handle(SERVER_CONNECTION_CHANNEL, (entry) =>
+    activeConnection(entry).then((c) => {
       // The server the page talks to (local or the relay, both on 127.0.0.1): its graphics' documents load in frames.
-      connectedServer = c.url.replace(/^ws/, "http");
+      entry.connectedServer = c.url.replace(/^ws/, "http");
       return c;
     }),
   );
-  handle(ENVIRONMENTS_CHANNEL, () => environments!.list());
-  handle(ENVIRONMENT_ADD_CHANNEL, (input: { name?: unknown; url?: unknown; token?: unknown }) => {
+  handle(ENVIRONMENTS_CHANNEL, (entry) => ({ ...environments!.list(), active: environmentOf(entry).id }));
+  handle(ENVIRONMENT_ADD_CHANNEL, (_entry, input: { name?: unknown; url?: unknown; token?: unknown }) => {
     if (typeof input?.url !== "string" || typeof input.token !== "string" || typeof input.name !== "string") throw new Error("not an environment");
     try {
       return environments!.add({ name: input.name, url: input.url, token: input.token });
@@ -471,7 +281,7 @@ app.whenReady().then(() => {
       return { problem: `Couldn't keep the token safely: ${(error as Error).message}` };
     }
   });
-  handle(ENVIRONMENT_TEST_CHANNEL, async (input: { url?: unknown; token?: unknown; id?: unknown }): Promise<EnvironmentTest> => {
+  handle(ENVIRONMENT_TEST_CHANNEL, async (_entry, input: { url?: unknown; token?: unknown; id?: unknown }): Promise<EnvironmentTest> => {
     let target: { url: string; token: string } | undefined;
     if (typeof input?.id === "string") {
       try {
@@ -488,37 +298,48 @@ app.whenReady().then(() => {
     } else throw new Error("nothing to test");
     return pingServer(target.url, target.token);
   });
-  handle(ENVIRONMENT_RENAME_CHANNEL, (id: unknown, name: unknown) => typeof id === "string" && typeof name === "string" && environments!.rename(id, name));
-  handle(ENVIRONMENT_REMOVE_CHANNEL, async (id: unknown) => {
-    if (typeof id !== "string") return false;
-    const wasActive = environments!.active().id === id;
-    const removed = environments!.remove(id);
-    // Removing the one on screen goes back to Local.
-    if (removed && wasActive) {
-      await closeRelay();
-      win?.webContents.reload();
+  handle(
+    ENVIRONMENT_RENAME_CHANNEL,
+    (_entry, id: unknown, name: unknown) => typeof id === "string" && typeof name === "string" && environments!.rename(id, name),
+  );
+  handle(ENVIRONMENT_REMOVE_CHANNEL, async (_entry, id: unknown) => {
+    if (typeof id !== "string" || !environments!.remove(id)) return false;
+    // Each window showing the removed one goes back to Local.
+    for (const shown of windows.filter((w) => w.envId === id)) {
+      shown.envId = LOCAL_ID;
+      await closeRelay(shown);
+      shown.window.webContents.reload();
     }
-    return removed;
-  });
-  handle(ENVIRONMENT_SWITCH_CHANNEL, async (id: unknown) => {
-    if (typeof id !== "string" || !environments!.setActive(id)) return false;
-    // A fresh page for the other environment: nothing of one server's projects carries over (D106).
-    await closeRelay();
-    win?.webContents.reload();
     return true;
   });
-  handle(ENVIRONMENT_STATUS_CHANNEL, () => ({ problem: relay?.relay.problem() }));
-  handle(DOWNLOAD_EXPORT_CHANNEL, (jobId: string, name: string) => downloadExport(jobId, name));
+  handle(ENVIRONMENT_SWITCH_CHANNEL, async (entry, id: unknown) => {
+    if (typeof id !== "string") return false;
+    // A remote shows in one window (its server keeps one project): that window comes forward.
+    const showing = id === LOCAL_ID ? undefined : windows.find((w) => w !== entry && w.envId === id);
+    if (showing) {
+      showWindow(showing);
+      return false;
+    }
+    // Remembered for the next launch's first window.
+    if (!environments!.setActive(id)) return false;
+    entry.envId = id;
+    // A fresh page for the other environment: nothing of one server's projects carries over (D106).
+    await closeRelay(entry);
+    entry.window.webContents.reload();
+    return true;
+  });
+  handle(ENVIRONMENT_STATUS_CHANNEL, (entry) => ({ problem: entry.relay?.relay.problem() }));
+  handle(DOWNLOAD_EXPORT_CHANNEL, (entry, jobId: string, name: string) => downloadExport(entry, jobId, name));
   handle(APP_INFO_CHANNEL, (): AppInfo => appInfo);
-  handle(CHOOSE_FOLDER_CHANNEL, (purpose: FolderPurpose) => chooseFolder(purpose));
-  handle(CHOOSE_MEDIA_CHANNEL, () => chooseMedia());
-  handle(CHOOSE_SAVE_PATH_CHANNEL, (defaultPath: string) => chooseSavePath(defaultPath));
-  handle(SHOW_IN_FOLDER_CHANNEL, (target: string) => {
+  handle(CHOOSE_FOLDER_CHANNEL, (entry, purpose: FolderPurpose) => chooseFolder(entry.window, purpose));
+  handle(CHOOSE_MEDIA_CHANNEL, (entry) => chooseMedia(entry.window));
+  handle(CHOOSE_SAVE_PATH_CHANNEL, (entry, defaultPath: string) => chooseSavePath(entry.window, defaultPath));
+  handle(SHOW_IN_FOLDER_CHANNEL, (_entry, target: string) => {
     if (typeof target !== "string" || !path.isAbsolute(target)) throw new Error("not an absolute path");
     if (testDialogs) console.log(`[test] showItemInFolder ${target}`);
     else shell.showItemInFolder(target);
   });
-  handle(COPY_TEXT_CHANNEL, (text: string) => {
+  handle(COPY_TEXT_CHANNEL, (_entry, text: string) => {
     if (typeof text !== "string") throw new Error("not text");
     // Tests shouldn't overwrite the clipboard of whoever runs them.
     if (testDialogs) console.log(`[test] copied ${text}`);
@@ -536,88 +357,100 @@ app.whenReady().then(() => {
     return clipboard.read().then(clipboardPaths, () => []);
   });
   handle(MEDIA_ACCESS_CHANNEL, () => mediaAccess());
-  handle(ASK_MEDIA_ACCESS_CHANNEL, (kind: unknown) => {
+  handle(ASK_MEDIA_ACCESS_CHANNEL, (_entry, kind: unknown) => {
     if (!isMediaKind(kind)) throw new Error("not a media kind");
     return askMediaAccess(kind);
   });
-  handle(OPEN_PRIVACY_SETTINGS_CHANNEL, (kind: unknown) => {
+  handle(OPEN_PRIVACY_SETTINGS_CHANNEL, (_entry, kind: unknown) => {
     if (!isMediaKind(kind)) throw new Error("not a media kind");
     const url = privacySettingsUrl(kind);
     if (mediaTest) console.log(`[test] open ${url}`);
     else void shell.openExternal(url);
   });
   handle(CAPTURE_SOURCES_CHANNEL, () => captureSources());
-  handle(CHOOSE_DISPLAY_SOURCE_CHANNEL, (id: unknown, options: unknown) => {
+  handle(CHOOSE_DISPLAY_SOURCE_CHANNEL, (entry, id: unknown, options: unknown) => {
     if (typeof id !== "string" || id.length > 200) throw new Error("not a source id");
     const systemAudio = Boolean(options && typeof options === "object" && (options as { systemAudio?: unknown }).systemAudio === true);
-    pendingDisplaySource = { id, systemAudio };
+    entry.pendingDisplaySource = { id, systemAudio };
   });
   handle(SYSTEM_AUDIO_CHANNEL, () => systemAudioSupport(process.platform, process.getSystemVersion(), process.env));
+  // Several projects at once: opening a project another window has brings that window forward
+  // instead; so does one the server refused as open in another window's server (holderPid).
+  handle(PROJECT_WINDOW_CHANNEL, (entry, dir: unknown, holderPid: unknown) => {
+    if (typeof dir !== "string" || !path.isAbsolute(dir) || environmentOf(entry).kind !== "local") return false;
+    const holder = typeof holderPid === "number" ? windows.find((w) => w !== entry && w.server?.pid === holderPid) : undefined;
+    const other = holder ?? byId(windowWithProject(routed(), entry.window.id, realDir(dir))?.id ?? -1);
+    if (!other) return false;
+    showWindow(other);
+    return true;
+  });
   // A background test window plays its preview to no output device (sinkId "none"): no sound, and
   // no device latency (Bluetooth headphones add ~0.25 s) between the clock and what is captured.
   ipcMain.on(SILENT_AUDIO_CHANNEL, (event) => {
-    event.returnValue = fromAppWindow(event) && testBackground;
+    event.returnValue = fromAppWindow(event) !== undefined && testBackground;
   });
   ipcMain.on(CLOSE_ANSWER_CHANNEL, (event, answer: CloseAnswer) => {
-    if (!fromAppWindow(event) || !closeWait) return;
-    if (answer === "close") return goClose();
-    if (closeWait.timer) clearTimeout(closeWait.timer);
-    if (answer === "asking") closeWait = { timer: undefined };
-    else {
-      // Cancel: the quit (if it was one) is off; the next close asks again.
-      closeWait = undefined;
-      quitting = false;
-    }
+    const entry = fromAppWindow(event);
+    if (entry) answerClose(entry, answer);
   });
   ipcMain.on(APP_STATE_CHANNEL, (event, state: AppState) => {
-    if (fromAppWindow(event)) setAppMenu(state, sendMenuCommand);
+    const entry = fromAppWindow(event);
+    if (!entry) return;
+    entry.appState = state;
+    // A page on a remote doesn't say what its local server has open: that stays as last reported.
+    if (environmentOf(entry).kind === "local") {
+      entry.projectDir = typeof state?.projectDir === "string" && path.isAbsolute(state.projectDir) ? realDir(state.projectDir) : undefined;
+      entry.opening = undefined;
+    }
+    if (entry === currentWindow()) refreshMenu();
   });
-  // D209: the mini recorder's state comes from the app window; its buttons go back there.
+  // D209: the mini recorder's state comes from the window recording; its buttons go back there.
   ipcMain.on(MINI_RECORDER_CHANNEL, (event, state: MiniRecorderState | null) => {
-    if (!fromAppWindow(event)) return;
-    showMini(state && typeof state === "object" && typeof state.name === "string" ? state : null);
+    const entry = fromAppWindow(event);
+    if (entry) setMini(entry, state && typeof state === "object" && typeof state.name === "string" ? state : null);
   });
   ipcMain.on(MINI_RECORDER_ACTION_CHANNEL, (event, action: MiniRecorderAction) => {
     if (!mini || event.sender !== mini.webContents) return;
     if (action === "ready") return resendMini();
     if (!["stop", "pause", "resume", "cancel"].includes(action)) return;
     if (testBackground) console.log(`[test] mini recorder ${action}`);
-    win?.webContents.send(MINI_RECORDER_ACTION_CHANNEL, action);
+    miniOwner?.window.webContents.send(MINI_RECORDER_ACTION_CHANNEL, action);
   });
   // D209: the renderer asks for the editor's size before it shows a project, the compact one after.
-  handle(WINDOW_MODE_CHANNEL, (mode: unknown) => {
+  handle(WINDOW_MODE_CHANNEL, (entry, mode: unknown) => {
     if (mode !== "welcome" && mode !== "editor") throw new Error("not a window mode");
-    return setWindowMode(mode);
+    return setWindowMode(entry, mode);
   });
-  setAppMenu({ projectOpen: false, recents: [], environments: false }, sendMenuCommand);
-  createWindow();
+  // The first window shows the environment the last one switched to; new ones start on Local.
+  openWindow({ envId: environments!.active().id });
+  refreshMenu();
+  openFile.ready();
   installUpdates();
 });
 
 // ---- auto-update (#102, D276) ----
 
 let updater: Updater | undefined;
-// What the renderer last said (an export, a recording or an agent turn running), kept until the updater is up.
-let updateBusy = false;
 
 function installUpdates() {
   void startUpdater({
-    dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
-    send: (status) => win?.webContents.send(UPDATE_STATUS_CHANNEL, status),
-    // The renderer asked about pending work before it called install; now nothing may hold the quit:
-    // the server is stopped first (will-quit then has nothing to wait for) and the close isn't asked again.
+    dataDir: dataDir(),
+    send: (status) => {
+      for (const entry of windows) entry.window.webContents.send(UPDATE_STATUS_CHANNEL, status);
+    },
+    // The renderer asked about pending work before it called install (and install is refused while
+    // any window is busy); now nothing may hold the quit: every server is stopped first (will-quit
+    // then has nothing to wait for) and no window's close is asked again.
     beforeInstall: async () => {
-      closeAllowed = true;
-      const stopping = server;
-      setServer(undefined);
-      await Promise.allSettled([stopping?.stop(), closeRelay()]);
+      forceClose();
+      await stopEveryServer();
     },
     onPolicy: (policy) => setUpdateMenu({ ...updateMenuState(policy, pendingUpdate === "hold-updates"), check: () => updater?.checkNow() }),
     hold: pendingUpdate === "hold-updates",
   }).then(
     (u) => {
       updater = u;
-      u.setBusy(updateBusy);
+      u.setBusy(windows.some((w) => w.busy));
     },
     (error: Error) => console.log(`[updater] not started: ${error.message}`),
   );
@@ -633,23 +466,22 @@ function installUpdates() {
     if (!fromAppWindow(event)) throw new Error("not allowed");
     return updater?.install() ?? "not-ready";
   });
+  // What each renderer last said (an export, a recording or an agent turn running): busy while any window is.
   ipcMain.on(UPDATE_BUSY_CHANNEL, (event, busy: unknown) => {
-    if (!fromAppWindow(event)) return;
-    updateBusy = busy === true;
-    updater?.setBusy(updateBusy);
+    const entry = fromAppWindow(event);
+    if (!entry) return;
+    entry.busy = busy === true;
+    updater?.setBusy(windows.some((w) => w.busy));
   });
 }
 
-// One window for now; closing it ends the app (and the server with it).
+// Closing the last window ends the app (and every server with it).
 app.on("window-all-closed", () => app.quit());
 
 app.on("will-quit", (event) => {
-  void closeRelay();
-  if (!server?.running()) return;
-  // Hold the quit until the server is really gone (stop() is bounded: SIGKILL after 1.5 s).
+  if (!serversRunning()) return;
+  // Hold the quit until every server is really gone (each stop is bounded: SIGKILL after 1.5 s).
   // Re-quit on a later tick: Electron ignores app.quit() while will-quit is still dispatching.
   event.preventDefault();
-  const stopping = server;
-  setServer(undefined);
-  void stopping.stop().finally(() => setImmediate(() => app.quit()));
+  void stopEveryServer().finally(() => setImmediate(() => app.quit()));
 });

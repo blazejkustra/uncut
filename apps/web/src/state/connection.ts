@@ -30,6 +30,8 @@ export interface CallError {
   readonly message: string;
   readonly reason?: string;
   readonly details?: ReadonlyArray<{ readonly code: string; readonly path: string; readonly message: string }>;
+  /** ProjectError "open-elsewhere": the pid of the server that has the project open. */
+  readonly holderPid?: number;
 }
 
 const CALL_TIMEOUT = Duration.seconds(15);

@@ -68,7 +68,7 @@ import { rasterizerCommand } from "../../apps/server/src/export/rasterizer.ts";
 import { sweepStaleTemp } from "../../apps/server/src/export/exporter.ts";
 import { demoProject, FOOTAGE, skipDemo } from "../helpers/demo.ts";
 import { exportProject, FPS, makeExportFixture, writeProject } from "../helpers/export-fixture.ts";
-import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { BUNDLE, MEDIA, connect, killAll, projectCopy, startServer } from "../helpers/server.ts";
 import { until } from "../helpers/wait.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -1100,7 +1100,7 @@ test("export: quitting mid-render stops ffmpeg and removes the temp files before
   const c = await connect(other.ready.port, other.ready.token);
   try {
     const list = c.subscribe("export.jobs");
-    await c.ok("project.open", { dir: join(root, "Long.uncut") });
+    await c.ok("project.open", { dir: projectCopy(join(root, "Long.uncut")) });
     const { jobId } = await c.ok("export.start", { output: join(root, "out", "Quit.mp4"), quality: "high", loudness: "off" });
     await list.until((l) => l.some((j: any) => j.id === jobId && j.phase === "rendering" && j.progress > 0.02), 60000);
     const kids = spawnSync("pgrep", ["-P", String(other.proc.pid)], { encoding: "utf8" })

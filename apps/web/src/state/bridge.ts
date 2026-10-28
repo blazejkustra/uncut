@@ -15,6 +15,8 @@ export interface AppState {
   readonly panels?: { readonly lib: boolean; readonly side: boolean; readonly bottom: boolean; readonly focus: boolean };
   /** #94 (D263, D280): File › Import from Link… shows (its plugin is installed and allowed). */
   readonly importLink?: boolean;
+  /** The open project's folder, so opening it again elsewhere brings this window forward. */
+  readonly projectDir?: string;
 }
 
 /** An environment (Phase 9, D106): Local, or a remote uncut-server. */
@@ -81,6 +83,8 @@ export interface UncutBridge {
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
   // D252: the .uncut project Finder asked Uncut to open before the window was ready; null if none.
   readonly pendingOpen?: () => Promise<string | null>;
+  // Several projects at once: true when another window has this project open, or its server is holderPid's (that window comes forward).
+  readonly focusProjectWindow?: (dir: string, holderPid?: number) => Promise<boolean>;
   // Environments (D106): the list and which is active; switching (and removing the active one) reloads the window.
   readonly environments: () => Promise<{ readonly active: string; readonly environments: ReadonlyArray<EnvironmentInfo> }>;
   readonly addEnvironment: (input: { name: string; url: string; token: string }) => Promise<{ readonly id: string } | { readonly problem: string }>;

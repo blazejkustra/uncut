@@ -38,16 +38,22 @@ export interface UpdateMenu {
   readonly check: () => void;
 }
 let updateMenu: UpdateMenu = { enabled: false, sublabel: "Only in signed releases", check: () => {} };
-let last: { readonly state: AppState; readonly send: (command: MenuCommand) => void } | undefined;
+/** Where the menu's picks go: commands to the focused window (Open Recent through the window router), New Window to main. */
+export interface MenuActions {
+  readonly send: (command: MenuCommand) => void;
+  readonly newWindow: () => void;
+}
+let last: { readonly state: AppState; readonly actions: MenuActions } | undefined;
 
 /** Sets the Check for Updates… item (once the updater knows its policy) and rebuilds the menu. */
 export function setUpdateMenu(menu: UpdateMenu) {
   updateMenu = menu;
-  if (last) setAppMenu(last.state, last.send);
+  if (last) setAppMenu(last.state, last.actions);
 }
 
-export function setAppMenu(state: AppState, send: (command: MenuCommand) => void) {
-  last = { state, send };
+export function setAppMenu(state: AppState, actions: MenuActions) {
+  last = { state, actions };
+  const { send } = actions;
   // The shortcut is shown but not registered: the renderer handles these keys itself (it
   // knows whether a text field has focus), so menu clicks and keys share one code path.
   const item = (label: string, accelerator: string | undefined, command: MenuCommand): MenuItemConstructorOptions => ({
@@ -103,6 +109,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
       label: "File",
       submenu: [
         item("New Project…", "CmdOrCtrl+N", { type: "new-project" }),
+        // Several projects at once: one window per project, each with its own server.
+        { label: "New Window", accelerator: "Shift+CmdOrCtrl+N", click: () => actions.newWindow() },
         item("Open…", "CmdOrCtrl+O", { type: "open-project" }),
         { label: "Open Recent", submenu: recent },
         { type: "separator" },
@@ -110,8 +118,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         ...(state.importLink ? [{ ...item("Import from Link…", undefined, { type: "import-link" }), enabled: state.projectOpen }] : []),
         { ...item("Export…", "CmdOrCtrl+E", { type: "export" }), enabled: state.projectOpen },
         { type: "separator" },
-        // ⌘W closes the project when one is open (back to Welcome), otherwise the window (and
-        // with it the app). A ⌘W held or pressed twice is kept from reaching the second (D243, keys.ts).
+        // ⌘W closes the project when one is open (back to Welcome), otherwise the window (the
+        // last one takes the app with it). A ⌘W held or pressed twice is kept from reaching the second (D243, keys.ts).
         state.projectOpen ? item("Close Project", "CmdOrCtrl+W", { type: "close-project" }) : { role: "close" },
       ],
     },

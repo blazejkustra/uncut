@@ -1,5 +1,5 @@
-// Recently opened projects, newest first, persisted as JSON in the app's data dir.
-// Not locked across processes: two app instances writing at once can drop each other's entries.
+// Recently opened projects, newest first, persisted as JSON in the app's data dir. Every window's
+// server shares it: each change re-reads it holding recents.json.lock, so none drops another's entry.
 import { join } from "node:path";
 
 import type { RecentProject } from "@uncut/contracts";
@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
 
 import { writeFileAtomic } from "./atomicWrite.ts";
+import { withFileLock } from "./fileLock.ts";
 import { ServerConfig } from "../app/config.ts";
 
 const MAX_RECENTS = 20;
@@ -35,7 +36,8 @@ export const layer = Layer.effect(
     const { dataDir } = yield* ServerConfig;
     const fs = yield* FileSystem.FileSystem;
     const file = join(dataDir, "recents.json");
-    const lock = yield* Semaphore.make(1);
+    const semaphore = yield* Semaphore.make(1);
+    const locked = <A, E, R>(effect: Effect.Effect<A, E, R>) => semaphore.withPermits(1)(withFileLock(file, effect));
 
     // A missing or corrupt file just means no recents; it is a convenience, not data.
     const read = fs.readFileString(file).pipe(
@@ -53,7 +55,7 @@ export const layer = Layer.effect(
       );
 
     return Recents.of({
-      list: lock.withPermits(1)(
+      list: locked(
         Effect.gen(function* () {
           const entries = yield* read;
           const kept: Array<RecentProject> = [];
@@ -65,7 +67,7 @@ export const layer = Layer.effect(
         }),
       ),
       touch: (rawDir, name) =>
-        lock.withPermits(1)(
+        locked(
           Effect.gen(function* () {
             // One entry per folder, however it was reached (symlinks, /var vs /private/var).
             const real = (path: string) => fs.realPath(path).pipe(Effect.orElseSucceed(() => path));

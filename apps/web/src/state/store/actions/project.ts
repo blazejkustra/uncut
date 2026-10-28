@@ -40,6 +40,8 @@ export const projectActions = {
 
   /** Opens a project. The error shows where the user is: the welcome card or the editor banner. */
   async openProject(dir: string) {
+    // Several projects at once: a project another window has open comes forward there instead.
+    if (state.snapshot?.dir !== dir && !isRemote() && (await bridge.focusProjectWindow?.(dir).catch(() => false))) return;
     if (state.snapshot && state.snapshot.dir !== dir && !(await confirmLeave("open-project"))) return;
     const result = await call((c) => c["project.open"]({ dir }));
     if (result.ok) {
@@ -48,6 +50,9 @@ export const projectActions = {
       void refreshRecents();
       return;
     }
+    // Another window's server has it open: that window comes forward.
+    const holder = result.error.reason === "open-elsewhere" ? result.error.holderPid : undefined;
+    if (holder !== undefined && (await bridge.focusProjectWindow?.(dir, holder).catch(() => false))) return;
     const text = `Couldn't open ${dir.split("/").pop()}. ${plainError(result.error)}`;
     if (state.snapshot) set({ notice: { text, transport: isTransportError(result.error) } });
     else set({ welcomeError: text });

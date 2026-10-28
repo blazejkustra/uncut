@@ -19,6 +19,7 @@ import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
 
 import { writeAtomic } from "../project/atomicWrite.ts";
+import { withFileLockAsync } from "../project/fileLock.ts";
 import { ServerConfig } from "../app/config.ts";
 import { Recents } from "../project/recents.ts";
 import { Projects } from "../project/projects.ts";
@@ -318,30 +319,32 @@ export const layer = Layer.effect(
 
     const refresh = (list: ReadonlyArray<RecentProject>, open: string | undefined) =>
       Effect.promise(async () => {
-        const known = await read();
         const dirs = new Map<string, { dir: string; name: string }>();
         for (const r of list) dirs.set(r.dir, { dir: r.dir, name: r.name });
         if (open && !dirs.has(open)) dirs.set(open, { dir: open, name: basename(open).replace(/\.uncut$/i, "") });
         const fresh = new Map<string, IndexEntry>();
         for (const p of dirs.values()) for (const e of await entriesOf(p, dataDir)) if (!fresh.has(e.id)) fresh.set(e.id, e);
-        // Entries from projects no longer listed stay while their file exists.
-        for (const e of known) {
-          if (fresh.has(e.id) || dirs.has(e.project.dir)) continue;
+        // Another window's server may have written since: what's kept is read again under the lock.
+        return withFileLockAsync(file, async () => {
+          // Entries from projects no longer listed stay while their file exists.
+          for (const e of await read()) {
+            if (fresh.has(e.id) || dirs.has(e.project.dir)) continue;
+            try {
+              await stat(e.path);
+              fresh.set(e.id, e);
+            } catch {}
+          }
+          const entries = [...fresh.values()].sort((a, b) => Date.parse(b.created) - Date.parse(a.created)).slice(0, MAX_INDEXED);
           try {
-            await stat(e.path);
-            fresh.set(e.id, e);
-          } catch {}
-        }
-        const entries = [...fresh.values()].sort((a, b) => Date.parse(b.created) - Date.parse(a.created)).slice(0, MAX_INDEXED);
-        try {
-          await mkdir(dataDir, { recursive: true });
-          const text = `${JSON.stringify({ version: 1, entries }, null, 1)}\n`;
-          const before = await readFile(file, "utf8").catch(() => "");
-          if (before !== text) await writeAtomic(file, text);
-        } catch (error) {
-          console.error(`[uncut] can't save the media index: ${(error as Error).message}`);
-        }
-        return entries;
+            await mkdir(dataDir, { recursive: true });
+            const text = `${JSON.stringify({ version: 1, entries }, null, 1)}\n`;
+            const before = await readFile(file, "utf8").catch(() => "");
+            if (before !== text) await writeAtomic(file, text);
+          } catch (error) {
+            console.error(`[uncut] can't save the media index: ${(error as Error).message}`);
+          }
+          return entries;
+        });
       });
 
     const entries = lock.withPermits(1)(

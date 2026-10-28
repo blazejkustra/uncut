@@ -25,6 +25,7 @@ import {
   MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   OPEN_PRIVACY_SETTINGS_CHANNEL,
+  PROJECT_WINDOW_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
@@ -79,6 +80,8 @@ contextBridge.exposeInMainWorld("uncut", {
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
   // D252: a .uncut project Finder opened before the window was ready (null if none).
   pendingOpen: () => ipcRenderer.invoke(PENDING_OPEN_CHANNEL),
+  // Several projects at once: true when another window has this project open (it comes forward).
+  focusProjectWindow: (dir: string, holderPid?: number) => ipcRenderer.invoke(PROJECT_WINDOW_CHANNEL, dir, holderPid),
   // U12 (D178): asked before the window closes or the app quits.
   onCloseRequest: (listener: (kind: "window" | "quit") => void) => subscribe(CLOSE_REQUEST_CHANNEL, listener),
   answerClose: (answer: CloseAnswer) => ipcRenderer.send(CLOSE_ANSWER_CHANNEL, answer),
