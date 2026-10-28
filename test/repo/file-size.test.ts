@@ -21,7 +21,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
   "test/agent/agent-permission-rules.test.ts": 1296,
   "scripts/sfx-synth.ts": 1177,
   "apps/server/src/agent/tools/cards.ts": 1154,
-  "test/agent/agent-production.test.ts": 1080,
   "test/core/text-cut.test.ts": 1013,
 };
 

@@ -40,6 +40,36 @@ export const legibleFix = (height: number) =>
 
 const frames = (list: ReadonlyArray<CensusFrame>) => list.filter((f) => f.small?.length);
 
+/** Words that put a px number about text: "46 px text", "the prompt at 46px", "font size 46 px". */
+const TYPE_WORDS = /\b(?:text|font|fonts|type|typeface|letters?|words?|copy|titles?|headlines?|captions?|labels?|prompt|sized?|rows?|lines?)\b/i;
+/** A px number in the user's words. */
+const PX = /\b(\d{2,3}(?:\.\d+)?)\s*px\b/gi;
+
+/**
+ * The smallest text size (font px) the user's own words set, if any: a px number in a sentence that
+ * speaks of text. argent-100s asked for 46 px and the critic, measuring letters against its 3.5 %,
+ * asked for more nine rounds running: the user's number is the film's floor.
+ */
+export function requestedTypePx(request: string): number | undefined {
+  const sizes = request.split(/(?<=[.;!?\n])\s*/).flatMap((sentence) => (TYPE_WORDS.test(sentence) ? [...sentence.matchAll(PX)].map((m) => Number(m[1])) : []));
+  const ok = sizes.filter((n) => n >= 8 && n <= 400);
+  return ok.length ? Math.min(...ok) : undefined;
+}
+
+/** Measuring letters is rough (fonts' letters differ): words this close under the user's size still count as it. */
+const MEASURE_SLACK = 0.9;
+
+/** The floor for this film (% of the height, as census shares): SMALL_TEXT, or lower when the user set a smaller size. */
+export const textFloorPct = (height: number, typePx?: number): number => {
+  const floor = SMALL_TEXT * 100;
+  if (!typePx) return floor;
+  return Math.min(floor, Math.round(((typePx * LETTER_SHARE) / height) * MEASURE_SLACK * 1000) / 10);
+};
+
+/** The census with only the words under `floorPct` (the user's own size can be under SMALL_TEXT). */
+export const underFloor = (list: ReadonlyArray<CensusFrame>, floorPct: number): Array<CensusFrame> =>
+  list.map((f) => (f.small?.length ? { ...f, small: f.small.filter((x) => x.share < floorPct) } : f));
+
 /** Frames whose big words are blurred, faded or dimmed, each with what does it ("" when none). */
 export function softNote(list: ReadonlyArray<CensusFrame>, max = 3): string {
   const soft = list.filter((f) => f.soft?.length);
@@ -78,15 +108,15 @@ export function censusNear(list: ReadonlyArray<CensusFrame>, at: number, fps: nu
 }
 
 /** The critic's fact line (in <motion>): the sheet's frames with words under the floor, or that none has. */
-export function legibilityFacts(list: ReadonlyArray<CensusFrame>, fps: number): Array<string> {
+export function legibilityFacts(list: ReadonlyArray<CensusFrame>, fps: number, floorPct: number = SMALL_TEXT * 100): Array<string> {
   const measured = list.filter((f) => (f.measured ?? 0) > 0);
   const blind = list.filter((f) => f.unseen).length;
   if (!measured.length) return blind ? [`Words on the graphics weren't measured in the contact sheet (${UNSEEN}).`] : [];
   const small = frames(measured);
-  const head = `Words measured on the graphics (DOM text on screen, not faded or blurred; letters' height as % of the frame's height; ${SMALL_TEXT * 100} % is the floor for words a viewer must read; ${UNSEEN})`;
+  const head = `Words measured on the graphics (DOM text on screen, not faded or blurred; letters' height as % of the frame's height; ${floorPct} % is the floor for words a viewer must read${floorPct < SMALL_TEXT * 100 ? ", the size the user asked for" : ""}; ${UNSEEN})`;
   if (!small.length)
     return [
-      `${head}: none under ${SMALL_TEXT * 100} % among the DOM words of the ${measured.length} contact-sheet frames measured${blind ? ` (${blind} frames also show canvases, images or unmeasured graphics: their words are unknown)` : ""}.`,
+      `${head}: none under ${floorPct} % among the DOM words of the ${measured.length} contact-sheet frames measured${blind ? ` (${blind} frames also show canvases, images or unmeasured graphics: their words are unknown)` : ""}.`,
     ];
   return [
     `${head}: ${small.map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`).join("; ")}. Small labels and chrome around the moment's subject are texture; the line the moment is about isn't.`,
@@ -94,7 +124,7 @@ export function legibilityFacts(list: ReadonlyArray<CensusFrame>, fps: number): 
 }
 
 /** review_submit's finding for the agent (never a blocker): every sheet frame with small words at once, and the fix. */
-export function legibilityFindings(list: ReadonlyArray<CensusFrame>, fps: number, height: number): Array<CriticFinding> {
+export function legibilityFindings(list: ReadonlyArray<CensusFrame>, fps: number, height: number, floorPct: number = SMALL_TEXT * 100): Array<CriticFinding> {
   const small = frames(list);
   if (!small.length) return [];
   const first = small[0]!.frame;
@@ -104,7 +134,7 @@ export function legibilityFindings(list: ReadonlyArray<CensusFrame>, fps: number
       key: `legibility:${first}`,
       frame: first,
       hard: false,
-      message: `Small text in ${small.length} of the contact sheet's frames (letters under ${SMALL_TEXT * 100} % of the height, measured on the graphics' words): ${small
+      message: `Small text in ${small.length} of the contact sheet's frames (letters under ${floorPct} % of the height, measured on the graphics' words): ${small
         .slice(0, 8)
         .map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`)
         .join("; ")}. Where one of them is the line the moment is about, fix them all in this round, not one per round: ${legibleFix(height)}`,

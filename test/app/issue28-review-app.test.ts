@@ -6,7 +6,10 @@
 //   Uncut's layout check an off-centre title: the review card shows the blockers and "2 blockers";
 // - the pinned Plan chip lists the latest brief, storyboard and review and jumps to their cards;
 // - the next turn fixes them; the critic confirms the fixes on fresh frames and passes it.
-// Screenshots: test-output/issue28-*.png.
+// - each critic round is a row in the thread (C10): Running with its live step and elapsed time
+//   while the critic works, then its verdict; it opens to the findings.
+// Screenshots: test-output/issue28-*.png, and the critic row in planning/overnight-img/c10-*.png
+// when that folder exists (C10_IMG overrides).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -23,6 +26,8 @@ const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to
 let root = "";
 const apps = new Set<LaunchedApp>();
 const out = (name: string) => resolve("test-output", `issue28-${name}.png`);
+const C10_IMG = process.env.C10_IMG ?? "";
+const shot = (page: Page, name: string) => page.screenshot({ path: C10_IMG && existsSync(C10_IMG) ? join(C10_IMG, `c10-${name}.png`) : out(name) });
 const plan = () => join(root, "plan.json");
 const critic = () => join(root, "critic.json");
 const turns: Array<unknown> = [];
@@ -53,10 +58,13 @@ before(async () => {
     critic(),
     JSON.stringify([
       {
-        scores: scores(9),
-        blockers: [{ kind: "placeholder", what: "The phone screen is empty where the dashboard recording was planned", at: 0.8 }],
-        defects: [{ at: 1.5, what: "The claim fades in linearly", fix: "spring.land on the rise" }],
-        summary: "A stranger sees an empty phone; the claim is fine.",
+        delay: 6000,
+        answer: {
+          scores: scores(9),
+          blockers: [{ kind: "placeholder", what: "The phone screen is empty where the dashboard recording was planned", at: 0.8 }],
+          defects: [{ at: 1.5, what: "The claim fades in linearly", fix: "spring.land on the rise" }],
+          summary: "A stranger sees an empty phone; the claim is fine.",
+        },
       },
       {
         scores: scores(9),
@@ -140,7 +148,7 @@ test(
       await page.click("[data-testid=create]");
       await waitFor("[data-testid=agent-input]");
 
-      // ---- Turn 1: brief, storyboard (approved on its card), build, the agent's own 10s, the critic's blockers ----
+      // ---- Turn 1: brief, storyboard, build, the agent's own 10s, the critic's blockers ----
       const brief = {
         film: "Argent Cloud runs your app's QA on real devices in the cloud",
         audience: "React Native developers",
@@ -183,8 +191,23 @@ test(
         { text: "The critic found an empty phone and an off-centre title; fixing both next." },
       ]);
       await send("make a 2 s promo for Argent Cloud");
-      await waitFor("[data-testid=agent-storyboard]");
-      await page.click("[data-testid=agent-storyboard-approve]");
+      // The critic's row while it runs: its round, Running, the live step and the time so far.
+      const running = "[data-testid=agent-card][data-type=review][data-status=running]";
+      await waitFor(running, 60000);
+      await page.waitForFunction(
+        (sel) => /Looking at \d+ images/.test(document.querySelector(`${sel} [data-testid=critic-line]`)?.textContent ?? ""),
+        { timeout: 60000 },
+        running,
+      );
+      assert.match(await text(page, `${running} .critic-name`), /Critic, round 1/);
+      assert.equal(await text(page, `${running} [data-testid=critic-status]`), "Running");
+      await page.waitForFunction(
+        (sel) => /^\d+s$/.test(document.querySelector(`${sel} [data-testid=critic-time]`)?.textContent ?? ""),
+        { timeout: 5000 },
+        running,
+      );
+      await page.$eval(running, (el) => el.scrollIntoView({ block: "center" }));
+      await shot(page, "critic-running");
       await lastDone();
       await waitFor("[data-testid=agent-card][data-type=review]");
       // The cards are in the conversation, in the order they happened; no tabs over the thread.
@@ -194,6 +217,13 @@ test(
       const review = "[data-testid=agent-card][data-type=review]";
       assert.equal(await page.$eval(review, (el) => el.getAttribute("data-passed")), "false");
       assert.match(await text(page, `${review} .card-outcome`), /2 blockers/);
+      assert.equal(await page.$eval(review, (el) => el.getAttribute("data-status")), "failed");
+      assert.match(await text(page, `${review} [data-testid=critic-time]`), /^\d+s$/);
+      await page.$eval(review, (el) => el.scrollIntoView({ block: "center" }));
+      await shot(page, "critic-done");
+      await page.click(`${review} .card-head`);
+      await waitFor(`${review} [data-testid=agent-review-blocker]`);
+      await shot(page, "critic-open");
       assert.deepEqual(
         await page.$$eval(`${review} [data-testid=agent-review-blocker]`, (els) =>
           els.map((e) => [e.getAttribute("data-kind"), e.getAttribute("data-source")]),
@@ -226,9 +256,9 @@ test(
       await page.$eval("[data-testid=agent-thread]", (el) => (el.scrollTop = el.scrollHeight));
       await page.click("[data-testid=plan-chip]");
       await waitFor("[data-testid=plan-menu]");
-      assert.match(await text(page, "[data-testid=plan-chip]"), /Plan\s*2 blockers/);
-      assert.match(await text(page, "[data-testid=plan-storyboard]"), /Approved/);
-      assert.match(await text(page, "[data-testid=plan-review]"), /Review, round 1\s*2 blockers/);
+      assert.match(await text(page, "[data-testid=plan-chip]"), /Plan\s*Planned/);
+      assert.match(await text(page, "[data-testid=plan-storyboard]"), /Planned/);
+      assert.equal(await page.$("[data-testid=plan-review]"), null, "the critic lives in the thread, not the chip");
       await page.screenshot({ path: out("chip") });
       await page.click("[data-testid=plan-brief]");
       await page.waitForFunction(
@@ -279,6 +309,8 @@ test(
         await page.$$eval("[data-testid=agent-card][data-type=review]", (els) => els.map((e) => e.getAttribute("data-passed")).join()),
         "false,true",
       );
+      await page.click(`${passed} .card-head`);
+      await waitFor(`${passed} [data-testid=agent-review-fix]`);
       assert.deepEqual(await page.$$eval(`${passed} [data-testid=agent-review-fix]`, (els) => els.map((e) => e.getAttribute("data-verified"))), [
         "true",
         "true",

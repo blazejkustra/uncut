@@ -30,6 +30,10 @@ export const brandActions = {
   async brandDeleteSkill(id: string, scope: BrandScope) {
     return brandResult(await call((c) => c["brand.deleteSkill"]({ id, scope })));
   },
+  /** The user's answer to loading the open project's own Claude Code skills. */
+  async brandTrustProjectSkills(key: string, load: boolean) {
+    return brandResult(await call((c) => c["brand.trustProjectSkills"]({ key, load })));
+  },
   async brandSetActive(active: BrandActive) {
     // Shown at once, so a second change made before the answer builds on this one, not the old state.
     if (state.brand) set({ brand: { ...state.brand, active } });

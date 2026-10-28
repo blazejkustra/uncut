@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { ALL_DOCS, defsFor, mcpTools, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
-import { gateOf, gateRefusal, planContext, userMessageText } from "../../apps/server/src/agent/agentPlan.ts";
+import { planContext, userMessageText } from "../../apps/server/src/agent/agentPlan.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
 
 /** Every `#/$defs/x` a value refers to, outside nested $defs. */
@@ -67,63 +67,21 @@ test("#81: the prompt's example end card names no real product", () => {
   assert.match(ALL_DOCS, /component\.end-card[^\n]*"title":"<product name>"/);
 });
 
-test("#84: the gate holds only the turn that is planning; later small edits go ahead", () => {
+test("the storyboard is the agent's plan: the <plan> block lists it and nothing waits for an approval", () => {
   const brief = { film: "x", audience: "", duration: "", formats: [], assets: [], visual: "", hardLines: [], deliverables: [] };
-  const sb = (status: "proposed" | "approved" | "declined") => ({ summary: "s", beats: [], status, ...(status === "declined" ? { note: "more logo" } : {}) });
-  // This turn wrote the brief (or proposed the storyboard): refused until approved.
-  assert.match(gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false, true))!, /no storyboard yet/);
-  assert.match(
-    gateRefusal({ brief, storyboard: sb("declined"), reviews: [] }, gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false, true))!,
-    /more logo/,
-  );
-  assert.match(
-    gateRefusal({ brief, storyboard: sb("proposed"), reviews: [] }, gateOf({ brief, storyboard: sb("proposed"), reviews: [] }, false, true))!,
-    /waiting for the user's approval/,
-  );
-  // A later turn (a small edit): never refused, pending or declined.
-  for (const status of ["proposed", "declined"] as const) {
-    const plan = { brief, storyboard: sb(status), reviews: [] };
-    const gate = gateOf(plan, false, false);
-    assert.equal(gateRefusal(plan, gate), undefined, status);
-    assert.equal(gate.waiting, true);
+  const beat = { start: 0, end: 2, title: "Open", entry: "a", exit: "b", purpose: "c", assets: [] };
+  for (const status of ["proposed", "approved", "declined"] as const) {
+    const ctx = planContext({ files: {}, skills: [], others: [] }, { brief, storyboard: { summary: "s", beats: [beat], status }, reviews: [] });
+    assert.match(ctx, /Storyboard \(your plan\): s\n1\. 0–2 s Open/, status);
+    assert.doesNotMatch(ctx, /approv|waits|small edit/i, status);
   }
-  assert.equal(gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false)), undefined, "no planning in this turn: not held");
-  // D237 (review finding 3): a later turn's edit that adds more than SMALL_EDIT_INSERTS items is building scenes: refused.
-  const scene = [1, 2, 3].map((n) => ({ op: "insert_item", track: "text", item: { id: `t${n}` } }));
-  for (const status of ["proposed", "declined"] as const) {
-    const plan = { brief, storyboard: sb(status), reviews: [] };
-    assert.match(gateRefusal(plan, gateOf(plan, false, false), scene)!, /adds 3 items[\s\S]*ask_user[\s\S]*storyboard_propose/, status);
-    assert.equal(gateRefusal(plan, gateOf(plan, false, false), [{ op: "update_item", item: "t1", set: { style: { size: 140 } } }]), undefined);
-    assert.equal(gateRefusal(plan, gateOf(plan, false, false), scene.slice(0, 2)), undefined, "a title and its background");
-  }
-  assert.match(
-    gateRefusal({ brief, reviews: [] }, gateOf({ brief, reviews: [] }, false), [...scene, { op: "insert_text", text: "x" }])!,
-    /no storyboard yet[\s\S]*adds 4 items/,
-  );
-  const ok = { brief, storyboard: sb("approved"), reviews: [] };
-  assert.equal(gateRefusal(ok, gateOf(ok, false, false), scene), undefined, "approved: build away");
-  assert.equal(gateRefusal({ reviews: [] }, gateOf({ reviews: [] }, false), scene), undefined, "no brief: no gate");
-  // Approved, the skip setting or no brief: nothing waits.
-  assert.equal(gateOf({ brief, storyboard: sb("approved"), reviews: [] }, false, true).closed, false);
-  assert.equal(gateOf({ brief, reviews: [] }, true, true).closed, false);
-  assert.equal(gateOf({ reviews: [] }, false, true).closed, false);
-  // The message's <plan> tells the agent small edits go ahead.
-  const ctx = planContext(
-    { files: {}, skills: [], others: [] },
-    { brief, storyboard: sb("declined"), reviews: [] },
-    gateOf({ brief, storyboard: sb("declined"), reviews: [] }, false),
-  );
-  assert.match(
-    ctx,
-    /The storyboard isn't approved: a small edit the user asks for goes ahead \(at most 2 new items per timeline_edit\); building the planned video waits/,
-  );
-  assert.ok(!/The build waits for/.test(ctx));
+  assert.doesNotMatch(planContext({ files: {}, skills: [], others: [] }, { brief, reviews: [] }), /waits|storyboard_propose/);
 });
 
 test("#84: the prompt starts the production process on intent, not on an empty timeline", () => {
   assert.ok(!/an empty or nearly empty timeline/.test(SYSTEM_PROMPT));
   assert.match(SYSTEM_PROMPT, /A small, specific request \([^)]*\) is just done, even on an empty or new project: no brief, storyboard or critic loop/);
-  assert.match(SYSTEM_PROMPT, /In a turn that writes the brief or proposes the storyboard, timeline_edit is refused until the storyboard is approved/);
+  assert.ok(!/refused until the storyboard is approved|approve "self"/.test(SYSTEM_PROMPT), "nobody approves the storyboard");
 });
 
 test("#60 M2 (D232, D236): no user message reaches claude starting with /, skill or not", () => {

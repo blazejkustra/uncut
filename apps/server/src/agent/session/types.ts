@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
 import type { Access } from "../agentPermissions.ts";
 import type { TurnLimits } from "../agentLimits.ts";
+import type { ClaudeSkill } from "../claudeSkills.ts";
 
 // The agent's in-memory records: stored turns, a project's Loaded agent, a claude session, a running turn.
 
@@ -82,6 +83,10 @@ export interface ClaudeSession {
   readonly token: string;
   // The plugin tools it was started with (sorted names): another list needs another session.
   readonly toolsKey: string;
+  // The user's own Claude Code skills it loads (--plugin-dir); send's toolsKey has their names.
+  readonly claudeSkills: ReadonlyArray<ClaudeSkill>;
+  // Their folders' real paths: read without a card.
+  readonly skillDirs: ReadonlyArray<string>;
   // The model and effort it was started with (D184): another choice starts another (with --resume).
   readonly model: string | undefined;
   readonly effort: string | undefined;
@@ -202,17 +207,10 @@ export interface Running {
   readonly images: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
   // A tool call's input as it streams (stream index → JSON so far), for the now line (D182).
   readonly inputs: Map<number, { at: number; tool: string; json: string; shown: string }>;
-  // D188: "Auto" with Settings' skip: storyboard_propose approves itself, the build doesn't wait.
-  readonly skipStoryboard: boolean;
-  // D237: this turn wrote the brief or proposed a storyboard: its timeline_edits wait for the approval.
+  // This turn wrote the brief or proposed a storyboard: two edits or graphics are a build the critic reviews.
   planned: boolean;
   // D295: storyboard proposals with stills in this turn (names their images apart).
   stills?: number;
-  // D296: a storyboard this turn proposed waits for the user's answer: timeline_edit, graphic_write
-  // and shader_write are refused until they approve it or ask for changes (the stills stay what they see).
-  proposing?: boolean;
-  // The user sent a storyboard back in this turn: approve "self" is refused for the rest of it.
-  storyboardSentBack?: boolean;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
   // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).

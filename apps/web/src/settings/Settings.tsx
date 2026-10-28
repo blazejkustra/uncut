@@ -2,7 +2,6 @@
 // rate, background, folder: the same component as the Inspector's), App (what this Mac remembers:
 // snapping, panel sizes, the rail's order; the agents and capture setup; environments) and the
 // keyboard shortcuts. Labs (D245): feature flags. Esc or a click outside closes it.
-import { setSkipStoryboard, useSkipStoryboard } from "../state/agentPrefs.ts";
 import { Blocks, Clapperboard, FlaskConical, Keyboard, SlidersHorizontal, X } from "lucide-react";
 import { useEffect } from "react";
 
@@ -153,7 +152,6 @@ function AppSettings() {
           <span data-testid="settings-autosave">Every change, to project.json</span>
         </div>
       </div>
-      <AgentSettings />
       <UsageDataSettings />
       <div className="group">
         <div className="group-label">Agents, capture and plugins</div>
@@ -192,20 +190,6 @@ function AppSettings() {
           </span>
         )}
       </div>
-    </div>
-  );
-}
-
-/** D188: the agent's storyboard gate. */
-function AgentSettings() {
-  const skip = useSkipStoryboard();
-  return (
-    <div className="group">
-      <div className="group-label">Agent</div>
-      <label className="check-row">
-        <input type="checkbox" data-testid="settings-skip-storyboard" checked={skip} onChange={(e) => setSkipStoryboard(e.target.checked)} />
-        Auto skips the storyboard approval
-      </label>
     </div>
   );
 }

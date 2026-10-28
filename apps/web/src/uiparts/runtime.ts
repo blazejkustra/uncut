@@ -404,11 +404,10 @@ function setLead(el: Element | null, text: string) {
 function blankReview(card: Element) {
   card.removeAttribute("data-passed");
   setText(card.querySelector(".card-head .grow"), "Review");
+  setText(card.querySelector(".critic-name"), "Critic");
+  for (const el of card.querySelectorAll(".critic-line, .critic-time")) el.remove();
   const out = card.querySelector(".card-outcome");
-  if (out) {
-    out.className = "card-outcome";
-    out.textContent = "Reviewing";
-  }
+  if (out) Object.assign(out, { className: "card-outcome", textContent: "Reviewing" });
   for (const row of card.querySelectorAll(".score")) {
     row.removeAttribute("data-value");
     row.classList.remove("low", "ok");

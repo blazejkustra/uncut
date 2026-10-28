@@ -1,6 +1,7 @@
 // The composer's / menu (D232, issue #111): a "Templates" group first (a picked one is filled from
 // the project and lands in the composer as a brief), then the installed skills (a picked one goes
-// in as /name). One list, so the arrows and Enter walk across both groups. Pure, for the tests.
+// in as /name), then the user's own Claude Code skills (also in as /id). One list, so the arrows
+// and Enter walk across the groups. Pure, for the tests.
 
 export interface SlashSkill {
   readonly kind: "skill";
@@ -15,11 +16,18 @@ export interface SlashTemplate {
   readonly description: string;
   readonly builtin: boolean;
 }
-export type SlashItem = SlashSkill | SlashTemplate;
+export interface SlashClaudeSkill {
+  readonly kind: "claude";
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+export type SlashItem = SlashSkill | SlashTemplate | SlashClaudeSkill;
 
 /** Templates at most, then skills at most, in the menu. */
 export const SLASH_SKILLS_MAX = 12;
 export const SLASH_TEMPLATES_MAX = 8;
+export const SLASH_CLAUDE_MAX = 12;
 
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
@@ -32,6 +40,7 @@ export function slashItems(
   q: string,
   skills: ReadonlyArray<{ readonly id: string; readonly name: string; readonly description: string }>,
   templates: ReadonlyArray<{ readonly id: string; readonly name: string; readonly description: string; readonly builtin?: boolean | undefined }>,
+  claudeSkills: ReadonlyArray<{ readonly id: string; readonly name: string; readonly description: string }> = [],
 ): Array<SlashItem> {
   const rank = <T extends { readonly id: string; readonly name: string }>(all: ReadonlyArray<T>) => [
     ...all.filter((x) => x.id.startsWith(q) || words(x.name).startsWith(q)),
@@ -44,5 +53,8 @@ export function slashItems(
     ...rank(skills)
       .slice(0, SLASH_SKILLS_MAX)
       .map((x): SlashSkill => ({ kind: "skill", id: x.id, name: x.name, description: x.description })),
+    ...rank(claudeSkills.filter((c) => !skills.some((s) => s.id === c.id)))
+      .slice(0, SLASH_CLAUDE_MAX)
+      .map((x): SlashClaudeSkill => ({ kind: "claude", id: x.id, name: x.name, description: x.description })),
   ];
 }

@@ -17,7 +17,7 @@ import { playback, getPlayback } from "../../../preview/playback.ts";
 import { findItem } from "../../../timeline/edit.ts";
 import { exportSpans } from "../../../panels/exportSpans.ts";
 import { momentLabel, itemName, mentionCandidates, effectMentionId, type MentionKind } from "@uncut/core/mentions";
-import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "../../agentPrefs.ts";
+import { agentPrefs, DEFAULT_AGENT_PREFS } from "../../agentPrefs.ts";
 import { set, state, online, projectOf } from "../core.ts";
 import { call, plainError, uploadOne } from "../server.ts";
 import { applyFromCall } from "../sync.ts";
@@ -57,8 +57,6 @@ export const agentActions = {
         ...(prefs.effort ? { effort: prefs.effort } : {}),
         access: opts.access ?? prefs.access,
         ...(images.length ? { images: [...images] } : {}),
-        // D188: Settings › App › Agent, remembered on this Mac.
-        ...(skipStoryboardSetting() ? { skipStoryboard: true } : {}),
         ...(ranges.marks || ranges.selection ? { ranges } : {}),
       }),
     );

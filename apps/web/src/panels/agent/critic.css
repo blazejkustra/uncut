@@ -1,0 +1,15 @@
+.critic-row .critic-head { gap: 10px; padding: 8px 10px; align-items: center; }
+.critic-row .critic-head:disabled { cursor: default; color: var(--fg); opacity: 1; }
+.critic-icon { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); flex: none; }
+.critic-row .critic-icon svg { width: 13px; height: 13px; color: var(--muted); }
+.critic-icon.running svg { color: var(--select); }
+.critic-icon.passed svg { color: var(--ok); }
+.critic-icon.failed svg, .critic-icon.unresolved svg, .critic-icon.error svg { color: var(--warn); }
+.critic-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.critic-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.critic-name { font-weight: 500; white-space: nowrap; }
+.critic-status { background: none; padding: 0; }
+.critic-status.passed { color: var(--ok); }
+.critic-status.failed, .critic-status.unresolved, .critic-status.error { color: var(--warn); }
+.critic-line { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.critic-time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }

@@ -3,10 +3,9 @@
 // - U7: the Brand tab: a new kit (name, colours) and the project's kit; D232: the Skills tab's copy
 //   of Launch promo, called with /launch-promo-copy; the next message carries them.
 // - U8: the agent's question card: pick an option, write a line, Send; the turn keeps the answer.
-// - U15/U9: the brief card; the storyboard card: Edit a beat's title, Approve with edits; the build
-//   goes through; the Plan chip (D197) shows the storyboard approved and opens the brief card.
+// - U15/U9: the brief card; the storyboard card in the thread (its beats and still, nobody approves
+//   it); the build goes through; the Plan chip (D197) shows the storyboard and opens the brief card.
 // - U16: the review card with its scores and defects.
-// - Settings › App › Agent: the storyboard skip.
 // Screenshots: test-output/round3-j2-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -103,7 +102,7 @@ const BEATS = [
   },
 ];
 
-test("round 3 J2: brand kit and skill, question card, brief, storyboard approval with edits, review card", { skip, timeout: 300000 }, async () => {
+test("round 3 J2: brand kit and skill, question card, brief, storyboard card, review card", { skip, timeout: 300000 }, async () => {
   const app = await launchApp({
     command: APP,
     env: {
@@ -215,7 +214,7 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     assert.match(first.prompt, /<skill name="launch-promo-copy" title="Launch promo copy">/);
     assert.match(first.prompt, /Skills this project uses: Launch promo copy \(launch-promo-copy\)/);
 
-    // ---- U15/U9: brief, then the storyboard card: edit a beat, approve with edits; the build goes through ----
+    // ---- U15/U9: brief, then the storyboard card in the thread; the build goes through ----
     const brief = {
       film: "Argent Cloud runs your app's QA on real devices in the cloud",
       audience: "React Native developers",
@@ -246,40 +245,40 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
       { text: "Built scene 1; the review asks for a bigger claim and a hit on the downbeat." },
     ]);
     await send("go ahead");
-    await waitFor("[data-testid=agent-storyboard]");
-    assert.equal(await page.$$eval("[data-testid=agent-storyboard] [data-testid=agent-storyboard-beat]", (els) => els.length), 3);
-    // D295: the first beat's still, rendered by Uncut and shown on its numbered beat.
-    await page.waitForFunction(
-      () => (document.querySelector<HTMLImageElement>("[data-testid=agent-storyboard] [data-testid=agent-storyboard-still]")?.naturalWidth ?? 0) > 0,
-      { timeout: 15000 },
-    );
-    assert.equal(await page.$$eval("[data-testid=agent-storyboard] [data-testid=agent-storyboard-still]", (els) => els.length), 1);
-    assert.match(await text(page, "[data-testid=agent-storyboard] [data-testid=agent-storyboard-beat] .beat-time"), /^1\. 0 s to 2 s/);
-    await waitFor("[data-testid=agent-card][data-type=brief]");
-    await page.screenshot({ path: out("storyboard") });
-    await page.click("[data-testid=agent-storyboard-edit]");
-    await waitFor("[data-testid=agent-storyboard-beat-title]");
-    await page.click("[data-testid=agent-storyboard-beat-title]", { clickCount: 3 });
-    await page.type("[data-testid=agent-storyboard-beat-title]", "The claim");
-    await page.waitForFunction(() => /Approve with edits/.test(document.querySelector("[data-testid=agent-storyboard-approve]")!.textContent ?? ""));
-    await page.screenshot({ path: out("storyboard-edit") });
-    await page.click("[data-testid=agent-storyboard-approve]");
     await lastDone();
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1, { timeout: 15000 });
+    assert.equal(await page.$("[data-testid=agent-storyboard]"), null, "no approval card");
+    const sbCard = "[data-testid=agent-card][data-type=storyboard]";
+    await waitFor(sbCard);
+    await page.click(`${sbCard} .card-head`);
+    assert.equal(await page.$$eval(`${sbCard} [data-testid=agent-storyboard-beat]`, (els) => els.length), 3);
+    // D295: the first beat's still, rendered by Uncut and shown on its numbered beat.
+    await page.waitForFunction(
+      (sel) => (document.querySelector<HTMLImageElement>(`${sel} [data-testid=agent-storyboard-still]`)?.naturalWidth ?? 0) > 0,
+      { timeout: 15000 },
+      sbCard,
+    );
+    assert.equal(await page.$$eval(`${sbCard} [data-testid=agent-storyboard-still]`, (els) => els.length), 1);
+    assert.match(await text(page, `${sbCard} [data-testid=agent-storyboard-beat] .beat-time`), /^1\. 0 s to 2 s/);
+    assert.equal(await page.$(`${sbCard} button.btn.primary`), null, "no Approve on the card");
+    await page.$eval(sbCard, (el) => el.scrollIntoView({ block: "start" }));
+    await page.screenshot({ path: out("storyboard") });
     const sb = JSON.parse(readFileSync(join(root, "projects", readdirFirst(), "storyboard.json"), "utf8"));
-    assert.equal(sb.status, "approved");
-    assert.equal(sb.beats[0].title, "The claim");
+    assert.equal(sb.approvedBy, "agent");
 
     // ---- U16: the review card ----
-    await waitFor("[data-testid=agent-card][data-type=review]");
+    // The critic row shows while the review runs; it passes once Uncut has rendered and measured the edit (slow on CI runners).
+    await waitFor("[data-testid=agent-card][data-type=review][data-passed]", 60000);
+    await page.click("[data-testid=agent-card][data-type=review] .card-head");
+    await waitFor("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]");
     assert.equal(await page.$$eval("[data-testid=agent-card][data-type=review] [data-testid=agent-review-score]", (els) => els.length), 6);
     assert.match(await text(page, "[data-testid=agent-card][data-type=review] [data-testid=agent-review-defects]"), /The claim is under 60 px at phone size/);
     await page.$eval("[data-testid=agent-card][data-type=review]", (el) => el.scrollIntoView({ block: "center" }));
     await page.screenshot({ path: out("review") });
-    // D197: the Plan chip: the storyboard approved; the brief card opened from it, edited on the card.
+    // D197: the Plan chip: the storyboard; the brief card opened from it, edited on the card.
     await page.click("[data-testid=plan-chip]");
     await waitFor("[data-testid=plan-menu]");
-    assert.match(await text(page, "[data-testid=plan-storyboard]"), /Approved/);
+    assert.match(await text(page, "[data-testid=plan-storyboard]"), /Planned/);
     await page.click("[data-testid=plan-brief]");
     await waitFor("[data-testid=agent-card][data-type=brief] [data-testid=agent-brief-rows]");
     await page.screenshot({ path: out("plan-brief") });
@@ -291,18 +290,6 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     await page.waitForFunction(() => /shipping weekly/.test(document.querySelector("[data-testid=agent-brief-rows]")?.textContent ?? ""), { timeout: 10000 });
     const briefFile = JSON.parse(readFileSync(join(root, "projects", readdirFirst(), "brief.json"), "utf8"));
     assert.equal(briefFile.by, "user");
-
-    // ---- Settings › App › Agent ----
-    await page.keyboard.down("Meta");
-    await page.keyboard.press(",");
-    await page.keyboard.up("Meta");
-    await waitFor("[data-testid=settings-nav-app]");
-    await page.click("[data-testid=settings-nav-app]");
-    await waitFor("[data-testid=settings-skip-storyboard]");
-    await page.click("[data-testid=settings-skip-storyboard]");
-    await page.$eval("[data-testid=settings-skip-storyboard]", (el) => el.scrollIntoView({ block: "center" }));
-    await page.screenshot({ path: out("settings") });
-    assert.equal(await page.evaluate(() => localStorage.getItem("uncut.agent.skipStoryboard")), "1");
   } catch (error) {
     await page.screenshot({ path: out("failure") }).catch(() => {});
     throw error;

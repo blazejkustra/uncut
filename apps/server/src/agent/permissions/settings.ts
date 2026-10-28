@@ -15,7 +15,15 @@ export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcl
  * rules refused claude's own saved output twice.
  */
 export const CLAUDE_DIR = ".claude";
-const CLAUDE_ASK_RULES = [`Read(~/${CLAUDE_DIR}/**)`, `Bash(*/${CLAUDE_DIR}/*)`, `Bash(*/${CLAUDE_DIR})`, `Bash(*~/${CLAUDE_DIR}*)`];
+// A command naming any .claude folder (the project's own included, `mkdir -p .claude/skills`) comes to Uncut too.
+const CLAUDE_ASK_RULES = [
+  `Read(~/${CLAUDE_DIR}/**)`,
+  `Bash(*/${CLAUDE_DIR}/*)`,
+  `Bash(*/${CLAUDE_DIR})`,
+  `Bash(*~/${CLAUDE_DIR}*)`,
+  `Bash(*${CLAUDE_DIR}/*)`,
+  `Bash(*${CLAUDE_DIR})`,
+];
 export const SECRET_FILES = [".netrc", ".npmrc", ".git-credentials", ".claude.json", ".pypirc"] as const;
 /** A secret file as a file rule's pattern: Claude Code's own config with its backups (.claude.json.backup, …). */
 const secretPattern = (f: string) => (f === ".claude.json" ? `${f}*` : f);
@@ -153,7 +161,8 @@ export function autoAskRules(): Array<string> {
 
 /**
  * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
- * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
+ * Uncut's own files (deny) and the calls that must still reach Uncut (ask). The user's Claude Code
+ * skills don't run their inline shell commands (those would skip Uncut's approvals).
  */
 export function sessionSettings(
   o: {
@@ -164,8 +173,10 @@ export function sessionSettings(
   } = {},
 ): string {
   const cc = o.claudeConfig ?? [];
-  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
+  if (o.access !== "auto")
+    return JSON.stringify({ disableSkillShellExecution: true, permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
   return JSON.stringify({
+    disableSkillShellExecution: true,
     permissions: {
       deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])],
       ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],

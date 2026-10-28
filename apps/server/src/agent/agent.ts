@@ -121,7 +121,6 @@ export interface AgentShape {
     effort?: AgentEffort | undefined;
     access?: AgentAccess | undefined;
     images?: ReadonlyArray<AgentImage> | undefined;
-    skipStoryboard?: boolean | undefined;
     ranges?: Running["ranges"] | undefined;
   }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;

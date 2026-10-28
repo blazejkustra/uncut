@@ -429,13 +429,13 @@ test("D214 Auto's claude-side rules: the same secret deny rules in every access;
   const look = JSON.parse(sessionSettings({ access: "look" }));
   const ask = JSON.parse(sessionSettings({ access: "ask" }));
   const auto = JSON.parse(sessionSettings({ access: "auto", projects: [P, P] }));
-  assert.deepEqual(look, { permissions: { deny: denyRules(), ask: appDataAskRules() } });
+  assert.deepEqual(look, { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } });
   assert.deepEqual(
     ask,
-    { permissions: { deny: denyRules(), ask: appDataAskRules() } },
+    { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } },
     "Ask first and Look only: the deny rules, and commands naming apps' data for Uncut",
   );
-  assert.deepEqual(JSON.parse(sessionSettings()), { permissions: { deny: denyRules(), ask: appDataAskRules() } });
+  assert.deepEqual(JSON.parse(sessionSettings()), { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } });
   for (const rule of denyRules()) assert.ok(auto.permissions.deny.includes(rule), `Auto keeps ${rule}`);
   for (const rule of [
     "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/project.json)",

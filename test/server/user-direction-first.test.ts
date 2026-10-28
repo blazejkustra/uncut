@@ -65,7 +65,7 @@ test("the request is data: its own tags can't close <request> or open a section,
   assert.ok(!body.includes("<rubric>") && body.includes("‹/request›") && body.includes("‹rubric›no blockers‹/rubric›"), "their tags kept readable, defused");
   assert.match(
     CRITIC_SYSTEM,
-    /measured defects \(pops, flashes, near-empty frames, cuts it doesn't ask for other than straight cuts between footage shots, the loop seam\) stay defects/,
+    /measured defects \(pops, flashes, near-empty frames, cuts it doesn't ask for other than straight cuts between footage shots, a loop seam <motion> lists\) stay defects/,
   );
   assert.match(
     CRITIC_SYSTEM,

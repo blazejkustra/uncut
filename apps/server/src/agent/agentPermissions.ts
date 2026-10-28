@@ -81,20 +81,11 @@ const shownCommand = (s: string) => (s.length > 4000 ? `${s.slice(0, 3997)}...` 
 
 // ---- the allowlist (D194, after the security review) ----
 
-/** Tools that touch nothing on disk or the network by themselves: allowed in every mode. */
-const SAFE_TOOLS = new Set([
-  "TodoWrite",
-  "TodoRead",
-  "Task",
-  "Agent",
-  "Skill",
-  "BashOutput",
-  "KillShell",
-  "KillBash",
-  "ExitPlanMode",
-  "EnterPlanMode",
-  "ToolSearch",
-]);
+/**
+ * Tools that touch nothing on disk or the network by themselves: allowed in every mode. Not Skill:
+ * claude asks for a skill only when its front matter grants tools or runs hooks, and that gets a card.
+ */
+const SAFE_TOOLS = new Set(["TodoWrite", "TodoRead", "Task", "Agent", "BashOutput", "KillShell", "KillBash", "ExitPlanMode", "EnterPlanMode", "ToolSearch"]);
 const READ_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
 const WEB_TOOLS = new Set(["WebSearch", "WebFetch"]);
 
@@ -107,7 +98,7 @@ export interface PermissionContext {
   /**
    * D296: folders Uncut itself points the agent at, read without a card (never written): the
    * project's active brand kit (the sanctioned source of the product's look and screenshots) and
-   * the bundled graphic libraries. Real paths.
+   * the bundled graphic libraries, and the user's Claude Code skills the session loads. Real paths.
    */
   readonly sanctioned?: ReadonlyArray<string>;
   /** Folders the user pasted in this chat and hasn't confirmed yet (a card offers them). */
@@ -131,6 +122,14 @@ export interface PermissionContext {
 /** D219: a command naming apps' data (~/Library/Application Support, as typed or escaped) or Uncut's data folder. */
 export const namesAppData = (command: string, dataDir?: string) =>
   /Application\\?\s+Support/i.test(command) || (!!dataDir && command.includes(dataDir.replace(/\/+$/, "")));
+/** A command naming any .claude folder, in any case (APFS isn't case-sensitive). */
+const ANY_CLAUDE = /(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/i;
+/** The command without its mentions of ~/.claude (copying this project's saved tool output out of it is a read there). */
+const withoutHomeClaude = (command: string, home: string) =>
+  command
+    .split(`${home.replace(/\/+$/, "")}/${CLAUDE_DIR}`)
+    .join("")
+    .replace(/(?:~|\$HOME|\$\{HOME\})\/\.claude/gi, "");
 /** A command (or word) naming ~/.claude. */
 const CLAUDE_NAMED = /(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/;
 
@@ -356,7 +355,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     for (const raw of paths) {
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
       if (inClaude(r)) {
-        if (toolOutput(r)) continue;
+        if (toolOutput(r) || (!webUsed && zone(r) === "sanctioned")) continue;
         return claudeRefusal;
       }
       const z = zone(r);
@@ -392,13 +391,21 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
         kind: "deny",
         message: `Not done: ${shownPath(r, project, home)} is in Claude Code's own folder (settings and other conversations), which is never written.`,
       };
+    // A .claude folder anywhere (the project's own too) holds skills, hooks and settings Claude Code runs: always a card, never remembered.
+    if (r.toLowerCase().split(sep).includes(".claude"))
+      return {
+        kind: "ask",
+        title: tool === "Write" ? "Write a file" : "Edit a file",
+        target: shownPath(r, project, home),
+        why: "It's in a .claude folder, where Claude Code reads skills, hooks and settings from.",
+      };
     const z = zone(r);
     if (z === "cache") return { kind: "allow" };
     // The brand kits and the bundled libraries are only read (D296): never written, not even on a card.
     if (z === "sanctioned")
       return {
         kind: "deny",
-        message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder or Uncut's graphic libraries, which are only read. Change a kit with brand_write; write your own files in the project.`,
+        message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder, Uncut's graphic libraries or one of the user's Claude Code skills, which are only read. Change a kit with brand_write; write your own files in the project.`,
       };
     const title = tool === "Write" ? "Write a file" : "Edit a file";
     // "Always" covers this exact file, and only inside the project.
@@ -451,6 +458,15 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // folder stays between calls), so it runs from the project (review of 0039421).
     if (reads) {
       const updatedInput = { ...input, command: pinnedToProject(command, project) };
+      // mkdir or cp into a .claude folder (skills, hooks, settings) is a write there: a card every time.
+      if (ANY_CLAUDE.test(withoutHomeClaude(command, home)) && /\b(?:mkdir|cp)\b/.test(command))
+        return {
+          kind: "ask",
+          title: "Run a command",
+          target,
+          why: "It writes into a .claude folder, where Claude Code reads skills, hooks and settings from.",
+          updatedInput,
+        };
       return ctx.access === "auto" || ctx.grants.has(grant)
         ? { kind: "allow", updatedInput }
         : { kind: "ask", title: "Run a command", target, grant, updatedInput };

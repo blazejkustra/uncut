@@ -290,7 +290,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     const project = realPath(r.owner.dir, r.owner.dir);
     // D296: the brand kits (the user's; a project's own are in it) and the bundled graphic
     // libraries are read without a card: Uncut points the agent at them.
-    const sanctioned = sanctionedDirs(config, r.owner.dir);
+    const sanctioned = [...sanctionedDirs(config, r.owner.dir), ...s.skillDirs];
     // "Always" answers of the session, and the reads allowed once in this turn.
     const grants = () => new Set([...r.owner.grants, ...r.turnGrants]);
     const ctx = () => ({

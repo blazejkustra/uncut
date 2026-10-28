@@ -8,15 +8,16 @@ import { type Project, sectionsNote } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { calledSkills, gateOf, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
+import { calledSkills, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
 import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
 import { capNote, joinNotes, noteFor, noteShowsAll } from "../turns/notes.ts";
-import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
+import { findClaude, modelFor, IMAGE_EXT, sessionEnv } from "./config.ts";
 import { findCodex } from "./codex.ts";
+import { calledClaudeSkills, claudeSkillCallBlock, claudeSkillsFor } from "../claudeSkills.ts";
 import { shellAuthReady } from "../../app/shellEnv.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
@@ -94,7 +95,6 @@ export const makeSend = (ctx: SpawnCtx) => {
     effort,
     access = "auto",
     images = [],
-    skipStoryboard = false,
     ranges,
   }) =>
     Effect.gen(function* () {
@@ -133,7 +133,10 @@ export const makeSend = (ctx: SpawnCtx) => {
               : "Claude Code isn't installed. Install it, sign in once with `claude`, then try again.",
         });
       }
-      const toolsKey = yield* toolsKeyNow;
+      // The user's own Claude Code skills (user, 2026-10-27): installing one starts a new session too.
+      const { skills: claudeSkills } =
+        provider === "codex" ? { skills: [] } : yield* Effect.promise(() => claudeSkillsFor(bin, owner.dir, sessionEnv(process.env), config.dataDir));
+      const toolsKey = `${yield* toolsKeyNow}|claude:${claudeSkills.map((x) => `${x.plugin}:${x.name}`).join(",")}`;
       if (st.running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
       const v = view();
       if (!v || v.openId !== owner.openId) return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
@@ -202,7 +205,6 @@ export const makeSend = (ctx: SpawnCtx) => {
         : "";
       const dirsKey = [...owner.dirs].sort().join("\n");
       // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
-      const skip = access === "auto" && skipStoryboard;
       // D232 (issue #60): a /name in the message calls that skill: its instructions come with the
       // message and the project uses it from now on (the critic follows it).
       const { planBlock, skillsBlock, called } = compacting
@@ -214,6 +216,11 @@ export const makeSend = (ctx: SpawnCtx) => {
               let all = await readBrand(dirs);
               const called = calledSkills(
                 text,
+                all.skills.map((x) => x.id),
+              );
+              const claudeCalled = calledClaudeSkills(
+                text,
+                claudeSkills,
                 all.skills.map((x) => x.id),
               );
               if (called.length) {
@@ -230,9 +237,10 @@ export const makeSend = (ctx: SpawnCtx) => {
                     others: all.kits.map((k) => ({ id: k.id, name: k.name })),
                   },
                   owner.plan,
-                  gateOf(owner.plan, skip),
                 ),
-                skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
+                skillsBlock: [skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))), claudeSkillCallBlock(claudeCalled)]
+                  .filter(Boolean)
+                  .join("\n\n"),
                 called,
               };
             } catch (error) {
@@ -264,7 +272,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       if (!s) {
         // D277 review: a claude started right after launch waits (bounded) for the login shell's sign-in variables.
         yield* Effect.promise(() => shellAuthReady());
-        const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access });
+        const started = (provider === "codex" ? spawnCodex : spawnSession)(owner, bin, toolsKey, true, { model, effort, access, claudeSkills });
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
         s = st.session = started;
       }
@@ -348,7 +356,6 @@ export const makeSend = (ctx: SpawnCtx) => {
         access,
         images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),
         inputs: new Map(),
-        skipStoryboard: skip,
         looked: { sheet: false, phone: false },
         limits: turnLimits(),
         reviewRounds: 0,

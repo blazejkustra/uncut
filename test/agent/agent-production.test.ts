@@ -1,7 +1,7 @@
 // Round 3 J2 (U7–U9, U15–U17, U19; D186–D191) on the bundled server with fake-claude's session:
 // brand kits and skills reach every message and brand_read / brand_write; ask_user's question card
-// is answered (and skipped); brief_write saves brief.json; the build waits for the storyboard
-// (refused, approved with edits, sent back with a note, approved by the setting); the critic's
+// is answered (and skipped); brief_write saves brief.json; storyboard_propose records the plan and
+// shows it in the thread, nobody approves it and nothing waits for it; the critic's
 // review needs a look first, saves its rounds and checks graphics draw the same twice; the brand
 // colours check; reference_frames on a file outside the project; beat_grid's downbeats and snaps.
 import { test, before, after } from "node:test";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { drums, writeWav } from "../helpers/beats-audio.ts";
-import { beatGrid, dropOf, gateOf, gateRefusal, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
+import { beatGrid, dropOf, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, LOOK_TOOLS } from "../../apps/server/src/agent/agentTools.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 
@@ -184,7 +184,9 @@ test("the tools, labels, Look only set and the prompt's production process", () 
     /never invent a logo/i,
     /hard lines/,
     /You don't score your own work/,
-    /Up to 6 rounds: the first 3 always; past 3 another only while it converges[\s\S]*there is no 3-round limit/,
+    /back unchanged after you claimed its fix is unresolved: don't try it again, ask the user/,
+    /The user's own numbers \(a text size, a timing\) win/,
+    /Up to 6 rounds[\s\S]*there is no 3-round limit/,
     /reference_frames/,
     /spring/,
   ])
@@ -193,7 +195,7 @@ test("the tools, labels, Look only set and the prompt's production process", () 
   assert.ok(!/[·•]/.test(AGENT_TEXT.replace(/never ·, • or \*/, "")), "no dot separators in the prompt");
 });
 
-test("pure parts: question, gate, verdict, context and the beat grid", () => {
+test("pure parts: question, verdict, context and the beat grid", () => {
   assert.deepEqual(questionOf({ question: "Length?", options: [{ label: "15 s" }, { label: "30 s" }], multi: true }), {
     question: "Length?",
     options: [{ label: "15 s" }, { label: "30 s" }],
@@ -202,12 +204,9 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   });
   assert.ok("problem" in questionOf({ question: " " }));
   const plan = { brief: { film: "x", audience: "", duration: "", formats: [], assets: [], visual: "", hardLines: [], deliverables: [] }, reviews: [] };
-  assert.match(gateRefusal(plan, gateOf(plan, false, true))!, /no storyboard yet/);
-  assert.equal(gateRefusal(plan, gateOf(plan, true, true)), undefined, "the setting skips the gate");
-  assert.equal(gateRefusal({ reviews: [] }, gateOf({ reviews: [] }, false)), undefined, "no brief, no gate (small edits)");
-  const ctx = planContext({ files: {}, skills: [], others: [{ id: "argent", name: "Argent" }] }, plan, gateOf(plan, false, true));
+  const ctx = planContext({ files: {}, skills: [], others: [{ id: "argent", name: "Argent" }] }, plan);
   assert.match(ctx, /No brand kit is chosen[\s\S]*"Argent" \(argent\)/);
-  assert.match(ctx, /waits for a storyboard/);
+  assert.doesNotMatch(ctx, /waits|approv/);
   // 120 bpm, beats at 0.2 + 0.5k s; the strongest every 4th from the 2nd beat.
   const beats = Array.from({ length: 16 }, (_, i) => 0.2 + i * 0.5);
   const onsets = beats.map((t, i) => ({ t, strength: i % 4 === 1 ? 1 : 0.4 }));
@@ -235,102 +234,103 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   assert.ok(d.downbeats.includes(246));
 });
 
-test("U8/U15/U9: ask_user is answered, the brief is saved, the build waits for the storyboard, approved with edits", { skip, timeout: 120000 }, async () => {
-  const s = await setup("flow");
-  try {
-    // A question with options and free text; answered on the card.
-    const q = await s.start("make a 20 s promo for Argent Cloud", [
-      { tool: "ask_user", args: { question: "Which format?", options: [{ label: "9:16", detail: "Phone" }, { label: "16:9" }] } },
-      { text: "Got it" },
-    ]);
-    const card = await s.card(q);
-    assert.equal(card.question.question, "Which format?");
-    assert.deepEqual(
-      card.question.options.map((o: any) => o.label),
-      ["9:16", "16:9"],
-    );
-    assert.equal(card.question.freeText, true);
-    assert.ok(Date.parse(card.until) - Date.now() <= 9000, "UNCUT_APPROVAL_MS shortens the wait in tests");
-    await s.client.ok("agent.approve", { id: card.id, allow: true, answer: { choices: ["9:16"], text: "and a square cut" } });
-    const qt = await s.done(q);
-    assert.equal(qt.status, "done", qt.error);
-    const [asked] = s.results();
-    assert.deepEqual(jsonOf(asked!.result), { answered: true, choices: ["9:16"], text: "and a square cut" });
-    const qcard = qt.items.find((i: any) => i.kind === "card");
-    assert.equal(qcard.card.type, "question");
-    assert.deepEqual(qcard.card.answer, { choices: ["9:16"], text: "and a square cut" });
-    // Skip: the agent hears it was skipped, and not to invent.
-    const q2 = await s.start("again", [{ tool: "ask_user", args: { question: "Logo file?" } }]);
-    await s.client.ok("agent.approve", { id: (await s.card(q2)).id, allow: false });
-    await s.done(q2);
-    const skipped = jsonOf(s.results()[0]!.result);
-    assert.equal(skipped.answered, false);
-    assert.match(skipped.next, /Don't invent/);
+test(
+  "U8/U15/U9: ask_user is answered, the brief is saved, the storyboard is recorded at once and the build goes ahead",
+  { skip, timeout: 120000 },
+  async () => {
+    const s = await setup("flow");
+    try {
+      // A question with options and free text; answered on the card.
+      const q = await s.start("make a 20 s promo for Argent Cloud", [
+        { tool: "ask_user", args: { question: "Which format?", options: [{ label: "9:16", detail: "Phone" }, { label: "16:9" }] } },
+        { text: "Got it" },
+      ]);
+      const card = await s.card(q);
+      assert.equal(card.question.question, "Which format?");
+      assert.deepEqual(
+        card.question.options.map((o: any) => o.label),
+        ["9:16", "16:9"],
+      );
+      assert.equal(card.question.freeText, true);
+      assert.ok(Date.parse(card.until) - Date.now() <= 9000, "UNCUT_APPROVAL_MS shortens the wait in tests");
+      await s.client.ok("agent.approve", { id: card.id, allow: true, answer: { choices: ["9:16"], text: "and a square cut" } });
+      const qt = await s.done(q);
+      assert.equal(qt.status, "done", qt.error);
+      const [asked] = s.results();
+      assert.deepEqual(jsonOf(asked!.result), { answered: true, choices: ["9:16"], text: "and a square cut" });
+      const qcard = qt.items.find((i: any) => i.kind === "card");
+      assert.equal(qcard.card.type, "question");
+      assert.deepEqual(qcard.card.answer, { choices: ["9:16"], text: "and a square cut" });
+      // Skip: the agent hears it was skipped, and not to invent.
+      const q2 = await s.start("again", [{ tool: "ask_user", args: { question: "Logo file?" } }]);
+      await s.client.ok("agent.approve", { id: (await s.card(q2)).id, allow: false });
+      await s.done(q2);
+      const skipped = jsonOf(s.results()[0]!.result);
+      assert.equal(skipped.answered, false);
+      assert.match(skipped.next, /Don't invent/);
 
-    // The brief, then an edit before the storyboard is refused.
-    const brief = {
-      film: "Argent Cloud runs your app's QA in the cloud",
-      audience: "React Native devs",
-      duration: "20 s",
-      formats: ["9:16 1080x1920"],
-      assets: ["the dashboard recording", "Argent logo"],
-      visual: "Dark, product first",
-      hardLines: ["Never invent product UI or metrics"],
-      deliverables: ["promo.mp4"],
-    };
-    const b = await s.ask("write the brief", [
-      { tool: "brief_write", args: brief },
-      { tool: "project_read" },
-      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: hook", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-    ]);
-    assert.equal(b.status, "done", b.error);
-    const [wrote, , refused] = s.results();
-    assert.match(jsonOf(wrote!.result).next, /storyboard_propose/);
-    assert.equal(refused!.result.isError, true);
-    assert.match(textOf(refused!.result), /no storyboard yet/);
-    assert.equal(b.edits.length, 0);
-    const saved = JSON.parse(readFileSync(join(s.dir, "brief.json"), "utf8"));
-    assert.equal(saved.film, brief.film);
-    assert.equal(saved.by, "agent");
-    assert.equal(s.latest().plan.brief.film, brief.film, "the plan reaches the Agent tab");
-    assert.equal(b.items.find((i: any) => i.kind === "card").card.type, "brief");
+      // The brief, then an edit right away: no storyboard needed first.
+      const brief = {
+        film: "Argent Cloud runs your app's QA in the cloud",
+        audience: "React Native devs",
+        duration: "20 s",
+        formats: ["9:16 1080x1920"],
+        assets: ["the dashboard recording", "Argent logo"],
+        visual: "Dark, product first",
+        hardLines: ["Never invent product UI or metrics"],
+        deliverables: ["promo.mp4"],
+      };
+      const b = await s.ask("write the brief", [
+        { tool: "brief_write", args: brief },
+        { tool: "project_read" },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: hook", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
+      ]);
+      assert.equal(b.status, "done", b.error);
+      const [wrote] = s.results();
+      assert.match(jsonOf(wrote!.result).next, /storyboard_propose, then build it/);
+      assert.equal(b.edits.length, 1, "nothing waits for a storyboard");
+      const saved = JSON.parse(readFileSync(join(s.dir, "brief.json"), "utf8"));
+      assert.equal(saved.film, brief.film);
+      assert.equal(saved.by, "agent");
+      assert.equal(s.latest().plan.brief.film, brief.film, "the plan reaches the Agent tab");
+      assert.equal(b.items.find((i: any) => i.kind === "card").card.type, "brief");
 
-    // The storyboard card: the user edits a beat's title and approves; the build goes through.
-    const sb = await s.start("storyboard", [
-      { tool: "storyboard_propose", args: { summary: "Hook, then the demo", beats: BEATS } },
-      { tool: "project_read" },
-      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: hook", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-    ]);
-    const sbCard = await s.card(sb);
-    assert.equal(sbCard.storyboard.status, "proposed");
-    assert.equal(sbCard.storyboard.beats.length, 2);
-    assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).status, "proposed", "saved while it waits");
-    const edited = [{ ...BEATS[0], title: "The claim" }, BEATS[1]];
-    await s.client.ok("agent.approve", { id: sbCard.id, allow: true, beats: edited });
-    const built = await s.done(sb);
-    assert.equal(built.status, "done", built.error);
-    const [proposed] = s.results();
-    const approved = jsonOf(proposed!.result);
-    assert.equal(approved.approved, true);
-    assert.equal(approved.edited, true);
-    assert.equal(approved.beats[0].title, "The claim");
-    assert.equal(built.edits.length, 1, "approved: the build goes through");
-    const file = JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8"));
-    assert.equal(file.status, "approved");
-    assert.equal(file.approvedBy, "user");
-    assert.equal(file.beats[0].title, "The claim");
-    // The next message carries the plan.
-    await s.ask("next", [{ text: "ok" }]);
-    const last = s.prompts().at(-1)!.prompt;
-    assert.match(last, /<plan>[\s\S]*Brief:[\s\S]*film: Argent Cloud runs[\s\S]*Storyboard \(approved\)[\s\S]*1\. 0–2 s The claim/);
-    s.results();
-  } finally {
-    await s.stop();
-  }
-});
+      // The storyboard: recorded at once, shown as a card in the thread, no approval card; the next edit goes through.
+      const sb = await s.ask("storyboard", [
+        { tool: "storyboard_propose", args: { summary: "Hook, then the demo", beats: BEATS } },
+        { tool: "project_read" },
+        {
+          tool: "timeline_edit",
+          args: { baseRevision: "$rev", summary: "Scene 2", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, id: "title-2", start: 60 } }] },
+        },
+      ]);
+      assert.equal(sb.status, "done", sb.error);
+      assert.ok(!s.agent.values.some((v: any) => v?.approval?.turnId === sb.id), "no approval card");
+      const [proposed] = s.results();
+      const recorded = jsonOf(proposed!.result);
+      assert.equal(recorded.recorded, true);
+      assert.match(recorded.message, /Build it scene by scene/);
+      assert.equal(sb.edits.length, 1, "the build right after goes through");
+      const sbCard = sb.items.find((i: any) => i.kind === "card").card;
+      assert.equal(sbCard.type, "storyboard");
+      assert.equal(sbCard.outcome, undefined);
+      assert.equal(sbCard.storyboard.beats.length, 2);
+      const file = JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8"));
+      assert.equal(file.status, "approved");
+      assert.equal(file.approvedBy, "agent");
+      // The next message carries the plan.
+      await s.ask("next", [{ text: "ok" }]);
+      const last = s.prompts().at(-1)!.prompt;
+      assert.match(last, /<plan>[\s\S]*Brief:[\s\S]*film: Argent Cloud runs[\s\S]*Storyboard \(your plan\)[\s\S]*1\. 0–2 s Hook/);
+      s.results();
+    } finally {
+      await s.stop();
+    }
+  },
+);
 
 test(
-  "D295: storyboard_propose renders a still per beat for the card, kept through the approval; a graphic's moment needs no placing; past 4 is a note, not a refusal",
+  "D295: storyboard_propose renders a still per beat for the card; a graphic's moment needs no placing; past 4 is a note, not a refusal",
   { skip, timeout: 120000 },
   async () => {
     const s = await setup("stills");
@@ -348,31 +348,24 @@ test(
       s.results();
       const asked = [0, { graphic: "look.html", t: 0.5 }, 30, 10, 20, 40];
       const many = BEATS.concat(BEATS, BEATS).map((b, i) => ({ ...b, still: asked[i] }));
-      const id = await s.start("storyboard", [{ tool: "storyboard_propose", args: { summary: "Six beats with stills", beats: many } }]);
-      const card = await s.card(id);
+      const t = await s.ask("storyboard", [{ tool: "storyboard_propose", args: { summary: "Six beats with stills", beats: many } }]);
+      assert.equal(t.status, "done", t.error);
+      const card = t.items.find((i: any) => i.kind === "card").card;
       const stills = card.storyboard.beats.map((b: { still?: string }) => b.still);
       assert.equal(stills.filter(Boolean).length, 4, "the first 4 drawn");
       assert.deepEqual(stills.slice(4), [undefined, undefined]);
       for (const name of stills.filter(Boolean)) {
-        assert.match(name, new RegExp(`^${id}-s1-\\d\\.jpg$`));
+        assert.match(name, new RegExp(`^${t.id}-s1-\\d\\.jpg$`));
         const jpeg = readFileSync(join(s.dir, ".cache", "agent-images", name));
         assert.equal(jpeg.subarray(0, 2).toString("hex"), "ffd8", "a JPEG");
       }
-      await s.client.ok("agent.approve", {
-        id: card.id,
-        allow: true,
-        beats: card.storyboard.beats.map((b: object, i: number) => (i === 0 ? { ...b, title: "The claim" } : b)),
-      });
-      const t = await s.done(id);
-      assert.equal(t.status, "done", t.error);
       const [answer] = s.results();
       assert.match(jsonOf(answer!.result).stills, /beats 5, 6 asked for one too and were left out/);
       const file = JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8"));
-      assert.equal(file.status, "approved");
       assert.deepEqual(
         file.beats.map((b: { still?: string }) => b.still),
         stills,
-        "the user's edit keeps the stills",
+        "saved with the stills",
       );
       // A still that's neither a frame nor a graphic is refused, saying both forms.
       await s.ask("bad", [{ tool: "storyboard_propose", args: { summary: "Bad", beats: [{ ...BEATS[0], still: { graphic: "../x.html" } }] } }]);
@@ -383,134 +376,54 @@ test(
   },
 );
 
-test(
-  "D296: while a proposed storyboard waits, timeline_edit, graphic_write and shader_write are refused; an answer frees them",
-  { skip, timeout: 120000 },
-  async () => {
-    const s = await setup("propose-lock");
-    try {
-      const html = "<!doctype html><body style=margin:0;background:#123><script>window.render=()=>{}</script>";
-      // Unanswered (the test's 8 s card timeout): every edit after it in the turn is refused, a dry run isn't.
-      const t1 = await s.ask("storyboard", [
-        { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
-        { tool: "graphic_write", args: { name: "late.html", html } },
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Late", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", dryRun: true, summary: "Check", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-      ]);
-      assert.equal(t1.edits.length, 0);
-      const r1 = s.results();
-      const [propose, gw, , te, dry] = r1;
-      assert.match(JSON.stringify(jsonOf(propose!.result)), /refused for the rest of this turn/);
-      for (const x of [gw!, te!]) {
-        assert.equal(x.result.isError, true, x.tool);
-        assert.match(textOf(x.result), /storyboard you proposed is waiting for the user's answer[\s\S]*end your turn/, x.tool);
-      }
-      assert.notEqual(dry!.result.isError, true, "a dry run changes nothing, so it isn't refused");
-      // Asked for changes: the edit is free again in the same turn.
-      const id = await s.start("storyboard again", [
-        { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
-        { tool: "graphic_write", args: { name: "after.html", html } },
-      ]);
-      await s.client.ok("agent.approve", { id: (await s.card(id)).id, allow: false, note: "Bigger type" });
-      await s.done(id);
-      const [, after] = s.results();
-      assert.notEqual(after!.result.isError, true, textOf(after!.result));
-      // Approved: the answer says to keep what the stills show.
-      const id2 = await s.start("storyboard once more", [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } }]);
-      await s.client.ok("agent.approve", { id: (await s.card(id2)).id, allow: true });
-      await s.done(id2);
-      const [ok] = s.results();
-      assert.match(jsonOf(ok!.result).message, /keep the copy, logo and end card they show/);
-    } finally {
-      await s.stop();
-    }
-  },
-);
+test("no storyboard lock: right after storyboard_propose, graphic_write and timeline_edit go through in the same turn", { skip, timeout: 120000 }, async () => {
+  const s = await setup("no-lock");
+  try {
+    const html = "<!doctype html><body style=margin:0;background:#123><script>window.render=()=>{}</script>";
+    await s.ask("brief", [
+      {
+        tool: "brief_write",
+        args: { film: "A teaser", audience: "devs", duration: "10 s", formats: ["16:9"], assets: [], visual: "", hardLines: [], deliverables: [] },
+      },
+    ]);
+    s.results();
+    const scene = [1, 2, 3].map((n) => ({ op: "insert_item", track: "text", item: { ...TITLE, id: `scene-${n}`, start: n * 60 } }));
+    const t = await s.ask("storyboard and build", [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
+      { tool: "graphic_write", args: { name: "after.html", html } },
+      { tool: "project_read" },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scenes 1 to 3", ops: scene } },
+    ]);
+    assert.equal(t.status, "done", t.error);
+    const [propose, gw, , te] = s.results();
+    assert.equal(jsonOf(propose!.result).recorded, true);
+    assert.notEqual(gw!.result.isError, true, textOf(gw!.result));
+    assert.notEqual(te!.result.isError, true, textOf(te!.result));
+    assert.equal(t.edits.length, 1, "three scenes in one edit, nothing held");
+  } finally {
+    await s.stop();
+  }
+});
 
-test(
-  "U15: a storyboard sent back with a note keeps the build waiting; the Plan card approves it; the setting approves by itself",
-  { skip, timeout: 120000 },
-  async () => {
-    const s = await setup("gate");
-    try {
-      await s.ask("brief", [
-        {
-          tool: "brief_write",
-          args: { film: "A teaser", audience: "devs", duration: "10 s", formats: ["16:9"], assets: [], visual: "", hardLines: [], deliverables: [] },
-        },
-      ]);
-      const id = await s.start("storyboard", [
-        { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-      ]);
-      await s.client.ok("agent.approve", { id: (await s.card(id)).id, allow: false, note: "Open on the dashboard, not the logo" });
-      const t = await s.done(id);
-      s.results();
-      assert.equal(t.edits.length, 0);
-      const sbStep = t.items.filter((i: any) => i.kind === "step");
-      assert.match(sbStep.at(-1).error, /asked for changes to the storyboard \("Open on the dashboard, not the logo"\)/);
-      assert.equal(t.items.find((i: any) => i.kind === "card").card.outcome, "declined");
-      // D237 (review finding 3): a later turn can't build the declined storyboard's scenes, but a small edit goes ahead.
-      const scene = [1, 2, 3].map((n) => ({ op: "insert_item", track: "text", item: { ...TITLE, id: `scene-${n}`, start: n * 60 } }));
-      const big = await s.ask("build it anyway", [
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scenes 1 to 3", ops: scene } },
-      ]);
-      assert.equal(big.edits.length, 0);
-      assert.match(
-        big.items.filter((i: any) => i.kind === "step").at(-1).error,
-        /adds 3 items, which is building the planned video[\s\S]*ask_user[\s\S]*storyboard_propose/,
-      );
-      const small = await s.ask("add a title", [
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-      ]);
-      assert.equal(small.edits.length, 1, small.items.map((i: any) => i.error).join(" "));
-      const tweak = await s.ask("make the title bigger", [
-        { tool: "project_read" },
-        {
-          tool: "timeline_edit",
-          args: { baseRevision: "$rev", summary: "Bigger title", ops: [{ op: "update_item", item: "title-1", set: { style: { ...TITLE.style, size: 120 } } }] },
-        },
-      ]);
-      assert.equal(tweak.edits.length, 1, tweak.items.map((i: any) => i.error).join(" "));
-      await s.ask("undo", [
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Remove title", ops: [{ op: "delete_item", item: "title-1" }] } },
-      ]);
-      s.results();
-      // The user approves it on the Plan card (agent.planSave): the build goes through.
-      const plan = s.latest().plan;
-      const saved = await s.client.ok("agent.planSave", { storyboard: { ...plan.storyboard, status: "approved" } });
-      assert.equal(saved.storyboard.status, "approved");
-      assert.equal(saved.storyboard.approvedBy, "user");
-      const go = await s.ask("build", [
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-      ]);
-      assert.equal(go.edits.length, 1, go.items.map((i: any) => i.error).join(" "));
-      // The user edits the brief: saved as theirs, the next message says so.
-      const brief = await s.client.ok("agent.planSave", { brief: { ...saved.brief, audience: "React Native teams" } });
-      assert.equal(brief.brief.by, "user");
-      await s.ask("go on", [{ text: "ok" }]);
-      assert.match(s.prompts().at(-1)!.prompt, /Brief \(edited by the user\):[\s\S]*audience: React Native teams/);
-      // Auto with the setting: the storyboard approves itself, no card.
-      const auto = await s.ask("new storyboard", [{ tool: "storyboard_propose", args: { summary: "Again", beats: BEATS } }], {
-        access: "auto",
-        skipStoryboard: true,
-      });
-      const out = jsonOf(s.results().at(-1)!.result);
-      assert.equal(out.approved, true);
-      assert.equal(out.by, "setting");
-      assert.equal(auto.items.find((i: any) => i.kind === "card").card.outcome, "auto");
-      assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).approvedBy, "setting");
-    } finally {
-      await s.stop();
-    }
-  },
-);
+test("U15: the user's own brief edit on the Plan card is theirs and the next message says so", { skip, timeout: 120000 }, async () => {
+  const s = await setup("gate");
+  try {
+    await s.ask("brief", [
+      {
+        tool: "brief_write",
+        args: { film: "A teaser", audience: "devs", duration: "10 s", formats: ["16:9"], assets: [], visual: "", hardLines: [], deliverables: [] },
+      },
+    ]);
+    s.results();
+    const saved = s.latest().plan;
+    const brief = await s.client.ok("agent.planSave", { brief: { ...saved.brief, audience: "React Native teams" } });
+    assert.equal(brief.brief.by, "user");
+    await s.ask("go on", [{ text: "ok" }]);
+    assert.match(s.prompts().at(-1)!.prompt, /Brief \(edited by the user\):[\s\S]*audience: React Native teams/);
+  } finally {
+    await s.stop();
+  }
+});
 
 const ev = (score: number, k: string) => ({ score, evidence: `f 0, f 45: ${k}` });
 const scoresOf = (score: number) => Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(score, k)]));
@@ -586,14 +499,13 @@ test(
               ],
             },
           },
-          { tool: "review_submit", args: { scores: tenOutOfTen } },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-          // 6: round 1, with the builder's own perfect scores.
+          // 5: round 1, with the builder's own perfect scores.
           { tool: "review_submit", args: { scores: tenOutOfTen, defects: [] } },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0], phone: true } },
-          // 9: nothing changed since round 1.
+          // 8: nothing changed since round 1.
           { tool: "review_submit", args: {} },
           { tool: "project_read" },
           {
@@ -604,20 +516,10 @@ test(
               ops: [{ op: "update_item", item: "title-1", set: { transform: { x: 460, y: 400, w: 1000 } } }],
             },
           },
-          // 12: a fix claimed with frames from before the edit.
-          {
-            tool: "review_submit",
-            args: {
-              fixes: [
-                { defect: "d2", what: "centred the title" },
-                { defect: "d1", what: "put the recording in the phone" },
-              ],
-            },
-          },
-          // 13: an id that isn't in the last review.
+          // 11: an id that isn't in the last review.
           { tool: "review_submit", args: { fixes: [{ defect: "d9", what: "something" }] } },
           { tool: "render_frames", args: { frames: [0, 20], phone: true } },
-          // 15: round 2.
+          // 13: round 2 (Uncut renders each claimed fix's moment itself).
           {
             tool: "review_submit",
             args: {
@@ -634,15 +536,14 @@ test(
           },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-          // 20: round 3.
+          // 18: no round 3: d1 came back after its fix, so the user decides it.
           { tool: "review_submit", args: { fixes: [{ defect: "d1", what: "the recording plays in the phone" }] } },
         ],
-        { access: "auto", skipStoryboard: true },
+        { access: "auto" },
       );
       assert.equal(t.status, "done", t.error);
       const r = s.results().slice(2);
-      assert.match(textOf(r[3]!.result), /Look before you ask for a review/);
-      const round1 = jsonOf(r[6]!.result);
+      const round1 = jsonOf(r[5]!.result);
       assert.equal(round1.round, 1);
       assert.equal(round1.passed, false, "the builder's own 10s don't pass it");
       assert.match(round1.yourScores, /ignored/);
@@ -660,13 +561,9 @@ test(
       assert.equal(round1.defects[0].id, "d3");
       assert.match(round1.next, /Blockers \(any one fails the round\): d1 placeholder/);
       assert.equal(round1.determinism, "1 graphic drew the same twice");
-      assert.match(textOf(r[9]!.result), /Nothing changed since round 1/);
-      assert.match(
-        textOf(r[12]!.result),
-        /Look at each fix before you claim it: render_frames a frame of d2 \(at 0 s, frames 0 to 15\), d1 \(at 0.5 s, frames 0 to 30\)/,
-      );
-      assert.match(textOf(r[13]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
-      const round2 = jsonOf(r[15]!.result);
+      assert.match(textOf(r[8]!.result), /Nothing changed since round 1/);
+      assert.match(textOf(r[11]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
+      const round2 = jsonOf(r[13]!.result);
       assert.equal(round2.passed, false, "a fix the critic didn't see fails the round");
       assert.deepEqual(
         round2.fixes.map((f: any) => [f.defect, f.verified]),
@@ -676,13 +573,15 @@ test(
         ],
       );
       assert.deepEqual(
-        round2.blockers.map((b: any) => [b.id, b.kind]),
-        [["d1", "unverified-fix"]],
+        round2.blockers.map((b: any) => [b.id, b.kind, b.unresolved]),
+        [["d1", "unverified-fix", true]],
       );
       assert.match(round2.blockers[0].what, /the phone is still empty/);
-      const round3 = jsonOf(r[20]!.result);
-      assert.equal(round3.passed, true, round3.next);
-      assert.match(round3.next, /critic passed it/);
+      assert.match(
+        round2.next,
+        /the last one \(round 2 of at most 6: every blocker left came back unchanged after a fix \(d1\), so the user decides them[\s\S]*Unresolved[\s\S]*ask_user/,
+      );
+      assert.match(textOf(r[18]!.result), /No more review rounds in this turn \(round 2 of at most 6: every blocker left came back unchanged/);
       // Saved by the critic.
       const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
       assert.equal(saved.by, "critic");
@@ -691,7 +590,7 @@ test(
       assert.deepEqual(saved.determinism, { checked: ["box.html"], differed: [] });
       // The critic: a separate claude with no tools, no MCP server, no session, none of the builder's conversation.
       const runs = s.criticRuns();
-      assert.equal(runs.length, 3);
+      assert.equal(runs.length, 2);
       const builder = s.prompts().at(-1)!;
       for (const run of runs) {
         assert.equal(run.resume, null);
@@ -721,14 +620,23 @@ test(
       const kinds = t.items.flatMap((i: any, at: number) => (i.kind === "card" ? [[i.card.type, at]] : []));
       assert.deepEqual(
         kinds.map((k: any) => k[0]),
-        ["brief", "storyboard", "review", "review", "review"],
+        ["brief", "storyboard", "review", "review"],
       );
       const stepAt = (n: number) => t.items.findIndex((i: any) => i.kind === "step" && i.tool === "review_submit" && --n === 0);
-      assert.ok(kinds[2][1] > stepAt(2) && kinds[3][1] > stepAt(8) && kinds[4][1] > stepAt(9), "each review card right after its call");
+      assert.ok(kinds[2][1] > stepAt(1) && kinds[3][1] > stepAt(4), "each critic row right after its call");
       assert.ok(kinds[0][1] < kinds[1][1] && kinds[1][1] < kinds[2][1]);
+      const rows = t.items.filter((i: any) => i.kind === "card" && i.card.type === "review").map((i: any) => i.card.critic);
+      assert.deepEqual(
+        rows.map((c: any) => [c.round, c.status]),
+        [
+          [1, "failed"],
+          [2, "unresolved"],
+        ],
+      );
+      assert.ok(rows.every((c: any) => Date.parse(c.endedAt) >= Date.parse(c.startedAt)));
       assert.deepEqual(
         s.latest().plan.reviews.map((x: any) => x.passed),
-        [false, false, true],
+        [false, false],
       );
       // Kept with the history after a close and reopen.
       await s.client.ok("project.close", {});
@@ -740,7 +648,7 @@ test(
       const kept = back.items.filter((i: any) => i.kind === "card" && i.card.type === "review");
       assert.equal(kept[0].card.review.blockers[0].kind, "placeholder");
       assert.equal(kept[1].card.review.fixes[1].verified, false);
-      assert.equal(reopened.plan.reviews.length, 3);
+      assert.equal(reopened.plan.reviews.length, 2);
     } finally {
       await s.stop();
     }
@@ -963,118 +871,36 @@ test("U19: beat_grid gives the music's beats, downbeats and snaps in timeline fr
   }
 });
 
-test(
-  "round 2's A2: nobody can answer, so the storyboard approves itself; a built turn without review_submit is reminded once and goes on",
-  { skip, timeout: 120000 },
-  async () => {
-    const s = await setup("unattended");
-    try {
-      const built = [
-        { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } },
-        { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
-        { tool: "project_read" },
-        {
-          tool: "timeline_edit",
-          args: { baseRevision: "$rev", summary: "Scene 2", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, id: "title-2", start: 60 } }] },
-        },
-      ];
-      // Only in Auto: in Ask first the user is there to approve it.
-      await s.ask("storyboard", [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }], { access: "ask" });
-      assert.match(textOf(s.results()[0]!.result), /approve "self" is for a run in Auto[\s\S]*Ask first/);
-      const id = await s.start("Make a launch film. I can't answer questions, decide yourself.", built, { access: "auto" });
-      // The reminder is a message of its own to the same claude: the fake plays the next turn for it.
-      writeFileSync(
-        join(s.base, "plan.json"),
-        JSON.stringify([
-          [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }],
-          built,
-          [{ text: "Running the critic loop now." }],
-        ]),
-      );
-      const t = await s.done(id);
-      assert.equal(t.status, "done", t.error);
-      const answer = jsonOf(s.results()[0]!.result);
-      assert.equal(answer.approved, true);
-      assert.equal(answer.by, "you");
-      assert.match(answer.message, /review_submit before you end/);
-      assert.equal(t.items.find((i: any) => i.kind === "card").card.outcome, "self");
-      assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).approvedBy, "agent");
-      const prompts = s.prompts();
-      assert.equal(prompts.length, 3, "the Ask first message, the message, then the reminder");
-      assert.match(prompts[2]!.prompt, /Uncut's critic hasn't reviewed it; no review_submit ran[\s\S]*review_submit/);
-      assert.match(
-        t.items
-          .filter((i: any) => i.kind === "text")
-          .map((i: any) => i.text)
-          .join(" "),
-        /Running the critic loop now/,
-      );
-      // The next message's plan says who approved it.
-      await s.ask("go on", [{ text: "ok" }]);
-      assert.match(s.prompts().at(-1)!.prompt, /Storyboard \(approved by you: the user couldn't answer\)/);
-    } finally {
-      await s.stop();
-    }
-  },
-);
-
-test(
-  'approve "self" never overrides the user: refused after a send-back in the turn or a declined storyboard with a note, and refused before stills render or the edit locks',
-  { skip, timeout: 120000 },
-  async () => {
-    const s = await setup("self-override");
-    try {
-      const html = "<!doctype html><body style=margin:0;background:#123><script>window.render=()=>{}</script>";
-      const images = join(s.dir, ".cache", "agent-images");
-      // Ask first: refused before the still renders, and the edit isn't locked by it.
-      const ask = await s.ask(
-        "storyboard",
-        [
-          {
-            tool: "storyboard_propose",
-            args: { summary: "Two beats", beats: BEATS.map((b) => ({ ...b, still: { graphic: "look.html", t: 0 } })), approve: "self" },
-          },
-          { tool: "graphic_write", args: { name: "after.html", html } },
-        ],
-        { access: "ask" },
-      );
-      const [refused, written] = s.results();
-      assert.match(textOf(refused!.result), /approve "self" is for a run in Auto[\s\S]*Ask first/);
-      assert.ok(!existsSync(images), "no still rendered for a refused call");
-      assert.notEqual(written!.result.isError, true, textOf(written!.result));
-      assert.equal(ask.items.filter((i: any) => i.kind === "card").length, 0);
-      // Auto: the user sends it back in the turn, then the agent tries to approve it itself.
-      const id = await s.start(
-        "Make a launch film",
-        [
-          { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
-          { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } },
-        ],
-        { access: "auto" },
-      );
-      await s.client.ok("agent.approve", { id: (await s.card(id)).id, allow: false });
-      await s.done(id);
-      const [, self] = s.results();
-      assert.equal(self!.result.isError, true);
-      assert.match(textOf(self!.result), /only for a first proposal nobody answered; the user sent the storyboard back/);
-      assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).status, "declined", "still the user's answer");
-      // A later Auto turn, the storyboard declined with a note: refused too.
-      writeFileSync(
-        join(s.dir, "storyboard.json"),
-        JSON.stringify({ ...JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")), status: "declined", note: "Open on the dashboard" }),
-      );
-      await s.client.ok("agent.planSave", { storyboard: { ...JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")) } });
-      const later = await s.ask(
-        "I can't answer questions, decide yourself",
-        [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }],
-        { access: "auto" },
-      );
-      assert.match(textOf(s.results()[0]!.result), /the user sent the storyboard back \("Open on the dashboard"\)[\s\S]*without approve/);
-      assert.equal(later.items.filter((i: any) => i.kind === "card").length, 0);
-      assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).status, "declined");
-    } finally {
-      await s.stop();
-    }
-  },
-);
+test("round 2's A2: nobody can answer; a built turn without review_submit is reminded once and goes on", { skip, timeout: 120000 }, async () => {
+  const s = await setup("unattended");
+  try {
+    const built = [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
+      { tool: "project_read" },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
+      { tool: "project_read" },
+      {
+        tool: "timeline_edit",
+        args: { baseRevision: "$rev", summary: "Scene 2", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, id: "title-2", start: 60 } }] },
+      },
+    ];
+    const id = await s.start("Make a launch film. I can't answer questions, decide yourself.", built, { access: "auto" });
+    // The reminder is a message of its own to the same claude: the fake plays the next turn for it.
+    writeFileSync(join(s.base, "plan.json"), JSON.stringify([built, [{ text: "Running the critic loop now." }]]));
+    const t = await s.done(id);
+    assert.equal(t.status, "done", t.error);
+    assert.equal(jsonOf(s.results()[0]!.result).recorded, true);
+    const prompts = s.prompts();
+    assert.equal(prompts.length, 2, "the message, then the reminder");
+    assert.match(prompts[1]!.prompt, /Uncut's critic hasn't reviewed it; no review_submit ran[\s\S]*a run where nobody can answer still goes through it/);
+    assert.match(
+      t.items
+        .filter((i: any) => i.kind === "text")
+        .map((i: any) => i.text)
+        .join(" "),
+      /Running the critic loop now/,
+    );
+  } finally {
+    await s.stop();
+  }
+});

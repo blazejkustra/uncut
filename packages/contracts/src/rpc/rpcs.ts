@@ -165,8 +165,6 @@ export const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     effort: Schema.optional(AgentEffort),
     access: Schema.optional(AgentAccess),
     images: Schema.optional(Schema.Array(AgentImage)),
-    // D188: Settings › App › Agent "Auto skips the storyboard approval".
-    skipStoryboard: Schema.optional(Schema.Boolean),
     // export_video's range: the In/Out marks and the selected clips' span now, as the Export dialog reads them.
     ranges: Schema.optional(Schema.Struct({ marks: Schema.optional(ExportRange), selection: Schema.optional(ExportRange) })),
   }),
@@ -259,6 +257,12 @@ export const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, {
   error: BrandError,
 });
 export const BrandSetActiveRpc = Rpc.make(RPC_METHODS.brandSetActive, { payload: BrandActive, success: BrandState, error: BrandError });
+// The user's answer to "Load this project's skills?" (key: BrandState.projectSkillsAsk's).
+export const BrandTrustProjectSkillsRpc = Rpc.make(RPC_METHODS.brandTrustProjectSkills, {
+  payload: Schema.Struct({ key: Schema.String, load: Schema.Boolean }),
+  success: BrandState,
+  error: BrandError,
+});
 export const BrandImportRpc = Rpc.make(RPC_METHODS.brandImport, {
   payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, source: Schema.String }),
   success: Schema.Struct({ files: Schema.Array(BrandImported), state: BrandState }),

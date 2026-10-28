@@ -183,9 +183,9 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
     ["motion:pop:20", "motion:jump:50", "motion:seam:0"],
   );
   assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
-  // Since the ablations cut the skill, it no longer prescribes a loop: only the brief's words ask for one.
   assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
-  assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, true);
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, false, "the skill and the brief never make a loop");
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "", request: "a seamless loop" }).loop, true, "only the user's own words ask for one");
   assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), {
     asked: false,
     oneTake: true,
@@ -196,7 +196,7 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { asked: false, oneTake: false, loop: false, footage: false, footageCuts: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
   assert.equal(motionIntent({ skills: [], words: "", hasFootage: true }).footage, true);
-  const lines = motionLines(scan, fps, { consecutive: true });
+  const lines = motionLines(scan, fps, { consecutive: true, loop: true });
   assert.match(lines.join("\n"), /Single-frame pops and flashes \([^)]*\): f 20 \(0\.67 s/);
   assert.match(lines.join("\n"), /Holds over 1 s with nothing changing: f 60 to f 99/);
   assert.match(lines.join("\n"), /Loop seam: .* a visible jump if it loops/);

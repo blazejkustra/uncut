@@ -106,65 +106,6 @@ export const styleLine = (s: BrandStyle) =>
     .filter(Boolean)
     .join(";");
 
-export interface BuildGate {
-  /** timeline_edit waits: the storyboard isn't approved and this turn is planning the video (D237). */
-  readonly closed: boolean;
-  /** A brief exists and its storyboard isn't approved (whether or not this turn is held by it). */
-  readonly waiting: boolean;
-  /** "Auto" with Settings' skip: storyboard_propose approves itself. */
-  readonly skip: boolean;
-}
-
-/**
- * Whether the build waits for an approved storyboard (D188, D237). It waits only once a brief exists,
- * the storyboard isn't approved, and `planning`: this turn wrote the brief or proposed a storyboard,
- * so it is building the planned video. A later turn's edits (a small change while the storyboard is
- * pending or sent back) aren't held.
- */
-export const gateOf = (plan: AgentPlan, skip: boolean, planning = false): BuildGate => {
-  const waiting = !!plan.brief && plan.storyboard?.status !== "approved" && !skip;
-  return { closed: waiting && planning, waiting, skip };
-};
-
-/**
- * D237 (review finding 3): while the planned video waits for its storyboard (a brief with no
- * storyboard, or one proposed or declined), a later turn may still make small edits, but at most
- * this many new items per timeline_edit (a title and its background). More is building scenes.
- */
-export const SMALL_EDIT_INSERTS = 2;
-
-/** The new items a timeline_edit's ops would add (insert_item, insert_text, insert_device_frame). */
-export const insertCount = (ops: unknown): number =>
-  Array.isArray(ops) ? ops.filter((o) => ["insert_item", "insert_text", "insert_device_frame"].includes(String((o as { op?: unknown } | null)?.op))).length : 0;
-
-/** timeline_edit's refusal while the gate is closed (or, while it waits, for an edit that builds scenes), or undefined. */
-export function gateRefusal(plan: AgentPlan, gate: BuildGate, ops?: unknown): string | undefined {
-  if (!gate.closed) {
-    if (!gate.waiting || ops === undefined) return undefined;
-    const n = insertCount(ops);
-    if (n <= SMALL_EDIT_INSERTS) return undefined;
-    const sb = plan.storyboard;
-    const why = !sb
-      ? "this video has a brief but no storyboard yet"
-      : sb.status === "declined"
-        ? `the user sent the storyboard back${sb.note ? ` ("${sb.note}")` : ""}`
-        : "the storyboard is still waiting for the user's approval";
-    return `Not done: ${why}, and this edit adds ${n} items, which is building the planned video. While the storyboard isn't approved only small edits go ahead (at most ${SMALL_EDIT_INSERTS} new items per edit). Ask the user (ask_user) whether to build without it, or change the storyboard and propose it again with storyboard_propose.`;
-  }
-  const sb = plan.storyboard;
-  if (!sb) return "Not done: this video has a brief but no storyboard yet. Propose the shot list with storyboard_propose and build once the user approves it.";
-  if (sb.status === "declined")
-    return `Not done: the user asked for changes to the storyboard${sb.note ? ` ("${sb.note}")` : ""}. Change it and propose it again with storyboard_propose; build once it's approved.`;
-  return "Not done: the storyboard is waiting for the user's approval. Call storyboard_propose again (or ask them to approve it on the Plan card) and build once it's approved.";
-}
-
-/**
- * D296: the refusal of timeline_edit, graphic_write and shader_write while a storyboard this turn
- * proposed waits for the user: its stills are what they approve, so nothing changes under them.
- */
-export const PROPOSE_LOCK =
-  "Not done: the storyboard you proposed is waiting for the user's answer, and its stills show the edit as it is now, so nothing changes until they approve it or ask for changes. Don't edit; end your turn saying the storyboard waits on the Plan card. Once approved, build to match the stills; to change what they show (copy, logo, end card), propose again.";
-
 /**
  * The <brand> and <plan> blocks of a message: the project's kit and skills (or that there is none
  * and the user's kits by name), the brief, the storyboard and the last review.
@@ -177,7 +118,6 @@ export function planContext(
     others: ReadonlyArray<{ id: string; name: string }>;
   },
   plan: AgentPlan,
-  gate: BuildGate,
 ): string {
   const parts: Array<string> = [];
   const b: Array<string> = [];
@@ -197,13 +137,13 @@ export function planContext(
       `Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow their rules where the user's own direction doesn't decide (skill_read gives one's instructions again); the critic checks their review checklists.`,
     );
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
-  const block = planOnly(plan, gate);
+  const block = planOnly(plan);
   if (block) parts.push(block);
   return parts.join("\n\n");
 }
 
 /** The <plan> block alone (the brief, the storyboard, the last review); "" when nothing is planned. Also plan_read's answer (D266). */
-export function planOnly(plan: AgentPlan, gate: BuildGate): string {
+export function planOnly(plan: AgentPlan): string {
   const p: Array<string> = [];
   if (plan.brief) {
     const br = plan.brief;
@@ -231,15 +171,8 @@ export function planOnly(plan: AgentPlan, gate: BuildGate): string {
       (x, i) =>
         `${i + 1}. ${x.start}–${x.end} s ${x.title}: ${x.entry} → ${x.exit} (${x.purpose})${x.assets.length ? ` [${x.assets.join(", ")}]` : ""}${x.sound ? ` on ${x.sound}` : ""}`,
     );
-    p.push(
-      `Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : sb.status === "approved" && sb.approvedBy === "agent" ? " by you: the user couldn't answer" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`,
-    );
+    p.push(`Storyboard (your plan${sb.note ? `; the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
   }
-  if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
-  else if (gate.waiting)
-    p.push(
-      `${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead (at most ${SMALL_EDIT_INSERTS} new items per timeline_edit); building the planned video waits for an approved storyboard (storyboard_propose).`,
-    );
   const last = plan.reviews.at(-1);
   if (last) {
     // D195: the critic's findings by id, so the next round's fix claims can name them.
@@ -490,7 +423,7 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
   };
 }
 
-/** A turn that built this much reviews before it ends (graphic files written, timeline edits), or two in a turn that planned the video and has its storyboard approved. */
+/** A turn that built this much reviews before it ends (graphic files written, timeline edits), or two in a turn that planned the video. */
 export const REVIEW_BUILD = { graphics: 3, edits: 5 } as const;
 
 /**
@@ -498,14 +431,10 @@ export const REVIEW_BUILD = { graphics: 3, edits: 5 } as const;
  * storyboard and with it the whole critic loop (0 rounds), so a film that couldn't export shipped.
  * The critic never needs the user. When a turn that built a video ends without a review_submit,
  * Uncut sends the agent this once, and the turn goes on; undefined when it doesn't apply (a small
- * request, a Look-only turn, a storyboard waiting for the user or sent back, a turn already reviewed or reminded).
- * `unattended`: the prompt or the brief says nobody can answer (asksNoQuestions); only then does it
- * suggest approve "self" (with someone there, the storyboard goes to them).
+ * request, a Look-only turn, a turn already reviewed or reminded). `unattended`: the prompt or the
+ * brief says nobody can answer (asksNoQuestions); the reminder then says the critic runs anyway.
  */
-/**
- * Whether a prompt or a brief says nobody will answer questions ("I can't answer, decide yourself",
- * "don't ask me anything", an unattended run): only then does Uncut suggest approve "self".
- */
+/** Whether a prompt or a brief says nobody will answer questions ("I can't answer, decide yourself", "don't ask me anything", an unattended run). */
 const NO_QUESTIONS = [
   /\b(?:i|we)\s*(?:can't|cannot|can not|won't|will not|am not able to|'m not able to|won't be able to)\s+(?:be\s+(?:here|around|available)\s+to\s+)?answer/i,
   /\b(?:no ?one|nobody)\s+(?:can|will|is (?:here|around|available) to)\s+answer/i,
@@ -525,18 +454,13 @@ export function reviewNudge(t: {
   readonly graphicWrites: number;
   readonly edits: number;
   readonly planned: boolean;
-  readonly proposing?: boolean | undefined;
+  readonly storyboard?: boolean | undefined;
   readonly nudged?: boolean | undefined;
   readonly cancelled?: boolean | undefined;
-  readonly storyboard?: string | undefined;
 }): string | undefined {
-  if (t.nudged || t.cancelled || t.proposing || t.access === "look" || t.reviewRounds > 0) return undefined;
-  // A storyboard proposed or sent back: the build waits for the user, there's nothing to review yet.
-  if (t.storyboard !== undefined && t.storyboard !== "approved") return undefined;
-  // A planned video: its storyboard approved and built on (two or more edits or graphics); a brief
-  // and a sound added aren't a build.
-  const built =
-    t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard === "approved" && t.graphicWrites + t.edits >= 2);
+  if (t.nudged || t.cancelled || t.access === "look" || t.reviewRounds > 0) return undefined;
+  // A planned video with its storyboard, built on (two or more edits or graphics); a brief and a sound added aren't a build.
+  const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard && t.graphicWrites + t.edits >= 2);
   if (!built) return undefined;
   const what = [
     t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "",
@@ -544,5 +468,5 @@ export function reviewNudge(t: {
   ]
     .filter(Boolean)
     .join(" and ");
-  return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user${t.unattended ? ', so a run where nobody can answer still goes through it (with no one to approve the storyboard, approve it yourself with storyboard_propose approve "self" and say so)' : ""}. Only if this was a small, specific request, say that in one line and end.`;
+  return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user${t.unattended ? ", so a run where nobody can answer still goes through it" : ""}. Only if this was a small, specific request, say that in one line and end.`;
 }
