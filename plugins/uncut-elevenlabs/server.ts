@@ -11,10 +11,10 @@ const OUTPUT = "mp3_44100_128";
 
 const options = (args: Json) => (args.options && typeof args.options === "object" ? args.options : {}) as Record<string, unknown>;
 
-/** A voice setting asked for, or nothing: "voice" keeps what the voice has saved in the user's account. */
+/** A voice setting asked for; "auto" sends none and leaves it to ElevenLabs. */
 function voiceSetting(name: string, value: unknown) {
   const n = Number(value);
-  return value === undefined || value === "voice" || !Number.isFinite(n) ? {} : { [name]: Math.min(1, Math.max(0, n)) };
+  return value === undefined || value === "auto" || !Number.isFinite(n) ? {} : { [name]: Math.min(1, Math.max(0, n)) };
 }
 
 /** The saved file, or the reply's error in a sentence. */

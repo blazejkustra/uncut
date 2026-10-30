@@ -62,9 +62,9 @@
           "id": "stability",
           "label": "Stability",
           "type": "choice",
-          "default": "voice",
+          "default": "auto",
           "choices": [
-            { "value": "voice", "label": "The voice's own" },
+            { "value": "auto", "label": "Not set" },
             { "value": "0", "label": "0" },
             { "value": "0.25", "label": "0.25" },
             { "value": "0.5", "label": "0.5" },
@@ -77,9 +77,9 @@
           "id": "similarity",
           "label": "Similarity",
           "type": "choice",
-          "default": "voice",
+          "default": "auto",
           "choices": [
-            { "value": "voice", "label": "The voice's own" },
+            { "value": "auto", "label": "Not set" },
             { "value": "0", "label": "0" },
             { "value": "0.25", "label": "0.25" },
             { "value": "0.5", "label": "0.5" },

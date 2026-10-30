@@ -57,6 +57,8 @@ export function denyRules(dataDir?: string, claudeConfig: ReadonlyArray<string> 
   // .env files anywhere (Read and Edit), and a command naming one (after a space or a slash, so `process.env` isn't caught).
   for (const tool of ["Read", "Edit"]) rules.push(`${tool}(//**/.env)`, `${tool}(//**/.env.*)`);
   rules.push("Bash(* .env*)", "Bash(*/.env*)");
+  // Glued to what uploads it (-d @.env, -F f=@.env, -F f=<.env, -T ".env"): an ask rule would only give these a card.
+  for (const before of ["@", "=", "<", '"', "'"]) rules.push(`Bash(*${before}.env*)`);
   // A backstop under Uncut's own allowlist: claude refuses these before anyone is asked.
   for (const prefix of [
     "rm",
