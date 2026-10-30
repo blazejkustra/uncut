@@ -210,6 +210,16 @@ test("discovery: folder order, the first id wins, broken manifests and tool coll
   ]);
 });
 
+test("discovery: a process plugin without tools is warned about, a generator without tools is not", async () => {
+  const dir = join(root, "no-tools");
+  plugin(dir, "plain", { id: "plain.tool", name: "Plain", agentTools: [] });
+  const { generators } = JSON.parse(readFileSync("plugins/uncut-elevenlabs/uncut.module.json", "utf8"));
+  plugin(dir, "generator", { id: "gen.tool", kind: "generator", name: "Generator", agentTools: [], capture: undefined, generators });
+  const found = await discoverPlugins([{ source: "user", dir }], { moduleIds: new Set(), toolNames: new Set(TOOL_NAMES) });
+  const warnings = Object.fromEntries(found.plugins.map((p) => [p.id, p.warnings]));
+  assert.deepEqual(warnings, { "plain.tool": ["It has no agent tools, so the agent can't use it."], "gen.tool": [] });
+});
+
 test("a plugin's environment has no API keys, no Claude Code and no Uncut variables; the agent's has no keys", () => {
   const env: NodeJS.ProcessEnv = { PATH: "/usr/bin", HOME: "/Users/x", LANG: "en_US.UTF-8", UNCUT_TOKEN: "t", UNCUT_DATA_DIR: "/d", ELECTRON_RUN_AS_NODE: "1" };
   for (const k of KEYS) env[k] = "secret";

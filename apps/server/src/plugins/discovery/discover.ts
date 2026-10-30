@@ -128,9 +128,9 @@ export async function discoverPlugins(
           (read.contributions.skills?.length ?? 0) >
         0;
       // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent, and so
-      // is an importer (D280, Import from link); a plugin that contributes looks, components or
-      // checks (D103) is used without tools.
-      if (!declared.length && manifest.kind !== "analyzer" && manifest.kind !== "importer" && !contributes)
+      // is an importer (D280, Import from link); a generator is used through generate_media; a plugin
+      // that contributes looks, components or checks (D103) is used without tools.
+      if (!declared.length && !["analyzer", "importer", "generator"].includes(manifest.kind) && !contributes)
         warnings.push("It has no agent tools, so the agent can't use it.");
       plugins.push({
         id: manifest.id,
