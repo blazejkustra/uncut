@@ -57,6 +57,36 @@
             { "value": "1.2", "label": "1.2×" }
           ],
           "description": "How fast it speaks, 1 is normal."
+        },
+        {
+          "id": "stability",
+          "label": "Stability",
+          "type": "choice",
+          "default": "voice",
+          "choices": [
+            { "value": "voice", "label": "The voice's own" },
+            { "value": "0", "label": "0" },
+            { "value": "0.25", "label": "0.25" },
+            { "value": "0.5", "label": "0.5" },
+            { "value": "0.75", "label": "0.75" },
+            { "value": "1", "label": "1" }
+          ],
+          "description": "Lower is more expressive, higher is steadier. Eleven v3 takes only 0, 0.5 and 1."
+        },
+        {
+          "id": "similarity",
+          "label": "Similarity",
+          "type": "choice",
+          "default": "voice",
+          "choices": [
+            { "value": "voice", "label": "The voice's own" },
+            { "value": "0", "label": "0" },
+            { "value": "0.25", "label": "0.25" },
+            { "value": "0.5", "label": "0.5" },
+            { "value": "0.75", "label": "0.75" },
+            { "value": "1", "label": "1" }
+          ],
+          "description": "How closely it stays to the original voice."
         }
       ],
       "price": {

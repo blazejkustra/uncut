@@ -276,6 +276,7 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     const gen = resultsOf("generate_media");
     assert.equal(gen[0]!.isError, true);
     assert.equal(JSON.parse(gen[0]!.text).needsKey, "google");
+    assert.equal(JSON.parse(gen[0]!.text).keys.google, false);
     assert.match(JSON.parse(gen[0]!.text).message, /^Needs your Google key\. Nothing was generated\.$/);
     assert.equal(gen[1]!.isError, false, gen[1]!.text);
     const wordmark = JSON.parse(gen[1]!.text);

@@ -14,6 +14,9 @@ import type { AskCtx } from "./ask.ts";
 export const makeGenerateTools = (ctx: AskCtx) => {
   const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, view, projects, seeOwn } = ctx;
 
+  /** Which provider keys are set, as booleans: all the agent ever learns about them (D311). */
+  const keysSet = Effect.map(keys.list, (list) => Object.fromEntries(list.map((k) => [k.provider, k.set])));
+
   /**
    * generate_media (D99): a generator's result imported as media, an edit of this turn (Undo
    * turn removes it), its source {module, prompt, model}. Keyed generators bill the user's own
@@ -31,6 +34,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
         return textResult(
           {
             needsKey: provider,
+            keys: yield* keysSet,
             message: `${needsKeyLine(provider)}. Nothing was generated.`,
             next: `Tell the user it ${needsKeyLine(provider).toLowerCase()}: they add it in Settings › Keys (Uncut never asks for it in chat; don't ask them to paste it here). For a picture or a simple animation you can draw it yourself with generate.svg.`,
           },
@@ -380,7 +384,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
       }
     });
 
-  return { generateMedia, screenRecord, argentBoot, mediaSearch, turnCleanup };
+  return { keysSet, generateMedia, screenRecord, argentBoot, mediaSearch, turnCleanup };
 };
 
 export type GenerateCtx = AskCtx & ReturnType<typeof makeGenerateTools>;

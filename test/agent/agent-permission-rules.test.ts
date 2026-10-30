@@ -22,6 +22,7 @@ import {
   ownFileRules,
   permissionMode,
   sessionSettings,
+  uploadAskRules,
   rootProblem,
   shellSegments,
   simpleCommand,
@@ -391,8 +392,7 @@ test("D194 downloaded files get a safe name", () => {
 
 test("D194 claude's deny rules: secret folders and files for Read, Edit and commands naming them, .env files, not process.env", () => {
   const rules = denyRules();
-  for (const backstop of ["Bash(rm:*)", "Bash(sudo:*)", "Bash(git push:*)", "Bash(osascript:*)", "Bash(curl* -d *)"])
-    assert.ok(rules.includes(backstop), backstop);
+  for (const rule of ["Bash(rm:*)", "Bash(sudo:*)", "Bash(git push:*)", "Bash(osascript:*)"]) assert.ok(rules.includes(rule), rule);
   // Bash rules match like claude 2.1.299's matcher: * is any text, the whole command anchored.
   const bash = rules
     .filter((r) => r.startsWith("Bash("))
@@ -429,13 +429,10 @@ test("D214 Auto's claude-side rules: the same secret deny rules in every access;
   const look = JSON.parse(sessionSettings({ access: "look" }));
   const ask = JSON.parse(sessionSettings({ access: "ask" }));
   const auto = JSON.parse(sessionSettings({ access: "auto", projects: [P, P] }));
-  assert.deepEqual(look, { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } });
-  assert.deepEqual(
-    ask,
-    { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } },
-    "Ask first and Look only: the deny rules, and commands naming apps' data for Uncut",
-  );
-  assert.deepEqual(JSON.parse(sessionSettings()), { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: appDataAskRules() } });
+  const plain = { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: [...uploadAskRules(), ...appDataAskRules()] } };
+  assert.deepEqual(look, plain);
+  assert.deepEqual(ask, plain, "Ask first and Look only: the deny rules, and commands naming apps' data and uploads for Uncut");
+  assert.deepEqual(JSON.parse(sessionSettings()), plain);
   for (const rule of denyRules()) assert.ok(auto.permissions.deny.includes(rule), `Auto keeps ${rule}`);
   for (const rule of [
     "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/project.json)",
@@ -447,7 +444,7 @@ test("D214 Auto's claude-side rules: the same secret deny rules in every access;
   for (const rule of ["Bash(*project.json*)", "Bash(*history.db*)"])
     assert.ok(auto.permissions.ask.includes(rule) && !auto.permissions.deny.includes(rule), `${rule}: to Uncut, which runs a plain read`);
   assert.equal(auto.permissions.deny.filter((r: string) => r.endsWith("/project.json)")).length, 1, "the same folder once");
-  assert.deepEqual(auto.permissions.ask, [...autoAskRules(), ...appDataAskRules(), ...ownFileAskRules()]);
+  assert.deepEqual(auto.permissions.ask, [...autoAskRules(), ...uploadAskRules(), ...appDataAskRules(), ...ownFileAskRules()]);
   for (const tool of ["Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]) assert.ok(auto.permissions.ask.includes(tool), tool);
   assert.ok(!auto.permissions.ask.includes("Bash"), "routine commands go to Claude Code's classifier");
   assert.deepEqual(ownFileRules(["/p/"]).slice(0, 1), ["Edit(//p/project.json)"]);

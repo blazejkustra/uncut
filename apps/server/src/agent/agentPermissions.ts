@@ -42,7 +42,7 @@ export {
   quotedBlanked,
   pinnedToProject,
 } from "./permissions/shell.ts";
-export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
+export { hideSecrets, SECRETISH, webAddressProblem } from "./permissions/web.ts";
 export {
   SECRET_DIRS,
   SECRET_FILES,
@@ -52,7 +52,9 @@ export {
   ownFileRules,
   ownFileAskRules,
   autoAskRules,
+  uploadAskRules,
   sessionSettings,
+  ALWAYS_DISALLOWED,
   LOOK_DISALLOWED,
 } from "./permissions/settings.ts";
 

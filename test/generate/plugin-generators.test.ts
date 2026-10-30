@@ -128,6 +128,8 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
         ["voice", "choice", true],
         ["model", "choice", false],
         ["speed", "choice", false],
+        ["stability", "choice", false],
+        ["similarity", "choice", false],
       ],
     );
     assert.deepEqual(
@@ -161,7 +163,7 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
     const snap = await client.ok("project.create", { parentDir: join(base, "projects"), name: "Voice", canvas: { width: 1280, height: 720, fps: 30 } });
     await agent.until((s) => s?.dir === snap.dir);
     assert.equal(await bad({ options: { model: "eleven_v9" } }), "model must be one of eleven_multilingual_v2, eleven_v3, eleven_v4, eleven_flash_v2_5.");
-    assert.equal(await bad({ options: { mood: "happy" } }), "Voiceover has no option mood; its options are voice, model, speed.");
+    assert.equal(await bad({ options: { mood: "happy" } }), "Voiceover has no option mood; its options are voice, model, speed, stability, similarity.");
     assert.equal(await bad({ seconds: 5 }), "Voiceover takes no length (seconds).");
     assert.equal(
       (await client.fail("generate.start", { generator: "generate.elevenlabs.music", prompt: "lofi", seconds: 10 })).message,
@@ -178,7 +180,7 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
     const { jobId } = await client.ok("generate.start", {
       generator: "generate.elevenlabs.voiceover",
       prompt: script,
-      options: { voice: "Sarah", model: "eleven_flash_v2_5", speed: "1.1" },
+      options: { voice: "Sarah", model: "eleven_flash_v2_5", speed: "1.1", stability: "0.25", similarity: "0.75" },
     });
     await jobs.until((v) => v.some((j: any) => j.id === jobId && (j.phase === "done" || j.phase === "failed")), 30000);
     const done = jobs.values.at(-1).find((j: any) => j.id === jobId);
@@ -188,7 +190,11 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
     assert.equal(tts.url, `/v1/text-to-speech/${SARAH}?output_format=mp3_44100_128`);
     assert.equal(tts.method, "POST");
     assert.equal(tts.headers["xi-api-key"], KEY);
-    assert.deepEqual(JSON.parse(tts.body), { text: script, model_id: "eleven_flash_v2_5", voice_settings: { speed: 1.1 } });
+    assert.deepEqual(JSON.parse(tts.body), {
+      text: script,
+      model_id: "eleven_flash_v2_5",
+      voice_settings: { speed: 1.1, stability: 0.25, similarity_boost: 0.75 },
+    });
     await project.until((p) => p?.project.media.some((m: any) => m.id === done.mediaId));
     const media = () => project.values.at(-1).project.media;
     const vo = media().find((m: any) => m.id === done.mediaId);
@@ -199,7 +205,7 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
       prompt: script,
       model: "eleven_flash_v2_5",
       kind: "audio",
-      options: { voice: "Sarah", model: "eleven_flash_v2_5", speed: "1.1" },
+      options: { voice: "Sarah", model: "eleven_flash_v2_5", speed: "1.1", stability: "0.25", similarity: "0.75" },
     });
 
     // Music: a minute, instrumental.
@@ -282,11 +288,13 @@ test("the ElevenLabs plugin: Voiceover and Music in the Generate tab and for the
       .filter(Boolean)
       .map((l) => JSON.parse(l))
       .find((r) => r.tool === "modules_list");
-    const plugin = JSON.parse(listedModules.result.content[0].text).find((m: any) => m.id === "uncut.elevenlabs");
+    const modules = JSON.parse(listedModules.result.content[0].text);
+    assert.deepEqual(modules.keys, { openai: false, google: false, elevenlabs: true, freesound: false }, "which keys are set, as booleans");
+    const plugin = modules.modules.find((m: any) => m.id === "uncut.elevenlabs");
     assert.deepEqual(
       plugin.generators.map((g: any) => [g.generator, g.options.map((o: any) => o.id)]),
       [
-        ["generate.elevenlabs.voiceover", ["voice", "model", "speed"]],
+        ["generate.elevenlabs.voiceover", ["voice", "model", "speed", "stability", "similarity"]],
         ["generate.elevenlabs.music", ["instrumental"]],
       ],
     );

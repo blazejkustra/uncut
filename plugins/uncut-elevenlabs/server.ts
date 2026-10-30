@@ -11,6 +11,12 @@ const OUTPUT = "mp3_44100_128";
 
 const options = (args: Json) => (args.options && typeof args.options === "object" ? args.options : {}) as Record<string, unknown>;
 
+/** A voice setting asked for, or nothing: "voice" keeps what the voice has saved in the user's account. */
+function voiceSetting(name: string, value: unknown) {
+  const n = Number(value);
+  return value === undefined || value === "voice" || !Number.isFinite(n) ? {} : { [name]: Math.min(1, Math.max(0, n)) };
+}
+
 /** The saved file, or the reply's error in a sentence. */
 function savedOrError(r: FetchResult) {
   if (r.file) return;
@@ -28,7 +34,15 @@ async function voiceover(args: Json, ctx: ToolContext) {
     method: "POST",
     url: `/v1/text-to-speech/${encodeURIComponent(voice.id)}?output_format=${OUTPUT}`,
     headers: { "content-type": "application/json", accept: "audio/mpeg" },
-    body: JSON.stringify({ text: script, model_id: model, voice_settings: { speed: Number.isFinite(speed) ? Math.min(1.2, Math.max(0.7, speed)) : 1 } }),
+    body: JSON.stringify({
+      text: script,
+      model_id: model,
+      voice_settings: {
+        speed: Number.isFinite(speed) ? Math.min(1.2, Math.max(0.7, speed)) : 1,
+        ...voiceSetting("stability", o.stability),
+        ...voiceSetting("similarity_boost", o.similarity),
+      },
+    }),
     save: "mp3",
   });
   savedOrError(r);

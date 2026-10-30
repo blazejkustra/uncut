@@ -6,6 +6,13 @@ export const SECRETISH = /(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A
 const KNOWN_SECRET =
   /(?:sk-(?:ant-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}|-----BEGIN|ssh-(?:rsa|ed25519) AAAA)/;
 
+/** D311: a key by its shape, or the value after a key's name (`xi-api-key: ...`, `Authorization: Bearer ...`, `api_key=...`). */
+const SHOWN_SECRET = new RegExp(`\\bsk_[A-Za-z0-9]{16,}|${KNOWN_SECRET.source}`, "g");
+const NAMED_SECRET = /\b((?:[a-z]+-)*api[-_]?key|authorization|token|secret|password)(["']?\s*[:=]\s*["']?(?:bearer\s+)?)[^\s"'&]+/gi;
+
+/** D311: text for a card with what looks like a key hidden; the command claude runs stays whole. */
+export const hideSecrets = (text: string) => text.replace(NAMED_SECRET, "$1$2•••").replace(SHOWN_SECRET, "•••");
+
 /**
  * D219: a run that reads as encoded data: 40+ token characters (between slashes, dots and the
  * like) mixing upper case, lower case and digits, with few dashes. Hex (a commit SHA), UUIDs and
