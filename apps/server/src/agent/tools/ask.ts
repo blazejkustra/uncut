@@ -5,7 +5,7 @@ import { layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { QUESTION_MS } from "../agentPlan.ts";
 import { join } from "node:path";
-import { claudeConfigDirs, decide, realPath, shownPath } from "../agentPermissions.ts";
+import { claudeConfigDirs, decide, hideSecrets, realPath, shownPath } from "../agentPermissions.ts";
 import { globalBrandDir } from "../../brand/store.ts";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
@@ -334,6 +334,8 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         if (refused) return deny(refused);
         let always = false;
         showing = true;
+        const target = hideSecrets(d.target);
+        const why = target === d.target ? d.why : [d.why, "Secret-looking text is hidden here."].filter(Boolean).join(" ");
         const answer = await Effect.runPromise(
           askUser(
             r,
@@ -344,7 +346,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
               always = extra?.always === true && !!d.grant;
             },
             undefined,
-            { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } },
+            { permission: { tool, target, ...(why ? { why } : {}), always: !!d.grant } },
           ),
         ).finally(() => (showing = false));
         if (answered) return;
@@ -358,7 +360,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
           return allow(d.updatedInput);
         }
         if (answer === "stopped") return deny("Not done: the turn was stopped.");
-        const refusal = `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn, with this tool or another (Read, Bash); say what you wanted to do and why.`;
+        const refusal = `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${target.slice(0, 200)}". Don't try it again in this turn, with this tool or another (Read, Bash); say what you wanted to do and why.`;
         if (d.turnKey) r.turnRefusals.set(d.turnKey, refusal);
         return deny(refusal);
       };

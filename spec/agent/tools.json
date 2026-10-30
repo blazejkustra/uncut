@@ -517,7 +517,7 @@
     },
     {
       "name": "generate_media",
-      "description": "Make an image, video or sound with a generator into Media › Generated, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo, generate.sound and plugins' generators (modules_list kind generator) bill the user's own API key; without it the result says which key is needed. Over $1 asks the user on a card.",
+      "description": "Make an image, video or sound with a generator into Media › Generated, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo, generate.sound and plugins' generators (modules_list kind generator) bill the user's own API key; the user keeps them in Settings › Keys, modules_list says which are set, and without one the result says so. Over $1 asks the user on a card.",
       "inputSchema": {
         "type": "object",
         "required": [

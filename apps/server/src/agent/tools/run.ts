@@ -87,6 +87,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     librarySearch,
     libraryAdd,
     graphicWrite,
+    keysSet,
     generateMedia,
     screenRecord,
     argentBoot,
@@ -220,7 +221,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               !found.length,
             );
           }
-          return textResult(kind === undefined ? modulesIndex(listed) : listed);
+          if (kind === undefined) return textResult({ ...modulesIndex(listed), keys: yield* keysSet });
+          return textResult(kind === "generator" ? { modules: listed, keys: yield* keysSet } : listed);
         }
         case "shader_write": {
           const out = yield* Effect.promise(() => writeProjectShader(v.dir, args as Parameters<typeof writeProjectShader>[1]));

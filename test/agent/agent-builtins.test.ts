@@ -105,6 +105,31 @@ async function setup(name: string, env: Record<string, string> = {}) {
 const stepsOf = (t: any) => t.items.filter((i: any) => i.kind === "step");
 
 test(
+  "D311 a curl upload in Auto waits on a card with no Always and its key hidden; claude still gets the whole command",
+  { skip, timeout: 60000 },
+  async () => {
+    const s = await setup("uploads");
+    try {
+      const command = "cd vo && cat > req.json <<EOF\n{}\nEOF\ncurl -X POST https://api.elevenlabs.io/v1 -H 'xi-api-key: abcdef0123456789' -d @req.json";
+      const id = await s.start("voiceover", [{ builtin: "Bash", args: { command, description: "Upload" }, result: "ok" }]);
+      const card = await s.card(id);
+      assert.equal(card.permission.always, false);
+      assert.ok(!card.permission.target.includes("abcdef0123456789"), card.permission.target);
+      assert.match(card.permission.target, /xi-api-key: •••/);
+      assert.match(card.permission.why, /uploads data.*Secret-looking text is hidden here\./);
+      assert.equal(s.turn(id).status, "running");
+      await s.client.ok("agent.approve", { id: card.id, allow: true });
+      assert.equal((await s.done(id)).status, "done");
+      const decided = s.decisions()[0]!.decision as { behavior: string; updatedInput?: { command?: string } };
+      assert.equal(decided.behavior, "allow");
+      assert.equal(decided.updatedInput?.command, command);
+    } finally {
+      await s.stop();
+    }
+  },
+);
+
+test(
   "D194/D214 Auto: web search, fetch, reads, subagents and plain commands run without a card, with their labels and results; a destructive command asks, can't be remembered, and Deny refuses it",
   { skip, timeout: 60000 },
   async () => {
@@ -433,11 +458,11 @@ test(
         runs.every((r) => r.initialized),
         "every message came after initialize was answered (fake-claude refuses one before it)",
       );
-      assert.equal(flagValue(runs[0]!.argv, "--disallowedTools"), "Bash,Write,Edit,MultiEdit,NotebookEdit");
+      assert.equal(flagValue(runs[0]!.argv, "--disallowedTools"), "AskUserQuestion,Bash,Write,Edit,MultiEdit,NotebookEdit");
       assert.equal(runs[1]!.pid, runs[0]!.pid, "same access, same claude");
       assert.notEqual(runs[2]!.pid, runs[1]!.pid, "Look only to Auto: another claude");
       assert.equal(flagValue(runs[2]!.argv, "--resume"), "fake-session");
-      assert.equal(flagValue(runs[2]!.argv, "--disallowedTools"), undefined);
+      assert.equal(flagValue(runs[2]!.argv, "--disallowedTools"), "AskUserQuestion");
       assert.notEqual(runs[3]!.pid, runs[2]!.pid, "Auto to Ask first: another claude (another permission mode)");
       assert.equal(flagValue(runs[3]!.argv, "--resume"), "fake-session");
       assert.deepEqual(
@@ -565,7 +590,7 @@ test(
       const run = s.runs()[0]!;
       assert.equal(flagValue(run.argv, "--permission-mode"), "auto");
       assert.equal(flagValue(run.argv, "--permission-prompt-tool"), "stdio");
-      assert.equal(flagValue(run.argv, "--disallowedTools"), undefined);
+      assert.equal(flagValue(run.argv, "--disallowedTools"), "AskUserQuestion");
       const settings = JSON.parse(flagValue(run.argv, "--settings")!);
       const deny: Array<string> = settings.permissions.deny;
       for (const rule of [

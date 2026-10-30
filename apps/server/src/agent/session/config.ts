@@ -1,5 +1,5 @@
 import { AGENT_IMAGE_TYPES, AGENT_MODELS, type AgentProvider } from "@uncut/contracts";
-import { type Access, claudeConfigDirs, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
+import { type Access, ALWAYS_DISALLOWED, claudeConfigDirs, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
 import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import type { PluginSkill } from "@uncut/core";
 import { type ClaudeSkill, claudeSkillsPrompt } from "../claudeSkills.ts";
@@ -113,7 +113,7 @@ export function sessionArgs(o: {
   // prompt (and skills list) on every request, so a respawned session gets this build's prompt.
   if (o.promptSnapshot) args.push("--system-prompt-snapshot", o.promptSnapshot);
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
-  if (access === "look") args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
+  args.push("--disallowedTools", [...ALWAYS_DISALLOWED, ...(access === "look" ? LOOK_DISALLOWED : [])].join(","));
   for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
   for (const dir of o.pluginDirs ?? []) args.push("--plugin-dir", dir);
   if (o.model) args.push("--model", o.model);

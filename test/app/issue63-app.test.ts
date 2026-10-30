@@ -145,7 +145,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     assert.equal(voice.tag, undefined, "no Coming soon group");
     assert.equal(voice.lab, "$0.08 per 1,000 characters, needs your ElevenLabs key");
     assert.match(voice.needs ?? "", /^Needs your ElevenLabs key\./);
-    assert.deepEqual(voice.labels, ["Voice", "Model", "Speed"]);
+    assert.deepEqual(voice.labels, ["Voice", "Model", "Speed", "Stability", "Similarity"]);
     assert.ok(voice.controls.length >= 3 && voice.controls.every((d) => !d), `every option can be set (${voice.controls})`);
     assert.equal(voice.run, true, "Generate waits for the key");
     assert.equal(voice.estimate, "Under $0.01, billed to your ElevenLabs key");

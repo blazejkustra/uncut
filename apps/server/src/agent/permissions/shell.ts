@@ -62,6 +62,16 @@ function program(words: ReadonlyArray<string>): { name: string; args: ReadonlyAr
   return { name, args: words.slice(i + 1) };
 }
 
+/** What curl sends, wherever on the segment it runs: whatever precedes it (stdbuf, caffeinate, gtimeout...) may start it, so no list of wrappers decides. */
+function curlHint(words: ReadonlyArray<string>): string | undefined {
+  const at = words.findIndex((w) => basename(w) === "curl");
+  if (at < 0) return undefined;
+  const args = words.slice(at + 1);
+  if (args.some((a) => /^--(data|form|upload-file|json)/.test(a) || /^-[a-zA-Z]*[dFT]/.test(a))) return "curl uploads data";
+  const x = args.findIndex((a) => a === "-X" || a === "--request");
+  return x >= 0 && /^(POST|PUT|PATCH|DELETE)$/i.test(args[x + 1] ?? "") ? `curl sends a ${args[x + 1]!.toUpperCase()} request` : undefined;
+}
+
 /**
  * Why a shell line is destructive (it always asks, never granted), or undefined: sudo/su/doas, rm
  * with -r or -f (or any rm) of a path outside the project, git push, uploads (curl/wget sending
@@ -103,10 +113,12 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
       if (outside.length || !targets.length) return `deletes ${outside.length ? outside.slice(0, 2).join(", ") : "files"} outside the project`;
     }
     if (name === "git" && args.includes("push")) return "git push sends commits to a remote";
-    if (name === "curl") {
-      if (args.some((a) => /^(-d|--data.*|-F|--form.*|-T|--upload-file|--json)$/.test(a) || /^-[a-zA-Z]*[dFT]$/.test(a))) return "curl uploads data";
-      const x = args.findIndex((a) => a === "-X" || a === "--request");
-      if (x >= 0 && /^(POST|PUT|PATCH|DELETE)$/i.test(args[x + 1] ?? "")) return `curl sends a ${args[x + 1]!.toUpperCase()} request`;
+    const hint = curlHint(words);
+    if (hint) return hint;
+    // A line quoted to whatever runs it (`stdbuf bash -c "curl -d ..."`).
+    for (const word of words) {
+      const inner = /\s/.test(word) && /\bcurl\b/.test(word) ? destructive(word, project, roots, home) : undefined;
+      if (inner) return inner;
     }
     if (name === "wget" && args.some((a) => /^--(post|put|body|method)/.test(a))) return "wget uploads data";
     if (["scp", "sftp", "ftp", "nc", "ncat", "netcat", "telnet", "ssh"].includes(name)) return `${name} talks to another machine`;

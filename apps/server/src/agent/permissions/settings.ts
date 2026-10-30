@@ -57,6 +57,8 @@ export function denyRules(dataDir?: string, claudeConfig: ReadonlyArray<string> 
   // .env files anywhere (Read and Edit), and a command naming one (after a space or a slash, so `process.env` isn't caught).
   for (const tool of ["Read", "Edit"]) rules.push(`${tool}(//**/.env)`, `${tool}(//**/.env.*)`);
   rules.push("Bash(* .env*)", "Bash(*/.env*)");
+  // Glued to what uploads it (-d @.env, -F f=@.env, -F f=<.env, -T ".env"): an ask rule would only give these a card.
+  for (const before of ["@", "=", "<", '"', "'"]) rules.push(`Bash(*${before}.env*)`);
   // A backstop under Uncut's own allowlist: claude refuses these before anyone is asked.
   for (const prefix of [
     "rm",
@@ -83,10 +85,17 @@ export function denyRules(dataDir?: string, claudeConfig: ReadonlyArray<string> 
     "security",
   ])
     rules.push(`Bash(${prefix}:*)`);
-  for (const flag of [" -d ", " --data", " -F ", " --form", " -T ", " --upload-file", " --json"]) rules.push(`Bash(curl*${flag}*)`);
   rules.push(...appDataRules(dataDir));
   return rules;
 }
+
+/**
+ * D311: curl uploads are ask rules in every access: a deny rule refused them silently, with no card.
+ * An ask rule is checked before claude's classifier, so `decide` gets them, and destructive() keeps
+ * "Always" off their card. What a deny rule names (secrets, the server token) is still refused.
+ */
+export const uploadAskRules = (): Array<string> =>
+  [" -d ", " --data", " -F ", " --form", " -T ", " --upload-file", " --json"].map((flag) => `Bash(curl*${flag}*)`);
 
 /** A path as a piece of a Bash rule (claude's matcher: `\*` is a literal star, `\\` a literal backslash). */
 const bashSafe = (p: string) => p.replace(/[\\*]/g, (c) => `\\${c}`);
@@ -174,15 +183,23 @@ export function sessionSettings(
 ): string {
   const cc = o.claudeConfig ?? [];
   if (o.access !== "auto")
-    return JSON.stringify({ disableSkillShellExecution: true, permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
+    return JSON.stringify({
+      disableSkillShellExecution: true,
+      permissions: { deny: denyRules(o.dataDir, cc), ask: [...uploadAskRules(), ...appDataAskRules(o.dataDir, cc)] },
+    });
   return JSON.stringify({
     disableSkillShellExecution: true,
     permissions: {
       deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])],
-      ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],
+      ask: [...autoAskRules(), ...uploadAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],
     },
   });
 }
 
+/**
+ * D311: tools no session starts with. AskUserQuestion answers nothing unless the host fills the
+ * answers in, and ask_user is Uncut's question card.
+ */
+export const ALWAYS_DISALLOWED = ["AskUserQuestion"] as const;
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */
 export const LOOK_DISALLOWED = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"] as const;
