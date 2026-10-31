@@ -20,8 +20,8 @@
 .gen-model.soon .gen-model-name, .gen-model.soon .gen-mark { opacity: 0.6; }
 .gen-model.soon.active .gen-model-name, .gen-model.soon.active .gen-mark { opacity: 0.85; }
 .gen-model-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.gen-model-name { font-size: 12.5px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gen-model-sub { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-model-name { font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-model-sub { font-size: 11px; color: var(--dim); }
 .gen-model.later .gen-model-sub { color: var(--warn); }
 .gen-model-price { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .gen-model.active .gen-model-price { color: var(--fg); }

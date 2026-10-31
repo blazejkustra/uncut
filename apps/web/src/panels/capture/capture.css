@@ -2,7 +2,7 @@
 
 /* Source toggles: two by two in the narrow panel, a row of four when there's room. */
 .capture-toggles { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 6px; }
-.capture-toggle { position: relative; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); font-size: 12px; text-align: left; }
+.capture-toggle { position: relative; display: flex; align-items: center; gap: 5px; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); font-size: 12px; text-align: left; }
 .capture-toggle svg.lucide { width: 15px; height: 15px; flex: none; }
 .capture-toggle span:first-of-type { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .capture-toggle:not(:disabled):hover { border-color: var(--border-strong); color: var(--fg); }
