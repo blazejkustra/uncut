@@ -45,9 +45,16 @@ export const LIMITER_RELEASE_MS = 50;
 export const limiterFilter = (ceilingDb: number) =>
   `aresample=192000,alimiter=limit=${n(Math.max(0.0625, 10 ** ((ceilingDb - LIMITER_MARGIN_DB) / 20)))}:attack=${LIMITER_ATTACK_MS}:release=${LIMITER_RELEASE_MS}:level=0:latency=1,aresample=48000`;
 
+/**
+ * How many samples afftdn delays a 48 kHz stream by when this ffmpeg's can't be measured (exporter
+ * denoiseLagOf): window_length − sample_advance in af_afftdn.c, two hops of rate / 80. It drops as
+ * many at the end. Older builds differ (D330).
+ */
+export const DENOISE_LAG_SAMPLES = 2 * Math.floor(48000 / 80);
+
 const lin = (db: number) => 10 ** (db / 20);
-/** One effect stage as an ffmpeg filter (D84; the curves core biquadResponseDb states, the compressor's static curve). */
-export function stageFilter(stage: Stage): string {
+/** One effect stage as an ffmpeg filter (D84; the curves core biquadResponseDb states, the compressor's static curve). Noise removal gives back afftdn's `denoiseLag` samples (D330). */
+export function stageFilter(stage: Stage, denoiseLag = DENOISE_LAG_SAMPLES): string {
   switch (stage.kind) {
     case "biquad":
       switch (stage.type) {
@@ -63,8 +70,10 @@ export function stageFilter(stage: Stage): string {
       break;
     case "compressor":
       return `acompressor=threshold=${n(Math.max(0.000976563, lin(stage.thresholdDb)))}:ratio=${n(stage.ratio)}:attack=${n(stage.attackMs)}:release=${n(stage.releaseMs)}:makeup=${n(lin(stage.makeupDb))}:knee=1:link=maximum:detection=peak`;
-    case "denoise":
-      return `afftdn=nr=${n(6 + 24 * stage.amount)}:nf=${n(Math.min(-20, Math.max(-80, stage.floorDb ?? DENOISE_FLOOR_DB)))}`;
+    case "denoise": {
+      const afftdn = `afftdn=nr=${n(6 + 24 * stage.amount)}:nf=${n(Math.min(-20, Math.max(-80, stage.floorDb ?? DENOISE_FLOOR_DB)))}`;
+      return denoiseLag > 0 ? `apad=pad_len=${denoiseLag},${afftdn},atrim=start_sample=${denoiseLag},asetpts=PTS-STARTPTS` : afftdn;
+    }
   }
   return "anull";
 }
@@ -126,7 +135,7 @@ export function audioGraph(plan: ExportPlan, first: number, options?: string | A
     filters.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${total}[tsil${j}]`);
     const chain = [
       `[tsil${j}]${items.join("")}amix=inputs=${items.length + 1}:duration=first:dropout_transition=0:normalize=0`,
-      ...b.stages.map(stageFilter),
+      ...b.stages.map((stage) => stageFilter(stage, plan.denoiseLag)),
       "aformat=sample_fmts=fltp:channel_layouts=stereo",
       ...(b.pan.left !== 1 || b.pan.right !== 1 ? [`pan=stereo|c0=${n(b.pan.left)}*c0|c1=${n(b.pan.right)}*c1`] : []),
     ];

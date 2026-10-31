@@ -14,6 +14,7 @@
 // - targets: −14 / −16 / −23 LUFS within ±1 LU, also for a quiet mix with loud clicks (the limiter
 //   works, and the check pass corrects the gain);
 // - noise removal: broadband noise down by ≥ 6 dB with the tone kept; not in the preview's stages.
+//   A denoised click lands within 1 ms of the undenoised one, whole and part range, end kept (D330).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -38,8 +39,10 @@ import {
   type SpeechEnvelope,
   type Track,
 } from "../../packages/core/src/index.ts";
-import { audioGraph, exportCommand, planExport, planLoudness, type ExportPlan } from "../../apps/server/src/export/exportPlan.ts";
+import { audioGraph, DENOISE_LAG_SAMPLES, exportCommand, planExport, planLoudness, type ExportPlan } from "../../apps/server/src/export/exportPlan.ts";
+import { denoiseLagOf } from "../../apps/server/src/export/exporter/ffmpeg.ts";
 import { analyzeLoudness } from "../../apps/server/src/analysis/analysis.ts";
+import { sliceProject } from "../../packages/core/src/timeline/slice.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = hasFfmpeg ? false : "needs ffmpeg";
@@ -53,6 +56,7 @@ const within = (got: number, want: number, tol: number, what: string) =>
 // Stepped tones (0.1 amplitude, 0.4 s each) for the EQ.
 const STEPS = [50, 100, 200, 500, 1000, 2000, 3500, 6000, 10000, 15000];
 const STEP_S = 0.4;
+const CLICKS_S = [1.5, 3, 4.95, 5.95];
 const stepExpr = () => {
   let f = String(STEPS.at(-1));
   for (let i = STEPS.length - 2; i >= 0; i--) f = `if(lt(t,${((i + 1) * STEP_S).toFixed(2)}),${STEPS[i]},${f})`;
@@ -119,13 +123,29 @@ before(() => {
     "pcm_f32le",
     join(dir, "noisy.wav"),
   );
+  // Clicks (the 2 ms bursts of `CLICKS_S`) over white noise near the −40 dBFS floor noise removal assumes.
+  ff(
+    "-f",
+    "lavfi",
+    "-i",
+    `aevalsrc='0.6*(${CLICKS_S.map((t) => `between(t,${t},${t + 0.002})`).join("+")})':s=48000:d=6`,
+    "-f",
+    "lavfi",
+    "-i",
+    "anoisesrc=d=6:c=white:r=48000:a=0.02:seed=5",
+    "-filter_complex",
+    "[0][1]amix=inputs=2:normalize=0",
+    "-c:a",
+    "pcm_f32le",
+    join(dir, "tick.wav"),
+  );
   ff("-f", "lavfi", "-i", "color=c=black:s=640x360", "-frames:v", "1", join(dir, "bg.png"));
 });
 after(() => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-const FILES: Record<string, number> = { steps: STEPS.length * STEP_S, loud: 4, soft: 4, voice: 8, music: 8, hot: 6, clicks: 6, bed: 6, noisy: 5 };
+const FILES: Record<string, number> = { steps: STEPS.length * STEP_S, loud: 4, soft: 4, voice: 8, music: 8, hot: 6, clicks: 6, bed: 6, noisy: 5, tick: 6 };
 const media = () =>
   Object.entries(FILES).map(([id, s]) => ({
     id: `m-${id}`,
@@ -178,8 +198,8 @@ function mix(project: Project, name: string, envelopes?: ReadonlyMap<string, Spe
   return out;
 }
 /** The whole export (picture + AAC), with the loudness passes exporter.ts runs. */
-async function exportFile(project: Project, choice: LoudnessChoice, name: string): Promise<string> {
-  const p = plan(project);
+async function exportFile(project: Project, choice: LoudnessChoice, name: string, denoiseLag?: number): Promise<string> {
+  const p = { ...plan(project), denoiseLag };
   const target = targetOfChoice(choice);
   const { loudness, loudnorm } =
     target === undefined
@@ -420,3 +440,68 @@ test(
     assert.deepEqual(trackStages(t, { media: [] }, envelopes)[0], { kind: "denoise", amount: 1, floorDb: -40 });
   },
 );
+
+const pcmOf = (file: string) => {
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "f32le", "-ac", "1", "-ar", "48000", "-"], { maxBuffer: 1 << 28 });
+  return new Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+};
+const MAX_LAG = 2400;
+/** How many samples `b` runs after `a` around the moment `t`: the peak of their correlation within ±50 ms. */
+function lagAt(a: Float32Array, b: Float32Array, t: number): number {
+  const from = Math.round((t - 0.03) * 48000);
+  const to = Math.min(Math.round((t + 0.02) * 48000), a.length - MAX_LAG, b.length - MAX_LAG);
+  let best = -Infinity;
+  let at = 0;
+  for (let lag = -MAX_LAG; lag <= MAX_LAG; lag++) {
+    let sum = 0;
+    for (let i = from; i < to; i++) sum += a[i]! * b[i + lag]!;
+    if (sum > best) {
+      best = sum;
+      at = lag;
+    }
+  }
+  return at;
+}
+const peakIn = (a: Float32Array, t: number) => {
+  const from = Math.round((t - 0.03) * 48000);
+  return Math.max(...a.subarray(from, Math.min(a.length, from + 2400)).map(Math.abs));
+};
+
+test("noise removal lines up with undenoised audio in a real export: lag under 1 ms, the end kept, part range too (D330)", { skip, timeout: 120000 }, async () => {
+  const denoise: ModuleUse = { module: "audio.denoise", params: { amount: 0.5 } };
+  const project = (effects?: Array<ModuleUse>) => mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)]);
+  const measured = await denoiseLagOf("ffmpeg");
+  console.log(`afftdn lag on this ffmpeg: ${measured} samples`);
+  const off = pcmOf(await exportFile(project(), "off", "tick-off"));
+  const on = pcmOf(await exportFile(project([denoise]), "off", "tick-on", measured));
+  const raw = pcmOf(await exportFile(project([denoise]), "off", "tick-raw", 0));
+  assert.equal(on.length, off.length);
+
+  for (const t of CLICKS_S) {
+    const lag = lagAt(off, on, t);
+    console.log(`click at ${t} s: denoised lag ${((lag / 48000) * 1000).toFixed(2)} ms`);
+    assert.ok(Math.abs(lag) < 48, `click at ${t} s is ${lag} samples late`);
+  }
+  // The uncompensated filter shows what the measurement gives back.
+  assert.ok(Math.abs(lagAt(off, raw, 1.5) - measured) < 48, "the measured lag is the filter's");
+  within(dB(peakIn(on, 5.95)), dB(peakIn(off, 5.95)), 6, "the click just before the end");
+
+  const part = (effects?: Array<ModuleUse>) => {
+    const sliced = sliceProject(project(effects), { from: 30, to: 150 });
+    if ("problem" in sliced) throw new Error(sliced.problem);
+    return sliced;
+  };
+  const partOff = pcmOf(await exportFile(part(), "off", "tick-part-off"));
+  const partOn = pcmOf(await exportFile(part([denoise]), "off", "tick-part-on", measured));
+  assert.equal(partOn.length, partOff.length);
+  for (const t of [0.5, 2, 3.95]) assert.ok(Math.abs(lagAt(partOff, partOn, t)) < 48, `part range, click at ${t} s`);
+  within(dB(peakIn(partOn, 3.95)), dB(peakIn(partOff, 3.95)), 6, "the click just before the part's end");
+});
+
+test("noise removal's compensation stays out of a graph without it, and a build's lag can't be read: the known one", { skip }, async () => {
+  const graphOf = (effects?: Array<ModuleUse>) => audioGraph(plan(mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)])), 0).filters.join(";");
+  const bypassed = graphOf([{ module: "audio.denoise", bypass: true }]);
+  assert.equal(bypassed, graphOf());
+  assert.doesNotMatch(bypassed, /afftdn|apad|start_sample/);
+  assert.equal(await denoiseLagOf(join(dir, "no-such-ffmpeg")), DENOISE_LAG_SAMPLES);
+});

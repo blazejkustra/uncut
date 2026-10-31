@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { availableParallelism, setPriority } from "node:os";
+import { promisify } from "node:util";
 import { join, dirname } from "node:path";
 import type { Project, Media } from "@uncut/core";
-import type { Caps, ExportPlan } from "../exportPlan.ts";
+import { DENOISE_LAG_SAMPLES, stageFilter, type Caps, type ExportPlan } from "../exportPlan.ts";
 import { withoutApiKey } from "../../app/shellEnv.ts";
 import { localInputs } from "../../media/localInputs.ts";
 
@@ -33,6 +34,56 @@ export const capsOf = (bin: string) => {
     capsCache.set(bin, caps);
   }
   return caps;
+};
+
+const DENOISE_PROBE_SAMPLES = 24000;
+const DENOISE_PROBE_CLICK = 12000;
+
+/** How far a 32-bit float mono decode's loudest sample sits after the probe's click; undefined when it can't be the click. */
+export function clickLag(pcm: Buffer): number | undefined {
+  let loudest = 0;
+  let at = -1;
+  for (let i = 0; i + 4 <= pcm.length; i += 4) {
+    const level = Math.abs(pcm.readFloatLE(i));
+    if (level > loudest) {
+      loudest = level;
+      at = i / 4;
+    }
+  }
+  return at < DENOISE_PROBE_CLICK ? undefined : at - DENOISE_PROBE_CLICK;
+}
+
+const denoiseProbeArgs = (bin: string) =>
+  localInputs(bin, [
+    "-v",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    `aevalsrc='0.9*eq(n,${DENOISE_PROBE_CLICK})':s=48000:d=${DENOISE_PROBE_SAMPLES / 48000}`,
+    "-af",
+    stageFilter({ kind: "denoise", amount: 0.5 }, 0),
+    "-f",
+    "f32le",
+    "-",
+  ]);
+
+const measureDenoiseLag = (bin: string) =>
+  promisify(execFile)(bin, denoiseProbeArgs(bin), { encoding: "buffer", env: withoutApiKey(process.env), maxBuffer: 1 << 20 }).then(
+    ({ stdout }) => clickLag(stdout) ?? DENOISE_LAG_SAMPLES,
+    () => DENOISE_LAG_SAMPLES,
+  );
+
+const denoiseLagCache = new Map<string, Promise<number>>();
+/** What afftdn delays 48 kHz audio by on this ffmpeg (D330), measured on a click once per binary. */
+export const denoiseLagOf = (bin: string) => {
+  let lag = denoiseLagCache.get(bin);
+  if (lag === undefined) {
+    lag = measureDenoiseLag(bin);
+    denoiseLagCache.set(bin, lag);
+  }
+  return lag;
 };
 
 /**
