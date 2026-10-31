@@ -319,9 +319,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* skillRead(v, args);
         case "docs_read": {
           // D260 (issue #81): an area's reference, on demand instead of in the system prompt.
-          // The graphics topic carries the bundled libraries' own API (their headers), read from the files Uncut inlines.
+          // The graphics topic lists the bundled libraries; library gives one's API, from the file Uncut inlines.
           const libs = args.topic === "graphics" ? yield* Effect.promise(() => loadGraphicLibs(config.graphicLibsDir).catch(() => undefined)) : undefined;
-          const doc = docsRead(args.topic, libs);
+          const doc = docsRead(args.topic, libs, args.library);
           return textResult(doc.text, doc.isError);
         }
         case "brand_write":

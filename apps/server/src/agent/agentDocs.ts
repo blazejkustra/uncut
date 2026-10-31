@@ -156,28 +156,47 @@ export function librarySignatures(source: string): string | undefined {
   return lines.length ? lines.join("\n") : undefined;
 }
 
-/**
- * The graphics topic's appendix: each bundled library's header (its whole API, as the library
- * file says it; three.js is its own documented library), from `libs` (name → source, the server's
- * loadGraphicLibs), so the agent never has to look for the files.
- */
-export function libraryReference(libs: Readonly<Record<string, string>>): string {
-  const parts = Object.entries(libs)
-    .filter(([name]) => name !== "three.js")
-    .flatMap(([name, source]) => {
+/** A bundled library's name without its file extension, as docs_read takes it. */
+const libraryName = (file: string) => file.replace(/\.js$/, "");
+
+/** The libraries docs_read documents (three.js is its own documented library), each with its reference. */
+function documentedLibraries(libs: Readonly<Record<string, string>>): Array<{ name: string; summary: string; reference: string }> {
+  return Object.entries(libs)
+    .filter(([file]) => file !== "three.js")
+    .flatMap(([file, source]) => {
       const header = libraryHeader(source);
       const signatures = librarySignatures(source);
       const text = [header, signatures ? `Every function it has, from its code:\n${signatures}` : undefined].filter(Boolean).join("\n");
-      return text ? [`uncut:lib/${name}\n${text}`] : [];
+      return text ? [{ name: libraryName(file), summary: headerSummary(header ?? ""), reference: `uncut:lib/${file}\n${text}` }] : [];
     });
-  return parts.length
-    ? `\n\nThe bundled libraries' full API, from each library's own header (everything each one has; their files are inlined by Uncut, so there is nothing on disk to look up):\n\n${parts.join("\n\n")}`
+}
+
+/** A header's opening sentence on one line, without its decision ids. */
+const headerSummary = (header: string) =>
+  header
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/\.\s/)[0]!
+    .replace(/\s*\(D\d+[^)]*\)/g, "");
+
+/** The graphics topic's appendix: one line per bundled library, from `libs` (name → source, the server's loadGraphicLibs). */
+function libraryIndex(libs: Readonly<Record<string, string>>): string {
+  const lines = documentedLibraries(libs).map((l) => `- ${l.name}: ${l.summary}`);
+  return lines.length
+    ? `\n\nThe bundled libraries (and three.js as uncut:lib/three.js, window.THREE). docs_read {"topic":"graphics","library":"<name>"} gives one's full API; read it before you use it. Their files are inlined by Uncut, so there is nothing on disk to look up:\n${lines.join("\n")}`
     : "";
 }
 
-/** docs_read's answer: one topic's text, or the topics there are. With `libs`, the graphics topic carries the libraries' own API references (libraryReference). */
-export function docsRead(topic: unknown, libs?: Readonly<Record<string, string>>): { text: string; isError: boolean } {
-  if (topic === "graphics" && libs) return { text: DOCS.graphics.body + libraryReference(libs), isError: false };
+/** docs_read's answer: one topic's text, or the topics there are. With `libs`, the graphics topic lists the libraries and `library` gives one's own API. */
+export function docsRead(topic: unknown, libs?: Readonly<Record<string, string>>, library?: unknown): { text: string; isError: boolean } {
+  if (library !== undefined) {
+    const known = topic === "graphics" && libs ? documentedLibraries(libs) : [];
+    const found = known.find((l) => typeof library === "string" && l.name === libraryName(library));
+    return found
+      ? { text: found.reference, isError: false }
+      : { text: `library goes with the graphics topic and is one of: ${known.map((l) => l.name).join(", ")}.`, isError: true };
+  }
+  if (topic === "graphics" && libs) return { text: DOCS.graphics.body + libraryIndex(libs), isError: false };
   if (typeof topic === "string" && topic in DOCS) return { text: DOCS[topic as DocTopic].body, isError: false };
   return { text: `topic must be one of: ${DOC_TOPICS.map((t) => `${t} (${DOCS[t].summary})`).join("; ")}.`, isError: true };
 }
