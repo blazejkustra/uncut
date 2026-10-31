@@ -189,6 +189,8 @@ export interface ExportPlan {
     readonly stages: ReadonlyArray<Stage>;
     readonly pan: { readonly left: number; readonly right: number };
   }>;
+  /** The samples this ffmpeg's afftdn delays 48 kHz audio by (exporter denoiseLagOf, D330); absent: DENOISE_LAG_SAMPLES. */
+  readonly denoiseLag?: number | undefined;
   /** The master limiter (D86), last in the chain; absent when bypassed. */
   readonly limiter?: { readonly ceilingDb: number } | undefined;
   /** Every media file the export reads. */
