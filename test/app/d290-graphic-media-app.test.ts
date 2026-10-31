@@ -73,6 +73,7 @@ async function goTo(frame: number) {
   await page.keyboard.up("Shift");
   for (let i = 0; i < frame % 30; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".pv-graphic iframe")!).opacity === "1", { timeout: 30000 });
   // The graphic asks for its picture and draws it: give it the round trip.
   await sleep(1500);
 }

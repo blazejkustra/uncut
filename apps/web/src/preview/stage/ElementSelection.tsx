@@ -55,7 +55,7 @@ const unitsOf = (iframe: HTMLIFrameElement) => iframe.offsetWidth / Math.max(1, 
 /** The topmost graphic's element under a press at client (x, y), selected. False when no graphic has one there. */
 export async function pickElement(project: ProjectModel, x: number, y: number) {
   const wraps = [...document.querySelectorAll<HTMLElement>(".pv-graphic[data-item]")]
-    .filter((w) => w.style.visibility !== "hidden")
+    .filter((w) => w.style.visibility !== "hidden" && w.querySelector("iframe")?.style.opacity !== "0")
     .sort((a, b) => Number(b.style.zIndex) - Number(a.style.zIndex));
   for (const wrap of wraps) {
     const placed = findItem(project, wrap.dataset.item);

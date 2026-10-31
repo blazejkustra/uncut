@@ -281,6 +281,8 @@ export class Compositor extends CompositorBase {
         iframe.setAttribute("sandbox", "allow-scripts");
         iframe.setAttribute("tabindex", "-1");
         iframe.title = v.item.name ?? v.item.id;
+        // Before its first render(t) a document shows all its elements at once.
+        iframe.style.opacity = "0";
         iframe.style.width = `${project.canvas.width}px`;
         iframe.style.height = `${project.canvas.height}px`;
         const entry = { wrap, frame: iframe, src, loaded: false, sent: "" };
