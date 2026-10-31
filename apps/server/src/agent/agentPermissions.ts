@@ -172,9 +172,21 @@ const PLAIN_READS =
   "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most";
 const PLAIN_JOINS = "joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
 const PLAIN = `${PLAIN_READS}, or cp of such files (not a kit's or this project's project.json) into the project; ${PLAIN_JOINS}`;
-/** Programs with an option that runs them in another folder, or (env) runs a command line of its own. */
-const FOLDER_OPTION_PROGRAMS = new Set(["env", "git", "make", "tar", "pnpm"]);
-const LEAVES_FOLDER = /^(-C|-S|--chdir|--cwd|--directory|--split-string)/;
+/** Options that run a program in another folder, or (env) run a command line of its own. Short ones bundle (env -iC, tar -xzC, tar xzCf). */
+const LEAVES_FOLDER = new Map([
+  ["env", /^(?:-[a-zA-Z0]*[CS]|--(?:chd|sp))/],
+  ["git", /^(?:-C|--(?:git-dir|work-tree))/],
+  ["make", /^(?:-[a-zA-Z]*C|--dir)/],
+  ["tar", /^(?:-[a-zA-Z]*C|--dir|[a-zA-Z]*C[a-zA-Z]*$)/],
+  ["pnpm", /^(?:-C|--(?:dir|cwd|chdir))/],
+]);
+const leavesFolder = (command: ReadonlyArray<string>) => {
+  const words = command.flatMap((word) => word.split(/\s+/));
+  return words.some((word, i) => {
+    const option = LEAVES_FOLDER.get(word.split("/").at(-1)!);
+    return option !== undefined && words.slice(i + 1).some((later) => option.test(later));
+  });
+};
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
@@ -328,7 +340,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const parsed = simpleCommand(command);
     return (
       !("complex" in parsed) &&
-      !(parsed.words.some((word) => FOLDER_OPTION_PROGRAMS.has(word)) && parsed.words.some((word) => LEAVES_FOLDER.test(word))) &&
+      !leavesFolder(parsed.words) &&
       withoutHomeClaude(command, home) === command &&
       !configNamed(command) &&
       !namesAppData(command, ctx.dataDir) &&

@@ -129,9 +129,19 @@ test("a line that can reach ~/.claude, apps' data or Uncut's files stays refused
     `env --chdir=${HOME} open .claude/settings.json`,
     `env -S "open .claude/a" .claude/a`,
     `git -C ~ add .claude/settings.json`,
+    `git --work-tree=${HOME} add .claude/settings.json`,
+    `env -vC ~ open .claude/settings.json`,
+    `env -iC ~ open .claude/settings.json`,
+    `/usr/bin/env -C ~ open .claude/settings.json`,
+    `sh -c "env -C ~ open .claude/settings.json"`,
+    `tar -czC ~ -f out.tgz .claude/settings.json`,
+    `tar czCf out.tgz ~ .claude/settings.json`,
+    `make -sC ~ -f .claude/Makefile`,
+    `pnpm --dir ~ exec open .claude/settings.json`,
   ])
     assert.equal(bash(command).kind, "deny", command);
-  assert.equal(bash(`open -S .claude/skills/a.md`).kind, "ask", "only programs that can change folder lose the card");
+  for (const command of [`open -S .claude/skills/a.md`, `git log -S word -- .claude/skills/a.md`, `tar -czf out.tgz .claude/skills`])
+    assert.equal(bash(command).kind, "ask", `only leaving the folder loses the card: ${command}`);
   const card = bash(`open .claude/skills/a.md`);
   assert.ok(card.kind === "ask" && card.updatedInput, card.kind);
   assert.match(String(card.updatedInput.command), /^cd '\/Users\/me\/Movies\/argent-100s\.uncut' && \(/);
