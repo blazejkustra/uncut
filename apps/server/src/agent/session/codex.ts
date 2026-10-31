@@ -14,7 +14,7 @@ import * as Effect from "effect/Effect";
 import type { Access } from "../agentPermissions.ts";
 import { CODEX_SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import { codexLimitNotice, codexTurnError } from "../agentLimits.ts";
-import { asksNoQuestions, reviewNudge } from "../agentPlan.ts";
+import { asksNoQuestions, pointsAtTime, reviewNudge } from "../agentPlan.ts";
 import { codexEnv } from "../../app/shellEnv.ts";
 import { which } from "../../app/setup.ts";
 import { besideServer } from "../../paths.ts";
@@ -218,6 +218,8 @@ export const makeCodex = (ctx: StreamCtx) => {
       edits: r.turn.edits.length,
       planned: r.planned,
       storyboard: !!r.owner.plan.storyboard,
+      fix: pointsAtTime(r.turn.prompt),
+      reviewedBefore: r.owner.plan.reviews.length > 0,
       nudged: r.nudged,
       cancelled: r.cancelled,
     });

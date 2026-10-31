@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { asksNoQuestions, reviewNudge, REVIEW_BUILD } from "../../apps/server/src/agent/agentPlan.ts";
+import { asksNoQuestions, pointsAtTime, reviewNudge, REVIEW_BUILD } from "../../apps/server/src/agent/agentPlan.ts";
 
 const base = { access: "auto", reviewRounds: 0, graphicWrites: 0, edits: 0, planned: false };
 
@@ -22,6 +22,19 @@ test("a built turn without a review is reminded once; small, look-only, reviewed
   assert.equal(reviewNudge({ ...base, graphicWrites: 5, cancelled: true }), undefined);
   assert.equal(reviewNudge({ ...base, planned: true }), undefined, "planned, nothing built");
   assert.ok(reviewNudge({ ...base, planned: true, graphicWrites: 1, edits: 1, storyboard: true }));
+});
+
+test("a fix at a moment of the video, or a small follow-up on a reviewed film, isn't reminded", () => {
+  assert.equal(reviewNudge({ ...base, graphicWrites: 5, fix: true }), undefined);
+  assert.equal(reviewNudge({ ...base, edits: REVIEW_BUILD.edits, fix: true }), undefined);
+  assert.equal(
+    reviewNudge({ ...base, planned: true, graphicWrites: 1, edits: 1, storyboard: true, reviewedBefore: true }),
+    undefined,
+    "the audit's false alarm",
+  );
+  assert.ok(reviewNudge({ ...base, graphicWrites: REVIEW_BUILD.graphics, reviewedBefore: true }), "a real rebuild still is");
+  for (const yes of ["@0:05.7 it doesnt make sense", "fix this @0:54.8", "@12:03 too fast"]) assert.ok(pointsAtTime(yes), yes);
+  for (const no of ["make a new video", "@Take 20261027-170327 is zoomed", "mail me@0:05", "@Graphic title.html"]) assert.ok(!pointsAtTime(no), no);
 });
 
 test("the nudge says the critic runs anyway when the prompt or brief says nobody can answer; nobody approves a storyboard", () => {

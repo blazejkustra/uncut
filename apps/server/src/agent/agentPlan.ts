@@ -447,6 +447,9 @@ const NO_QUESTIONS = [
 export const asksNoQuestions = (...texts: ReadonlyArray<string | undefined>) =>
   texts.some((t) => !!t && NO_QUESTIONS.some((re) => re.test(t.replace(/[\u2018\u2019]/g, "'"))));
 
+/** The user's message points at a moment of the video (@0:05.7): a fix they will check themselves. */
+export const pointsAtTime = (prompt: string) => /(^|\s)@\d+:\d{2}/.test(prompt);
+
 export function reviewNudge(t: {
   readonly access: string;
   readonly unattended?: boolean | undefined;
@@ -455,12 +458,15 @@ export function reviewNudge(t: {
   readonly edits: number;
   readonly planned: boolean;
   readonly storyboard?: boolean | undefined;
+  readonly fix?: boolean | undefined;
+  readonly reviewedBefore?: boolean | undefined;
   readonly nudged?: boolean | undefined;
   readonly cancelled?: boolean | undefined;
 }): string | undefined {
-  if (t.nudged || t.cancelled || t.access === "look" || t.reviewRounds > 0) return undefined;
+  if (t.nudged || t.cancelled || t.fix || t.access === "look" || t.reviewRounds > 0) return undefined;
   // A planned video with its storyboard, built on (two or more edits or graphics); a brief and a sound added aren't a build.
-  const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard && t.graphicWrites + t.edits >= 2);
+  const firstBuild = t.planned && t.storyboard && !t.reviewedBefore && t.graphicWrites + t.edits >= 2;
+  const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || firstBuild;
   if (!built) return undefined;
   const what = [
     t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "",
