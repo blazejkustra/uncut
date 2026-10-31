@@ -8,6 +8,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
   const builtin = builtinLabel(tool, args, project);
   if (builtin) return builtin;
   switch (tool) {
+    case "project_peek":
+      return `Looked at ${typeof args.project === "string" ? (args.project.split("/").filter(Boolean).pop() ?? "a project").replace(/\.uncut$/i, "") : "another project"}`;
     case "project_read":
       return "Read the timeline";
     case "timeline_edit":

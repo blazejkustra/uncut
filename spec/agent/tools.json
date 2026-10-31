@@ -909,6 +909,20 @@
       "returns": "bootable and running devices; or booted: true with the device id to record; or approved: false with what to do instead"
     },
     {
+      "name": "project_peek",
+      "description": "Read-only view of another Uncut project: brief, canvas, look, track outline, graphic names with sizes; graphic gives one file. Use it for a sibling's style.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["project"],
+        "additionalProperties": false,
+        "properties": {
+          "project": { "type": "string", "maxLength": 500, "description": "Its .uncut folder, or its name beside this project." },
+          "graphic": { "type": "string", "maxLength": 200 }
+        }
+      },
+      "returns": "name, canvas, brief, look, tracks, graphics; or graphic, bytes, html"
+    },
+    {
       "name": "media_search",
       "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and date. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
       "inputSchema": {

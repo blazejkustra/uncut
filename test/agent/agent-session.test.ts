@@ -8,7 +8,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -317,6 +317,22 @@ test("a stored session that's gone (no conversation found) starts fresh once, an
     const runs = s.runs();
     assert.equal(runs.at(-1)!.resume, null, "a fresh conversation");
     assert.match(runs.at(-1)!.prompt, /^three/);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("project_peek reaches the agent over MCP and answers another project's outline", { skip, timeout: 60000 }, async () => {
+  const s = await setup("peek");
+  try {
+    const other = join(dirname(s.dir), "Other.uncut");
+    mkdirSync(other);
+    writeFileSync(join(other, "project.json"), JSON.stringify({ name: "Other", canvas: { width: 1080, height: 1920, fps: 30 }, tracks: [] }));
+    const t = await s.ask("peek", [{ tool: "project_peek", args: { project: "Other" } }]);
+    assert.equal(t.status, "done", t.error);
+    const step = t.items.find((i: { kind: string; text: string }) => i.kind === "step" && i.text === "Looked at Other");
+    assert.ok(step, JSON.stringify(t.items));
+    assert.equal(step.status, "done");
   } finally {
     await s.stop();
   }
