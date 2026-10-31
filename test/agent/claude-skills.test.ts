@@ -119,7 +119,8 @@ test("writeSkillPlugins: one skills-only plugin per source, linking each skill f
       join(m.home, ".claude", "skills", "tone", "reference.md"),
       "the skill's other files are links",
     );
-    assert.ok(existsSync(join(out, "engineering", "skills", "debug", "SKILL.md")));
+    const unlisted = readFileSync(join(out, "engineering", "skills", "debug", "SKILL.md"), "utf8");
+    assert.match(unlisted, /^---\nname: "debug"\n---\n/, "a plugin's skill has no description, so claude leaves it off the listing");
     assert.ok(!existsSync(join(out, "engineering", "hooks")));
     assert.deepEqual(skillReadDirs(skills.slice(0, 1)), [join(m.project, ".claude", "skills", "shared")]);
   } finally {
@@ -222,6 +223,8 @@ test("calledClaudeSkills: /id after a space or at the start, never a path; Uncut
   assert.match(block, /Skill tool \(skill "engineering:debug"\)/);
   assert.equal(claudeSkillsPrompt([]), "");
   assert.match(claudeSkillsPrompt(all), /Skill tool/);
+  assert.match(claudeSkillsPrompt(all), /Installed but not listed: the skills of [^.]*engineering[^.]*\./);
+  assert.doesNotMatch(claudeSkillsPrompt(all.filter((s) => s.plugin === "user")), /not listed/);
 });
 
 test('sessionArgs: the user\'s settings stay out (--setting-sources ""), the skills come in as --plugin-dir', () => {
