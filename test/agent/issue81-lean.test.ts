@@ -1,8 +1,8 @@
 // Issue #81 (D260): a lean agent context, without a claude.
 // - The system prompt is a tight core (under 8k chars); each area's reference is docs_read {topic}.
 // - No decision ids (D76…) in anything the model reads: prompt, docs, tool descriptions.
-// - <brand>/<plan> whole only when they changed since the session last saw them (or every
-//   RESEND_EVERY messages); unchanged ones are a line each.
+// - <brand>/<plan> whole only when they changed since the conversation last saw them;
+//   unchanged ones are a line each.
 // - The manual-edits note is capped; project_read gives a long project's items as compact lines,
 //   every field on request (detail "items", items [ids]).
 import { test } from "node:test";
@@ -21,7 +21,7 @@ import {
   withoutDecisionIds,
   COMPACT_ITEMS,
 } from "../../apps/server/src/agent/agentTools.ts";
-import { leanPlanBlock, RESEND_EVERY } from "../../apps/server/src/agent/session/send.ts";
+import { leanPlanBlock } from "../../apps/server/src/agent/session/send.ts";
 import { capNote, NOTE_LINES } from "../../apps/server/src/agent/turns/notes.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
 import { AGENT_TEXT } from "../helpers/agentText.ts";
@@ -103,16 +103,12 @@ test("#81: <brand> and <plan> whole only when they changed; unchanged ones are a
   // No plan before or now: no plan line at all.
   const noPlan = leanPlanBlock(brand2, gone.sent);
   assert.doesNotMatch(noPlan.text, /<plan>/);
-  // Unchanged for RESEND_EVERY messages: sent whole again (a compacted conversation gets it back).
   let last = leanPlanBlock(full, undefined).sent;
-  const texts: Array<string> = [];
-  for (let i = 0; i < RESEND_EVERY; i++) {
+  for (let i = 0; i < 12; i++) {
     const out = leanPlanBlock(full, last);
-    texts.push(out.text);
+    assert.notEqual(out.text, full, "no periodic resend: unchanged stays a line");
     last = out.sent;
   }
-  assert.equal(texts.filter((t) => t === full).length, 1, "once in RESEND_EVERY messages");
-  assert.equal(texts.at(-1), full);
 });
 
 test("#81: the manual-edits note is capped", () => {

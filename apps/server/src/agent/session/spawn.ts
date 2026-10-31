@@ -13,7 +13,7 @@ import type { Loaded, Running, ClaudeSession } from "./types.ts";
 import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
-import { forgetSentBlocks } from "./send.ts";
+import { forgetSentBlocks, sendBlocksWhole } from "./send.ts";
 import { asksNoQuestions, pointsAtTime, reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
 import { CODEX_SESSION, makeCodex } from "./codex.ts";
@@ -493,6 +493,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
         s.owner.sessionId = undefined;
         // D261: a new conversation: the last one's context doesn't apply.
         s.owner.context = undefined;
+        sendBlocksWhole(r);
         persist(s.owner);
         const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access, claudeSkills: s.claudeSkills });
         if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });

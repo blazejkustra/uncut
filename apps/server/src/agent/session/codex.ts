@@ -22,7 +22,7 @@ import { isString, RESULT_MAX } from "../turns/history.ts";
 import { CODEX_PID, TURN_DIR_PREFIX } from "./stale.ts";
 import { contextOf, messageContextEstimate, systemToolsEstimate } from "./usage.ts";
 import type { ClaudeSession, CodexLink, Loaded, Running } from "./types.ts";
-import { forgetSentBlocks } from "./send.ts";
+import { forgetSentBlocks, sendBlocksWhole } from "./send.ts";
 import type { StreamCtx } from "./stream.ts";
 
 /** owner.sessionId of a Codex conversation: its thread id with this prefix (a claude session id has none). */
@@ -416,6 +416,7 @@ export const makeCodex = (ctx: StreamCtx) => {
         // A stored thread can be gone (another Mac, a cleaned ~/.codex): start a fresh one.
         s.owner.sessionId = undefined;
         s.owner.context = undefined;
+        if (s.turn) sendBlocksWhole(s.turn);
         persist(s.owner);
       }
     }

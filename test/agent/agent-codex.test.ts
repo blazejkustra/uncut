@@ -305,6 +305,20 @@ test(
   },
 );
 
+test("a switch of agent CLI starts a conversation that gets the plan whole", { skip, timeout: 60000 }, async () => {
+  const s = await setup("switch-blocks");
+  const brief = { film: "A teaser for Acme", audience: "devs", duration: "20 s", formats: [], assets: [], visual: "dark", hardLines: [], deliverables: [] };
+  try {
+    await s.client.ok("agent.planSave", { brief });
+    await s.ask("codex first", [{ text: "Codex here." }], { provider: "claude" });
+    await s.ask("codex now", [{ text: "Codex here." }]);
+    assert.match(s.runs().at(-1)!.prompt, /A teaser for Acme/);
+    assert.doesNotMatch(s.runs().at(-1)!.prompt, /Unchanged since/);
+  } finally {
+    await s.stop();
+  }
+});
+
 test(
   "issue #106: switching between Codex and Claude Code: each starts its own conversation, no Codex thread id reaches claude",
   { skip, timeout: 60000 },
