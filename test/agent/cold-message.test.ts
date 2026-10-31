@@ -17,15 +17,9 @@ const context = (used: number, idleMs: number, more: Record<string, unknown> = {
 });
 
 test("warns past the hour and over 200k, never at or under either line", () => {
-  assert.deepEqual(coldMessage(context(450_000, CACHE_TTL_MS + 1), NOW), { tokens: 450_000, reason: "idle" });
+  assert.deepEqual(coldMessage(context(450_000, CACHE_TTL_MS + 1), NOW), { tokens: 450_000 });
   assert.equal(coldMessage(context(450_000, CACHE_TTL_MS), NOW), undefined);
   assert.equal(coldMessage(context(200_000, CACHE_TTL_MS + 1), NOW), undefined);
-});
-
-test("a context restored from the project warns before the hour, and says why", () => {
-  assert.equal(coldMessage(context(450_000, 60_000, { restored: true }), NOW)?.reason, "restart");
-  assert.equal(coldMessage(context(450_000, CACHE_TTL_MS + 1, { restored: true }), NOW)?.reason, "idle");
-  assert.equal(coldMessage(context(100_000, 60_000, { restored: true }), NOW), undefined);
 });
 
 test("dollars only when an API key pays for the model the rate was fitted on", () => {

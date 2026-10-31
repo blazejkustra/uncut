@@ -23,9 +23,7 @@ function useClock() {
 
 const coldWords = (cold: ColdMessage) => {
   const cost = cold.dollars === undefined ? "" : ` (about $${cold.dollars.toFixed(2)})`;
-  return cold.reason === "idle"
-    ? `Idle over an hour: next message rewrites ${tokens(cold.tokens)} tokens${cost}`
-    : `New session: next message may rewrite ${tokens(cold.tokens)} tokens${cost}`;
+  return `Idle over 1 h: next message rewrites ${tokens(cold.tokens)} tokens${cost}`;
 };
 
 export function ColdMessageLine({ online, agentId }: { online: boolean; agentId: string }) {
@@ -43,11 +41,6 @@ export function ColdMessageLine({ online, agentId }: { online: boolean; agentId:
   return (
     <div className="cold-message" data-testid="agent-cold-message" role="status">
       <span className="cold-message-text">{coldWords(cold)}</span>
-      <Tooltip label="Dismiss">
-        <button className="icon-btn cold-message-dismiss" data-testid="agent-cold-dismiss" aria-label="Dismiss" onClick={dismiss}>
-          <X />
-        </button>
-      </Tooltip>
       <div className="cold-message-actions">
         <Tooltip label="Compact reads the whole context once to summarise it, then every later message is smaller">
           <button className="cold-message-action" data-testid="agent-cold-compact" onClick={() => void actions.agentCompact()}>
@@ -60,6 +53,11 @@ export function ColdMessageLine({ online, agentId }: { online: boolean; agentId:
           </button>
         </Tooltip>
       </div>
+      <Tooltip label="Dismiss">
+        <button className="icon-btn cold-message-dismiss" data-testid="agent-cold-dismiss" aria-label="Dismiss" onClick={dismiss}>
+          <X />
+        </button>
+      </Tooltip>
     </div>
   );
 }

@@ -132,7 +132,7 @@ test(
   },
 );
 
-test("the meter and the last answer's time survive reopening the project, marked restored, and a new chat clears them", { skip, timeout: 60000 }, async () => {
+test("the meter and the last answer's time survive reopening the project, and a new chat clears them", { skip, timeout: 60000 }, async () => {
   const s = await setup("restored");
   try {
     await s.send("look", [{ text: "Looked." }, usage]);
@@ -140,17 +140,16 @@ test("the meter and the last answer's time survive reopening the project, marked
     const answered = s.latest().context;
     assert.equal(answered.billedToKey, true, "claude's init named an API key");
     assert.ok(answered.answeredAt);
-    assert.equal(answered.restored, undefined);
 
     const dir = s.latest().dir;
     await s.client.ok("project.close", {});
     await s.agent.until(() => !s.latest(), 5000);
     await s.client.ok("project.open", { dir });
-    await s.agent.until((v) => v?.context?.restored, 5000);
-    assert.deepEqual(s.latest().context, { ...answered, restored: true });
+    await s.agent.until(() => s.latest()?.context, 5000);
+    assert.deepEqual(s.latest().context, answered);
 
     await s.send("next", [{ text: "ok" }, usage]);
-    await s.agent.until((v) => v?.context && !v.context.restored, 5000);
+    await s.agent.until((v) => v?.context?.answeredAt !== answered.answeredAt, 5000);
 
     await s.client.ok("agent.newThread", {});
     await s.agent.until((v) => !v?.context, 5000);

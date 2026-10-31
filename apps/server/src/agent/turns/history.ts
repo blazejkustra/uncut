@@ -156,13 +156,6 @@ interface History {
   readonly readError?: string;
 }
 
-/** The context meter's numbers to save, without the flag that belongs to this run. */
-export const savedContext = (context: AgentContext | undefined) => {
-  if (!context) return undefined;
-  const { restored: _restored, ...saved } = context;
-  return JSON.stringify(saved);
-};
-
 const decodeContext = Schema.decodeUnknownOption(AgentContext);
 function storedContext(json: string | undefined): AgentContext | undefined {
   if (!json) return undefined;

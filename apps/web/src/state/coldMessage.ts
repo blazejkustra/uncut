@@ -10,19 +10,13 @@ const PRICED_MODEL = /^claude-opus-5-5/;
 
 export interface ColdMessage {
   readonly tokens: number;
-  readonly reason: "idle" | "restart";
   /** Only when an API key pays: a subscription's message costs no dollars. */
   readonly dollars?: number;
 }
 
 export function coldMessage(context: AgentContext | undefined, now: number): ColdMessage | undefined {
   if (!context?.answeredAt || context.used <= COLD_MIN_TOKENS) return undefined;
-  const idle = now - Date.parse(context.answeredAt) > CACHE_TTL_MS;
-  if (!idle && !context.restored) return undefined;
+  if (now - Date.parse(context.answeredAt) <= CACHE_TTL_MS) return undefined;
   const priced = context.billedToKey && PRICED_MODEL.test(context.model ?? "");
-  return {
-    tokens: context.used,
-    reason: idle ? "idle" : "restart",
-    ...(priced ? { dollars: (context.used * CACHE_WRITE_PER_MILLION) / 1_000_000 } : {}),
-  };
+  return { tokens: context.used, ...(priced ? { dollars: (context.used * CACHE_WRITE_PER_MILLION) / 1_000_000 } : {}) };
 }
