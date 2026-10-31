@@ -1211,7 +1211,7 @@
     },
     {
       "name": "docs_read",
-      "description": "Uncut's reference for one area, with exact JSON examples and limits. edits: every timeline_edit op; production: the steps for a new video (brand, brief, storyboard, build, sound, critic, checks), skills, styles; text; picture (also effects, shaders); sound (also music, the sound library); components; graphics (graphic_write, libraries, fonts, generate_media); footage (import, transcripts, captions, subtitles, recording). Read a topic before first working in that area.",
+      "description": "Uncut's reference for one area, with exact JSON examples and limits. edits: every timeline_edit op; production: the steps for a new video (brand, brief, storyboard, build, sound, critic, checks), skills, styles; text; picture (also effects, shaders); sound (also music, the sound library); components; graphics (graphic_write, the bundled libraries, fonts, generate_media); footage (import, transcripts, captions, subtitles, recording). Read a topic before first working in that area.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1230,6 +1230,10 @@
               "graphics",
               "footage"
             ]
+          },
+          "library": {
+            "type": "string",
+            "description": "With topic graphics: one bundled library's full API (motion, spring, random, confetti, globe, ui)."
           }
         }
       },

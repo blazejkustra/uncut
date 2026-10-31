@@ -222,28 +222,40 @@ test("#81: project_read gives a long project's items as compact lines, every fie
   assert.ok(JSON.stringify(c).length < JSON.stringify(all).length * 0.75);
 });
 
-test("docs_read graphics carries the bundled libraries' own API (their headers), so the agent never searches the disk for them", async () => {
+test("docs_read graphics lists the bundled libraries and gives each one's own API by name, so the agent never searches the disk for them", async () => {
   const { loadGraphicLibs } = await import("../../apps/server/src/export/graphicLibs.ts");
   const { libraryHeader } = await import("../../apps/server/src/agent/agentDocs.ts");
   const libs = await loadGraphicLibs("assets/graphic-libs");
   const out = docsRead("graphics", libs);
   assert.equal(out.isError, false);
   assert.ok(out.text.startsWith(DOCS.graphics.body));
+  assert.ok(out.text.length < DOCS.graphics.body.length + 2000, "one line per library");
+  assert.doesNotMatch(out.text, /\(D\d+/, "no decision ids in the index");
+  const names = ["motion", "spring", "random", "confetti", "globe", "ui"];
+  for (const name of names) assert.match(out.text, new RegExp(`^- ${name}: uncut`, "m"));
   // Every library's header, word for word (the library file is the one source of its API).
-  for (const name of ["motion.js", "spring.js", "random.js", "confetti.js", "globe.js", "ui.js"]) {
-    const header = libraryHeader(libs[name]!);
-    assert.ok(header && out.text.includes(header), name);
+  for (const name of names) {
+    const one = docsRead("graphics", libs, name);
+    assert.equal(one.isError, false, name);
+    assert.ok(one.text.includes(libraryHeader(libs[`${name}.js`]!)!), name);
   }
-  assert.match(out.text, /uncutMotion\.shape\(/);
-  assert.match(out.text, /uncutMotion\.riseText\(ctx, text, x, baseline, t, o\)/, "signatures from the code");
+  assert.equal(docsRead("graphics", libs, "motion.js").text, docsRead("graphics", libs, "motion").text);
+  const motion = docsRead("graphics", libs, "motion").text;
+  assert.match(motion, /uncutMotion\.shape\(/);
+  assert.match(motion, /uncutMotion\.riseText\(ctx, text, x, baseline, t, o\)/, "signatures from the code");
   // Every function uncutMotion has is listed, even one its header doesn't mention yet.
   const api = /window\.uncutMotion = \{([\s\S]*?)\n  \};/.exec(libs["motion.js"]!)![1]!;
-  for (const [, key] of api.matchAll(/^    ([A-Za-z]\w*): (?!\{)/gm)) assert.ok(out.text.includes(`uncutMotion.${key}`), key);
-  assert.match(out.text, /uncutMotion\.ease\.inOut\(p\)/);
-  assert.match(out.text, /uncutGlobe\.project\(ctx, t, lat, lon, options\)/);
-  assert.match(out.text, /uncutUI\.mount\(host, name, props\)/, "the UI parts' API too");
-  assert.ok(!out.text.includes("var DATA"), "ui.js's captured markup isn't pasted");
-  assert.ok(!out.text.includes("Ec.exports"), "three.js's code isn't pasted");
+  for (const [, key] of api.matchAll(/^    ([A-Za-z]\w*): (?!\{)/gm)) assert.ok(motion.includes(`uncutMotion.${key}`), key);
+  assert.match(motion, /uncutMotion\.ease\.inOut\(p\)/);
+  assert.match(docsRead("graphics", libs, "globe").text, /uncutGlobe\.project\(ctx, t, lat, lon, options\)/);
+  const ui = docsRead("graphics", libs, "ui").text;
+  assert.match(ui, /uncutUI\.mount\(host, name, props\)/, "the UI parts' API too");
+  assert.ok(!ui.includes("var DATA"), "ui.js's captured markup isn't pasted");
+  assert.ok(!docsRead("graphics", libs).text.includes("Ec.exports"), "three.js's code isn't pasted");
+  const three = docsRead("graphics", libs, "three");
+  assert.equal(three.isError, true, "three.js is documented elsewhere");
+  assert.match(three.text, /one of: .*motion/);
+  assert.equal(docsRead("sound", libs, "motion").isError, true);
   assert.equal(docsRead("sound", libs).text, DOCS.sound.body, "other topics unchanged");
   assert.match(SYSTEM_PROMPT, /never search the disk/);
 });
