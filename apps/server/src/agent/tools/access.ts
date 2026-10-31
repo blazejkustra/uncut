@@ -26,6 +26,7 @@ export const LOOK_TOOLS = [
   "docs_read",
   "plan_read",
   "measure",
+  "graphic_elements",
 ] as const;
 
 /** D184: more ops than this in one timeline_edit is a big change in "Ask first". */

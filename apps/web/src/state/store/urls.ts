@@ -13,6 +13,7 @@ import {
   FILMSTRIP_PATH,
   GRAPHIC_PATH,
   GRAPHIC_MEDIA_PATH,
+  GRAPHIC_ELEMENTS_PATH,
 } from "@uncut/contracts";
 import { serverConnection } from "./server.ts";
 import type { AppStateShape } from "./types.ts";
@@ -75,6 +76,8 @@ export const graphicUrl = (src: string) => {
   u.searchParams.set(TOKEN_QUERY_PARAM, secret);
   return u.href;
 };
+/** D316: a graphic's elements, by its src. */
+export const graphicElementsUrl = (src: string) => (src.startsWith("graphics/") ? serverUrl(GRAPHIC_ELEMENTS_PATH, src.slice("graphics/".length)) : undefined);
 /** D290: a picture of a media item for a graphic in the preview (its frame at t seconds, fitting w × h); fetched by this page, never shown to the graphic. */
 export const graphicMediaUrl = (id: string, t: number, w?: number, h?: number, preview?: boolean) => {
   const url = serverUrl(GRAPHIC_MEDIA_PATH, id);

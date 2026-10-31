@@ -14,6 +14,7 @@ import { swatches } from "../preview/text.ts";
 import { useSettle } from "./fields.tsx";
 import { setSectionOpen, useSectionOpen } from "./sections.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import "./fields.css";
 
 /**
  * A titled block of properties; the header can collapse it and hold an action (add, remove). With
