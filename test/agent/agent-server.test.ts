@@ -138,7 +138,7 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
   assert.deepEqual(item(onDisk(), "title-1"), title);
   const [first] = sent();
   assert.equal(first!.resume, null, "the first turn starts a conversation");
-  assert.equal(first!.tools, "default", "D194: claude gets its built-in tools");
+  assert.equal(first!.tools, "Bash,Read,Write,Edit,WebFetch,WebSearch,Skill", "D194: claude gets the built-in tools the agent uses");
   assert.equal(first!.allowed, "mcp__uncut");
   assert.match(
     first!.prompt,
