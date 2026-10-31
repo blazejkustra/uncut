@@ -99,6 +99,7 @@ export const makeCore = (ctx: AgentServices) => {
           pendingNote,
           threadStart: owner.threadStart,
           sessionDir: sessionDirOf(owner.dir),
+          context: owner.context && JSON.stringify(owner.context),
           turns,
           order,
           turnIds: owner.turns.map((t) => t.id),
@@ -251,6 +252,7 @@ export const makeCore = (ctx: AgentServices) => {
       webUsed: false,
       tainted: new Set(),
       ...(history.threadStart ? { threadStart: history.threadStart } : {}),
+      ...(history.context ? { context: history.context } : {}),
     });
 
   /** The agents of the project open now, loading them when another one opened. */

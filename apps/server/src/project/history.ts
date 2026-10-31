@@ -561,6 +561,7 @@ export class HistoryDb {
       pendingNote: this.meta.get(key("pendingNote")),
       threadStart: this.meta.get(key("threadStart")),
       sessionDir: this.meta.get(key("sessionDir")),
+      context: this.meta.get(key("context")),
       turns,
       migratedAt: this.meta.get("agent.turnsJsonMigratedAt"),
     };
@@ -613,6 +614,8 @@ export class HistoryDb {
     /** D295: the current chat's start; left as it is when not given. */
     readonly threadStart?: string | undefined;
     readonly sessionDir?: string | undefined;
+    /** The context meter's numbers as JSON; left as they are when not given. */
+    readonly context?: string | undefined;
     readonly turns: ReadonlyArray<TurnRecord>;
     readonly order?: ReadonlyArray<string> | undefined;
     readonly migratedAt?: string | undefined;
@@ -649,6 +652,7 @@ export class HistoryDb {
         ...(input.migratedAt ? ([["agent.turnsJsonMigratedAt", input.migratedAt]] as Array<[string, string]>) : []),
         ...("threadStart" in input ? ([[key("threadStart"), input.threadStart]] as Array<[string, string | undefined]>) : []),
         ...("sessionDir" in input ? ([[key("sessionDir"), input.sessionDir]] as Array<[string, string | undefined]>) : []),
+        ...("context" in input ? ([[key("context"), input.context]] as Array<[string, string | undefined]>) : []),
         ...(input.turnIds && input.agentId && input.agentId !== DEFAULT_AGENT_ID
           ? ([[key("turns"), JSON.stringify(input.turnIds)]] as Array<[string, string]>)
           : []),

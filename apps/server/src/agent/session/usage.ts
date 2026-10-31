@@ -126,6 +126,8 @@ export function contextOf(o: {
   readonly systemTools: number;
   readonly message: number;
   readonly model?: string | undefined;
+  readonly answeredAt?: string | undefined;
+  readonly billedToKey?: boolean | undefined;
 }): AgentContext {
   const systemTools = Math.min(o.systemTools, o.used);
   const message = Math.min(o.message, Math.max(0, o.used - systemTools));
@@ -138,6 +140,8 @@ export function contextOf(o: {
     message,
     ...(o.parts ? { fresh: o.parts.fresh, cacheRead: o.parts.cacheRead, cacheWrite: o.parts.cacheWrite, output: o.parts.output } : {}),
     ...(o.model ? { model: o.model } : {}),
+    ...(o.answeredAt ? { answeredAt: o.answeredAt } : {}),
+    ...(o.billedToKey ? { billedToKey: true } : {}),
   };
 }
 
