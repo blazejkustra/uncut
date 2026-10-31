@@ -74,6 +74,7 @@ export interface AgentRecord {
   readonly threadStart: string | undefined;
   /** The project folder the conversation was saved from: another folder means this one is a copy or a move. */
   readonly sessionDir: string | undefined;
+  readonly context: string | undefined;
   readonly turns: ReadonlyArray<unknown>;
   /** When agent/turns.json was moved in, if it was. */
   readonly migratedAt: string | undefined;

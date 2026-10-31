@@ -120,6 +120,7 @@ out({
   session_id: sessionId,
   // D269: FAKE_INIT_MODEL stands in for the model claude's init names (e.g. "claude-opus-5-5[1m]").
   model: process.env.FAKE_INIT_MODEL ?? "fake",
+  ...(process.env.FAKE_API_KEY_SOURCE ? { apiKeySource: process.env.FAKE_API_KEY_SOURCE } : {}),
   tools: tools.map((t) => `mcp__uncut__${t.name}`),
   mcp_servers: [{ name: "uncut", status: listed.result ? "connected" : "failed" }],
 });

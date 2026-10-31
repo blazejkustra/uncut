@@ -443,6 +443,9 @@ export const AgentContext = Schema.Struct({
   cacheWrite: Schema.optional(Schema.Number),
   output: Schema.optional(Schema.Number),
   compactAt: Schema.optional(Schema.Number),
+  // When the last API call answered, and whether an API key pays for this conversation.
+  answeredAt: Schema.optional(Schema.String),
+  billedToKey: Schema.optional(Schema.Boolean),
 });
 export type AgentContext = typeof AgentContext.Type;
 

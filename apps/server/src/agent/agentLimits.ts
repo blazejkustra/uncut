@@ -52,7 +52,7 @@ export interface AuthInfo {
 
 const SUBSCRIPTION = new Set(["none", "oauth"]);
 /** True when claude used an API key (any source), not a Claude account sign-in. */
-const usedKey = (auth: AuthInfo | undefined) => !!auth?.keySource && !SUBSCRIPTION.has(auth.keySource);
+export const usedKey = (auth: AuthInfo | undefined) => !!auth?.keySource && !SUBSCRIPTION.has(auth.keySource);
 
 /** The key claude used, in words: "ANTHROPIC_API_KEY from the environment", "the key from its apiKeyHelper setting". */
 const keyWords = (auth: AuthInfo): string => {

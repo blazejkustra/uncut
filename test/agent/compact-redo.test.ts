@@ -43,7 +43,14 @@ async function setup(name: string) {
   const log = join(base, "prompts.jsonl");
   writeFileSync(log, "");
   const server = await startServer({
-    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_COMPACT_AT: "400000" },
+    env: {
+      UNCUT_DATA_DIR: join(base, "data"),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan,
+      FAKE_PROMPT_LOG: log,
+      FAKE_COMPACT_AT: "400000",
+      FAKE_API_KEY_SOURCE: "ANTHROPIC_API_KEY",
+    },
   });
   const client = await connect(server.ready.port, server.ready.token);
   const agent = client.subscribe("agent.subscribe");
@@ -124,6 +131,37 @@ test(
     }
   },
 );
+
+test("the meter and the last answer's time survive reopening the project, and a new chat clears them", { skip, timeout: 60000 }, async () => {
+  const s = await setup("restored");
+  try {
+    await s.send("look", [{ text: "Looked." }, usage]);
+    await s.agent.until((v) => v?.context?.compactAt === 400_000, 5000);
+    const answered = s.latest().context;
+    assert.equal(answered.billedToKey, true, "claude's init named an API key");
+    assert.ok(answered.answeredAt);
+
+    const dir = s.latest().dir;
+    await s.client.ok("project.close", {});
+    await s.agent.until(() => !s.latest(), 5000);
+    await s.client.ok("project.open", { dir });
+    await s.agent.until(() => s.latest()?.context, 5000);
+    assert.deepEqual(s.latest().context, answered);
+
+    await s.send("next", [{ text: "ok" }, usage]);
+    await s.agent.until((v) => v?.context?.answeredAt !== answered.answeredAt, 5000);
+
+    await s.client.ok("agent.newThread", {});
+    await s.agent.until((v) => !v?.context, 5000);
+    await s.client.ok("project.close", {});
+    await s.agent.until(() => !s.latest(), 5000);
+    await s.client.ok("project.open", { dir });
+    await s.agent.until(() => s.latest()?.dir === dir, 5000);
+    assert.equal(s.latest().context, undefined);
+  } finally {
+    await s.stop();
+  }
+});
 
 test("Compact with no conversation yet is refused", { skip, timeout: 30000 }, async () => {
   const s = await setup("compact-empty");

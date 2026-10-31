@@ -75,7 +75,7 @@ export interface Loaded {
   // D194: secret-looking strings from tool results in this chat (a web search or address carrying one asks). Not saved.
   readonly tainted: Set<string>;
   // D261: the context window's use after the agent's last answer (the composer's meter). Kept
-  // across claude sessions of the conversation (a --resume carries on from it); not saved.
+  // across claude sessions of the conversation (a --resume carries on from it) and saved.
   context?: AgentContext | undefined;
   // D295: when the current chat started (New chat); earlier turns are earlier chats. Saved.
   threadStart?: string | undefined;
