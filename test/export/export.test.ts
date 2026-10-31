@@ -1339,7 +1339,7 @@ test(
     // render_frames (the agent's view) draws the same mid-transition frames.
     rmSync(join(root, "plan.json.turn"), { force: true });
     const frames = [60, 120, 180, 240, 300];
-    writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames, scale: 1 } }]]));
+    writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames, scale: 1, sheet: false } }]]));
     const before = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
     const agent = client.subscribe("agent.subscribe");
     const { turnId } = await client.ok("agent.send", { prompt: "Look at the transitions" });

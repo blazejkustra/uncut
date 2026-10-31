@@ -14,10 +14,14 @@ export const MAX_CELLS = 60;
 export const DEFAULT_CELLS = 24;
 /** A sheet's longest side, either way (about what a model sees without downscaling). */
 export const SHEET_MAX_EDGE = 1568;
+/** A sheet's area: past this a model's image input is scaled down, so more pixels only cost tokens. */
+export const SHEET_MAX_PIXELS = 1_150_000;
 /** Cells narrower than this make unreadable captions and pictures. */
 export const MIN_CELL_WIDTH = 80;
 /** Frames pulled from media for a sheet are about this wide (a cell is never wider). */
 export const CELL_WIDTH = 320;
+/** render_frames' sheet: a cell is never wider (the size of a frame on its own). */
+const FRAME_SHEET_CELL = 768;
 export const CAPTION_HEIGHT = 22;
 export const GAP = 6;
 
@@ -184,12 +188,12 @@ export interface SheetLayout {
 }
 
 /** The widest cell `columns` columns of `count` cells allow inside SHEET_MAX_EDGE both ways. */
-function fit(count: number, aspect: number, columns: number): SheetLayout {
+function fit(count: number, aspect: number, columns: number, cellCap = CELL_WIDTH): SheetLayout {
   const rows = Math.ceil(count / columns);
   const byWidth = Math.floor((SHEET_MAX_EDGE - GAP * (columns + 1)) / columns);
   const cellRoom = Math.floor((SHEET_MAX_EDGE - GAP * (rows + 1)) / rows) - CAPTION_HEIGHT;
   const byHeight = Math.floor(cellRoom * aspect);
-  const cellWidth = Math.max(0, Math.min(CELL_WIDTH, byWidth, byHeight));
+  const cellWidth = Math.max(0, Math.min(cellCap, byWidth, byHeight));
   const cellHeight = Math.max(1, Math.round(cellWidth / aspect));
   return {
     columns,
@@ -222,6 +226,22 @@ export function sheetLayout(count: number, aspect: number, columns?: number): Sh
     if (!best || l.cellWidth > best.cellWidth || (l.cellWidth === best.cellWidth && Math.abs(c - preferred) < Math.abs(best.columns - preferred))) best = l;
   }
   return best!;
+}
+
+const withinPixels = (l: SheetLayout) => l.width * l.height <= SHEET_MAX_PIXELS;
+
+function largestFit(count: number, aspect: number, columns: number): SheetLayout {
+  for (let cap = FRAME_SHEET_CELL; cap > MIN_CELL_WIDTH; cap -= 4) {
+    const grid = fit(count, aspect, columns, cap);
+    if (withinPixels(grid)) return grid;
+  }
+  return fit(count, aspect, columns, MIN_CELL_WIDTH);
+}
+
+/** render_frames' sheet: the column count that gives the biggest cells the model sees at their real size. */
+export function frameSheetLayout(count: number, aspect: number): SheetLayout {
+  const grids = Array.from({ length: count }, (_, i) => largestFit(count, aspect, i + 1));
+  return grids.reduce((best, grid) => (grid.cellWidth >= best.cellWidth ? grid : best));
 }
 
 /** 83.5 s → "1:23.50" (minutes, seconds and hundredths), "1:02:03.00" past an hour. */

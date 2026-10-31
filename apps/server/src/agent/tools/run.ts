@@ -26,6 +26,7 @@ import {
   expandDeviceFrames,
   expandTextLooks,
   FRAME_EDGE,
+  MAX_LOOSE_FRAMES,
   LOOK_TOOLS,
   MAX_FRAMES,
   MAX_RUN,
@@ -46,7 +47,7 @@ import { PHONE_WIDTH } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { legibilityNote } from "../agentLegibility.ts";
 import { makeExportVideo } from "./exportVideo.ts";
-import { clock, sheetLayout } from "../agentFootage.ts";
+import { clock, frameSheetLayout, sheetLayout } from "../agentFootage.ts";
 import { jitterFindings, measureRun } from "../motionJitter.ts";
 import { peekProject } from "./peek.ts";
 import { which } from "../../app/setup.ts";
@@ -115,6 +116,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
   } = ctx;
 
   const exportVideo = makeExportVideo(ctx);
+
+  const sheetCells = (list: ReadonlyArray<{ jpeg: Buffer; frame: number }>, fps: number) =>
+    list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` }));
+  const cellLines = (list: ReadonlyArray<{ frame: number }>, fps: number) => list.map((f, i) => `${i + 1}: frame ${f.frame} (${clock(f.frame / fps)})`);
 
   // render_frames' run: consecutive frames at the canvas size (a pixel of motion only shows there),
   // shown as one contact sheet, with the shakes and edge slivers measured on them.
@@ -262,22 +267,28 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1
                 ? args.scale
                 : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
-          const width = Math.max(64, Math.round(canvas.width * scale));
+          const grid =
+            frames.length > MAX_LOOSE_FRAMES && args.sheet !== false && args.phone !== true
+              ? frameSheetLayout(frames.length, canvas.width / canvas.height)
+              : undefined;
+          const width = grid ? grid.cellWidth : Math.max(64, Math.round(canvas.width * scale));
           // The frames, then the export's graphics rehearsed on the same rasteriser (every frame in
           // order, as the export runs them): a graphic that breaks only on a long run shows here.
           const rendered = yield* exporter
             .frameSession((session) =>
-              Effect.all([
-                session.render(frames as Array<number>, width, { census: true }),
-                session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined))),
-              ]),
+              Effect.gen(function* () {
+                const list = yield* session.render(frames as Array<number>, width, { census: true });
+                const rehearsal = yield* session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined)));
+                const sheet = grid ? yield* session.sheet(sheetCells(list, canvas.fps), grid) : undefined;
+                return { list, rehearsal, sheet };
+              }),
             )
             .pipe(
-              Effect.map(([list, rehearsal]) => ({ ok: true as const, list, rehearsal })),
+              Effect.map((x) => ({ ok: true as const, ...x })),
               Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
             );
           if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
-          if (width <= PHONE_WIDTH + 40) r.looked.phone = true;
+          if (!grid && width <= PHONE_WIDTH + 40) r.looked.phone = true;
           r.rendered.push({ stamp: stampOf(r, v), frames: rendered.list.map((x) => x.frame) });
           const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
           // Frames past the last one are drawn as the last one: say so, not silently.
@@ -288,6 +299,16 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
           const rehearsal = rendered.rehearsal?.failure ? ` ${rehearsalLine(rendered.rehearsal)}` : "";
           const legible = legibilityNote(rendered.list, canvas.height, canvas.fps);
+          if (grid && rendered.sheet)
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `One sheet of ${rendered.list.length} frames of the edit (revision ${v.session.revision}), ${grid.columns} columns, ${grid.width}×${grid.height}, each cell ${grid.cellWidth}×${grid.cellHeight} and labelled with its frame and time, read left to right, top to bottom, drawn as the export draws them. For one frame bigger: render_frames {frames:[n]} (add scale:1 for full size); for every frame as its own image: the same call with sheet:false.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}${legible ? ` ${legible}` : ""}\n${cellLines(rendered.list, canvas.fps).join("\n")}`,
+                },
+                { type: "image", data: rendered.sheet.toString("base64"), mimeType: "image/jpeg" },
+              ],
+            };
           return {
             content: [
               {

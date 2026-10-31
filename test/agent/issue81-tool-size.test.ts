@@ -115,7 +115,7 @@ after(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("D285: timeline_edit refuses a wrong shape with the shape it takes, and still applies a right one", { skip, timeout: 60000 }, async () => {
+test("D285: timeline_edit refuses a wrong shape with the shape it takes, and still applies a right one", { skip, timeout: 120000 }, async () => {
   mkdirSync(join(root, "projects"), { recursive: true });
   const plan = join(root, "plan.json");
   const results = join(root, "results.jsonl");
@@ -163,11 +163,15 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
           { tool: "render_frames", args: { run: { start: 58, count: 6 } } },
           { tool: "render_frames", args: { run: { start: 0, count: 49 } } },
           { tool: "render_frames", args: { frames: [0], run: { start: 0, count: 4 } } },
+          { tool: "render_frames", args: { frames: [...Array.from({ length: 11 }, (_, i) => i * 20), 99999] } },
+          { tool: "render_frames", args: { frames: [0, 1, 2, 3], scale: 0.1 } },
+          { tool: "render_frames", args: { frames: [0, 1, 2, 3, 4], sheet: false } },
+          { tool: "render_frames", args: { frames: [0, 1, 2, 3, 4], phone: true } },
         ],
       ]),
     );
     const { turnId } = await client.ok("agent.send", { prompt: "add a title" });
-    await agent.until(() => agent.values.at(-1)?.turns.find((t: { id: string }) => t.id === turnId)?.status !== "running", 20000);
+    await agent.until(() => agent.values.at(-1)?.turns.find((t: { id: string }) => t.id === turnId)?.status !== "running", 90000);
     const all = readFileSync(results, "utf8")
       .trim()
       .split("\n")
@@ -220,6 +224,22 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
     assert.match(run!.result.content[0]!.text!, /Measured at 1920×1080: no text shaking by a pixel and no 1 px line along the frame's edges/);
     assert.match(long!.result.content[0]!.text!, /run must be \{ start, count \}: a frame from 0 and 2 to 48 frames/);
     assert.match(both!.result.content[0]!.text!, /Pass frames or run, not both/);
+    // Past 4 frames: one labelled sheet, with the way to a frame on its own; phone frames and sheet false stay separate.
+    const [sheet, four, separate, phone] = all.filter((x) => x.tool === "render_frames").slice(5);
+    const images = (r: typeof sheet) => r!.result.content.filter((c) => c.type === "image");
+    assert.equal(images(sheet).length, 1);
+    const sheetText = sheet!.result.content[0]!.text!;
+    assert.match(sheetText, /One sheet of 12 frames of the edit .*4 columns, 1550×732, each cell 380×214 and labelled with its frame and time/);
+    assert.match(sheetText, /render_frames \{frames:\[n\]\} \(add scale:1 for full size\).*sheet:false/);
+    assert.match(sheetText, /\n1: frame 0 \(0:00\.00\)\n2: frame 20 \(0:00\.67\)/);
+    assert.match(sheetText, /frame 99999 is past the last frame, so frame 299 is shown for it/);
+    assert.match(sheetText, /\n12: frame 299 \(0:09\.97\)$/);
+    assert.equal(images(four).length, 4);
+    assert.match(four!.result.content[0]!.text!, /^Frames 0, 1, 2, 3 of the edit/);
+    assert.equal(images(separate).length, 5);
+    assert.match(separate!.result.content[0]!.text!, /at 768×432/);
+    assert.equal(images(phone).length, 5);
+    assert.match(phone!.result.content[0]!.text!, /at 360×202/);
   } finally {
     client.close();
     await server.stop();
