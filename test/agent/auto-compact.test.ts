@@ -18,7 +18,9 @@ test("sign-in variables pass next to the window", () => {
 
 test("every access gets the compaction hooks, and they run with no shell metacharacter inside the text", () => {
   for (const access of ["auto", "ask", "look"] as const) {
-    assert.deepEqual(JSON.parse(sessionSettings({ access })).hooks, JSON.parse(JSON.stringify(COMPACT_HOOKS)));
+    const settings = JSON.parse(sessionSettings({ access }));
+    assert.deepEqual(settings.hooks, JSON.parse(JSON.stringify(COMPACT_HOOKS)));
+    assert.equal(settings.disableSkillShellExecution, true);
   }
   const commands = [...COMPACT_HOOKS.PreCompact, ...COMPACT_HOOKS.SessionStart].flatMap((h) => h.hooks.map((x) => x.command));
   for (const command of commands) assert.match(command, /^echo '[^']+'$/);
