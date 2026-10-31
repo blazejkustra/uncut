@@ -118,6 +118,20 @@ export {
 } from "./visual/graphicMedia.ts";
 export type { GraphicMediaRequest } from "./visual/graphicMedia.ts";
 export {
+  elementBlocks,
+  elementSpan,
+  elementsInfo,
+  GRAPHIC_ELEMENTS_BOOT,
+  graphicElementsFrom,
+  itemFrameOf,
+  planElementEdit,
+  planElementEdits,
+  planElementMove,
+} from "./visual/graphicElements.ts";
+export type { ElementBlock, ElementChange, GraphicElement, GraphicElements } from "./visual/graphicElements.ts";
+export { GRAPHIC_SCAN, joinScans, SCAN_RATE, scanTimes } from "./visual/graphicScan.ts";
+export type { ScannedElement } from "./visual/graphicScan.ts";
+export {
   familiesOf,
   familyKey,
   FONT_FORMATS,

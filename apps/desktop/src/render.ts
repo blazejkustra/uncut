@@ -21,6 +21,9 @@
 //                                                    "at its frame <n>: <why>" at the first that throws
 //   either of the first two with outWidth and outHeight: laid out at width × height, the capture shrunk
 //                                                    to outWidth × outHeight before it's encoded (D292)
+//   stdin  ← { id, kind: "graphic-scan", width, height, doc, info, ts, name? }   what the page shows at each
+//                                                    t of `ts` (core GRAPHIC_SCAN), nothing captured; the
+//                                                    reply carries `scan`
 //   stdin  ← { id, kind: "shader", width, height, code, frame, params?, input, out }   a shader effect's
 //                                                    frame (D213): `input` a width×height RGBA file, drawn
 //                                                    with WebGPU (core shaderModuleCode `code`, the
@@ -53,6 +56,8 @@ import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import { GRAPHIC_CENSUS } from "../../../packages/core/src/visual/census.ts";
+import { GRAPHIC_SCAN } from "../../../packages/core/src/visual/graphicScan.ts";
+import { isScanRequest, type ScanRequest } from "./renderScan.ts";
 import {
   BLUR_REFINE,
   blurFarPairs,
@@ -220,7 +225,7 @@ const isRunRequest = (v: unknown): v is RunRequest => {
     return false;
   return (r.name === undefined || typeof r.name === "string") && (r.fresh === undefined || typeof r.fresh === "boolean");
 };
-type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest | RunRequest;
+type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest | RunRequest | ScanRequest;
 /** The most sub-frames one sequence frame may average (motion blur). */
 const MAX_SUBFRAMES = 64;
 
@@ -309,7 +314,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style id="css"></style></head><body><div class="frame" id="frame"></div></body></html>`;
 
 const isRequest = (v: unknown): v is Request => {
-  if (isSeqRequest(v) || isRunRequest(v)) return true;
+  if (isSeqRequest(v) || isRunRequest(v) || isScanRequest(v)) return true;
   if (typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "shader-probe") return Number.isInteger((v as { id?: unknown }).id);
   const r = v as Partial<HtmlRequest> & Partial<Omit<GraphicRequest, "kind">> & { kind?: unknown };
   const sized =
@@ -906,7 +911,16 @@ async function main() {
     }
   };
 
+  /** What the page shows at each t (core GRAPHIC_SCAN): the document loaded and drawn once, then read by the page function. */
+  const scanGraphic = async (r: ScanRequest) => {
+    await renderGraphic({ width: r.width, height: r.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, [r.ts[0]!]);
+    const gw = graphicWin;
+    if (!gw || gw.isDestroyed()) return undefined;
+    const scan: unknown = await gw.webContents.executeJavaScript(`(${GRAPHIC_SCAN})(${JSON.stringify(r.ts)}, ${JSON.stringify(r.info)})`);
+    return { scan };
+  };
   const render = async (r: Request) => {
+    if (r.kind === "graphic-scan") return scanGraphic(r);
     if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "graphic-run" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
     if (r.kind === "graphic-run") return runGraphic(r);
     if (r.kind === "graphic" && r.census !== undefined) {
@@ -955,6 +969,7 @@ async function main() {
             id: request.id,
             ok: true,
             ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}),
+            ...(done && typeof done === "object" && "scan" in done ? { scan: done.scan } : {}),
             ...(done && typeof done === "object" && "samples" in done ? { samples: done.samples } : {}),
           }),
         (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),

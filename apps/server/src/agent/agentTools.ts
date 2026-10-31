@@ -60,6 +60,8 @@ export const TOOL_NAMES = [
   "docs_read",
   "plan_read",
   "measure",
+  "graphic_elements",
+  "graphic_element_edit",
 ] as const;
 
 /**
