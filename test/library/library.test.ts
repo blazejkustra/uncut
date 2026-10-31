@@ -141,6 +141,29 @@ const project = (name: string) => {
   return dir;
 };
 
+test("a search that times out gets one longer try; two timeouts say the source couldn't be reached", async () => {
+  openverseStub();
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  let hanging = 1;
+  const hangUntilAborted = (signal: AbortSignal) => new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    calls++;
+    return hanging-- > 0 ? hangUntilAborted(init!.signal!) : realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const found = await library({ apiMs: 50 }).search({ kind: "sfx", query: "retry once" });
+    assert.equal(calls, 2);
+    assert.ok(found.hits.length > 0);
+    calls = 0;
+    hanging = 2;
+    await assert.rejects(library({ apiMs: 50 }).search({ kind: "sfx", query: "retry twice" }), /Couldn't reach Openverse/);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("search URLs: CC0 and CC BY only, commercial, no Wikimedia, the filters mapped (D134)", () => {
   const ov = new URL(openverseUrl({ kind: "sfx", query: " whoosh " }));
   assert.equal(ov.origin + ov.pathname, `${base}/v1/audio/`);

@@ -32,6 +32,9 @@ import { realOr, analyzeWaitMs } from "./common.ts";
 import type { McpResult } from "../agent.ts";
 import type { BrandCtx } from "./brand.ts";
 
+const NO_MUSIC =
+  "No online music came back. Check the user's own music (source included). If there's still none, don't go on as if the film had music: say in your reply that it has none and why, or ask_user for a song.";
+
 /** D285 (issue #81): library_search shows this many online hits, bundled sounds and the user's own files; the rest is a "more" line. */
 export const HITS_SHOWN = 8;
 export const SOUNDS_SHOWN = 16;
@@ -348,7 +351,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
           Effect.map((result) => ({ ok: true as const, result })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
         );
-      if (!outcome.ok) return textResult(outcome.error.message, true);
+      if (!outcome.ok) return textResult(kind === "music" ? `${outcome.error.message} ${NO_MUSIC}` : outcome.error.message, true);
       const { result } = outcome;
       if (result.limit)
         return textResult(
@@ -380,7 +383,10 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
           : {}),
         ...(result.searched ? { searched: result.searched } : {}),
         ...(result.note ? { clip: result.note } : {}),
-        note: "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",
+        note:
+          kind === "music" && !result.hits.length
+            ? NO_MUSIC
+            : "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",
       });
     });
 
