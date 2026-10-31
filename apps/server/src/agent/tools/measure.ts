@@ -1,16 +1,19 @@
-// The measure tool: the mix's loudness by role (agentMix.ts) and the colour readout of frames or clips (agentColour.ts).
+// The measure tool: the mix's loudness by role (agentMix.ts), the colour readout of frames or clips (agentColour.ts) and where content sits on a frame (agentPosition.ts).
 import { isAbsolute, resolve } from "node:path";
 import { clipFx, fxSkips, sourceAt, type Item, type Project } from "@uncut/core";
 import * as Effect from "effect/Effect";
 
 import { mixLines, mixReport } from "../agentMix.ts";
 import { colourReadout, colourStats, graded, GRADING_DIRECTIONS, matchReadout, mergeStats, type ColourStats } from "../agentColour.ts";
+import { positionReadout, regionOf } from "../agentPosition.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { CoreCtx } from "../session/core.ts";
 import type { ExporterShape } from "../../export/exporter.ts";
 
 /** Frames are read this wide (px): enough for percentiles, cheap to decode. */
 const COLOUR_WIDTH = 480;
+/** Positions are read this wide (px): a canvas pixel or two on a 1920 canvas. */
+const POSITION_WIDTH = 960;
 const MAX_FRAMES = 12;
 const MAX_ITEMS = 6;
 /** Where in a clip its samples are taken (fractions of its length): away from transitions at its ends. */
@@ -102,10 +105,29 @@ export const makeMeasureTools = (ctx: CoreCtx) => {
       });
     }).pipe(Effect.catch(failed));
 
+  const measurePosition = (v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const { canvas } = v.session.project;
+      const frames = intList(args.frames);
+      if (!frames || frames.length > MAX_FRAMES) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
+      const region = regionOf(args.region, canvas);
+      if (!region)
+        return textResult(`region must be {x, y, width, height}: whole canvas pixels inside ${canvas.width}x${canvas.height}, at least 4 wide and high.`, true);
+      const width = Math.min(canvas.width, POSITION_WIDTH);
+      const rendered = yield* exporter.renderFrames(frames, width);
+      const images = yield* exporter.jpegPixels(rendered.map((r) => r.jpeg));
+      return textResult({
+        region,
+        note: "offset is the content's centre from the region's centre in canvas pixels: + is right and down, 0 is centred.",
+        frames: rendered.map((r, k) => ({ frame: r.frame, ...positionReadout(images[k]!, region, canvas.width / images[k]!.width) })),
+      });
+    }).pipe(Effect.catch(failed));
+
   const measure = (v: ProjectView, args: Record<string, unknown>) => {
     if (args.what === "sound") return measureSound(v);
     if (args.what === "colour") return measureColour(v, args);
-    return Effect.succeed(textResult('what must be "sound" or "colour".', true));
+    if (args.what === "position") return measurePosition(v, args);
+    return Effect.succeed(textResult('what must be "sound", "colour" or "position".', true));
   };
 
   return { measure };

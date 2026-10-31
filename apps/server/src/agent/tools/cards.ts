@@ -468,6 +468,11 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             }.`,
             true,
           );
+        if (found.kind === "off-centre" && !r.measuredPosition)
+          return textResult(
+            `${defect} is off-centre: measure with what "position" on that moment (a region around the element) and put the offset in the fix, then review_submit again.`,
+            true,
+          );
         claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what, ...(found.fix ? { fix: found.fix } : {}) });
       }
       const round = r.reviewRounds + 1;
@@ -972,6 +977,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
         r.reviewRounds = round;
         r.looked = { sheet: false, phone: false };
+        r.measuredPosition = false;
         r.reviewedStamp = review.passed ? undefined : stamp;
         yield* refreshPlan(r, v);
         row.done(review);

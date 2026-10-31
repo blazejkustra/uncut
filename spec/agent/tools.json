@@ -749,14 +749,14 @@
     },
     {
       "name": "measure",
-      "description": "sound: the exported mix by role, each effect against the voice with a verdict and gain change; level sound by it. colour: luma, black/white points, RGB, saturation, cast and the temperature and tint that remove it, for frames or clips (2+: a match). temperature + warmer, tint + magenta.",
+      "description": "sound: the exported mix by role, each effect against the voice with a verdict and gain change; level sound by it. colour: luma, black/white points, RGB, saturation, cast and the temperature and tint that remove it, for frames or clips (2+: a match). temperature + warmer, tint + magenta. position: the box of what stands out from a region's background, offset from the region's centre; set the region around one element.",
       "inputSchema": {
         "type": "object",
         "required": ["what"],
         "additionalProperties": false,
         "properties": {
           "what": {
-            "enum": ["sound", "colour"]
+            "enum": ["sound", "colour", "position"]
           },
           "frames": {
             "type": "array",
@@ -765,7 +765,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "colour: frames of the edit."
+            "description": "colour or position: frames of the edit."
           },
           "items": {
             "type": "array",
@@ -774,10 +774,14 @@
               "type": "string"
             },
             "description": "colour: clip ids."
+          },
+          "region": {
+            "type": "object",
+            "description": "position: {x, y, width, height} in canvas pixels (default: the canvas)."
           }
         }
       },
-      "returns": "sound: { levels, master, roles, music, effects: [{ item, label, kind, at, peak, against, under, verdict }], overTime }; colour: { directions, frames | items: [{ frame | item, luma, blackPoint, whitePoint, meanRgb, saturationPercent, whiteBalance, neutralise }], match }"
+      "returns": "sound: { levels, master, roles, music, effects: [{ item, label, kind, at, peak, against, under, verdict }], overTime }; colour: { directions, frames | items: [{ frame | item, luma, blackPoint, whitePoint, meanRgb, saturationPercent, whiteBalance, neutralise }], match }; position: { region, note, frames: [{ frame, background, box, offset: { x, y } }] }"
     },
     {
       "name": "library_search",
