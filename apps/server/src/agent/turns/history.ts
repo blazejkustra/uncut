@@ -1,4 +1,4 @@
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, realpathSync, renameSync } from "node:fs";
 import { readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { type AgentCard, type AgentEdit, type AgentMention, AGENT_IMAGE_NAME, type AgentFolder, DEFAULT_AGENT_ID } from "@uncut/contracts";
@@ -150,8 +150,38 @@ interface History {
   readonly turns: Array<StoredTurn>;
   readonly pendingNote: string | undefined;
   readonly threadStart?: string | undefined;
+  /** Turns saved as running with no agent left to finish them: the next save writes how they ended. */
+  readonly orphaned?: ReadonlyArray<string>;
   readonly readError?: string;
 }
+
+/** The folder a project's conversation belongs to, the same however the project was opened. */
+export const sessionDirOf = (dir: string) => {
+  try {
+    return realpathSync.native(dir);
+  } catch {
+    return dir;
+  }
+};
+
+/**
+ * The stored conversation for this folder. A copy (the folder it was saved from still holds a
+ * project) starts a conversation of its own at this moment; a moved project keeps its own.
+ */
+function conversationHere(
+  dir: string,
+  stored: { readonly sessionId: string | undefined; readonly sessionDir: string | undefined; readonly threadStart: string | undefined },
+) {
+  const from = stored.sessionDir;
+  const copied = !!stored.sessionId && !!from && from !== sessionDirOf(dir) && existsSync(join(from, "project.json"));
+  return copied ? { sessionId: undefined, threadStart: new Date().toISOString() } : { sessionId: stored.sessionId, threadStart: stored.threadStart };
+}
+
+const orphanedIn = (turns: ReadonlyArray<unknown>) =>
+  turns.flatMap((t) => {
+    const { id, status } = t as { id?: unknown; status?: unknown };
+    return status === "running" && isString(id) ? [id] : [];
+  });
 
 /** agent/turns.json (D51, before history.db): none is an empty history; one that can't be read is an error, never "empty". */
 export async function readHistory(dir: string): Promise<History> {
@@ -190,10 +220,10 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
     return withHistory(dir, (db) => {
       const stored = db.agent(agentId);
       return {
-        sessionId: stored.sessionId,
+        ...conversationHere(dir, stored),
         turns: stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined),
         pendingNote: stored.pendingNote,
-        threadStart: stored.threadStart,
+        orphaned: orphanedIn(stored.turns),
       };
     });
   }
@@ -202,7 +232,7 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
   return withHistory(dir, (db) => {
     const stored = db.agent();
     const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
-    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote, threadStart: stored.threadStart };
+    if (!existsSync(historyFile(dir))) return { ...conversationHere(dir, stored), turns, pendingNote: stored.pendingNote, orphaned: orphanedIn(stored.turns) };
     const known = new Set(turns.map((t) => t.id));
     const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
     const sessionId = stored.sessionId ?? legacy.sessionId;

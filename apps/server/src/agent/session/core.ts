@@ -11,7 +11,7 @@ import { defaultAgent, type StoredAgent, storedAgents } from "../../project/hist
 import type { ProjectView } from "../../project/projects.ts";
 import type { Loaded, Running, ClaudeSession, StoredTurn } from "./types.ts";
 import { undoState, joinNotes, noteFor, noteShowsAll, type Reader } from "../turns/notes.ts";
-import { turnRecord, loadAgentHistory } from "../turns/history.ts";
+import { turnRecord, loadAgentHistory, sessionDirOf } from "../turns/history.ts";
 import { PROVIDER, GRACEFUL_MS, KILL_AFTER_MS, interruptMs } from "./config.ts";
 import type { McpResult } from "../agent.ts";
 import type { AgentServices } from "./context.ts";
@@ -98,6 +98,7 @@ export const makeCore = (ctx: AgentServices) => {
           sessionId: owner.sessionId,
           pendingNote,
           threadStart: owner.threadStart,
+          sessionDir: sessionDirOf(owner.dir),
           turns,
           order,
           turnIds: owner.turns.map((t) => t.id),
@@ -241,7 +242,7 @@ export const makeCore = (ctx: AgentServices) => {
       pending: "",
       readError: history.readError,
       ui: undefined,
-      saved: new Map(history.turns.map((t) => [t.id, JSON.stringify(t)])),
+      saved: new Map(history.turns.filter((t) => !history.orphaned?.includes(t.id)).map((t) => [t.id, JSON.stringify(t)])),
       bounds: new Map(),
       plan: shared.plan,
       grants: new Set(),
