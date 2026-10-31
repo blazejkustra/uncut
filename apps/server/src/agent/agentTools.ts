@@ -139,13 +139,16 @@ export function defsFor(schema: unknown): Record<string, unknown> {
   return out;
 }
 
+const NEW_SKILL =
+  "When the user asks you to make a skill, save it as .claude/skills/<name>/SKILL.md in the project folder (a card asks them first) and end by saying: its path; that they call it with /<name> in the composer; that it works in this project only, and Uncut asks once before loading it; and that to use it everywhere they move that folder to ~/.claude/skills/ themselves, since you can't write there.";
+
 /**
  * D232 (issue #60): the end of the system prompt, every installed skill's name and description
  * (progressive disclosure: skill_read gives its instructions when it fits).
  */
 export const skillsPrompt = (skills: ReadonlyArray<{ readonly name: string; readonly description: string }>) =>
   skills.length
-    ? `\n\nSkills (installed in Uncut; skill_read {"name": …} gives one's instructions; the user calls one with /name):\n${skills.map((x) => `- ${x.name}: ${x.description}`).join("\n")}`
+    ? `\n\nSkills (installed in Uncut; skill_read {"name": …} gives one's instructions; the user calls one with /name):\n${skills.map((x) => `- ${x.name}: ${x.description}`).join("\n")}\n${NEW_SKILL}`
     : "";
 
 /**

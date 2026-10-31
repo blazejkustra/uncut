@@ -98,6 +98,7 @@ test("the system prompt lists every installed skill's name and description; skil
   const argv = sessionArgs({ cfg: "/tmp/m.json", skills });
   const system = argv[argv.indexOf("--append-system-prompt") + 1]!;
   assert.ok(system.endsWith(skillsPrompt(skills)));
+  assert.match(system, /save it as \.claude\/skills\/<name>\/SKILL\.md[\s\S]*\/<name> in the composer[\s\S]*this project only[\s\S]*~\/\.claude\/skills\//);
   assert.match(
     system,
     /\n\nSkills \(installed in Uncut; skill_read \{"name": …\} gives one's instructions; the user calls one with \/name\):\n- launch-promo: A 15 to 30 s launch film/,
