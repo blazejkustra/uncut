@@ -9,6 +9,7 @@ import { installScrollbars } from "./editor/scrollbars.ts";
 import { installCrashReports } from "./state/crashReports.ts";
 import { brandFileUrl, getState, start, subscribeApp } from "./state/store.ts";
 import "./styles.css";
+import "./ui/states.css";
 
 // D209: the floating mini recorder's window loads this page with ?mini: only its bar.
 const mini = isMiniWindow();
