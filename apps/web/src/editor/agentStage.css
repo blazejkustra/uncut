@@ -53,3 +53,6 @@
 
 /* D266: what a drop on the card couldn't import, above the foot line. */
 .agent-stage-card .agent-stage-report { margin: 0 24px 10px; max-height: 120px; overflow-y: auto; }
+
+/* The stage is for the first message: agents are added from the panel, once it's the editor. */
+.agent-stage-card .agent-tabs:not(:has(.agent-tab)) { display: none; }
