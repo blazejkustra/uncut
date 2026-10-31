@@ -265,7 +265,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1
                 ? args.scale
                 : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
-          const grid = frames.length > MAX_LOOSE_FRAMES && args.sheet !== false && args.phone !== true ? frameSheetLayout(frames.length, canvas.width / canvas.height) : undefined;
+          const grid =
+            frames.length > MAX_LOOSE_FRAMES && args.sheet !== false && args.phone !== true
+              ? frameSheetLayout(frames.length, canvas.width / canvas.height)
+              : undefined;
           const width = grid ? grid.cellWidth : Math.max(64, Math.round(canvas.width * scale));
           // The frames, then the export's graphics rehearsed on the same rasteriser (every frame in
           // order, as the export runs them): a graphic that breaks only on a long run shows here.
