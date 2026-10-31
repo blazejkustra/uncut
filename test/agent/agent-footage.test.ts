@@ -543,7 +543,10 @@ test(
         { tool: "render_frames", args: { frames: [0], scale: 1 } },
       ]);
       assert.equal(turn.status, "done", turn.error);
-      const [imported, , edit, rendered, r25, s5994, vertical, oneColumn, many, denied, severalAtFull, oneAtFull] = results as Array<{ isError?: boolean; content: Content }>;
+      const [imported, , edit, rendered, r25, s5994, vertical, oneColumn, many, denied, severalAtFull, oneAtFull] = results as Array<{
+        isError?: boolean;
+        content: Content;
+      }>;
       assert.ok(!imported!.isError && !edit!.isError, textOf(edit!));
       assert.deepEqual(
         jsonOf(imported!).imported.map((m: any) => m.id),
