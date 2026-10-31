@@ -100,7 +100,6 @@ before(async () => {
   } as Project);
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   page = app.page;
-  await page.setViewport({ width: 1280, height: 800 });
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
