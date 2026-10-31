@@ -98,6 +98,7 @@ export {
   AgentAnswer,
   AgentCard,
   CriticRun,
+  CriticUsage,
   AGENT_BRIDGE_PATH,
   AGENT_TOKEN_HEADER,
   AgentItem,

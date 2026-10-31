@@ -22,14 +22,17 @@ import {
 } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
-import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
+import { answerOut, kitLines, questionOf, reviewCeiling } from "../agentPlan.ts";
 import {
   blurStripLabel,
   criticMessage,
   criticReview,
   parseCritic,
+  openBlockers,
   reviewNext,
   reviewOutlook,
+  roundLimit,
+  roundLimitLine,
   runCritic,
   scoredOf,
   type CriticClaim,
@@ -428,14 +431,20 @@ export const makeCardTools = (ctx: GenerateCtx) => {
    */
   const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
-      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while it converges (reviewOutlook says why).
       const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
       // The last round of an earlier turn: a turn's first round that finds the same again stops there.
       const earlier = r.owner.plan.reviews.filter((x) => x.turnId !== r.turn.id).at(-1);
       // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
-      const outlook = reviewOutlook(turnReviews(), r.reviewRounds, earlier);
-      if (!outlook.more)
-        return textResult(`No more review rounds in this turn (${outlook.why}): stop fixing and tell the user what the critic still found.`, true);
+      const ceiling = reviewCeiling(r.turn.prompt);
+      const outlook = reviewOutlook(turnReviews(), r.reviewRounds, earlier, ceiling);
+      if (!outlook.more) {
+        const last = turnReviews().at(-1);
+        const open = last ? openBlockers(last) : [];
+        return textResult(
+          `No more review rounds in this turn (${outlook.why}): stop fixing and tell the user in your final reply what the critic still found${open.length ? `: ${open.join("; ")}` : ""}.`,
+          true,
+        );
+      }
       const project = v.session.project as Project;
       const fps = project.canvas.fps;
       const { starts, duration } = layout(project);
@@ -935,7 +944,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           );
         }
         row.step(`Looking at ${images.length} images of the edit as it is now`);
-        const answer = yield* Effect.tryPromise({
+        const run = yield* Effect.tryPromise({
           try: (signal) =>
             runCritic({
               bin,
@@ -943,12 +952,11 @@ export const makeCardTools = (ctx: GenerateCtx) => {
               model: r.session.model,
               message: criticMessage(input),
               signal: AbortSignal.any([signal, r.abort.signal]),
+              round: number,
             }),
           catch: (e) => e as Error,
-        }).pipe(
-          Effect.map((text) => parseCritic(text, scoredOf(rubric))),
-          Effect.catch((e) => Effect.succeed({ problem: e.message })),
-        );
+        }).pipe(Effect.catch((e) => Effect.succeed({ problem: e.message })));
+        const answer = "problem" in run ? run : parseCritic(run.text, scoredOf(rubric));
         if ("problem" in answer) {
           row.fail(`Couldn't review it: ${answer.problem}`);
           return textResult(
@@ -968,13 +976,16 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           rubric,
           intended,
           previous: prev,
+          usage: "usage" in run ? run.usage : undefined,
         });
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
         r.reviewRounds = round;
         r.looked = { sheet: false, phone: false };
         r.reviewedStamp = review.passed ? undefined : stamp;
         yield* refreshPlan(r, v);
-        row.done(review);
+        const after = reviewOutlook(turnReviews(), r.reviewRounds, earlier, ceiling);
+        const limit = roundLimit(review, after, r.reviewRounds);
+        row.done(review, limit ? roundLimitLine(review) : undefined);
         return textResult({
           round: number,
           passed: review.passed,
@@ -983,6 +994,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           scores: review.scores,
           ...(review.rubric ? { rubric: review.rubric, sound: soundProfileText(rubric.sound) } : {}),
           ...(review.intended ? { intended: `${review.intended} finding${review.intended === 1 ? "" : "s"} the user marked Intended left out` } : {}),
+          ...(limit ? { roundLimit: limit } : {}),
           blockers: review.blockers,
           defects: review.defects,
           ...(review.fixes ? { fixes: review.fixes } : {}),
@@ -1017,7 +1029,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           next: reviewNext(
             review,
             round,
-            reviewOutlook(turnReviews(), r.reviewRounds, earlier),
+            after,
             (at) => {
               // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
               const f = clampF(at * fps);

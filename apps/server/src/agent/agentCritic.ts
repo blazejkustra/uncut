@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { settingsArg, shellAuthReady, userAuthSettings } from "../app/shellEnv.ts";
 import { resultError, resultFailed, turnLimits } from "./agentLimits.ts";
 
-import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
+import type { Brief, CriticUsage, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
 import { LETTER_SHARE, soundProfileText, SMALL_TEXT } from "@uncut/core";
 import { legibleFix } from "./agentLegibility.ts";
@@ -24,8 +24,8 @@ import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCatego
 export const REVIEW_PASS = 8;
 /** At most this many review rounds in a turn. */
 export const REVIEW_ROUNDS = 3;
-/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while it converges (reviewOutlook), up to this many rounds. */
-export const REVIEW_ROUNDS_MAX = 6;
+/** At most this many on a turn whose message points at a moment (@0:05.7): a fix the user checks themselves. */
+export const REVIEW_ROUNDS_FIX = 1;
 
 /** A blocker's moment, to compare rounds (ids renumber each round): its time to 0.5 s, else its kind and words. */
 const blockerMoment = (b: { readonly kind?: string; readonly what?: string; readonly at?: number }) =>
@@ -54,6 +54,8 @@ const sameBlockers = (a: RoundLike, b: RoundLike) => {
 export interface ReviewOutlook {
   readonly more: boolean;
   readonly why: string;
+  /** The turn's ceiling stopped it, not a pass: the last round's findings are still open. */
+  readonly capped?: boolean;
 }
 
 /** A round's scores under the bar, "motion 7 < 8", and their total shortfall in points. */
@@ -70,22 +72,19 @@ function underBar(round: RoundLike) {
 /**
  * Whether a turn may run another review round after these (its saved rounds, in order) when it has
  * run `done` rounds (the turn's own count: a round whose review couldn't be saved still counts), and
- * why: always under REVIEW_ROUNDS; never at REVIEW_ROUNDS_MAX; in between only while it converges,
- * and only when every round is saved (an unsaved one can't show that). Converging: fewer blockers,
- * or (round 3's A/B: 4, 1, 1 and 1, 2, 2 each fixed one and stopped) as many at other moments; with
- * none left (round 4's A1: 4, 2, 0 and motion 7 < 8 stopped at 3), blockers that fell to 0 or scores
- * closer to the bar. A pass, the same blockers again, more of them, or no blockers and no score
- * gained stop it. Whatever the round (argent-100s: the same two defects for 9 rounds), the same
- * blockers as the round before (`earlier`: the last round of an earlier turn, for a turn's first)
- * stop it, and so does a round whose blockers all came back unchanged after a fix (unresolved): the
- * user decides those.
+ * why: never at `cap`, the turn's ceiling (reviewCeiling). Under it, the same blockers as the round
+ * before (`earlier`: the last round of an earlier turn, for a turn's first; argent-100s: the same two
+ * defects for 9 rounds), no blockers and no score gained, or a round whose blockers all came back
+ * unchanged after a fix (unresolved) stop it too: the user decides those.
  */
-export function reviewOutlook(rounds: ReadonlyArray<RoundLike>, done: number = rounds.length, earlier?: RoundLike): ReviewOutlook {
-  const cap = REVIEW_ROUNDS_MAX;
+export function reviewOutlook(rounds: ReadonlyArray<RoundLike>, done: number = rounds.length, earlier?: RoundLike, cap: number = REVIEW_ROUNDS): ReviewOutlook {
   const of = `round ${done} of at most ${cap}`;
   const last = rounds.at(-1),
     before = rounds.at(-2) ?? (rounds.length === 1 ? earlier : undefined);
-  if (done >= cap || rounds.length >= cap) return { more: false, why: `${of}: ${cap} rounds is the cap` };
+  if (done >= cap || rounds.length >= cap) {
+    if (last?.passed && rounds.length >= done) return { more: false, why: `${of}: it passed` };
+    return { more: false, capped: true, why: `${of}: ${cap} round${cap === 1 ? "" : "s"} is the cap` };
+  }
   const open = (last?.blockers ?? []).filter((b) => !b.unresolved);
   if (last && !last.passed && last.blockers?.length && !open.length)
     return {
@@ -98,25 +97,7 @@ export function reviewOutlook(rounds: ReadonlyArray<RoundLike>, done: number = r
       now = underBar(last);
     if (now.short >= was.short) return { more: false, why: `${of}: no blockers, but the scores under the bar didn't improve (${now.words || "none"})` };
   }
-  if (done < REVIEW_ROUNDS) return { more: true, why: `${of}: the first ${REVIEW_ROUNDS} are always open, so round ${done + 1} is available` };
-  if (last?.passed && rounds.length >= done) return { more: false, why: `${of}: it passed` };
-  if (rounds.length < done || !last || !before) return { more: false, why: `${of}: a round's review couldn't be saved, so nothing shows it converging` };
-  const n = (x: RoundLike) => x.blockers?.length ?? 0;
-  const next = `round ${done + 1} of ${cap} is available`;
-  if (n(last) > n(before)) return { more: false, why: `${of}: the blockers grew from ${n(before)} to ${n(last)}` };
-  if (n(last) === 0) {
-    const was = underBar(before),
-      now = underBar(last);
-    if (n(before) > 0) return { more: true, why: `${of}: the blockers fell to 0 but ${now.words || "a score"} is under the bar, so ${next}` };
-    if (now.short < was.short)
-      return {
-        more: true,
-        why: `${of}: no blockers and the scores came closer to the bar (${was.words || "none"} before, ${now.words || "none"} now), so ${next}`,
-      };
-    return { more: false, why: `${of}: no blockers, but the scores under the bar didn't improve (${now.words || "none"})` };
-  }
-  if (n(last) < n(before)) return { more: true, why: `${of}: the blockers fell from ${n(before)} to ${n(last)}, so ${next}` };
-  return { more: true, why: `${of}: as many blockers but at other moments (the last ones fixed, new ones found), so ${next}` };
+  return { more: true, why: `${of}: round ${done + 1} is available` };
 }
 /** reviewOutlook's yes or no. */
 export const mayReviewAgain = (rounds: ReadonlyArray<RoundLike>, done: number = rounds.length, earlier?: RoundLike): boolean =>
@@ -524,6 +505,7 @@ export function criticReview(
     rubric?: Rubric | undefined;
     intended?: ReadonlyArray<IntendedFinding> | undefined;
     previous?: Review | undefined;
+    usage?: CriticUsage | undefined;
   },
 ): Review {
   const rubric = ctx.rubric;
@@ -614,6 +596,7 @@ export function criticReview(
     ...(dropped ? { intended: dropped } : {}),
     determinism: ctx.determinism,
     looked: ctx.looked,
+    ...(ctx.usage ? { usage: ctx.usage } : {}),
     passed,
     revision: ctx.revision,
     at: new Date().toISOString(),
@@ -734,10 +717,54 @@ export function reviewNext(
     : "";
   const open =
     `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${asked}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${edge}${tiny}${det}`.trim();
-  const o: ReviewOutlook = typeof more === "boolean" ? { more, why: `round ${turnRound} of at most ${REVIEW_ROUNDS_MAX}` } : more;
+  const o: ReviewOutlook = typeof more === "boolean" ? { more, why: `round ${turnRound} of at most ${REVIEW_ROUNDS}` } : more;
   if (!o.more)
-    return `That was round ${turnRound} in this turn, the last one (${o.why}; past ${REVIEW_ROUNDS} rounds a turn goes on only while it converges: fewer or different blockers, or none left with scores rising, up to ${REVIEW_ROUNDS_MAX}): stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
+    return `That was round ${turnRound} in this turn, the last one (${o.why}): stop fixing. In your final reply tell the user plainly that the critic didn't pass it${o.capped ? ", that the review stopped at the round limit" : ""} and what is still wrong, every open blocker with its time and the worst defects: ${open} Don't say it passed or is clean.`;
   return `Not passed. Another round is open (${o.why}). ${open} Fix every blocker first (at its moment, in the graphic named, as its Fix says), then the scores under the bar and the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+}
+
+/** A review's open blockers in words, each with its id, kind and time. */
+export const openBlockers = (review: Pick<Review, "blockers">): Array<string> =>
+  (review.blockers ?? []).map((b) => `${b.id ?? "?"} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`);
+
+/** review_submit's notice when the ceiling stopped a round that didn't pass; none otherwise. */
+export function roundLimit(review: Review, outlook: ReviewOutlook, rounds: number) {
+  if (!outlook.capped || review.passed) return undefined;
+  return {
+    hit: true,
+    rounds,
+    passed: false,
+    openBlockers: openBlockers(review),
+    tell: "The round limit stopped the review, so this film has not passed. Tell the user so in your final reply, with these blockers and the worst defects.",
+  };
+}
+
+/** The critic row's line when the ceiling stopped a round that didn't pass. */
+export function roundLimitLine(review: Review): string {
+  const n = review.blockers?.length ?? 0;
+  return `Round limit reached, not passed: ${n ? `${n} blocker${n === 1 ? "" : "s"} still open` : "scores still under the bar"}.`;
+}
+
+/** What the critic's run cost, from claude's result message. */
+export function criticUsage(result: Record<string, any>, model: string | undefined): CriticUsage {
+  const tokens = (key: string) => (typeof result.usage?.[key] === "number" ? (result.usage[key] as number) : 0);
+  const named = Object.keys((result.modelUsage as object | undefined) ?? {})[0] ?? model;
+  return {
+    ...(typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {}),
+    inputTokens: tokens("input_tokens"),
+    cacheReadTokens: tokens("cache_read_input_tokens"),
+    cacheWriteTokens: tokens("cache_creation_input_tokens"),
+    outputTokens: tokens("output_tokens"),
+    ...(typeof result.duration_ms === "number" ? { ms: result.duration_ms } : {}),
+    ...(named ? { model: named } : {}),
+  };
+}
+
+/** The server.log line for a critic run. */
+export function criticUsageLine(round: number, u: CriticUsage): string {
+  const cost = u.costUsd !== undefined ? `$${u.costUsd.toFixed(4)}` : "cost unknown";
+  const time = u.ms !== undefined ? `, ${(u.ms / 1000).toFixed(1)} s` : "";
+  return `[uncut] critic round ${round}: ${cost}, ${u.inputTokens} in, ${u.cacheReadTokens} cache read, ${u.cacheWriteTokens} cache write, ${u.outputTokens} out${time}${u.model ? `, ${u.model}` : ""}`;
 }
 
 /**
@@ -771,7 +798,7 @@ export function criticArgs(model: string | undefined, settings?: string) {
 
 /**
  * Runs the critic: a fresh claude in an empty temp folder, the one message on stdin, its result
- * text back. Killed on the signal, after its result, or after criticMs.
+ * text and usage back (the usage is logged even when the run failed). Killed on the signal, after its result, or after criticMs.
  */
 export async function runCritic(o: {
   bin: string;
@@ -779,7 +806,8 @@ export async function runCritic(o: {
   model: string | undefined;
   message: unknown;
   signal: AbortSignal;
-}): Promise<string> {
+  round: number;
+}): Promise<{ text: string; usage: CriticUsage }> {
   // D277 review: the login shell's sign-in first (bounded), then the user's sign-in commands in a
   // 0600 file inside the temp folder that is removed below, never on argv.
   await shellAuthReady();
@@ -787,7 +815,7 @@ export async function runCritic(o: {
   try {
     const auth = userAuthSettings(process.env).settings;
     const settings = Object.keys(auth).length ? settingsArg(cwd, {}, auth) : undefined;
-    return await new Promise<string>((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const child = spawn(o.bin, criticArgs(o.model, settings), { cwd, env: o.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
       let buf = "";
       let stderr = "";
@@ -823,10 +851,12 @@ export async function runCritic(o: {
             continue;
           }
           if (m.type !== "result") continue;
+          const usage = criticUsage(m, o.model);
+          console.error(criticUsageLine(o.round, usage));
           // D218: a usage limit or sign-in problem in the same words as the Agent tab.
           if (m.is_error === true || resultFailed(m) || typeof m.result !== "string")
             finish(() => reject(new Error(`the critic stopped: ${resultError(m, turnLimits(), Date.now()) ?? String(m.result ?? "no answer").slice(0, 300)}`)));
-          else finish(() => resolve(m.result as string));
+          else finish(() => resolve({ text: m.result as string, usage }));
         }
       });
       child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
