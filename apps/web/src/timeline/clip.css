@@ -1,0 +1,5 @@
+.clip.video::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(to bottom, rgb(0 0 0 / 60%), rgb(0 0 0 / 15%) 75%); pointer-events: none; }
+@container clip (max-width: 56px) { .clip .meta { display: none; } }
+@container clip (max-width: 22px) { .clip .nm { display: none; } }
+.clip:not(.selected):hover { border-color: rgb(255 255 255 / 28%); }
+.clip:has(.key-marks) .meta { padding-left: 8px; }
