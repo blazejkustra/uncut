@@ -27,6 +27,7 @@
 // in, a document stays under MAX_GRAPHIC_DOC_BYTES (the export loads it as a data: URL, which
 // Chromium caps at 2 MB of URL, base64).
 import type { Canvas, Item } from "../timeline/types.ts";
+import { elementsInfo, GRAPHIC_ELEMENTS_BOOT } from "./graphicElements.ts";
 import { GRAPHIC_MEDIA_BOOT, GRAPHIC_MEDIA_SCHEME } from "./graphicMedia.ts";
 
 /** Where graphic files live in a project, and what their names look like (project.schema.json `src`). */
@@ -46,6 +47,8 @@ export interface GraphicInfo {
   readonly width: number;
   readonly height: number;
   readonly props: { readonly [key: string]: unknown };
+  /** D316: the item's element edits, applied by the document's bootstrap; absent when it has none. */
+  readonly elements?: ReturnType<typeof elementsInfo>;
 }
 
 type GraphicTiming = Pick<Item, "duration" | "in" | "skips">;
@@ -64,17 +67,21 @@ export const graphicLocal = (item: GraphicTiming, local: number): number => grap
 
 /** What render(t, info) gets at the graphic's own frame `local` (graphicLocal); its duration counts from the graphic's start, `in` and skips included. */
 export const graphicInfo = (
-  item: GraphicTiming & Pick<Item, "props">,
+  item: GraphicTiming & Pick<Item, "props" | "elements">,
   canvas: Pick<Canvas, "width" | "height"> & { readonly fps: number },
   local: number,
-): GraphicInfo => ({
-  frame: local,
-  fps: canvas.fps,
-  duration: graphicTime(item, item.duration - 1) + 1,
-  width: canvas.width,
-  height: canvas.height,
-  props: item.props ?? {},
-});
+): GraphicInfo => {
+  const elements = elementsInfo(item);
+  return {
+    frame: local,
+    fps: canvas.fps,
+    duration: graphicTime(item, item.duration - 1) + 1,
+    width: canvas.width,
+    height: canvas.height,
+    props: item.props ?? {},
+    ...(elements ? { elements } : {}),
+  };
+};
 
 /**
  * A graphic file's HTML as the document both the preview and the export load: canvas-sized,
@@ -142,6 +149,7 @@ export function resolveGraphicBrand(html: string, logos: Readonly<Partial<Record
 
 /** For the agent's system prompt (D193): the render(t) contract and the bundled libraries. */
 export const GRAPHIC_LIBS_DOC = [
+  'Elements: each piece that comes and goes (a title, a card, a line, a logo) is its own DOM element with a unique id, and declares itself: <div id="title" data-name="Title" data-at="1.2" data-out="4.5"> (seconds of render(t)). The timeline shows them as separate blocks the user can select, retime, move, restyle and delete, and graphic_elements and graphic_element_edit do the same for you, whatever render(t) does, without a new file. Once a file declares any element only the declared ones are listed, so declare all of them. A piece drawn on a shared canvas has no element: give what must be editable its own element or its own canvas. render(t) must draw each element from t alone, as for everything else.',
   "Graphics (graphic_write) draw everything from t alone: render(t, info) is called for each frame in any order, in the preview and again in the export, so no timers, no requestAnimationFrame loops, no Date.now or performance.now, no Math.random (use uncutRandom(seed)), no state carried from one frame to the next; nothing loads from the network.",
   'Bundled libraries load with a marker in the HTML, inlined by Uncut (the same in the preview and the export): <script src="uncut:lib/three.js"></script>, and likewise uncut:lib/confetti.js, uncut:lib/globe.js, uncut:lib/spring.js, uncut:lib/random.js, uncut:lib/motion.js, uncut:lib/ui.js; any other name is not loaded.',
   "three.js (0.169, window.THREE): create the renderer once at load, new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true }) with a canvas of info.width by info.height (renderer.setSize(info.width, info.height, false), pixel ratio 1), then inside render(t) set the camera and every object from t and call renderer.render(scene, camera).",
@@ -165,6 +173,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${GRAPHIC_CSP}">
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;${size}}</style>
 <script>${GRAPHIC_MEDIA_BOOT}</script>
+<script>${GRAPHIC_ELEMENTS_BOOT}</script>
 <script>(() => {
   const frames = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
@@ -200,15 +209,24 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
     // Whatever render throws comes back as an Error with its name and message: a DOMException
     // (drawImage of a closed bitmap, a failed decode) or a thrown string would reach the export as
     // a value without a message.
-    if (typeof window.render === "function") {
-      try {
-        await window.render(t, info);
-      } catch (e) {
-        const text = e && typeof e.message === "string" ? (e.name && e.name !== "Error" ? e.name + ": " : "") + e.message : String(e);
-        throw new Error(text || "render(t) failed");
+    const { elements, ...plain } = info ?? {};
+    const draw = async (at) => {
+      if (typeof window.render === "function") {
+        try {
+          await window.render(at, info === undefined ? info : plain);
+        } catch (e) {
+          const text = e && typeof e.message === "string" ? (e.name && e.name !== "Error" ? e.name + ": " : "") + e.message : String(e);
+          throw new Error(text || "render(t) failed");
+        }
       }
+      settleTails();
+    };
+    window.__uncutElements.restore();
+    if (elements) await window.__uncutElements.frame(t, info, draw);
+    else {
+      window.__uncutElements.clear();
+      await draw(t);
     }
-    settleTails();
     await window.__uncutMedia.held();
     if (!dry) await frames();
     window.__uncutMedia.sweep();

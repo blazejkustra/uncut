@@ -82,6 +82,8 @@ export const GRAPHIC_PATH = "/media/graphic";
 // for a graphic in the preview (its iframe asks the editor, which fetches it here): the frame on the
 // media's own grid at t seconds, as the export's rasteriser gets it. The server token, as any route.
 export const GRAPHIC_MEDIA_PATH = "/media/graphic-media";
+/** D316: GET <path>/<file name>: the elements of a graphic of the open project (core GraphicElements), measured once per file. */
+export const GRAPHIC_ELEMENTS_PATH = "/media/graphic-elements";
 // GET /media/agent-image/<file name>?token=…: an image the user attached to an agent message (U4,
 // D184), kept in the open project's .cache/agent-images/ for the turn card's thumbnails.
 export const AGENT_IMAGE_PATH = "/media/agent-image";
