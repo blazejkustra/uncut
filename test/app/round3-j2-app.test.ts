@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { clickWhenStill } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -282,7 +283,7 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard card, re
     await page.click("[data-testid=plan-brief]");
     await waitFor("[data-testid=agent-card][data-type=brief] [data-testid=agent-brief-rows]");
     await page.screenshot({ path: out("plan-brief") });
-    await page.click("[data-testid=plan-brief-edit]");
+    await clickWhenStill(page, "[data-testid=plan-brief-edit]");
     await waitFor("[data-testid=plan-brief-form]");
     await page.click("[data-testid=plan-brief-audience]", { clickCount: 3 });
     await page.type("[data-testid=plan-brief-audience]", "React Native teams shipping weekly");

@@ -10,8 +10,8 @@
 //   every 0.25 s window within 2.5 dB (1.5 dB where the voice speaks), LUFS within 1 dB, and the
 //   noise between the words as quiet as the export's.
 // - Noise removal's latency compensated (D262): with an undenoised copy of the voice on another
-//   track (hard right), the denoised voice lands within 3 ms of it, as in the export (no ±0.6 s
-//   search: one cross-correlation over ±30 ms); ten On/Off toggles leave one denoise processor
+//   track (hard right), the denoised voice lands within 3 ms of it (no ±0.6 s search: one
+//   cross-correlation over ±30 ms); ten On/Off toggles leave one denoise processor
 //   running, not eleven (__uncutAudio.denoiseStats).
 // - The loudness target heard: At target by default (D273), As mixed chosen and kept; the master popover's Preview "At target" plays the gain the export's
 //   loudness step measures (export.loudness); the recorded preview lands within 1 LU of the target.
@@ -196,6 +196,26 @@ async function record(page: Page, while_?: () => Promise<void>) {
   assert.equal(cap.sink, "none", "the preview plays to no output device in a test run");
   return cap;
 }
+
+/**
+ * The lag (ms) of `left` behind `reference`, by cross-correlation over ±30 ms on the hiss between
+ * the words. Only that stretch is usable: the voice repeats every 1/220 s and the denoiser leaves
+ * little else of it, so across a word peaks 4.5 ms apart tie and the search can land three periods off.
+ */
+function hissLagMs(left: Float32Array, reference: Float32Array, sampleRate: number) {
+  const from = Math.round(3.3 * sampleRate);
+  const n = Math.round(1.4 * sampleRate);
+  const maxLag = Math.round(0.03 * sampleRate);
+  let bestLag = 0;
+  let bestC = -Infinity;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let c = 0;
+    for (let i = from; i < from + n; i++) c += left[i + lag]! * reference[i]!;
+    if (c > bestC) ((bestC = c), (bestLag = lag));
+  }
+  return (bestLag / sampleRate) * 1000;
+}
+const minus = (a: Float32Array, b: Float32Array) => a.map((x, i) => x - b[i]!);
 
 const rmsOf = (a: Float32Array, i0: number, n: number) => {
   let s = 0;
@@ -402,34 +422,17 @@ test(
       );
       assert.ok(Math.abs(lPre - lExp) <= 1, `LUFS preview ${lPre} vs export ${lExp}`);
 
-      // ---- D262: the denoised voice lands with an undenoised copy of it (the export has no offset) ----
+      // ---- D262: the denoised voice lands with an undenoised copy of it ----
       // Ref (hard right) unmuted: left is the denoised voice, right − left is Ref's raw voice (the
-      // voice is centred: 1 on both sides). Their lag, by cross-correlation over ±30 ms, must be about
-      // 0: uncompensated it is DENOISE_FFT samples (21–23 ms). What is left is two <audio> elements
-      // starting a hair apart (measured −0.7 and +2.5 ms over runs; undenoised tracks have it too),
-      // so the bound is 3 ms.
+      // voice is centred: 1 on both sides). Uncompensated their lag is DENOISE_FFT samples (21–23 ms).
+      // The two <audio> elements can't start closer than the bound: play() has no start time, and
+      // their starts land up to about 2.5 ms apart, stable for the take.
       await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
       rev = await savedAfter(page, rev);
-      const capR = await record(page);
-      const L = f32(capR.left);
-      const R = f32(capR.right);
-      const diff = new Float32Array(L.length);
-      for (let i = 0; i < L.length; i++) diff[i] = R[i]! - L[i]!;
-      // 2 s from the middle of the take (hiss and a word: broadband, one clear peak).
-      const from = Math.round(L.length / 2 - capR.sampleRate);
-      const n = Math.round(2 * capR.sampleRate);
-      const maxLag = Math.round(0.03 * capR.sampleRate);
-      let bestLag = 0;
-      let bestC = -Infinity;
-      for (let lag = -maxLag; lag <= maxLag; lag++) {
-        let c = 0;
-        for (let i = from; i < from + n; i++) c += L[i + lag]! * diff[i]!;
-        if (c > bestC) ((bestC = c), (bestLag = lag));
-      }
-      const lagMs = (bestLag / capR.sampleRate) * 1000;
-      console.log(
-        `denoised voice vs its undenoised copy: ${bestLag} samples (${lagMs.toFixed(2)} ms; uncompensated ${((DENOISE_FFT / capR.sampleRate) * 1000).toFixed(1)} ms)`,
-      );
+      const capRef = await record(page);
+      const left = f32(capRef.left);
+      const lagMs = hissLagMs(left, minus(f32(capRef.right), left), capRef.sampleRate);
+      console.log(`denoised voice vs its undenoised copy: ${lagMs.toFixed(2)} ms (uncompensated ${((DENOISE_FFT / capRef.sampleRate) * 1000).toFixed(1)} ms)`);
       assert.ok(Math.abs(lagMs) < 3, `the denoised voice lags its undenoised copy by ${lagMs.toFixed(2)} ms`);
       await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
       rev = await savedAfter(page, rev);

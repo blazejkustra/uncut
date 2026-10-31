@@ -273,6 +273,7 @@ test(
       assert.equal(await page.$("[data-testid=leave-dialog]"), null);
 
       // ---- U14: reopened, the project comes back on the tab it was left on (Inspector) ----
+      await waitFor("[data-testid=recent]");
       await page.click("[data-testid=recent]");
       await waitFor("[data-testid=editor]");
       assert.deepEqual(await activeSide(), ["tab-inspector"]);
@@ -324,6 +325,7 @@ test(
       assert.equal(onDisk().name, "Renamed while busy!");
 
       // ---- U12: closing the window with a turn running asks; Discard and stop quits ----
+      await waitFor("[data-testid=recent]");
       await page.click("[data-testid=recent]");
       await waitFor("[data-testid=editor]");
       nextTurn([{ tool: "project_read" }, { sleep: 60000 }]);
@@ -368,6 +370,7 @@ test("round 3: a quit by signal (the test's teardown) never waits on the leave d
   const { page } = app;
   const { waitFor } = ui(page);
   await waitForWelcome(page);
+  await waitFor("[data-testid=recent]");
   await page.click("[data-testid=recent]");
   await waitFor("[data-testid=editor]");
   // A turn that runs past the teardown, and a value being typed.

@@ -24,7 +24,7 @@ import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { ssim } from "../helpers/image-compare.ts";
 import { shaderEntry, type ShaderDef } from "../../packages/core/src/index.ts";
-import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
+import { NO_REAL_GPU, check, displayFrameMs, keepsDisplayRate } from "../helpers/capabilities.ts";
 
 /** A shader effect (D213): a horizontal smear over 8 texels, mixed in at `amount`. */
 const SMEAR: ShaderDef = {
@@ -389,17 +389,19 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
     { timeout: 15000 },
   );
   await sleep(500);
+  const display = await displayFrameMs(page);
   await page.keyboard.press("Space");
   const played = await page.evaluate(
     () =>
       new Promise<{ raf: Array<number>; layers: number; runs: number }>((done) => {
         const raf: Array<number> = [];
         let last = 0;
-        const end = performance.now() + 1500;
+        const start = performance.now();
         const tick = (t: number) => {
           if (last) raf.push(t - last);
           last = t;
-          if (performance.now() < end) return void requestAnimationFrame(tick);
+          const elapsed = performance.now() - start;
+          if (elapsed < 1500 || (raf.length < 2 && elapsed < 30000)) return void requestAnimationFrame(tick);
           done({
             raf,
             layers: Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.gpuLayers ?? 0),
@@ -417,7 +419,7 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   );
   assert.equal(played.layers, 13);
   assert.equal(played.runs, 12, "a run under each text (the main clip and overlay 0 share the first)");
-  check(NO_REAL_GPU, median < 12, `animation frames every ${median} ms`);
+  check(NO_REAL_GPU, keepsDisplayRate(median, display), `animation frames every ${median} ms on a ${display} ms display`);
   await setGpu(false);
 
   // Export (Standard, loudness off).

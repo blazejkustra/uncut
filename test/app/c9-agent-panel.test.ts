@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { settled } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -104,6 +105,7 @@ test("meter tooltip, Redo turn and Compact in the Agent panel", { skip, timeout:
 
   await page.waitForFunction(() => /\/ 1M/.test(document.querySelector("[data-testid=agent-token-used]")?.textContent ?? ""), { timeout: 5000 });
   assert.equal(await meterText(page), "384k / 1M");
+  await settled(() => page.$eval("[data-testid=agent-token-meter]", (el) => el.getBoundingClientRect().x), "the meter's place");
   await page.hover("[data-testid=agent-token-meter]");
   await page.waitForSelector("[data-testid=tooltip]", { timeout: 3000 });
   const tip = await page.$eval("[data-testid=tooltip]", (el) => (el as HTMLElement).innerText);

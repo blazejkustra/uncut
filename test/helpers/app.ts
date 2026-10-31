@@ -372,6 +372,8 @@ async function launchOnce({
     ...extra,
     UNCUT_CDP: String(port),
   };
+  // Set in a shell that an Electron app opened; it makes the app's binary start as plain Node.
+  delete env.ELECTRON_RUN_AS_NODE;
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));

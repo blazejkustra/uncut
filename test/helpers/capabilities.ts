@@ -58,6 +58,28 @@ export async function smallScreen(page: Page, width: number, height: number) {
   return w < width || h < height ? `needs a screen with room for ${width}×${height}: this one has ${w}×${h}` : undefined;
 }
 
+/** The display's frame time in ms, as this page's animation frames measure it at rest. */
+export const displayFrameMs = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<number>((done) => {
+        const gaps: Array<number> = [];
+        let last = 0;
+        const measured = () => gaps.sort((a, b) => a - b)[gaps.length >> 1] ?? Infinity;
+        setTimeout(() => done(measured()), 5000);
+        const tick = (t: number) => {
+          if (last) gaps.push(t - last);
+          last = t;
+          if (gaps.length < 40) return void requestAnimationFrame(tick);
+          done(measured());
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+
+/** Animation frames every `ms` still keep up with a display drawing every `displayMs`: under half a frame late, so a skipped frame fails. */
+export const keepsDisplayRate = (ms: number, displayMs: number) => ms < displayMs * 1.45;
+
 /** Says (printed, and listed in test-output/skipped-checks.txt for the CI summary) that `what` wasn't checked, and why. */
 export function notChecked(missing: string, what: string) {
   const line = `not checked (${missing}): ${what}`;

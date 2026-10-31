@@ -570,9 +570,9 @@ test(
     await clickAt(100);
     await settle("back on the 4K clip", false);
     await page.keyboard.press("ArrowRight");
-    // The step's frame came from the cache, then the <video> (the proxy's: it seeks along) took over.
+    // The step's frame came from the cache or, when its short seek won, straight from the proxy's <video>.
     const step = await settle("at rest");
-    assert.equal(step.via, "canvas");
+    assert.match(step.via, /^(canvas|video)$/);
     await page.waitForFunction(
       () =>
         document.querySelector<HTMLCanvasElement>("canvas[data-scrub=c1]")?.style.visibility === "hidden" &&

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { clickWhenStill } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -63,7 +64,7 @@ test("the / menu's Claude Code skills with long commands: names shown, commands 
   await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 2 });
   await page.$eval("[data-testid=side-dock]", (el) => (el as HTMLElement).click());
   await page.waitForSelector("[data-testid=side-staged]", { hidden: true, timeout: 10000 });
-  await page.click("[data-testid=agent-input]");
+  await clickWhenStill(page, "[data-testid=agent-input]");
   await page.keyboard.type("/");
   await page.waitForSelector("[data-testid=claude-skill-group]", { timeout: 15000 });
   await page.$eval("[data-testid=claude-skill-group]", (el) => el.scrollIntoView());

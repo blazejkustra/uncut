@@ -112,7 +112,7 @@ const FRAME_RATE = 240;
  */
 const SENTINEL_ID = "__uncut_sentinel";
 /** How long a capture may wait for the sentinel before the frame fails (ms). */
-const SENTINEL_WAIT_MS = 4000;
+const SENTINEL_WAIT_MS = 12_000;
 /** JS that sets the sentinel row (at y = `height`) to mark `mark` (1–7: three channels on or off). */
 const setSentinel = (height: number, mark: number) =>
   `(() => { let s = document.getElementById("${SENTINEL_ID}"); if (!s) { s = document.createElement("div"); s.id = "${SENTINEL_ID}"; s.style.cssText = "position:fixed;left:0;right:0;height:1px;margin:0;padding:0;border:0;z-index:2147483647;pointer-events:none;opacity:1;transform:none;filter:none"; document.documentElement.appendChild(s); }

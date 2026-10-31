@@ -2,6 +2,8 @@
 // either too long (slow suite) or too short under a full run's load (a flake); a poll with a
 // generous deadline is neither: it returns as soon as the condition holds.
 
+import type { Page } from "puppeteer-core";
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Generous by default: a loaded machine (a full run, another file's export) is slow, a pass is still instant. */
@@ -61,4 +63,10 @@ export async function eventually(check: () => unknown, { timeout = WAIT_MS, inte
     if (Date.now() >= end) return false;
     await sleep(interval);
   }
+}
+
+/** Clicks `selector` once it has stopped moving: a click during a smooth scroll or a panel's slide lands where the element was. */
+export async function clickWhenStill(page: Page, selector: string) {
+  await settled(() => page.$eval(selector, (el) => [el.getBoundingClientRect().x, el.getBoundingClientRect().y]), `${selector}'s place`);
+  await page.click(selector);
 }
