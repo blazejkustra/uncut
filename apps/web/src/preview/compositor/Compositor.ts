@@ -21,6 +21,8 @@ import { CompositorBase } from "./base.ts";
 
 /** Issue #55: the most upcoming clips warmed up at once (a <video> and a decoder each). */
 const WARM_AHEAD = 16;
+/** A graphic waiting on slow footage shows what it has by then, rather than nothing. */
+const FIRST_DRAW_CAP_MS = 3000;
 
 /**
  * Draws the project into the preview frame, imperatively: it runs on every playhead change
@@ -283,6 +285,7 @@ export class Compositor extends CompositorBase {
         iframe.title = v.item.name ?? v.item.id;
         // Before its first render(t) a document shows all its elements at once.
         iframe.style.opacity = "0";
+        setTimeout(() => iframe.style.removeProperty("opacity"), FIRST_DRAW_CAP_MS);
         iframe.style.width = `${project.canvas.width}px`;
         iframe.style.height = `${project.canvas.height}px`;
         const entry = { wrap, frame: iframe, src, loaded: false, sent: "" };

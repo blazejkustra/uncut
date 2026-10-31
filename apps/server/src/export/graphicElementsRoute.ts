@@ -39,7 +39,9 @@ export const layer = Layer.unwrap(
         const open = yield* projects.current;
         if (!open) return failed(404, "no project is open");
         const bin = yield* Effect.promise(ffmpeg);
-        const result = yield* Effect.promise(() => graphicElementsOf(config, bin, open.dir, open.project as Project, `graphics/${name}`));
+        const result = yield* Effect.promise(() =>
+          graphicElementsOf(config, bin, open.dir, open.project as Project, `graphics/${name}`, url.value.searchParams.get("item") ?? undefined),
+        );
         return HttpServerResponse.text(JSON.stringify(result), { contentType: "application/json", headers });
       }),
     );

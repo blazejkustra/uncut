@@ -6,7 +6,7 @@
 // later edit changed what the turn changed.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
@@ -159,6 +159,54 @@ test("the meter and the last answer's time survive reopening the project, and a 
     await s.client.ok("project.open", { dir });
     await s.agent.until(() => s.latest()?.dir === dir, 5000);
     assert.equal(s.latest().context, undefined);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("an auto compaction as the turn's last step leaves the meter at the context now", { skip, timeout: 60000 }, async () => {
+  const s = await setup("compact-last");
+  try {
+    await s.send("look", [
+      { raw: { type: "assistant", message: { id: "last", role: "assistant", content: [{ type: "text", text: "Looked." }], ...usage } } },
+      { raw: { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 402_000 } } },
+      { result: { subtype: "success", is_error: false, result: "Looked." } },
+    ]);
+    await s.agent.until((v) => v?.context?.used === 18_000, 5000);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("a compaction with an answer after it keeps that answer's count", { skip, timeout: 60000 }, async () => {
+  const s = await setup("compact-middle");
+  try {
+    await s.send("look", [
+      { raw: { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 402_000 } } },
+      { text: "Looked." },
+      usage,
+    ]);
+    await s.agent.until((v) => v?.context?.compactAt === 400_000, 5000);
+    assert.equal(s.latest().context.used, 402_000);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("a project renamed by case only keeps its conversation", { skip, timeout: 60000 }, async () => {
+  const s = await setup("renamed");
+  try {
+    await s.send("look", [{ text: "Looked." }, usage]);
+    await s.agent.until((v) => v?.context?.compactAt === 400_000, 5000);
+    const answered = s.latest().context;
+    const dir = s.latest().dir;
+    await s.client.ok("project.close", {});
+    await s.agent.until(() => !s.latest(), 5000);
+    const lower = join(dirname(dir), "p.uncut");
+    renameSync(dir, lower);
+    await s.client.ok("project.open", { dir: lower });
+    await s.agent.until(() => s.latest()?.context, 5000);
+    assert.deepEqual(s.latest().context, answered);
   } finally {
     await s.stop();
   }

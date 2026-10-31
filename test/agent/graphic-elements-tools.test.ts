@@ -36,10 +36,16 @@ test("rows are timeline frames: start, in and skips taken into account", () => {
 });
 
 test("an edit in timeline frames lands on the graphic's own frames, one op for all", () => {
-  const planned = elementEditOp(found, item, 100, [
-    { element: "late", start: 180, end: 210 },
-    { element: "title", hidden: true },
-  ]) as { op: Op };
+  const planned = elementEditOp(
+    found,
+    item,
+    100,
+    [
+      { element: "late", start: 180, end: 210 },
+      { element: "title", hidden: true },
+    ],
+    30,
+  ) as { op: Op };
   assert.deepEqual(planned.op, {
     op: "update_item",
     item: "g",
@@ -56,15 +62,28 @@ test("an edit in timeline frames lands on the graphic's own frames, one op for a
 });
 
 test("an element that isn't there is refused by name", () => {
-  assert.match((elementEditOp(found, item, 100, [{ element: "nope", hidden: true }]) as { problem: string }).problem, /no element "nope"/);
+  assert.match((elementEditOp(found, item, 100, [{ element: "nope", hidden: true }], 30) as { problem: string }).problem, /no element "nope"/);
 });
 
 test("a new text is refused on an element with more than text inside; a plain one takes it", () => {
   const more: GraphicElements = {
     elements: [...found.elements, { key: "scene", name: "Scene", kind: "text", from: [40, 60], text: "Heading Body", timing: "measured" }],
   };
-  const refused = elementEditOp(more, item, 100, [{ element: "scene", text: "Flat" }]);
+  const refused = elementEditOp(more, item, 100, [{ element: "scene", text: "Flat" }], 30);
   assert.match((refused as { problem: string }).problem, /scene holds more than text/);
-  assert.ok("op" in elementEditOp(more, item, 100, [{ element: "scene", text: null, color: "#fff" }]));
-  assert.ok("op" in elementEditOp(found, item, 100, [{ element: "title", text: "New" }]));
+  assert.ok("op" in elementEditOp(more, item, 100, [{ element: "scene", text: null, color: "#fff" }], 30));
+  assert.ok("op" in elementEditOp(found, item, 100, [{ element: "title", text: "New" }], 30));
+});
+
+test("a tool edit of a parent's times takes its children along", () => {
+  const nested: GraphicElements = {
+    elements: [
+      { key: "panel", name: "Panel", kind: "box", from: [30, 90], timing: "measured" },
+      { key: "chip", name: "Chip", kind: "box", parent: "panel", from: [40, 60], timing: "measured" },
+    ],
+  };
+  const planned = elementEditOp(nested, { ...item, in: 0, skips: undefined } as Item, 0, [{ element: "panel", start: 60, end: 120 }], 30);
+  assert.ok("op" in planned);
+  const set = (planned.op as unknown as { set: { elements: Record<string, { in: number; out: number }> } }).set.elements;
+  assert.deepEqual([set.chip!.in, set.chip!.out], [70, 90]);
 });

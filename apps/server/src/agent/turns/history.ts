@@ -181,7 +181,7 @@ function conversationHere(
   },
 ) {
   const from = stored.sessionDir;
-  const copied = !!stored.sessionId && !!from && from !== sessionDirOf(dir) && existsSync(join(from, "project.json"));
+  const copied = !!stored.sessionId && !!from && sessionDirOf(from) !== sessionDirOf(dir) && existsSync(join(from, "project.json"));
   return copied
     ? { sessionId: undefined, threadStart: new Date().toISOString(), context: undefined }
     : { sessionId: stored.sessionId, threadStart: stored.threadStart, context: storedContext(stored.context) };

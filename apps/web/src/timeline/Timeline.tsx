@@ -86,7 +86,7 @@ export const Timeline = React.memo(TimelineView);
 
 /** D316: on a graphic's clip: its elements folded or shown, or why it stays one block. */
 function ElementsBar({ item }: { item: Item }) {
-  const known = elementsOf(item.src);
+  const known = elementsOf(item);
   if (known?.status === "loading")
     return (
       <span className="el-note" data-testid="elements-loading">
@@ -204,7 +204,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
   const elementsHeight = (track: Track) =>
     (view.tracks.find((t) => t.id === track.id) ?? track).items.reduce((most, item) => {
       if (item.type !== "graphic" || isCollapsed(item.id)) return most;
-      const known = elementsOf(item.src);
+      const known = elementsOf(item);
       if (known?.status !== "ready") return most;
       return Math.max(most, rowsHeight(elementBlocks(item, known.elements).reduce((n, b) => Math.max(n, b.row + 1), 0)));
     }, 0);
@@ -563,7 +563,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                     );
                   })}
                   {items.map((item) => {
-                    const known = item.type === "graphic" && !isCollapsed(item.id) ? elementsOf(item.src) : undefined;
+                    const known = item.type === "graphic" && !isCollapsed(item.id) ? elementsOf(item) : undefined;
                     return known?.status === "ready" && known.elements.length ? (
                       <ElementRows
                         key={`rows-${item.id}`}

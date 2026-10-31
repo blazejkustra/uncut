@@ -12,7 +12,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 
 const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .split("\0")
-  .filter((f) => f && existsSync(f));
+  .filter((f) => f && existsSync(f) && statSync(f).isFile());
 /** The only Markdown that's published; the scans below cover them like any other text file. */
 const PUBLIC_MD = ["README.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md"];
 /** The blog's posts are published too (the website's content), and only straight in that folder. */

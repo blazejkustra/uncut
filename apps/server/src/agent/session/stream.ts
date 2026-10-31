@@ -177,6 +177,7 @@ export const makeStream = (ctx: RunCtx) => {
     // result reported for this model before), never a guessed 200k; the result fills it in.
     const ids = { model: usage?.model ?? last?.model, initModel: s.initModel, chosen: s.model };
     if (usage) {
+      r.usageBeforeCompaction = false;
       const model = usage.model ?? s.initModel ?? s.model;
       const window = s.window ?? knownWindow({ ...ids, learned: learnedWindows }) ?? (last && last.model === model ? last.window : undefined);
       const compactAt = s.compactAt ?? (last && last.model === model ? last.compactAt : undefined);

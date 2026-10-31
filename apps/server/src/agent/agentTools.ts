@@ -154,7 +154,7 @@ const NEW_SKILL =
 export const skillsPrompt = (skills: ReadonlyArray<{ readonly name: string; readonly description: string }>) =>
   skills.length
     ? `\n\nSkills (installed in Uncut; skill_read {"name": …} gives one's instructions; the user calls one with /name):\n${skills.map((x) => `- ${x.name}: ${x.description}`).join("\n")}\n${NEW_SKILL}`
-    : "";
+    : `\n\n${NEW_SKILL}`;
 
 /**
  * D260 (issue #81): the system prompt is a tight core: the role, the edit model, the hard rules
