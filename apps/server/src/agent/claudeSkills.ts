@@ -14,6 +14,11 @@ import { dirname, join, relative, sep } from "node:path";
 import { claudeConfigDirs } from "./agentPermissions.ts";
 import { realProject, trustedSkills, type ProjectSkillsAsk } from "./skillTrust.ts";
 
+const USER_PLUGIN = "user";
+const PROJECT_PLUGIN = "project";
+/** Claude Code's name for the skills synced from the user's claude.ai account. */
+const SYNCED_PLUGIN = "anthropic-skills";
+
 export interface ClaudeSkill {
   /** What the user types after / (a user or project skill by its name; others as plugin:name). */
   readonly id: string;
@@ -33,13 +38,12 @@ export interface InstalledPlugin {
   readonly installPath: string;
 }
 
+/** The user's and the project's own skills, listed to the agent; the rest (claude.ai's, plugins') run only when named. */
+const ownSkill = (s: Pick<ClaudeSkill, "plugin">) => s.plugin === USER_PLUGIN || s.plugin === PROJECT_PLUGIN;
+
 /** The skill as claude's Skill tool names it. */
 export const claudeSkillName = (s: Pick<ClaudeSkill, "plugin" | "name">) => `${s.plugin}:${s.name}`;
 
-const USER_PLUGIN = "user";
-const PROJECT_PLUGIN = "project";
-/** Claude Code's name for the skills synced from the user's claude.ai account. */
-const SYNCED_PLUGIN = "anthropic-skills";
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DESCRIPTION_CHARS = 300;
 
@@ -79,17 +83,19 @@ export function skillDescription(text: string): string {
 }
 
 /** Front matter keys that only describe a skill; every other key (allowed-tools, hooks, model, agent, ...) is left out. */
-const PLAIN_TEXT_KEYS = ["description", "when_to_use", "argument-hint"] as const;
+const LISTING_KEYS = ["description", "when_to_use"] as const;
+const PLAIN_TEXT_KEYS = ["argument-hint"] as const;
 const PLAIN_FLAG_KEYS = ["user-invocable", "disable-model-invocation"] as const;
 
 /**
  * SKILL.md as the session gets it: a front matter Uncut writes itself (the name, and the plain keys
  * as JSON strings or booleans, which YAML reads as they are), then the body. Nothing else of the
- * user's front matter survives, whatever its spelling or YAML tricks.
+ * user's front matter survives, whatever its spelling or YAML tricks. `listed` false leaves the
+ * description out: claude keeps such a skill off its listing, and its Skill tool still runs it by name.
  */
-export function plainSkillText(text: string, name: string): string {
+export function plainSkillText(text: string, name: string, listed = true): string {
   const lines = [`name: ${JSON.stringify(name)}`];
-  for (const key of PLAIN_TEXT_KEYS) {
+  for (const key of [...(listed ? LISTING_KEYS : []), ...PLAIN_TEXT_KEYS]) {
     const value = frontValue(text, key);
     if (value) lines.push(`${key}: ${JSON.stringify(value)}`);
   }
@@ -214,7 +220,7 @@ export function writeSkillPlugins(root: string, skills: ReadonlyArray<ClaudeSkil
 /** One skill's folder in a plugin: its SKILL.md rewritten, every other entry a link to the original. */
 function writeSkill(to: string, s: ClaudeSkill) {
   mkdirSync(to);
-  writeFileSync(join(to, "SKILL.md"), plainSkillText(s.text, s.name));
+  writeFileSync(join(to, "SKILL.md"), plainSkillText(s.text, s.name, ownSkill(s)));
   for (const entry of readdirSync(s.dir)) {
     if (/^skill\.md$/i.test(entry)) continue;
     symlinkSync(join(s.dir, entry), join(to, entry));
@@ -269,7 +275,11 @@ export async function claudeSkillsFor(
 /** The system prompt's few lines on the user's own Claude Code skills (empty when there are none). */
 export function claudeSkillsPrompt(skills: ReadonlyArray<ClaudeSkill>): string {
   if (!skills.length) return "";
-  return `\n\nThe user's own Claude Code skills (from this machine) are loaded too: Claude Code's Skill tool lists and runs them (names like user:<name>, project:<name> or <plugin>:<name>). Use one when the user asks for it or it clearly fits the task; Uncut's own skills (skill_read) still come first for video work.`;
+  const own = `\n\nThe user's own Claude Code skills (from this machine) are loaded too: Claude Code's Skill tool lists and runs them (names like user:<name>, project:<name>). Use one when the user asks for it or it clearly fits the task; Uncut's own skills (skill_read) still come first for video work.`;
+  const unlisted = [...new Set(skills.filter((s) => !ownSkill(s)).map((s) => s.plugin))];
+  return unlisted.length
+    ? `${own} Installed but not listed: the skills of ${unlisted.join(", ")}. The Skill tool runs one by its full name, <plugin>:<name>, when the user asks for it; if they don't give the exact name, ask them to pick it from the / menu.`
+    : own;
 }
 
 /** A /id in a message (after a space, a ( or the start; not a path like /tmp/x). */
