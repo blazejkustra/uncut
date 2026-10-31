@@ -25,6 +25,7 @@ import { leanPlanBlock } from "../../apps/server/src/agent/session/send.ts";
 import { capNote, NOTE_LINES } from "../../apps/server/src/agent/turns/notes.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
 import { AGENT_TEXT } from "../helpers/agentText.ts";
+import { frameScale } from "../../apps/server/src/agent/tools/common.ts";
 
 test("#81: the system prompt is a tight core and says where the rest is", () => {
   assert.ok(SYSTEM_PROMPT.length < 8300, `the prompt is ${SYSTEM_PROMPT.length} chars`);
@@ -272,4 +273,15 @@ test("docs_read graphics lists the bundled libraries and gives each one's own AP
   assert.equal(docsRead("sound", libs, "motion").isError, true);
   assert.equal(docsRead("sound", libs).text, DOCS.sound.body, "other topics unchanged");
   assert.match(SYSTEM_PROMPT, /never search the disk/);
+});
+
+test("render_frames: scale goes past the default edge on a single frame only", () => {
+  const hd = { width: 1920, height: 1080 };
+  assert.equal(frameScale(hd, 2, undefined, false), 0.4);
+  assert.equal(frameScale(hd, 2, 1, false), 0.4);
+  assert.equal(frameScale(hd, 12, 0.5, false), 0.4);
+  assert.equal(frameScale(hd, 2, 0.25, false), 0.25, "less than the default is the caller's");
+  assert.equal(frameScale(hd, 1, 1, false), 1);
+  assert.equal(frameScale(hd, 1, 2, false), 0.4, "out of range falls back");
+  assert.equal(frameScale(hd, 2, 1, true), 360 / 1920, "phone wins");
 });

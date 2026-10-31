@@ -25,7 +25,6 @@ import {
   expandCaptionEdits,
   expandDeviceFrames,
   expandTextLooks,
-  FRAME_EDGE,
   MAX_LOOSE_FRAMES,
   LOOK_TOOLS,
   MAX_FRAMES,
@@ -43,7 +42,7 @@ import { applyDeclared, appliedNote } from "../../capture/capture.ts";
 import { type Running, pushEdit } from "../session/types.ts";
 import { noteFor, noteShowsAll } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
-import { PHONE_WIDTH } from "./common.ts";
+import { PHONE_WIDTH, frameScale } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { legibilityNote } from "../agentLegibility.ts";
 import { makeExportVideo } from "./exportVideo.ts";
@@ -261,12 +260,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
           const canvas = v.session.project.canvas;
           // D189: phone true draws them 360 px wide, as in a feed on a phone.
-          const scale =
-            args.phone === true
-              ? Math.min(1, PHONE_WIDTH / canvas.width)
-              : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1
-                ? args.scale
-                : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
+          const scale = frameScale(canvas, frames.length, args.scale, args.phone === true);
           const grid =
             frames.length > MAX_LOOSE_FRAMES && args.sheet !== false && args.phone !== true
               ? frameSheetLayout(frames.length, canvas.width / canvas.height)

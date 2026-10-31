@@ -539,9 +539,14 @@ test(
         { tool: "contact_sheet", args: { media: "m-v", columns: 1, max: 60 } },
         { tool: "media_import", args: { path: sidecars } },
         { tool: "media_import", args: { path: locked } },
+        { tool: "render_frames", args: { frames: [0, 1], scale: 1 } },
+        { tool: "render_frames", args: { frames: [0], scale: 1 } },
       ]);
       assert.equal(turn.status, "done", turn.error);
-      const [imported, , edit, rendered, r25, s5994, vertical, oneColumn, many, denied] = results as Array<{ isError?: boolean; content: Content }>;
+      const [imported, , edit, rendered, r25, s5994, vertical, oneColumn, many, denied, severalAtFull, oneAtFull] = results as Array<{
+        isError?: boolean;
+        content: Content;
+      }>;
       assert.ok(!imported!.isError && !edit!.isError, textOf(edit!));
       assert.deepEqual(
         jsonOf(imported!).imported.map((m: any) => m.id),
@@ -604,6 +609,11 @@ test(
       }
       assert.match(textOf(vertical!), /24 cells in 6 columns, 1260×1562/);
       assert.match(textOf(oneColumn!), /60 cells in 10 columns, .* 1 columns didn't fit the sheet's size, so it has 10\./);
+
+      // Several frames stay at the default edge whatever scale asks; a single frame takes it.
+      const shown = (r: { content: Content }) => /at (\d+)×(\d+)/.exec(textOf(r))!.slice(1).map(Number);
+      assert.equal(Math.max(...shown(severalAtFull!)), 768);
+      assert.ok(Math.max(...shown(oneAtFull!)) > 768);
 
       // 25 skipped files: 20 listed, the rest counted by reason.
       const m = jsonOf(many!);
