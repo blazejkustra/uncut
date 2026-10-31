@@ -6,9 +6,10 @@
 // real ids while the card keeps the labels; step labels say names, not "m-" ids.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -321,6 +322,44 @@ test("a stored session that's gone (no conversation found) starts fresh once, an
     await s.stop();
   }
 });
+
+test(
+  "a project copied mid-turn starts its own conversation and its stuck turn is settled; the original resumes its own",
+  { skip, timeout: 90000 },
+  async () => {
+    const s = await setup("copied");
+    try {
+      await s.ask("one", [{ tool: "project_read" }]);
+      const busy = await s.start("copy me", [{ sleep: 800 }, { text: "done" }]);
+      await s.agent.until(() => s.turn(busy)?.status === "running");
+      const copy = join(dirname(s.dir), "Copy.uncut");
+      cpSync(s.dir, copy, { recursive: true });
+      rmSync(join(copy, ".cache", "open.lock"));
+      await s.done(busy);
+      await s.client.ok("project.close");
+      await s.client.ok("project.open", { dir: copy });
+      await s.agent.until((st) => st?.dir === copy);
+      const stuck = s.turn(busy);
+      assert.equal(stuck.status, "error");
+      assert.match(stuck.error, /Interrupted/);
+      assert.ok(s.agent.values.at(-1).threadStart, "a chat of its own starts");
+      const t = await s.ask("make it vertical", [{ text: "fresh" }]);
+      assert.equal(t.status, "done", t.error);
+      assert.equal(s.runs().at(-1)!.resume, null, "the copy doesn't carry on the original's conversation");
+      const saved = new DatabaseSync(join(copy, "history.db"), { readOnly: true });
+      const row = saved.prepare("SELECT status FROM turns WHERE id = ?").get(busy) as { status: string };
+      saved.close();
+      assert.equal(row.status, "error", "the next save writes how it ended");
+      await s.client.ok("project.close");
+      await s.client.ok("project.open", { dir: s.dir });
+      await s.agent.until((st) => st?.dir === s.dir);
+      await s.ask("back here", [{ text: "resumed" }]);
+      assert.equal(s.runs().at(-1)!.resume, "fake-session", "the original keeps its conversation");
+    } finally {
+      await s.stop();
+    }
+  },
+);
 
 test(
   "D295: New chat: refused while a turn runs; then the idle claude ends, the next message starts a fresh conversation (no --resume); the chat's start is published and kept across a restart",
