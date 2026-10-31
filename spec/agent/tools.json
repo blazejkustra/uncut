@@ -65,7 +65,7 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the edit exactly as export would, as images (768 px on the longest side; scale 1 for full size). Up to 12 per call: pick the moments that matter. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines stills miss.",
+      "description": "Render frames of the edit exactly as export would, as images (768 px on the longest side; scale asks for less, or with a single frame up to 1, full size). Up to 12 per call: pick the moments that matter. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines stills miss.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
