@@ -436,7 +436,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (ctx.access === "look")
       return {
         kind: "deny",
-        message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read, Glob, Grep and the web tools instead, or say what you would run; the user can switch the access in the composer.`,
+        message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read and the web tools instead, or say what you would run; the user can switch the access in the composer.`,
       };
     const target = shownCommand(command);
     // Issue A/B 2026-10-17: reads in the project, the sanctioned folders (the brand kits, the graphic
