@@ -192,11 +192,6 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
                 {result.note && result.searched ? ` Searched for "${result.searched}".` : ""}
               </div>
             )}
-            {!result && !busy && !error && (
-              <div className="muted small" data-testid="library-idle">
-                Type what you're looking for and press Enter{kind === "music" ? ", or pick a mood" : ""}.
-              </div>
-            )}
             {result && !limit && !error && hits.length === 0 && (
               <div className="muted small" data-testid="library-empty">
                 Nothing found for "{result.words}". Try another word, or add a folder of your own sounds (Your folders).
