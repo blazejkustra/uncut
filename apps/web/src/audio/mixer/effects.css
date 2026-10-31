@@ -1,6 +1,6 @@
 /* The Mixer's effect popovers (D246): header with one On switch, live graphs, grouped fields with units. */
 .fx-popover.wide { width: 310px; gap: 10px; }
-.fx-slot .fx-off { margin-left: auto; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); flex: none; }
+.fx-slot .fx-off { margin-left: auto; font-size: 10px; color: var(--dim); flex: none; }
 .fx-slot.target.heard { color: #5ec8e5; }
 
 .fxp-head { display: flex; align-items: center; gap: 8px; }
