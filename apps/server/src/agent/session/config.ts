@@ -47,9 +47,11 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = {
   "image/webp": "webp",
 };
 
+/** Claude Code's built-in tools a session gets. MCP tools and a configured advisor aren't filtered by --tools. */
+const BUILTIN_TOOLS = ["Bash", "Read", "Write", "Edit", "WebFetch", "WebSearch", "Skill"] as const;
+
 /**
- * The session's command line (D139, D181, D194): Claude Code's default built-in tools (web, files,
- * shell, subagents) plus only Uncut's MCP server, none of the user's own Claude Code settings
+ * The session's command line (D139, D181, D194): BUILTIN_TOOLS plus only Uncut's MCP server, none of the user's own Claude Code settings
  * (--setting-sources "": no hooks, plugins, permissions, MCP servers or rules from ~/.claude; flag
  * and managed settings still apply) except their skills: `pluginDirs` are skills-only plugins
  * (claudeSkills.ts writeSkillPlugins) for the user's, the project's and the enabled plugins' skills. Opus/Sonnet/… and effort from the composer
@@ -88,7 +90,7 @@ export function sessionArgs(o: {
     "--verbose",
     "--include-partial-messages",
     "--tools",
-    "default",
+    BUILTIN_TOOLS.join(","),
     "--strict-mcp-config",
     "--mcp-config",
     o.cfg,
