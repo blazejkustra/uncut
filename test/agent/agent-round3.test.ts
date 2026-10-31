@@ -109,9 +109,8 @@ test(
       const argv = run.argv;
       assert.equal(flagValue(argv, "--setting-sources"), "", "no user, project or local settings: no hooks, plugins, rules or MCP servers of the user's");
       assert.ok(argv.includes("--strict-mcp-config"), "only Uncut's MCP server");
-      // D194: Claude Code's own tools (web, files, shell, subagents), every prompt answered by Uncut over stdio.
-      assert.equal(flagValue(argv, "--tools"), "default", "the built-in tools are on");
-      assert.ok(!argv.some((a, i) => a === "--tools" && argv[i + 1] === ""), 'no --tools ""');
+      // D194: Claude Code's own tools the agent uses, every prompt answered by Uncut over stdio.
+      assert.equal(flagValue(argv, "--tools"), "Bash,Read,Write,Edit,WebFetch,WebSearch,Skill", "only the built-in tools the agent uses");
       assert.equal(flagValue(argv, "--allowedTools"), "mcp__uncut");
       assert.equal(flagValue(argv, "--permission-mode"), "auto", "D214: no access sent is Auto, Claude Code's own auto mode");
       assert.equal(flagValue(argv, "--permission-prompt-tool"), "stdio");
