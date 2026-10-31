@@ -82,10 +82,12 @@ export function positionReadout(image: RgbImage, region: Region, scale: number) 
   if (!box) return { background: hex(background), box: null, note: "Nothing in this region differs from its background." };
   const round = (n: number) => Math.round(n * scale);
   const offset = (start: number, size: number, areaStart: number, areaSize: number) => round(start + size / 2 - (areaStart + areaSize / 2));
+  const fillsRegion = box.width >= r.width - 1 || box.height >= r.height - 1;
   return {
     background: hex(background),
     box: { x: round(box.x), y: round(box.y), width: round(box.width), height: round(box.height) },
     offset: { x: offset(box.x, box.width, r.x, r.width), y: offset(box.y, box.height, r.y, r.height) },
+    note: fillsRegion ? "The box fills the region, so the offset says nothing: the background is busy. Set a region tight around the element." : undefined,
   };
 }
 

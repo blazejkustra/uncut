@@ -28,6 +28,14 @@ test("the offset is from the region's centre, and the background comes from its 
   assert.equal(read.background, "#141414");
 });
 
+test("a box that fills the region says its offset means nothing, a clear one doesn't", () => {
+  const rgb = new Uint8Array(200 * 100 * 3);
+  for (let y = 0; y < 100; y++) for (let x = 0; x < 200; x++) rgb.fill((x * 2 + y) % 256, (y * 200 + x) * 3, (y * 200 + x) * 3 + 3);
+  const busy = positionReadout({ width: 200, height: 100, rgb }, whole, 1);
+  assert.match(busy.note ?? "", /says nothing/);
+  assert.equal(positionReadout(imageWith(200, 100, { x: 80, y: 40, w: 40, h: 20 }), whole, 1).note, undefined);
+});
+
 test("a plain region and a lone speck read as nothing there", () => {
   assert.equal(positionReadout(imageWith(200, 100, { x: 0, y: 0, w: 0, h: 0 }), whole, 1).box, null);
   assert.equal(positionReadout(imageWith(200, 100, { x: 50, y: 50, w: 1, h: 1 }), whole, 1).box, null);
