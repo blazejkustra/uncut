@@ -106,6 +106,26 @@ export interface TextBackground {
   readonly wrap?: "box" | "lines";
 }
 
+/**
+ * An edit of one element of a graphic (D316), by the element's id in the file. `from`, `in`, `out`:
+ * the graphic's own frames, where the file has it and where it plays now (all three or none).
+ * `x`, `y`: canvas pixels added to its place. `sourceLength`: its text's length in the file, whitespace aside, so a
+ * new text still types on as the old one did.
+ */
+export interface GraphicElementEdit {
+  readonly from?: ReadonlyArray<Frame>;
+  readonly in?: Frame;
+  readonly out?: Frame;
+  readonly hidden?: boolean;
+  readonly text?: string;
+  readonly sourceLength?: number;
+  readonly color?: string;
+  readonly x?: number;
+  readonly y?: number;
+  readonly scale?: number;
+  readonly opacity?: number;
+}
+
 export type ItemType = "clip" | "component" | "graphic" | "text" | "captions" | "audio";
 
 export interface Item {
@@ -161,6 +181,8 @@ export interface Item {
   readonly src?: string;
   /** Graphic (C6): at the item's frame `at` its own time jumps ahead `frames` (a ripple cut took that stretch out with the footage). In `at` order. */
   readonly skips?: ReadonlyArray<{ readonly at: Frame; readonly frames: Frame }>;
+  /** Graphics (D316): edits of its elements, by element id. */
+  readonly elements?: { readonly [key: string]: GraphicElementEdit };
   /** D291: false keeps this item sharp in an export with motion blur on (graphics, for now). */
   readonly motionBlur?: boolean;
   // text

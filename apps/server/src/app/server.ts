@@ -29,6 +29,7 @@ import * as MediaFiles from "../media/mediaFiles.ts";
 import * as MediaIndex from "../media/mediaIndex.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
 import * as GraphicMedia from "../export/graphicMediaRoute.ts";
+import * as GraphicElementsRoute from "../export/graphicElementsRoute.ts";
 import * as Thumbs from "../media/thumbs.ts";
 import * as Waveforms from "../media/waveforms.ts";
 import * as Filmstrips from "../media/filmstrips.ts";
@@ -103,6 +104,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
       MediaFiles.layer,
       GraphicFiles.layer,
       GraphicMedia.layer,
+      GraphicElementsRoute.layer,
       Waveforms.layer,
       Filmstrips.layer,
       AgentBridge.layer,

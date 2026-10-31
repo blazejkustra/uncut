@@ -94,6 +94,16 @@ export type RasterJob =
       readonly name?: string;
       readonly fresh?: boolean;
     }
+  /** What the page shows at each of `ts` (core GRAPHIC_SCAN), nothing captured. At most 2000 times. */
+  | {
+      readonly kind: "graphic-scan";
+      readonly width: number;
+      readonly height: number;
+      readonly doc: string;
+      readonly info: Record<string, unknown>;
+      readonly ts: ReadonlyArray<number>;
+      readonly name?: string;
+    }
   /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
   | {
       readonly kind: "shader";
@@ -131,6 +141,8 @@ export interface RasterReply {
   readonly census?: unknown;
   /** A blurred graphic frame (one with `ts`): how many sub-frames it averaged (D309: more than asked on a fast move). */
   readonly samples?: number;
+  /** A graphic-scan's result (unchecked; graphicElements reads it). */
+  readonly scan?: unknown;
 }
 
 export interface Rasterizer {
@@ -222,7 +234,17 @@ export async function startRasterizer(
     );
   });
   readline.createInterface({ input: child.stdout! }).on("line", (line) => {
-    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown; census?: unknown; samples?: unknown };
+    let msg: {
+      uncut?: unknown;
+      ready?: unknown;
+      id?: unknown;
+      ok?: unknown;
+      error?: unknown;
+      media?: unknown;
+      census?: unknown;
+      samples?: unknown;
+      scan?: unknown;
+    };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -245,8 +267,12 @@ export async function startRasterizer(
     clearTimeout(p.timer);
     if (msg.ok === true)
       p.resolve(
-        msg.census !== undefined || typeof msg.samples === "number"
-          ? { ...(msg.census !== undefined ? { census: msg.census } : {}), ...(typeof msg.samples === "number" ? { samples: msg.samples } : {}) }
+        msg.census !== undefined || typeof msg.samples === "number" || msg.scan !== undefined
+          ? {
+              ...(msg.census !== undefined ? { census: msg.census } : {}),
+              ...(typeof msg.samples === "number" ? { samples: msg.samples } : {}),
+              ...(msg.scan !== undefined ? { scan: msg.scan } : {}),
+            }
           : undefined,
       );
     else p.reject(new Error(`The text renderer failed: ${typeof msg.error === "string" && msg.error ? msg.error : "it gave no reason"}`));
