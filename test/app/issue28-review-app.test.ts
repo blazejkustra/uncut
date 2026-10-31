@@ -287,6 +287,7 @@ test(
           },
         },
         { tool: "contact_sheet", args: { max: 4 } },
+        { tool: "measure", args: { what: "position", frames: [0] } },
         { tool: "render_frames", args: { frames: [0, 24], phone: true } },
         {
           tool: "review_submit",
