@@ -60,6 +60,17 @@ export const ReviewScores = Schema.Struct({
   brand: Schema.optional(Schema.Number),
 });
 export type ReviewScores = typeof ReviewScores.Type;
+/** What a critic run cost, from claude's result message. costUsd is claude's own figure (list price on a subscription). */
+export const CriticUsage = Schema.Struct({
+  costUsd: Schema.optional(Schema.Number),
+  inputTokens: Schema.Number,
+  cacheReadTokens: Schema.Number,
+  cacheWriteTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  ms: Schema.optional(Schema.Number),
+  model: Schema.optional(Schema.String),
+});
+export type CriticUsage = typeof CriticUsage.Type;
 /** One review round (`<project>/reviews/review-<n>.json`). */
 export const Review = Schema.Struct({
   round: Schema.Number,
@@ -128,6 +139,7 @@ export const Review = Schema.Struct({
   determinism: Schema.optional(Schema.Struct({ checked: Schema.Array(Schema.String), differed: Schema.Array(Schema.String) })),
   // Whether this round's looks were taken (a contact sheet and phone-size frames in this turn).
   looked: Schema.optional(Schema.Struct({ sheet: Schema.Boolean, phone: Schema.Boolean })),
+  usage: Schema.optional(CriticUsage),
   passed: Schema.Boolean,
   revision: Schema.optional(Schema.Number),
   at: Schema.String,

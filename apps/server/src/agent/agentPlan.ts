@@ -3,6 +3,7 @@
 // brand_write's merge and the beat grid (the critic is agentCritic.ts). agent.ts runs them with its state.
 import type { AgentAnswer, AgentPlan, AgentQuestion, BrandKit, BrandSkill, BrandStyle } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
+import { REVIEW_ROUNDS, REVIEW_ROUNDS_FIX } from "./agentCritic.ts";
 
 import { normHex, normStyle } from "../brand/store.ts";
 import type { BeatsResult } from "../analysis/beats.ts";
@@ -449,6 +450,9 @@ export const asksNoQuestions = (...texts: ReadonlyArray<string | undefined>) =>
 
 /** The user's message points at a moment of the video (@0:05.7): a fix they will check themselves. */
 export const pointsAtTime = (prompt: string) => /(^|\s)@\d+:\d{2}/.test(prompt);
+
+/** The most review rounds this turn may run. */
+export const reviewCeiling = (prompt: string) => (pointsAtTime(prompt) ? REVIEW_ROUNDS_FIX : REVIEW_ROUNDS);
 
 export function reviewNudge(t: {
   readonly access: string;

@@ -93,8 +93,10 @@ if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-
   const fail = entry && typeof entry === "object" && "fail" in entry ? String((entry as { fail: unknown }).fail) : undefined;
   const result = fail ?? (typeof entry === "string" ? entry : JSON.stringify(entry ?? all9));
   process.stdout.write(`${JSON.stringify({ type: "system", subtype: "init", session_id: "fake-critic", tools: [] })}\n`);
-  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: !!fail, result, session_id: "fake-critic" })}\n`, () =>
-    process.exit(0),
+  const usage = { input_tokens: 10, cache_read_input_tokens: 2000, cache_creation_input_tokens: 40000, output_tokens: 700 };
+  process.stdout.write(
+    `${JSON.stringify({ type: "result", subtype: "success", is_error: !!fail, result, session_id: "fake-critic", total_cost_usd: 0.25, duration_ms: 42000, usage })}\n`,
+    () => process.exit(0),
   );
   await new Promise(() => {});
 }

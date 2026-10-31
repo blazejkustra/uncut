@@ -15,8 +15,8 @@ export const criticStatus = (review: Review): CriticRun["status"] => {
 export interface CriticRow {
   /** The live line while it runs ("Rendering the frames"). */
   readonly step: (line: string) => void;
-  /** The critic answered: the review and its status. */
-  readonly done: (review: Review) => void;
+  /** The critic answered: the review and its status; `lead` goes before its notes on the line. */
+  readonly done: (review: Review, lead?: string) => void;
   /** The round couldn't run: why. */
   readonly fail: (line: string) => void;
   /** Ends a row still running (the turn stopped, or the round ended without done or fail). */
@@ -47,9 +47,9 @@ export function criticRow(r: Running, round: number, save: () => void, publish: 
       write();
       publish();
     },
-    done: (got) => {
+    done: (got, lead) => {
       review = got;
-      end(criticStatus(got), got.notes ?? "");
+      end(criticStatus(got), [lead, got.notes].filter(Boolean).join(" "));
     },
     fail: (line) => end("error", line),
     settle: () => {

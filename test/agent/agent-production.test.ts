@@ -186,7 +186,7 @@ test("the tools, labels, Look only set and the prompt's production process", () 
     /You don't score your own work/,
     /back unchanged after you claimed its fix is unresolved: don't try it again, ask the user/,
     /The user's own numbers \(a text size, a timing\) win/,
-    /Up to 6 rounds[\s\S]*there is no 3-round limit/,
+    /At most 3 rounds in a turn, 1 on a turn whose message points at a moment[\s\S]*At the limit the film has not passed/,
     /reference_frames/,
     /spring/,
   ])
@@ -589,9 +589,9 @@ test(
       assert.match(round2.blockers[0].what, /the phone is still empty/);
       assert.match(
         round2.next,
-        /the last one \(round 2 of at most 6: every blocker left came back unchanged after a fix \(d1\), so the user decides them[\s\S]*Unresolved[\s\S]*ask_user/,
+        /the last one \(round 2 of at most 3: every blocker left came back unchanged after a fix \(d1\), so the user decides them[\s\S]*Unresolved[\s\S]*ask_user/,
       );
-      assert.match(textOf(r[20]!.result), /No more review rounds in this turn \(round 2 of at most 6: every blocker left came back unchanged/);
+      assert.match(textOf(r[20]!.result), /No more review rounds in this turn \(round 2 of at most 3: every blocker left came back unchanged/);
       // Saved by the critic.
       const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
       assert.equal(saved.by, "critic");
@@ -664,6 +664,55 @@ test(
     }
   },
 );
+
+test("an @time fix turn: one round, the cap says what is open and passes nothing; the critic's usage is saved", { skip, timeout: 180000 }, async () => {
+  const s = await setup("round-cap");
+  try {
+    const nines = Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, { score: 9, evidence: "f 0, f 30: fine" }]));
+    s.critic([
+      { scores: nines, blockers: [{ kind: "placeholder", what: "The phone screen is empty", at: 0.5, fix: "Put the recording in" }], summary: "One blocker." },
+    ]);
+    const title = { ...TITLE, duration: 30 };
+    const edit = (text: string) => ({
+      tool: "timeline_edit",
+      args: { baseRevision: "$rev", summary: text, ops: [{ op: "update_item", item: "title-1", set: { text } }] },
+    });
+    await s.ask("Add the title", [
+      { tool: "project_read" },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Title", ops: [{ op: "insert_item", track: "text", item: title }] } },
+    ]);
+    s.results();
+    const t = await s.ask("@0:00.5 the phone is empty, fix it", [
+      { tool: "contact_sheet", args: { max: 4 } },
+      { tool: "render_frames", args: { frames: [0, 15], phone: true } },
+      { tool: "review_submit", args: {} },
+      { tool: "project_read" },
+      edit("Changed"),
+      { tool: "review_submit", args: {} },
+    ]);
+    const r = s.results();
+    const round = jsonOf(r[2]!.result);
+    assert.equal(round.passed, false);
+    assert.deepEqual(round.roundLimit.openBlockers, ["d1 placeholder at 0.5 s: The phone screen is empty"]);
+    assert.equal(round.roundLimit.passed, false);
+    assert.match(round.next, /round 1 of at most 1: 1 round is the cap[^]*In your final reply[^]*round limit[^]*d1 placeholder at 0\.5 s/);
+    assert.match(
+      textOf(r[5]!.result),
+      /No more review rounds in this turn \(round 1 of at most 1[^]*final reply[^]*d1 placeholder at 0\.5 s: The phone screen is empty/,
+    );
+    assert.equal(s.criticRuns().length, 1, "the second review_submit never reached the critic");
+    const row = t.items.find((i: any) => i.kind === "card" && i.card.type === "review").card;
+    assert.equal(row.critic.status, "failed");
+    assert.match(row.critic.line, /^Round limit reached, not passed: 1 blocker still open\./);
+    const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
+    assert.equal(saved.passed, false);
+    assert.equal(saved.usage.costUsd, 0.25);
+    assert.equal(saved.usage.cacheWriteTokens, 40000);
+    assert.equal(saved.usage.outputTokens, 700);
+  } finally {
+    await s.stop();
+  }
+});
 
 test("D195: a critic that fails or answers no JSON passes nothing and saves no round", { skip, timeout: 180000 }, async () => {
   const s = await setup("critic-fail");
