@@ -113,11 +113,20 @@ export abstract class CompositorBase {
     setCurrentMix(this.mix);
     // Issue #55: the mix's AudioContext made while idle, not in the first frame of playback.
     this.prepareIdle = requestIdleCallback(() => this.mix.prepare(), { timeout: 3000 });
+    window.addEventListener("message", this.showDrawnGraphic);
     previewStats.compositors++;
   }
+
+  /** A graphic's frame appears with its first finished render(t); an answer for a skipped ask says nothing is drawn yet. */
+  private readonly showDrawnGraphic = (e: MessageEvent) => {
+    const d = e.data as { uncut?: string; skipped?: boolean } | null;
+    if (d?.uncut !== "rendered" || d.skipped) return;
+    for (const g of this.graphics.values()) if (g.frame.contentWindow === e.source) g.frame.style.opacity = "";
+  };
   private prepareIdle: number;
 
   destroy() {
+    window.removeEventListener("message", this.showDrawnGraphic);
     this.unsubscribe();
     this.offRunner();
     for (const id of [...this.shaderCanvas.keys()]) this.dropShader(id);
