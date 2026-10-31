@@ -48,6 +48,7 @@ import { legibilityNote } from "../agentLegibility.ts";
 import { makeExportVideo } from "./exportVideo.ts";
 import { clock, sheetLayout } from "../agentFootage.ts";
 import { jitterFindings, measureRun } from "../motionJitter.ts";
+import { peekProject } from "./peek.ts";
 import { which } from "../../app/setup.ts";
 import { graphicElementsOf } from "../../export/graphicElements.ts";
 import { elementEditOp, elementRows, graphicItem, type ElementEditArgs } from "./graphicElements.ts";
@@ -308,6 +309,19 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* reviewSubmit(r, v, args);
         case "brand_read":
           return yield* brandRead(v, args);
+        case "project_peek": {
+          if (r.owner.webUsed && r.access !== "auto")
+            return textResult("Not done: after web content, other projects are read only on the user's say. Read the file with Read, which asks them.", true);
+          const peeked = yield* Effect.promise(() =>
+            peekProject({
+              project: typeof args.project === "string" ? args.project : "",
+              graphic: typeof args.graphic === "string" ? args.graphic : undefined,
+              current: v.dir,
+              dataDir: config.dataDir,
+            }),
+          );
+          return "problem" in peeked ? textResult(peeked.problem as string, true) : textResult(peeked);
+        }
         case "plan_read": {
           // D266: the brief, storyboard and last review with its defect ids, read back (a message
           // says "Unchanged" for them, and a compacted conversation may have lost them).

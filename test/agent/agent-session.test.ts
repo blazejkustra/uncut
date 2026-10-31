@@ -323,6 +323,22 @@ test("a stored session that's gone (no conversation found) starts fresh once, an
   }
 });
 
+test("project_peek reaches the agent over MCP and answers another project's outline", { skip, timeout: 60000 }, async () => {
+  const s = await setup("peek");
+  try {
+    const other = join(dirname(s.dir), "Other.uncut");
+    mkdirSync(other);
+    writeFileSync(join(other, "project.json"), JSON.stringify({ name: "Other", canvas: { width: 1080, height: 1920, fps: 30 }, tracks: [] }));
+    const t = await s.ask("peek", [{ tool: "project_peek", args: { project: "Other" } }]);
+    assert.equal(t.status, "done", t.error);
+    const step = t.items.find((i: { kind: string; text: string }) => i.kind === "step" && i.text === "Looked at Other");
+    assert.ok(step, JSON.stringify(t.items));
+    assert.equal(step.status, "done");
+  } finally {
+    await s.stop();
+  }
+});
+
 test(
   "a project copied mid-turn starts its own conversation and its stuck turn is settled; the original resumes its own",
   { skip, timeout: 90000 },

@@ -25,6 +25,7 @@ import { CONVENIENCE_LINES, opsSchema } from "./tools/opShapes.ts";
 // See DECISIONS.md D51.
 export const TOOL_NAMES = [
   "project_read",
+  "project_peek",
   "timeline_edit",
   "modules_list",
   "render_frames",

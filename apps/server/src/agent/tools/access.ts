@@ -25,6 +25,7 @@ export const LOOK_TOOLS = [
   "skill_read",
   "docs_read",
   "plan_read",
+  "project_peek",
   "measure",
   "graphic_elements",
 ] as const;
