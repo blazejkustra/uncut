@@ -286,7 +286,12 @@ export function planElementChanges(
 export type ElementBasis = readonly [number, number, number, number];
 export const NO_BASIS: ElementBasis = [1, 0, 0, 1];
 
-export const validBasis = (value: unknown): value is ElementBasis => Array.isArray(value) && value.length === 4 && value.every(Number.isFinite);
+const FLAT = 1e-6;
+const flattens = ([a, b, c, d]: ElementBasis) => Math.abs(a * d - b * c) < FLAT;
+
+/** A basis to convert with: an element scaled to nothing at this frame, or one translate can't move, tells nothing. */
+export const validBasis = (value: unknown): value is ElementBasis =>
+  Array.isArray(value) && value.length === 4 && value.every(Number.isFinite) && !flattens(value as unknown as ElementBasis);
 
 const TRANSLATE_PLACES = 100;
 const tidy = (n: number) => Math.round(n * TRANSLATE_PLACES) / TRANSLATE_PLACES;
@@ -297,8 +302,8 @@ export const onCanvas = ([a, b, c, d]: ElementBasis, x: number, y: number): read
 /** The translate that moves an element by canvas px (x, y). */
 export function fromCanvas(basis: ElementBasis, x: number, y: number): readonly [number, number] {
   const [a, b, c, d] = basis;
+  if (flattens(basis)) return [tidy(x), tidy(y)];
   const det = a * d - b * c;
-  if (Math.abs(det) < 1e-6) return [tidy(x), tidy(y)];
   return [tidy((d * x - c * y) / det), tidy((a * y - b * x) / det)];
 }
 
@@ -435,7 +440,7 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
     let best, gap = Infinity;
     for (const key of keys) {
       const r = rectOf(key);
-      if (!r || Math.min(r.width, r.height) >= slop * 2) continue;
+      if (!r || !r.width || !r.height || Math.min(r.width, r.height) >= slop * 2) continue;
       const d = Math.hypot(Math.max(r.x - x, 0, x - r.x - r.width), Math.max(r.y - y, 0, y - r.y - r.height));
       if (d <= slop && d < gap) { best = key; gap = d; }
     }

@@ -21,11 +21,12 @@ const SCENE = `<style>html,body{background:#141414;margin:0}
 #box{position:absolute;left:200px;top:200px;width:400px;height:300px;background:#e5534b}
 #late{position:absolute;left:0;top:0;width:100px;height:100px;background:#2ea043}
 #line{position:absolute;left:800px;top:700px;width:1000px;height:2.4px;background:#fff}
+#wipe{position:absolute;left:300px;top:400px;width:200px;height:4px;background:#fff}
 #huge{position:absolute;left:-10000000px;top:-10000000px;width:20000000px;height:20000000px;background:rgba(0,0,0,.2)}</style>
-<div id="w"><div id="huge"></div><div id="box"></div><div id="line"></div><div id="late"></div></div>
+<div id="w"><div id="huge"></div><div id="box"></div><div id="wipe"></div><div id="line"></div><div id="late"></div></div>
 <script>
 const show = (id, t, at, out) => { document.getElementById(id).style.visibility = t >= at && t < out ? "visible" : "hidden"; };
-function render(t) { show("box", t, 0.5, 3); show("line", t, 0.4, 3); show("huge", t, 3.5, 4); show("late", t, 6, 7); }
+function render(t) { show("box", t, 0.5, 3); show("wipe", t, 0.4, 3); document.getElementById("wipe").style.transform = t < 2 ? "scaleX(0)" : "none"; show("line", t, 0.4, 3); show("huge", t, 3.5, 4); show("late", t, 6, 7); }
 </script>`;
 const STUCK = `<div id="s">stuck</div><script>function render() { return new Promise(() => {}); }</script>`;
 
@@ -130,6 +131,18 @@ test("a line of about a pixel is picked from beside it and its box can be grabbe
   await until("moved", () => saved().elements?.line?.x !== undefined);
   await page.click("[data-testid=undo]");
   await until("undone", () => saved().elements === undefined);
+});
+
+test("a thin element drawn at no width doesn't win the press over what is under it", { skip }, async () => {
+  await page.click(block("box"));
+  await page.waitForSelector(selection("box"), { timeout: 5000 });
+  await page.keyboard.press("Escape");
+  await until("nothing selected", async () => (await page.$("[data-testid=element-selection]")) === null);
+  const f = await frameRect();
+  const units = 1280 / f.width;
+  await page.mouse.click(f.x + 200 / units, f.y + 201 / units + 3);
+  await page.waitForSelector(selection("box"), { timeout: 5000 });
+  await page.keyboard.press("Escape");
 });
 
 test("a huge element's box stops at the canvas", { skip }, async () => {

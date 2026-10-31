@@ -27,6 +27,7 @@ import {
   type Project,
   type ScannedElement,
 } from "../../packages/core/src/index.ts";
+import { validBasis } from "../../packages/core/src/visual/graphicElements.ts";
 
 const modules = await loadModules(new URL("../../spec/modules/builtin/", import.meta.url).pathname);
 
@@ -302,6 +303,10 @@ test("canvas px and an element's own translate: a scaled wrapper, a turned one, 
   );
   assert.deepEqual(fromCanvas([0, 1, -1, 0], 10, 0), [0, -10]);
   assert.deepEqual(fromCanvas([0, 0, 0, 0], 10, 5), [10, 5], "no measure: px as they are");
+  assert.ok(validBasis([0.88, 0, 0, 0.88]));
+  assert.ok(validBasis([0, 1, -1, 0]));
+  assert.ok(!validBasis([0, 0, 0, 0]), "scaled to nothing at this frame: X and Y would read 0 and a typed Y would wipe X");
+  assert.ok(!validBasis([1, 0, Number.NaN, 1]));
 });
 
 test("a document's box stays on the canvas", () => {
