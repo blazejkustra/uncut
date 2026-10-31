@@ -112,6 +112,24 @@ test("a command on this project's own .claude folder gets a card with no Always;
   assert.equal(bash(`open "${PROJECT}/.claude/skills/a.md" "${HOME}/.claude/settings.json"`).kind, "deny");
 });
 
+test("a line that can reach ~/.claude, apps' data or Uncut's files stays refused however it names .claude; the card runs from the project", () => {
+  for (const command of [
+    `cd ${HOME} && python3 x.py .claude/settings.json`,
+    `cd ~; open .claude/settings.json`,
+    `open .claude/a; open $HOME/.claude/settings.json`,
+    `open .claude/a ~/".claude"/settings.json`,
+    `open .claude/a $(echo ~)/.claude/settings.json`,
+    `python3 -c "open('.claude/a'); open('${HOME}/.claude/settings.json', 'w')"`,
+    `bash -c "echo hi > ~/.claude/settings.json" .claude/a`,
+    `open .claude/a "${HOME}/Library/Application Support/Uncut/settings.json"`,
+    `mv .claude/a project.json`,
+  ])
+    assert.equal(bash(command).kind, "deny", command);
+  const card = bash(`open .claude/skills/a.md`);
+  assert.ok(card.kind === "ask" && card.updatedInput, card.kind);
+  assert.match(String(card.updatedInput.command), /^cd '\/Users\/me\/Movies\/argent-100s\.uncut' && \(/);
+});
+
 test("the refusal says what runs: a cut after jq is named, and the rule lists another project's files", () => {
   const r = bash(`jq '.tracks' ${REF}/project.json | cut -c1-1500`);
   assert.ok(r.kind === "deny", r.kind);
