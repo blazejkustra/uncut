@@ -40,7 +40,7 @@ export function loudnessOut(
 ) {
   if (!result.hasAudio) return { state: "done", cached, hasAudio: false, note: "This media has no sound, so there's nothing to measure." };
   const all = (result.silence?.ranges ?? [])
-    .map((r) => ({ start: frames(r.start, Math.ceil), end: frames(r.end, Math.floor), startSeconds: r.start, endSeconds: r.end }))
+    .map((r) => ({ start: frames(r.start, Math.ceil), end: frames(r.end, Math.floor) }))
     .filter((r) => r.end > r.start && (!range || (r.start < range.end && r.end > range.start)));
   return {
     state: "done",
