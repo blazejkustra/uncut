@@ -22,22 +22,35 @@ interface Track {
   readonly kind?: unknown;
   readonly name?: unknown;
   readonly role?: unknown;
-  readonly items?: ReadonlyArray<Item>;
+  readonly items?: ReadonlyArray<Item | null>;
+}
+interface Here {
+  readonly current: string;
+  readonly home: string;
+  readonly dataDir: string | undefined;
 }
 
-const readJson = async (file: string): Promise<Record<string, unknown> | undefined> => {
+/** A file's real path when reads may open it there, so a link can't lead out of the boundary. */
+async function readablePath(file: string, here: Here) {
+  const real = await realpath(file).catch(() => undefined);
+  return real && referencePart(real, here.current, here.home, here.dataDir) === "read" ? real : undefined;
+}
+
+async function readJson(file: string, here: Here): Promise<Record<string, unknown> | undefined> {
+  const real = await readablePath(file, here);
+  if (!real) return undefined;
   try {
-    return JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+    return JSON.parse(await readFile(real, "utf8")) as Record<string, unknown>;
   } catch {
     return undefined;
   }
-};
+}
 
-function trackOutline(track: Track) {
-  const items = track.items ?? [];
+function trackOutline(track: Track | null) {
+  const items = Array.isArray(track?.items) ? track.items : [];
   const types: Record<string, number> = {};
-  for (const item of items) if (typeof item.type === "string") types[item.type] = (types[item.type] ?? 0) + 1;
-  return { id: track.id, kind: track.kind, name: track.name, ...(track.role ? { role: track.role } : {}), types };
+  for (const item of items) if (typeof item?.type === "string") types[item.type] = (types[item.type] ?? 0) + 1;
+  return { id: track?.id, kind: track?.kind, name: track?.name, ...(track?.role ? { role: track.role } : {}), types };
 }
 
 const pick = (from: Record<string, unknown> | undefined, keys: ReadonlyArray<string>) =>
@@ -57,12 +70,12 @@ function projectPath(project: string, current: string, home: string) {
   return join(dirname(current), /\.uncut$/i.test(project) ? project : `${project}.uncut`);
 }
 
-async function graphicFile(dir: string, name: string, current: string, home: string, dataDir: string | undefined): Promise<Peek> {
+async function graphicFile(dir: string, name: string, here: Here): Promise<Peek> {
   if (!GRAPHIC_FILE.test(name)) return { problem: "graphic is a file name from this project's graphics list." };
-  const file = await realpath(join(dir, "graphics", name)).catch(() => undefined);
-  if (!file || referencePart(file, current, home, dataDir) !== "read" || !file.startsWith(join(dir, "graphics") + sep))
-    return { problem: `There's no graphic ${name} to read in that project.` };
-  const { size } = await stat(file);
+  const file = await readablePath(join(dir, "graphics", name), here);
+  const info = file?.startsWith(join(dir, "graphics") + sep) ? await stat(file) : undefined;
+  if (!file || !info?.isFile()) return { problem: `There's no graphic ${name} to read in that project.` };
+  const { size } = info;
   if (size > MAX_FILE_BYTES) return { problem: `${name} is ${size} bytes, over the ${MAX_FILE_BYTES} a peek shows. Use Read with an offset and limit.` };
   return { graphic: name, bytes: size, html: hideSecrets(await readFile(file, "utf8")) };
 }
@@ -82,14 +95,15 @@ export async function peekProject(o: {
   if (!dir) return { problem: `There's no project at ${o.project}. Pass its .uncut folder, or its name when it sits beside this project.` };
   if (referencePart(join(dir, "project.json"), current, home, o.dataDir) !== "read")
     return { problem: `${o.project} isn't another project Uncut can read (this project itself and folders in ~/Library or hidden ones aren't).` };
-  if (o.graphic !== undefined) return graphicFile(dir, o.graphic, current, home, o.dataDir);
-  const project = await readJson(join(dir, "project.json"));
+  const here = { current, home, dataDir: o.dataDir };
+  if (o.graphic !== undefined) return graphicFile(dir, o.graphic, here);
+  const project = await readJson(join(dir, "project.json"), here);
   if (!project) return { problem: `${o.project} has no readable project.json.` };
-  const tracks = Array.isArray(project.tracks) ? (project.tracks as ReadonlyArray<Track>) : [];
+  const tracks = Array.isArray(project.tracks) ? (project.tracks as ReadonlyArray<Track | null>) : [];
   return {
     name: project.name,
     canvas: project.canvas,
-    brief: pick(await readJson(join(dir, "brief.json")), BRIEF_FIELDS),
+    brief: pick(await readJson(join(dir, "brief.json"), here), BRIEF_FIELDS),
     look: pick(project, ["theme", "master"]),
     tracks: tracks.map(trackOutline),
     graphics: await graphicSizes(dir),

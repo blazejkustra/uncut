@@ -68,6 +68,27 @@ test("refused: this project, what isn't a project, ~/Library, traversal, links o
     assert.ok("problem" in (await peek(there, graphic)), graphic);
 });
 
+test("a project.json or brief.json linked out of the project isn't read", async () => {
+  const linked = join(movies, "linked.uncut");
+  mkdirSync(linked);
+  const secret = join(home, "settings.json");
+  writeFileSync(secret, JSON.stringify({ name: "stolen", film: "stolen" }));
+  symlinkSync(secret, join(linked, "project.json"));
+  assert.ok("problem" in (await peek(linked)));
+  rmSync(join(linked, "project.json"));
+  writeFileSync(join(linked, "project.json"), JSON.stringify({ name: "linked" }));
+  symlinkSync(secret, join(linked, "brief.json"));
+  assert.deepEqual(((await peek(linked)) as Record<string, any>).brief, {});
+});
+
+test("a folder named like a graphic and a project.json of odd shapes answer without failing", async () => {
+  const odd = join(movies, "odd.uncut");
+  mkdirSync(join(odd, "graphics", "folder.html"), { recursive: true });
+  writeFileSync(join(odd, "project.json"), JSON.stringify({ name: "odd", tracks: [null, { items: 3 }, { items: [null] }] }));
+  assert.ok("problem" in (await peek(odd, "folder.html")));
+  assert.equal(((await peek(odd)) as Record<string, any>).tracks.length, 3);
+});
+
 test("nothing is written: the folder's files and times stay", async () => {
   const stamp = () =>
     readdirSync(there, { recursive: true })
