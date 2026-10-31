@@ -1339,18 +1339,23 @@ test(
     // render_frames (the agent's view) draws the same mid-transition frames.
     rmSync(join(root, "plan.json.turn"), { force: true });
     const frames = [60, 120, 180, 240, 300];
-    writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames, scale: 1 } }]]));
+    writeFileSync(join(root, "plan.json"), JSON.stringify([frames.map((f) => ({ tool: "render_frames", args: { frames: [f], scale: 1 } }))]));
     const before = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
     const agent = client.subscribe("agent.subscribe");
     const { turnId } = await client.ok("agent.send", { prompt: "Look at the transitions" });
     await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
-    const result = JSON.parse(readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean)[before]!) as {
+    const results = readFileSync(resultLog(), "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .slice(before)
+      .map((l) => JSON.parse(l)) as Array<{
       result: { isError?: boolean; content: Array<{ type: string; data?: string }> };
-    };
-    assert.ok(!result.result.isError, JSON.stringify(result.result).slice(0, 300));
+    }>;
+    for (const r of results) assert.ok(!r.result.isError, JSON.stringify(r.result).slice(0, 300));
     for (const [i, f] of frames.entries()) {
       const jpg = join(root, `moves-agent-${f}.jpg`);
-      writeFileSync(jpg, Buffer.from(result.result.content.filter((c) => c.type === "image")[i]!.data!, "base64"));
+      writeFileSync(jpg, Buffer.from(results[i]!.result.content.find((c) => c.type === "image")!.data!, "base64"));
       const score = ssim(jpg, frameOf(output, f, join(root, `moves-exported-${f}.png`)));
       console.log(`  render_frames ${f} vs export: SSIM ${score.toFixed(4)}`);
       // render_frames' RGB path draws red ~231 (D75, known), which flat red/blue frames weigh heavily
@@ -1412,18 +1417,23 @@ test(
     // render_frames draws the box as the export does (the agent's view of the edit).
     // The fake claude plays the plan's turns in order (a counter file): this is a first turn again.
     rmSync(join(root, "plan.json.turn"), { force: true });
-    writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames: [0, 89], scale: 1 } }]]));
+    writeFileSync(join(root, "plan.json"), JSON.stringify([[0, 89].map((f) => ({ tool: "render_frames", args: { frames: [f], scale: 1 } }))]));
     const before = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
     const agent = client.subscribe("agent.subscribe");
     const { turnId } = await client.ok("agent.send", { prompt: "Look at the box" });
     await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
-    const result = JSON.parse(readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean)[before]!) as {
+    const results = readFileSync(resultLog(), "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .slice(before)
+      .map((l) => JSON.parse(l)) as Array<{
       result: { isError?: boolean; content: Array<{ type: string; data?: string }> };
-    };
-    assert.ok(!result.result.isError, JSON.stringify(result.result).slice(0, 300));
+    }>;
+    for (const r of results) assert.ok(!r.result.isError, JSON.stringify(r.result).slice(0, 300));
     for (const [i, f] of [0, 89].entries()) {
       const jpg = join(root, `split-agent-${f}.jpg`);
-      writeFileSync(jpg, Buffer.from(result.result.content.filter((c) => c.type === "image")[i]!.data!, "base64"));
+      writeFileSync(jpg, Buffer.from(results[i]!.result.content.find((c) => c.type === "image")!.data!, "base64"));
       const score = ssim(jpg, frameOf(output, f, join(root, `split-exported-${f}.png`)));
       console.log(`  render_frames ${f} vs export: SSIM ${score.toFixed(4)}`);
       assert.ok(score > 0.95, `frame ${f}: SSIM ${score}`);
