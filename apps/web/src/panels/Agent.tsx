@@ -199,7 +199,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           )}
         </div>
         {away && turns.length > 0 && (
-          <button className="agent-latest" data-testid="agent-latest" onClick={toLatest}>
+          <button className={`agent-latest ${agent?.approval ? "waiting" : ""}`} data-testid="agent-latest" onClick={toLatest}>
             <ChevronDown />
             {agent?.approval ? "Waiting for your answer below" : "Latest"}
           </button>

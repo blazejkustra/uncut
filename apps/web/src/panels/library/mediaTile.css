@@ -1,3 +1,6 @@
 .thumb img.vector { object-fit: contain; padding: 14%; }
 .media-bar > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .media-bar-tools { flex: none; }
+.media-bar { container-type: inline-size; }
+.media-bar-tools { margin-left: auto; }
+@container (max-width: 250px) { .media-bar > span:first-child:not(.media-bar-tools) { display: none; } }

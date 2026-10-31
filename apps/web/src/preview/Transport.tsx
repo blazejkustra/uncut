@@ -5,7 +5,7 @@
 // the jumps to start and end, the zoom and the frame steps, then the hand, the area and the time itself.
 import { Hand, Maximize, SquareDashedMousePointer, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 
-import { canvasLabel, frameTimecode } from "../state/format.ts";
+import { fpsLabel, frameTimecode } from "../state/format.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { playback, usePlayback } from "./playback.ts";
@@ -66,7 +66,8 @@ export function Transport({
         </Tooltip>
       </div>
       <span className="muted small" data-testid="canvas-info">
-        {canvasLabel(project.canvas)}
+        {project.canvas.width}×{project.canvas.height}
+        <span className="canvas-fps">, {fpsLabel(project.canvas.fps)}</span>
       </span>
       <select
         className="zoom-select"

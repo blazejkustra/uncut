@@ -16,18 +16,22 @@
 .pm-count { font-variant-numeric: tabular-nums; color: var(--dim); }
 .pm-lead, .pm-empty { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .pm-empty.error { color: var(--error); }
-.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.pm-grid { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
 
-.pm-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); min-width: 0; transition: border-color 0.2s; }
-.pm-card.highlight { border-color: var(--select); box-shadow: 0 0 0 3px var(--select-soft); }
-.pm-card[data-state="broken"] { border-color: rgb(248 113 113 / 30%); }
-.pm-card-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+/* One row per plugin: the icon, the words, the action at the right edge. */
+.pm-card { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--border); min-width: 0; transition: background 0.2s, box-shadow 0.2s; }
+.pm-card > * { grid-column: 2; }
+.pm-card.highlight { border-radius: var(--radius-sm); box-shadow: 0 0 0 3px var(--select-soft); background: var(--select-soft); }
+.pm-card[data-state="broken"] .pm-desc { color: var(--error); }
+.pm-card-head { display: contents; }
+.pm-card-head .pm-icon { grid-column: 1; grid-row: 1 / span 2; }
+.pm-card-head .pm-title { grid-column: 2; }
 .pm-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; flex: none; }
 .pm-icon svg.lucide { width: 16px; height: 16px; color: var(--muted); }
 .pm-title { min-width: 0; }
 .pm-name { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-by { font-size: 11px; color: var(--dim); }
-.pm-desc { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pm-desc { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pm-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
 .pm-kind { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--raised); color: var(--muted); }
 .pm-perms { display: flex; gap: 6px; font-size: 11px; color: var(--dim); line-height: 1.4; }
@@ -35,10 +39,9 @@
 .pm-perms p { margin: 0; }
 .pm-perms p + p { margin-top: 3px; }
 .pm-warn { font-size: 11px; color: var(--warn); line-height: 1.4; }
-.pm-actions { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 2px; }
-.pm-from { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; margin-top: auto; }
-.pm-actions { justify-content: flex-end; margin-top: 0; }
-.pm-card[data-state="available"] .pm-actions { margin-top: auto; }
+.pm-card > .pm-actions { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.pm-card[data-state="bundled"] .pm-from { display: none; }
+.pm-from { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 .pg { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px 24px; font-size: 13px; line-height: 1.55; }
 .pg code { font-family: var(--mono); font-size: 12px; background: var(--raised); padding: 1px 4px; border-radius: 4px; }
