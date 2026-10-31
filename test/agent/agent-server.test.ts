@@ -163,6 +163,7 @@ test("D277: claude gets Claude Code's own sign-in, but no generator key or paren
     ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"],
     "CLAUDE_CODE_* from outside reached claude",
   );
+  assert.ok(env.includes("BASH_MAX_OUTPUT_LENGTH"), "a command's output is capped");
   assert.ok(env.includes("HOME") && env.includes("FAKE_PLAN"), "the rest of the environment is passed on");
   assert.ok(!env.includes("UNCUT_TOKEN") && !env.includes("ELECTRON_RUN_AS_NODE"));
 });

@@ -124,11 +124,14 @@ export function sessionArgs(o: {
   return args;
 }
 
+const BASH_OUTPUT_CHARS = "8000";
+
 /**
  * The session's environment (D181, D277): claudeEnv (Claude Code's own sign-in, whatever it is; no
  * generator keys or other secrets; no CLAUDE_CODE_* from outside), plus the sign-in variables from
  * Claude Code's user settings `env` (--setting-sources "" skips that file), then tool search off
- * (every Uncut tool in the prompt, none deferred), no CLAUDE.md or rules files and no auto memory.
+ * (every Uncut tool in the prompt, none deferred), no CLAUDE.md or rules files, no auto memory and
+ * a command's output past BASH_OUTPUT_CHARS saved to a file, with a preview of it in the conversation.
  * The keychain login is untouched (no --bare, same CLAUDE_CONFIG_DIR).
  */
 export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
@@ -138,6 +141,7 @@ export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
   ENABLE_TOOL_SEARCH: "false",
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  BASH_MAX_OUTPUT_LENGTH: BASH_OUTPUT_CHARS,
 });
 
 /**
