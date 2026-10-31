@@ -48,6 +48,13 @@ const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; rea
 const IDS = TABS.map((t) => t.id);
 const info = (id: LibraryTab) => TABS.find((t) => t.id === id)!;
 
+/** Whether tabs lie past the top and the bottom of the rail. */
+const railOverflow = (el: HTMLElement) => {
+  const up = el.scrollTop > 1;
+  const down = el.scrollHeight - el.scrollTop - el.clientHeight > 1;
+  return { up, down };
+};
+
 export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => void }) {
   const [order, setOrder] = useState<Array<LibraryTab>>(() => loadRail(IDS));
   const [hidden, setHidden] = useState<Array<LibraryTab>>(() => loadHidden(IDS));
@@ -56,6 +63,7 @@ export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab)
   // A drag just ended: the click that follows the release doesn't switch tabs.
   const swallowClick = useRef(false);
   const nav = useRef<HTMLElement>(null);
+  const [more, setMore] = useState({ up: false, down: false });
 
   const saveOrder = (next: Array<LibraryTab>) => {
     setOrder(next);
@@ -80,6 +88,20 @@ export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab)
   }, []);
 
   const shown = order.filter((id) => !hidden.includes(id));
+
+  useEffect(() => {
+    const el = nav.current;
+    if (!el) return;
+    const measure = () => setMore(railOverflow(el));
+    measure();
+    el.addEventListener("scroll", measure);
+    const sizes = new ResizeObserver(measure);
+    sizes.observe(el);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      sizes.disconnect();
+    };
+  }, [shown.length]);
 
   /** Where a pointer at clientY would drop: before the first shown tab whose middle is below it. */
   const dropBefore = (y: number, id: LibraryTab): LibraryTab | "" => {
@@ -165,6 +187,8 @@ export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab)
       className={`rail ${drag ? "dragging" : ""}`}
       ref={nav}
       data-testid="rail"
+      data-more-up={more.up}
+      data-more-down={more.down}
       data-scrollbars="off"
       data-order={order.join(",")}
       data-hidden={hidden.join(",")}

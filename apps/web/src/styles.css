@@ -85,7 +85,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-field { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 8px 6px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
 .wiz-field > span:first-child { width: 48px; flex: none; color: var(--muted); font-size: 12px; }
 .wiz-field b { font-weight: 500; flex: 1; }
-.wiz-field input { flex: 1; min-width: 0; height: 32px; border: 0; outline: 0; background: transparent; font-size: 14px; }
+.wiz-field input { flex: 1; min-width: 0; height: 32px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 14px; }
 .wiz-field:focus-within { border-color: var(--border-strong); }
 .wiz-meta { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
 .wiz-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 22px; }
@@ -211,9 +211,9 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .transport { height: 40px; min-height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid var(--border); overflow: hidden; }
 .transport > *, .transport-mid > * { flex: none; }
 .timecode { font: 12px var(--mono); white-space: nowrap; }
-.transport > [data-testid="canvas-info"] { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.transport > [data-testid="canvas-info"] { flex: none; white-space: nowrap; }
 .transport > .transport-mid { flex: 1 0 auto; display: flex; justify-content: center; gap: 4px; }
-@container stage (max-width: 560px) { .transport > [data-testid="canvas-info"] { display: none; } }
+@container stage (max-width: 640px) { .transport > [data-testid="canvas-info"] { display: none; } }
 @container stage (max-width: 540px) { .transport .tc-end, .transport .tp-jump { display: none; } }
 @container stage (max-width: 400px) { .transport .zoom-select, .transport .tp-step { display: none; } }
 @container stage (max-width: 260px) { .transport { gap: 6px; padding: 0 8px; } .transport .tp-hand, .transport .tp-region { display: none; } }
@@ -612,7 +612,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .composer-choices .choice.model { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 /* The model's name gives way first, then the wordmark, both with an ellipsis; nothing spills onto effort. */
 .composer-choices .choice.model .choice-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 100 auto; }
-.composer-choices .choice.model .provider-wordmark { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.composer-choices .choice.model .provider-wordmark { flex: none; }
 .composer-choices .choice svg.choice-caret { width: 11px; height: 11px; }
 @container (max-width: 340px) { .composer-choices .choice[data-testid=agent-access] .choice-label { display: none; } }
 @container (max-width: 300px) { .composer-choices .choice[data-testid=agent-effort] .choice-label { display: none; } }
@@ -961,8 +961,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .mixer-strips { display: flex; gap: 6px; height: 100%; min-height: 120px; }
 .mixer-gap { flex: 1; min-width: 8px; }
 .mixer-empty { padding: 4px 2px 8px; font-size: 12px; }
-.strip-ch { width: 104px; flex: none; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 6px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
-.strip-ch.master { width: 96px; border-color: var(--border-strong); }
+.strip-ch { width: 184px; flex: none; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 6px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
+.strip-ch.master { width: 104px; border-color: var(--border-strong); }
 .strip-ch.muted .strip-body { opacity: 0.45; }
 .strip-name { flex: none; font-size: 11px; font-weight: 500; color: var(--fg); text-align: center; }
 .pan-row { height: 14px; display: flex; align-items: center; gap: 4px; flex: none; }
@@ -1007,7 +1007,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 
 /* Mixer effects, ducking, limiter and target (D84–D88). */
 .fx-list { display: flex; flex-direction: column; gap: 3px; flex: none; }
-.fx-slots { display: flex; flex-direction: column; gap: 3px; max-height: 39px; overflow-y: auto; scrollbar-width: thin; }
+.fx-slots { display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .fx-slots:empty { display: none; }
 .fx-slot { display: flex; align-items: center; gap: 4px; height: 18px; padding: 0 5px; border-radius: 4px; font-size: 10px; color: var(--fg); background: var(--raised); text-align: left; min-width: 0; }
 .fx-slot:not(:disabled):hover { background: #262626; }
