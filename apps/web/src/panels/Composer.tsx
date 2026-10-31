@@ -41,6 +41,7 @@ import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ComposerChoices } from "./composer/Choices.tsx";
 import { slashItems, type SlashItem } from "./composer/slash.ts";
+import { ColdMessageLine } from "./ColdMessageLine.tsx";
 import { TokenMeter } from "./TokenMeter.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./skills/skills.css";
@@ -307,6 +308,7 @@ export function Composer({
         void addFiles(files.filter((f) => isAttachable(f) || !bridge.pathForFile(f).startsWith("/")));
       }}
     >
+      <ColdMessageLine online={online} agentId={agentId} />
       <ContextLine project={project} />
       {queued && (
         <div className="composer-queued" data-testid="agent-queued">

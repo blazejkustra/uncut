@@ -1,7 +1,9 @@
 import { existsSync, renameSync } from "node:fs";
 import { readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { type AgentCard, type AgentEdit, type AgentMention, AGENT_IMAGE_NAME, type AgentFolder, DEFAULT_AGENT_ID } from "@uncut/contracts";
+import { type AgentCard, AgentContext, type AgentEdit, type AgentMention, AGENT_IMAGE_NAME, type AgentFolder, DEFAULT_AGENT_ID } from "@uncut/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { normBrief, normStoryboard, normReview } from "../../brand/store.ts";
 import { withHistory, type TurnRecord } from "../../project/history.ts";
 import type { StoredTurn } from "../session/types.ts";
@@ -150,7 +152,25 @@ interface History {
   readonly turns: Array<StoredTurn>;
   readonly pendingNote: string | undefined;
   readonly threadStart?: string | undefined;
+  readonly context?: AgentContext | undefined;
   readonly readError?: string;
+}
+
+/** The context meter's numbers to save, without the flag that belongs to this run. */
+export const savedContext = (context: AgentContext | undefined) => {
+  if (!context) return undefined;
+  const { restored: _restored, ...saved } = context;
+  return JSON.stringify(saved);
+};
+
+const decodeContext = Schema.decodeUnknownOption(AgentContext);
+function storedContext(json: string | undefined): AgentContext | undefined {
+  if (!json) return undefined;
+  try {
+    return Option.getOrUndefined(decodeContext(JSON.parse(json)));
+  } catch {
+    return undefined;
+  }
 }
 
 /** agent/turns.json (D51, before history.db): none is an empty history; one that can't be read is an error, never "empty". */
@@ -194,6 +214,7 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
         turns: stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined),
         pendingNote: stored.pendingNote,
         threadStart: stored.threadStart,
+        context: storedContext(stored.context),
       };
     });
   }
@@ -202,7 +223,8 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
   return withHistory(dir, (db) => {
     const stored = db.agent();
     const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
-    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote, threadStart: stored.threadStart };
+    const context = storedContext(stored.context);
+    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote, threadStart: stored.threadStart, context };
     const known = new Set(turns.map((t) => t.id));
     const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
     const sessionId = stored.sessionId ?? legacy.sessionId;
@@ -218,7 +240,7 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
         }
       }
     }
-    return { sessionId, turns: merged, pendingNote, threadStart: stored.threadStart };
+    return { sessionId, turns: merged, pendingNote, threadStart: stored.threadStart, context };
   });
 }
 

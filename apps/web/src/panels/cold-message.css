@@ -1,0 +1,6 @@
+.cold-message { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 6px; padding: 7px 8px 7px 10px; border-bottom: 1px solid var(--border); font-size: 11px; line-height: 16px; color: var(--muted); }
+.cold-message-text { min-width: 0; }
+.cold-message-actions { grid-column: 1 / -1; display: flex; gap: 12px; }
+.cold-message-action { padding: 0; border: 0; background: none; font: inherit; color: var(--fg); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.cold-message-dismiss { width: 18px; height: 18px; cursor: pointer; }
+.cold-message-dismiss svg.lucide { width: 12px; height: 12px; }

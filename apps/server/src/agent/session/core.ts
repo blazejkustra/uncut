@@ -11,7 +11,7 @@ import { defaultAgent, type StoredAgent, storedAgents } from "../../project/hist
 import type { ProjectView } from "../../project/projects.ts";
 import type { Loaded, Running, ClaudeSession, StoredTurn } from "./types.ts";
 import { undoState, joinNotes, noteFor, noteShowsAll, type Reader } from "../turns/notes.ts";
-import { turnRecord, loadAgentHistory } from "../turns/history.ts";
+import { savedContext, turnRecord, loadAgentHistory } from "../turns/history.ts";
 import { PROVIDER, GRACEFUL_MS, KILL_AFTER_MS, interruptMs } from "./config.ts";
 import type { McpResult } from "../agent.ts";
 import type { AgentServices } from "./context.ts";
@@ -98,6 +98,7 @@ export const makeCore = (ctx: AgentServices) => {
           sessionId: owner.sessionId,
           pendingNote,
           threadStart: owner.threadStart,
+          context: savedContext(owner.context),
           turns,
           order,
           turnIds: owner.turns.map((t) => t.id),
@@ -250,6 +251,7 @@ export const makeCore = (ctx: AgentServices) => {
       webUsed: false,
       tainted: new Set(),
       ...(history.threadStart ? { threadStart: history.threadStart } : {}),
+      ...(history.context ? { context: { ...history.context, restored: true } } : {}),
     });
 
   /** The agents of the project open now, loading them when another one opened. */

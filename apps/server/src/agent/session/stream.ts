@@ -8,6 +8,7 @@ import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
 import type { RunCtx } from "../tools/run.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { agentFailCode } from "../../telemetry/events.ts";
+import { usedKey } from "../agentLimits.ts";
 import { assistantUsage, contextOf, contextUsageReply, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
@@ -187,6 +188,8 @@ export const makeStream = (ctx: RunCtx) => {
         systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
         message: messageContextEstimate(r.message, r.turn.prompt),
         model,
+        answeredAt: new Date().toISOString(),
+        billedToKey: usedKey({ keySource: s.apiKeySource }),
       });
       return;
     }
@@ -219,9 +222,12 @@ export const makeStream = (ctx: RunCtx) => {
         systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0),
         message: 0,
         ...(last?.model ? { model: last.model } : {}),
+        answeredAt: new Date().toISOString(),
+        billedToKey: last?.billedToKey,
       });
     else if (last) owner.context = { ...last, ...(s.window ? { window: s.window } : {}), ...(s.compactAt ? { compactAt: s.compactAt } : {}) };
     else return;
+    persist(owner);
     publishNow();
   };
 
