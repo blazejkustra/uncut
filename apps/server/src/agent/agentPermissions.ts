@@ -318,6 +318,13 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     kind: "deny",
     message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.`,
   };
+  // One plain command: a cd, a $ or a second command could put a relative .claude in the home folder.
+  const reachesOnlyProjectClaude = (command: string) =>
+    !("complex" in simpleCommand(command)) &&
+    withoutHomeClaude(command, home) === command &&
+    !configNamed(command) &&
+    !namesAppData(command, ctx.dataDir) &&
+    !(ctx.access === "auto" && NAMES_OWN.test(command));
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -482,6 +489,14 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
         return {
           kind: "deny",
           message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
+        };
+      if (named.length && named.every((p) => inside(real(p), project)) && reachesOnlyProjectClaude(command))
+        return {
+          kind: "ask",
+          title: "Run a command",
+          target,
+          why: "It names this project's .claude folder, where Claude Code reads skills, hooks and settings from.",
+          updatedInput: { ...input, command: pinnedToProject(command, project) },
         };
       return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
     }
