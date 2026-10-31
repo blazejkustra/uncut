@@ -173,11 +173,18 @@ export const sessionDirOf = (dir: string) => {
  */
 function conversationHere(
   dir: string,
-  stored: { readonly sessionId: string | undefined; readonly sessionDir: string | undefined; readonly threadStart: string | undefined },
+  stored: {
+    readonly sessionId: string | undefined;
+    readonly sessionDir: string | undefined;
+    readonly threadStart: string | undefined;
+    readonly context: string | undefined;
+  },
 ) {
   const from = stored.sessionDir;
   const copied = !!stored.sessionId && !!from && from !== sessionDirOf(dir) && existsSync(join(from, "project.json"));
-  return copied ? { sessionId: undefined, threadStart: new Date().toISOString() } : { sessionId: stored.sessionId, threadStart: stored.threadStart };
+  return copied
+    ? { sessionId: undefined, threadStart: new Date().toISOString(), context: undefined }
+    : { sessionId: stored.sessionId, threadStart: stored.threadStart, context: storedContext(stored.context) };
 }
 
 const orphanedIn = (turns: ReadonlyArray<unknown>) =>
@@ -237,7 +244,6 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
         turns: stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined),
         pendingNote: stored.pendingNote,
         orphaned: orphanedIn(stored.turns),
-        context: storedContext(stored.context),
       };
     });
   }
@@ -246,9 +252,7 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
   return withHistory(dir, (db) => {
     const stored = db.agent();
     const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
-    const context = storedContext(stored.context);
-    if (!existsSync(historyFile(dir)))
-      return { ...conversationHere(dir, stored), turns, pendingNote: stored.pendingNote, orphaned: orphanedIn(stored.turns), context };
+    if (!existsSync(historyFile(dir))) return { ...conversationHere(dir, stored), turns, pendingNote: stored.pendingNote, orphaned: orphanedIn(stored.turns) };
     const known = new Set(turns.map((t) => t.id));
     const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
     const sessionId = stored.sessionId ?? legacy.sessionId;
@@ -264,7 +268,7 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
         }
       }
     }
-    return { sessionId, turns: merged, pendingNote, threadStart: stored.threadStart, context };
+    return { sessionId, turns: merged, pendingNote, threadStart: stored.threadStart, context: storedContext(stored.context) };
   });
 }
 

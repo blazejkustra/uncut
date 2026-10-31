@@ -6,9 +6,9 @@
 // later edit changed what the turn changed.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -159,6 +159,30 @@ test("the meter and the last answer's time survive reopening the project, and a 
     await s.client.ok("project.open", { dir });
     await s.agent.until(() => s.latest()?.dir === dir, 5000);
     assert.equal(s.latest().context, undefined);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("a copied project's fresh chat shows no meter; the original keeps its own", { skip, timeout: 60000 }, async () => {
+  const s = await setup("copied-meter");
+  try {
+    await s.send("look", [{ text: "Looked." }, usage]);
+    await s.agent.until((v) => v?.context?.compactAt === 400_000, 5000);
+    const answered = s.latest().context;
+    const dir = s.latest().dir;
+    await s.client.ok("project.close", {});
+    await s.agent.until(() => !s.latest(), 5000);
+    const copy = join(dirname(dir), "Copy.uncut");
+    cpSync(dir, copy, { recursive: true });
+    await s.client.ok("project.open", { dir: copy });
+    await s.agent.until(() => s.latest()?.dir === copy, 5000);
+    assert.equal(s.latest().context, undefined);
+    await s.client.ok("project.close", {});
+    await s.agent.until(() => !s.latest(), 5000);
+    await s.client.ok("project.open", { dir });
+    await s.agent.until(() => s.latest()?.context, 5000);
+    assert.deepEqual(s.latest().context, answered);
   } finally {
     await s.stop();
   }
