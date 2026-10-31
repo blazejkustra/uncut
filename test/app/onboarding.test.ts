@@ -118,10 +118,10 @@ test("first launch shows the wizard with real statuses; finishing it is remember
     assert.match(await text(page, "check-claude"), /Version \d+\.\d+/);
   }
   if (codexInShell()) {
-    // Installed here: found, its sign-in not checked (D277), and no install command to copy.
-    assert.equal(await attr(page, "check-codex", "data-status"), "warning");
-    assert.equal(await text(page, "chip-codex"), "Found");
-    assert.equal(await page.$("[data-testid=copy-codex]"), null);
+    // Installed here: whatever its sign-in says (issue #106), never the install command to copy.
+    const codex = await attr(page, "check-codex", "data-status");
+    assert.ok(["ready", "needs-login", "warning"].includes(codex!), `Codex: ${codex}`);
+    assert.doesNotMatch(await text(page, "check-codex"), /npm install/);
   } else {
     assert.equal(await attr(page, "check-codex", "data-status"), "missing");
     assert.equal(await text(page, "chip-codex"), "Not installed");
