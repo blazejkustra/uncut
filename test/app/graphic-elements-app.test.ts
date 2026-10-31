@@ -149,5 +149,5 @@ test("a drag retimes as one edit, the page follows, undo takes it back, ⌫ dele
   await page.keyboard.press("Backspace");
   await until("deleted", () => saved().elements?.a?.hidden === true);
   assert.equal(saved().id, "g");
-  assert.equal(await page.$(block("a")), null);
+  await until("its block leaves the canvas", async () => (await page.$(block("a"))) === null);
 });
