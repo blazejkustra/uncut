@@ -173,6 +173,25 @@ export function autoAskRules(): Array<string> {
  * Uncut's own files (deny) and the calls that must still reach Uncut (ask). The user's Claude Code
  * skills don't run their inline shell commands (those would skip Uncut's approvals).
  */
+const hookEcho = (text: string) => [{ type: "command", command: `echo '${text}'` }];
+
+/** What a summary must keep, and what the agent reloads afterwards: a film's brief, kit and working files outlive the conversation. */
+export const COMPACT_HOOKS = {
+  PreCompact: [
+    {
+      hooks: hookEcho(
+        "Keep word for word: every direction, taste note and rejection from the user, which fixes they refused or asked for twice, the graphic file names and item ids in progress, and the open review defects.",
+      ),
+    },
+  ],
+  SessionStart: [
+    {
+      matcher: "compact",
+      hooks: hookEcho("The conversation was just summarised. Before going on, call plan_read and brand_read, and read the graphic you are working on again."),
+    },
+  ],
+};
+
 export function sessionSettings(
   o: {
     readonly access?: Access | undefined;
@@ -185,10 +204,12 @@ export function sessionSettings(
   if (o.access !== "auto")
     return JSON.stringify({
       disableSkillShellExecution: true,
+      hooks: COMPACT_HOOKS,
       permissions: { deny: denyRules(o.dataDir, cc), ask: [...uploadAskRules(), ...appDataAskRules(o.dataDir, cc)] },
     });
   return JSON.stringify({
     disableSkillShellExecution: true,
+    hooks: COMPACT_HOOKS,
     permissions: {
       deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])],
       ask: [...autoAskRules(), ...uploadAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()],
