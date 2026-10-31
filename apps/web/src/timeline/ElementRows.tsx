@@ -13,7 +13,7 @@ import type { ProjectModel } from "../state/project.ts";
 import { actions, getState } from "../state/store.ts";
 import { openMenu } from "./ContextMenu.tsx";
 import { draftOf, findItem, SNAP_PX } from "./edit.ts";
-import { MAX_ROWS, ROW_HEIGHT } from "./graphicElements.ts";
+import { MAX_ROWS, ROW_HEIGHT, seekToElement } from "./graphicElements.ts";
 import { DRAG_PX } from "./ItemBox.tsx";
 import { getTool } from "./tools.ts";
 
@@ -116,7 +116,10 @@ export function ElementRows({
     const cancel = () => (finish(), clear());
     const up = () => {
       finish();
-      if (!moved || !change) return clear();
+      if (!moved || !change) {
+        seekToElement(start, block.from, block.to);
+        return clear();
+      }
       void actions.timelineEdit({ ops: [plan()], summary: `Retimed ${block.element.name}` }, origin).finally(clear);
     };
     window.addEventListener("pointermove", move);

@@ -323,5 +323,29 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
       undo.push(() => live.removeAttribute("data-uncut-off"));
     }
   };
+  const shown = (el) => {
+    let o = 1;
+    for (let a = el; a; a = a.parentElement) o *= Number(getComputedStyle(a).opacity);
+    return o >= 0.02;
+  };
+  const keyAt = (x, y, keys) => {
+    const known = new Set(keys);
+    for (const hit of document.elementsFromPoint(x, y)) {
+      for (let a = hit; a; a = a.parentElement) if (a.id && known.has(a.id) && shown(a)) return a.id;
+    }
+    return undefined;
+  };
+  const rectOf = (key) => {
+    const el = document.getElementById(key);
+    if (!el || getComputedStyle(el).visibility !== "visible" || !shown(el)) return undefined;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  };
+  addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d.uncut !== "element-ask") return;
+    const key = d.point ? keyAt(d.point[0], d.point[1], d.keys ?? []) : d.key;
+    parent.postMessage({ uncut: "element-answer", seq: d.seq, key, rect: key === undefined ? undefined : rectOf(key) }, "*");
+  });
   window.__uncutElements = { restore, frame, clear: () => setSheet("") };
 })();`;

@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 import { planElementEdit, type GraphicElement, type GraphicElements } from "@uncut/core/graphicElements";
 import type { Item } from "@uncut/core/types";
 
-import { getPlayback } from "../preview/playback.ts";
+import { getPlayback, playback } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { state } from "../state/store/core.ts";
 import { graphicElementsUrl } from "../state/store/urls.ts";
@@ -68,6 +68,12 @@ export function selectedElement(project: ProjectModel): { readonly item: Item; r
   const known = item ? elementsOf(item.src) : undefined;
   const element = known?.status === "ready" ? known.elements.find((e) => e.key === key) : undefined;
   return item && element ? { item, element } : undefined;
+}
+
+/** Show an element just selected: the playhead goes into it, past its entrance, unless it's already there. */
+export function seekToElement(start: number, from: number, to: number) {
+  const frame = Math.round(getPlayback().frame);
+  if (frame < start + from || frame >= start + to) playback.seek(start + from + Math.min(15, Math.floor((to - from) / 2)));
 }
 
 /** ⌫ on a selected element. */
