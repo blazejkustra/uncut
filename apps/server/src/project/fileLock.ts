@@ -4,10 +4,11 @@
 // after a long hold the pid belongs to a process that started after the lock was made). Breaking
 // a stale lock runs one breaker at a time (`<file>.lock.break`) and removes the lock only if it is
 // still the one judged stale, so two waiters never both take it. A release removes the lock only
-// while it is still its own.
+// while it is still its own. A lock that names another folder came along with a copy of this one
+// (cp -R of a project) and holds nothing here.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { link, mkdir, open, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import * as Effect from "effect/Effect";
@@ -21,12 +22,13 @@ const WAIT_MS = 10_000;
 const UNREADABLE_MS = 1000;
 let counter = 0;
 
-const lockText = () => JSON.stringify({ pid: process.pid, token: randomBytes(8).toString("hex") });
+const lockText = (folder?: string) => JSON.stringify({ pid: process.pid, token: randomBytes(8).toString("hex"), ...(folder ? { folder } : {}) });
 const noLock = async () => {};
 
 interface Held {
   readonly text: string;
   readonly pid: number | undefined;
+  readonly folder?: string;
   readonly mtimeMs: number;
 }
 
@@ -58,9 +60,9 @@ async function readHeld(path: string): Promise<Held | undefined> {
     try {
       parsed = JSON.parse(text);
     } catch {}
-    const owner = typeof parsed === "number" ? { pid: parsed } : (parsed as { pid?: unknown } | undefined);
+    const owner = typeof parsed === "number" ? { pid: parsed } : (parsed as { pid?: unknown; folder?: unknown } | undefined);
     const pid = typeof owner?.pid === "number" && Number.isInteger(owner.pid) && owner.pid > 0 ? owner.pid : undefined;
-    return { text, pid, mtimeMs: info.mtimeMs };
+    return { text, pid, mtimeMs: info.mtimeMs, ...(typeof owner?.folder === "string" ? { folder: owner.folder } : {}) };
   } catch {
     return undefined;
   }
@@ -152,12 +154,16 @@ export async function acquireFileLock(file: string, waitMs = WAIT_MS): Promise<(
  */
 export async function tryFileLock(file: string): Promise<(() => Promise<void>) | undefined> {
   const lock = `${file}.lock`;
-  const text = lockText();
   await mkdir(dirname(lock), { recursive: true });
+  const folder = await realpath(dirname(lock));
+  const text = lockText(folder);
   if (await tryCreate(lock, text)) return releaser(lock, text);
   const held = await readHeld(lock);
-  if (!held || !isStale(held)) return undefined;
-  await breakStale(lock);
+  if (!held) return undefined;
+  const copied = held.folder !== undefined && held.folder !== folder;
+  if (copied) await removeIfSame(lock, held.text);
+  else if (isStale(held)) await breakStale(lock);
+  else return undefined;
   return (await tryCreate(lock, text)) ? releaser(lock, text) : undefined;
 }
 
