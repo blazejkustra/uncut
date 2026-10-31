@@ -1228,7 +1228,7 @@
           }
         }
       },
-      "returns": "the critic's round: scores with evidence, blockers and defects with ids, each claimed fix verified or not, the determinism check and what to do next"
+      "returns": "the critic's round: scores, blockers and defects with ids (a long defect is cut; plan_read has it whole), each claimed fix verified or not, the motion scan's frames, the determinism check and what to do next"
     },
     {
       "name": "docs_read",

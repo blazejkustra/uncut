@@ -686,6 +686,11 @@ export function agreeingNotes(summary: string, blockers: ReadonlyArray<{ readonl
 /** A saved review's rubric (its levels), for reviewNext and the cards; none before D217. */
 const levelsOf = (review: Review) => (review.rubric ? { levels: review.rubric as Record<Category, "required" | "optional" | "na"> } : undefined);
 
+/** A defect's text in review_submit's answer; plan_read has it whole. */
+const DEFECT_CHARS = 240;
+export const defectForAgent = <D extends { readonly what: string }>(d: D): D =>
+  d.what.length > DEFECT_CHARS ? { ...d, what: `${d.what.slice(0, DEFECT_CHARS).trimEnd()}...` } : d;
+
 /**
  * What the builder does next after a round. `where` (round 3's A/B): a moment as the project has it
  * (its frame, the graphic drawing it and that graphic's own time, the frames to render), so each
@@ -708,7 +713,7 @@ export function reviewNext(
     .filter((b) => !b.unresolved)
     .map((b) => {
       const place = b.at !== undefined ? where?.(b.at) : undefined;
-      return `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}${place ? ` (${place})` : ""}: ${b.what}${b.fix ? ` Fix: ${b.fix}` : ""}`;
+      return `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}${place ? ` (${place})` : ""}`;
     });
   const unresolved = [...(review.blockers ?? []), ...review.defects].filter((f) => f.unresolved);
   const scores = scored.map((k) => `${k} ${review.scores[k]}`).join(", ");

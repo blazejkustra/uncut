@@ -560,10 +560,15 @@ test(
       assert.equal(round1.scores.hook, 9);
       assert.equal(round1.defects[0].id, "d3");
       assert.match(round1.next, /Blockers \(any one fails the round\): d1 placeholder/);
+      assert.ok(!("by" in round1) && !("facts" in round1.motion) && !("found" in round1.motion), "what the critic was told stays out of the answer");
       assert.equal(round1.determinism, "1 graphic drew the same twice");
       assert.match(textOf(r[8]!.result), /Nothing changed since round 1/);
       assert.match(textOf(r[11]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
       const round2 = jsonOf(r[13]!.result);
+      assert.ok(
+        round2.fixes.every((f: any) => !("what" in f)),
+        "the agent's own claims aren't echoed",
+      );
       assert.equal(round2.passed, false, "a fix the critic didn't see fails the round");
       assert.deepEqual(
         round2.fixes.map((f: any) => [f.defect, f.verified]),

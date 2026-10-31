@@ -12,6 +12,7 @@ import {
   criticReview,
   criticText,
   parseCritic,
+  defectForAgent,
   reviewNext,
   type CriticInput,
 } from "../../apps/server/src/agent/agentCritic.ts";
@@ -86,7 +87,11 @@ test("criticReview: any blocker fails whatever the scores and caps its score; ha
     ],
   );
   assert.equal(r.defects[0]!.id, "d3");
-  assert.match(reviewNext(r), /Blockers \(any one fails the round\): d1 placeholder at 3 s: Empty phone; d2 off-centre/);
+  const long = { id: "d9", what: "x".repeat(500), fix: "y".repeat(500) };
+  assert.equal(defectForAgent(long).what.length, 243, "a long defect is cut");
+  assert.equal(defectForAgent(long).fix, long.fix, "its fix stays whole");
+  assert.equal(defectForAgent({ what: "short" }).what, "short");
+  assert.match(reviewNext(r), /Blockers \(any one fails the round\): d1 placeholder at 3 s; d2 off-centre/);
   assert.match(reviewNext(r, 3), /in this turn, the last one[\s\S]*Don't say it passed/);
   // Claims: the one the critic confirmed holds, the one it didn't mention is a blocker.
   const fixes = parseCritic(JSON.stringify({ scores: all(9), fixes: [{ defect: "d1", verified: true }] }));
@@ -348,10 +353,7 @@ test("round 3: past 3 the loop goes on while the blockers change (one fixed, the
   const r = criticReview(answer as never, ctx);
   assert.equal(r.blockers![0]!.fix, "Show 'Review, round 1' with no result.");
   const next = reviewNext(r, 1, true, (t) => `f ${Math.round(t * 60)}, film.html at ${t.toFixed(2)} s of it; render_frames 1359 to 1371`);
-  assert.match(
-    next,
-    /d1 invented at 22\.75 s \(f 1365, film\.html at 22\.75 s of it; render_frames 1359 to 1371\): The review card says Passed\. Fix: Show 'Review, round 1' with no result\./,
-  );
+  assert.match(next, /d1 invented at 22\.75 s \(f 1365, film\.html at 22\.75 s of it; render_frames 1359 to 1371\)/);
   // Two unverified claims on one moment (A2r3's d3 and d8, the same pan) are one blocker, with the last round's fix.
   const claims = [
     { defect: "d3", what: "Eased the pan", at: 11.22, fix: "Slow the pan's fastest frames." },
