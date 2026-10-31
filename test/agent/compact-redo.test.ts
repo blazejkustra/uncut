@@ -164,6 +164,25 @@ test("the meter and the last answer's time survive reopening the project, and a 
   }
 });
 
+test("a respawn that resumes keeps the plan as a line; a new chat gets it whole", { skip, timeout: 60000 }, async () => {
+  const s = await setup("respawn-blocks", { UNCUT_AGENT_IDLE_MS: "300" });
+  const brief = { film: "A teaser for Acme", audience: "devs", duration: "20 s", formats: [], assets: [], visual: "dark", hardLines: [], deliverables: [] };
+  const idle = () => new Promise((r) => setTimeout(r, 900));
+  try {
+    await s.client.ok("agent.planSave", { brief });
+    await s.send("one", [{ text: "ok" }]);
+    await idle();
+    await s.send("two", [{ text: "ok" }]);
+    assert.match(s.prompts()[0]!, /A teaser for Acme/);
+    assert.doesNotMatch(s.prompts()[1]!, /A teaser for Acme/, "the respawned claude resumed the conversation that saw it");
+    await s.client.ok("agent.newThread", {});
+    await s.send("three", [{ text: "ok" }]);
+    assert.match(s.prompts()[2]!, /A teaser for Acme/, "a new conversation hasn't seen it");
+  } finally {
+    await s.stop();
+  }
+});
+
 test("the meter keeps Claude Code's capped window when a result reports the model's 1M", { skip, timeout: 60000 }, async () => {
   const s = await setup("capped-window", { FAKE_CONTEXT_WINDOW: "283000", FAKE_COMPACT_AT: "250000" });
   try {
@@ -171,6 +190,21 @@ test("the meter keeps Claude Code's capped window when a result reports the mode
     await s.send("two", [{ text: "ok" }, { ...usage, contextWindow: 1_000_000 }]);
     await s.agent.until((v) => v?.context?.compactAt === 250_000, 5000);
     assert.equal(s.latest().context.window, 283_000);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("a stored conversation that's gone: the fresh one gets the plan whole in that same message", { skip, timeout: 60000 }, async () => {
+  const s = await setup("gone-blocks", { UNCUT_AGENT_IDLE_MS: "300", FAKE_RESUME_GONE: "fake-session" });
+  const brief = { film: "A teaser for Acme", audience: "devs", duration: "20 s", formats: [], assets: [], visual: "dark", hardLines: [], deliverables: [] };
+  try {
+    await s.client.ok("agent.planSave", { brief });
+    await s.send("one", [{ text: "ok" }]);
+    await new Promise((r) => setTimeout(r, 900));
+    await s.send("two", [{ text: "ok" }]);
+    assert.match(s.prompts().at(-1)!, /A teaser for Acme/);
+    assert.doesNotMatch(s.prompts().at(-1)!, /Unchanged since/);
   } finally {
     await s.stop();
   }

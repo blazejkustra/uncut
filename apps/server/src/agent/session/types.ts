@@ -184,7 +184,7 @@ export interface Running {
   // The session it runs in (another one when a stale --resume had to start fresh).
   session: ClaudeSession;
   // The message as claude gets it (prompt, <context>, <editor-context>).
-  readonly message: string;
+  message: string;
   // export_video's range choices: the In/Out marks and the selected clips' span when the message was sent.
   readonly ranges?:
     | {
