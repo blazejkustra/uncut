@@ -4,7 +4,7 @@
 // on the way so the preview follows.
 import React from "react";
 
-import { elementBlocks, planElementEdit, type ElementBlock, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
+import { elementBlocks, planElementEdit, planElementMove, type ElementBlock, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
 import { graphicTime } from "@uncut/core/graphics";
 import type { Item } from "@uncut/core/types";
 
@@ -21,7 +21,7 @@ import "./elements.css";
 type Grip = "move" | "start" | "end";
 
 /** The element's new in and out, on the graphic's own frames, for a block dragged `delta` frames. */
-function spanAfter(item: Item, block: ElementBlock, grip: Grip, delta: number): ElementChange {
+function spanAfter(item: Item, block: ElementBlock, grip: Grip, delta: number): { readonly in: number; readonly out: number } {
   const shift = grip === "move" ? Math.max(-block.from, Math.min(item.duration - block.to, delta)) : delta;
   const from = grip === "end" ? block.from : Math.max(0, Math.min(block.to - 1, block.from + shift));
   const to = grip === "start" ? block.to : Math.min(item.duration, Math.max(block.from + 1, block.to + shift));
@@ -93,9 +93,9 @@ export function ElementRows({
     const x0 = e.clientX;
     const targets = [Math.round(getPlayback().frame) - start, ...blocks.filter((b) => b !== block).flatMap((b) => [b.from, b.to])];
     let moved = false;
-    let change: ElementChange | undefined;
+    let change: { readonly in: number; readonly out: number } | undefined;
     let shownDraft: PreviewDraft | undefined;
-    const plan = () => planElementEdit(item, block.element, change!);
+    const plan = () => (grip === "move" ? planElementMove(item, elements, block.element, change!) : planElementEdit(item, block.element, change!));
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientX - x0) < DRAG_PX) return;
       moved = true;

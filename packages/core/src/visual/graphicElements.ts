@@ -216,6 +216,27 @@ export function planElementEdits(
   return { op: "update_item", item: item.id, set };
 }
 
+/** A move of `element` in time, with the elements inside it: they are drawn in its clone, so they play with it. One edit. */
+export function planElementMove(
+  item: { readonly id: Id; readonly elements?: Item["elements"] },
+  elements: ReadonlyArray<Pick<GraphicElement, "key" | "from" | "text" | "parent">>,
+  element: Pick<GraphicElement, "key" | "from" | "text">,
+  change: { readonly in: Frame; readonly out: Frame },
+): Op {
+  const byKey = new Map(elements.map((e) => [e.key, e]));
+  const inside = (e: Pick<GraphicElement, "parent">) => {
+    for (let p = e.parent; p !== undefined; p = byKey.get(p)?.parent) if (p === element.key) return true;
+    return false;
+  };
+  const shift = change.in - elementSpan(element, item.elements?.[element.key])[0];
+  const followers = elements.filter(inside).map((e) => {
+    const [a, b] = elementSpan(e, item.elements?.[e.key]);
+    const from = Math.max(0, a + shift);
+    return { element: e, change: { in: from, out: Math.max(from + SHORTEST, b + shift) } };
+  });
+  return planElementEdits(item, [{ element, change }, ...followers]);
+}
+
 /** The edits as render's info carries them, each with its key, in key order; undefined when there are none. */
 export function elementsInfo(item: Pick<Item, "elements">): ReadonlyArray<GraphicElementEdit & { readonly key: string }> | undefined {
   const entries = Object.entries(item.elements ?? {});

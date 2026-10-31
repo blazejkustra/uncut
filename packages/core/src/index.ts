@@ -126,6 +126,7 @@ export {
   itemFrameOf,
   planElementEdit,
   planElementEdits,
+  planElementMove,
 } from "./visual/graphicElements.ts";
 export type { ElementBlock, ElementChange, GraphicElement, GraphicElements } from "./visual/graphicElements.ts";
 export { GRAPHIC_SCAN, joinScans, SCAN_RATE, scanTimes } from "./visual/graphicScan.ts";

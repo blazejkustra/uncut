@@ -103,6 +103,36 @@ test("selecting works from the timeline and from the canvas", { skip }, async ()
   await until("selected from the canvas", async () => (await selected()).join() === "b,b");
 });
 
+test("a canvas drag saves x and y as one edit and undo and redo follow; pressing an element leaves playback alone", { skip }, async () => {
+  const history = () => page.$eval("[data-testid=undo]", (e) => (e as HTMLButtonElement).disabled);
+  const playing = () => page.$eval("[data-testid=play]", (e) => e.innerHTML);
+  const before = await playing();
+  await page.click(block("b"));
+  await page.waitForSelector('[data-testid=element-selection][data-element="b"]', { timeout: 5000 });
+  const handle = await page.$("[data-testid=element-selection]");
+  const box = (await handle!.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.click(x, y);
+  await sleep(200);
+  assert.equal(await playing(), before, "a press doesn't play or pause");
+  assert.equal(await history(), true, "a press edits nothing");
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 40, y + 20, { steps: 6 });
+  await page.mouse.up();
+  await until("saved", () => saved().elements?.b?.x !== undefined);
+  const edit = saved().elements!.b!;
+  const units = 1280 / (await page.$eval(".pv-graphic iframe", (e) => e.getBoundingClientRect().width));
+  assert.ok(Math.abs(edit.x! - 40 * units) <= 2 * units && Math.abs(edit.y! - 20 * units) <= 2 * units, `saved ${edit.x},${edit.y} at ${units} units a pixel`);
+  await page.click("[data-testid=undo]");
+  await until("undone", () => saved().elements === undefined);
+  await page.click("[data-testid=redo]");
+  await until("redone", () => saved().elements?.b?.x === edit.x);
+  await page.click("[data-testid=undo]");
+  await until("undone again", () => saved().elements === undefined);
+});
+
 test("a drag retimes as one edit, the page follows, undo takes it back, ⌫ deletes only the element", { skip }, async () => {
   const r = (await (await page.$(block("a")))!.boundingBox())!;
   await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);

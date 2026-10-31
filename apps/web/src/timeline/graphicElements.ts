@@ -34,6 +34,9 @@ async function load(key: string, src: string) {
   notify();
 }
 
+// One read at a time: each holds one of the page's few connections and a rasteriser for seconds.
+let reads = Promise.resolve();
+
 /** What's known of `src`'s elements; the first ask reads them. */
 export function elementsOf(src: string | undefined): ElementsState | undefined {
   const dir = state.snapshot?.dir;
@@ -42,7 +45,7 @@ export function elementsOf(src: string | undefined): ElementsState | undefined {
   const known = found.get(key);
   if (known) return known;
   found.set(key, { status: "loading" });
-  void load(key, src);
+  reads = reads.then(() => load(key, src));
   return { status: "loading" };
 }
 

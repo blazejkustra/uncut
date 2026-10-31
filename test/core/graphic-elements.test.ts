@@ -9,6 +9,7 @@ import {
   createSession,
   elementBlocks,
   elementSpan,
+  planElementMove,
   elementsInfo,
   graphicElementsFrom,
   graphicInfo,
@@ -237,4 +238,18 @@ test("blocks pack in rows, clip to the item, follow edits and leave deleted elem
     elementBlocks({ ...item, in: 200 }, list).map((b) => b.element.key),
     ["c"],
   );
+});
+
+test("a moved element takes the elements inside it along, in one edit", () => {
+  const panel = { key: "panel", from: [30, 90] as const };
+  const list = [
+    panel,
+    { key: "line", from: [40, 60] as const, parent: "panel" },
+    { key: "word", from: [45, 50] as const, parent: "line" },
+    { key: "other", from: [30, 90] as const },
+  ];
+  const op = planElementMove({ id: "g" }, list, panel, { in: 60, out: 120 }) as unknown as { set: { elements: Record<string, { in: number; out: number }> } };
+  assert.deepEqual(Object.keys(op.set.elements).sort(), ["line", "panel", "word"]);
+  assert.deepEqual([op.set.elements.line!.in, op.set.elements.line!.out], [70, 90]);
+  assert.deepEqual([op.set.elements.word!.in, op.set.elements.word!.out], [75, 80]);
 });
