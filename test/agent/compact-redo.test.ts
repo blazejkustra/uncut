@@ -36,14 +36,14 @@ before(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-compact-redo-")));
 });
 
-async function setup(name: string) {
+async function setup(name: string, fake: Record<string, string> = {}) {
   const base = join(root, name);
   mkdirSync(join(base, "projects"), { recursive: true });
   const plan = join(base, "plan.json");
   const log = join(base, "prompts.jsonl");
   writeFileSync(log, "");
   const server = await startServer({
-    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_COMPACT_AT: "400000" },
+    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_COMPACT_AT: "400000", ...fake },
   });
   const client = await connect(server.ready.port, server.ready.token);
   const agent = client.subscribe("agent.subscribe");
@@ -124,6 +124,25 @@ test(
     }
   },
 );
+
+test("a respawn that resumes keeps the plan as a line; a new chat gets it whole", { skip, timeout: 60000 }, async () => {
+  const s = await setup("respawn-blocks", { UNCUT_AGENT_IDLE_MS: "300" });
+  const brief = { film: "A teaser for Acme", audience: "devs", duration: "20 s", formats: [], assets: [], visual: "dark", hardLines: [], deliverables: [] };
+  const idle = () => new Promise((r) => setTimeout(r, 900));
+  try {
+    await s.client.ok("agent.planSave", { brief });
+    await s.send("one", [{ text: "ok" }]);
+    await idle();
+    await s.send("two", [{ text: "ok" }]);
+    assert.match(s.prompts()[0]!, /A teaser for Acme/);
+    assert.doesNotMatch(s.prompts()[1]!, /A teaser for Acme/, "the respawned claude resumed the conversation that saw it");
+    await s.client.ok("agent.newThread", {});
+    await s.send("three", [{ text: "ok" }]);
+    assert.match(s.prompts()[2]!, /A teaser for Acme/, "a new conversation hasn't seen it");
+  } finally {
+    await s.stop();
+  }
+});
 
 test("Compact with no conversation yet is refused", { skip, timeout: 30000 }, async () => {
   const s = await setup("compact-empty");

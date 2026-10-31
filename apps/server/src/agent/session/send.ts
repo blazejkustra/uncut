@@ -23,28 +23,39 @@ import { shellAuthReady } from "../../app/shellEnv.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
 
-/** What a session was last sent of the <brand> and <plan> blocks, and how many messages ago it was sent whole. */
+/** What a conversation was last sent of the <brand> and <plan> blocks. */
 export interface SentBlocks {
   readonly brand: string;
   readonly plan: string;
-  readonly since: number;
 }
 
 /**
- * D260 (issue #81): per session, the blocks the model has seen (committed: a message claude
- * answered) and those of the message in flight (pending, committed once claude reads it). A block
- * that hasn't changed since is one line instead; it's sent whole on a new session (another claude)
- * and every RESEND_EVERY messages, so a compacted conversation gets it back.
+ * D260 (issue #81): per agent, the blocks its conversation has seen (committed: a message claude
+ * answered) and those of the message in flight (pending, committed once claude read it). A block
+ * that hasn't changed since is one line instead. The record outlives a respawn, which resumes the
+ * same conversation; a different conversation id, or a compaction, sends both whole.
  */
-const sentBlocks = new WeakMap<ClaudeSession, { committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running } }>();
-export const RESEND_EVERY = 8;
+const sentBlocks = new WeakMap<Loaded, { conversation?: string | undefined; committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running } }>();
 
 /**
  * D266: claude compacted the conversation (auto or /compact: its system/compact_boundary event), so
  * the blocks it saw may be summarised away; the next message carries both whole again.
  */
 export function forgetSentBlocks(s: ClaudeSession): void {
-  sentBlocks.delete(s);
+  sentBlocks.delete(s.owner);
+}
+
+/** What this agent's current conversation has seen: the last message's blocks if claude read it, nothing if the conversation is another one. */
+function committedBlocks(owner: Loaded) {
+  const blocks = sentBlocks.get(owner) ?? {};
+  if (blocks.pending?.r.delivered) {
+    blocks.committed = blocks.pending.sent;
+    blocks.conversation = blocks.pending.r.owner.sessionId;
+  }
+  blocks.pending = undefined;
+  if (!owner.sessionId || blocks.conversation !== owner.sessionId) blocks.committed = undefined;
+  sentBlocks.set(owner, blocks);
+  return blocks;
 }
 
 /** The <brand> and <plan> part of a message: blocks that changed whole, unchanged ones as a line each. */
@@ -52,13 +63,12 @@ export function leanPlanBlock(full: string, last: SentBlocks | undefined): { tex
   const at = full.indexOf("\n\n<plan>");
   const brand = at < 0 ? full : full.slice(0, at);
   const plan = at < 0 ? "" : full.slice(at + 2);
-  if (!last || last.since + 1 >= RESEND_EVERY) return { text: full, sent: { brand, plan, since: 0 } };
+  if (!last) return { text: full, sent: { brand, plan } };
   const parts = [brand === last.brand ? "<brand>\nUnchanged since your last message (brand_read reads the kit again).\n</brand>" : brand];
   if (plan === last.plan) {
     if (plan) parts.push("<plan>\nUnchanged since your last message: the same brief, storyboard and last review (plan_read reads them again).\n</plan>");
   } else parts.push(plan || "<plan>\nThe brief, storyboard and reviews are gone: nothing is planned now.\n</plan>");
-  const changed = brand !== last.brand || plan !== last.plan;
-  return { text: parts.join("\n\n"), sent: changed ? { brand, plan, since: 0 } : { ...last, since: last.since + 1 } };
+  return { text: parts.join("\n\n"), sent: { brand, plan } };
 }
 
 /** Claude Code's /compact, with or without its focus words ("/compact keep the storyboard"). */
@@ -300,10 +310,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       // D260: the brand kit and plan whole only when they changed since this session last saw them.
       // What it has seen: the last message's blocks once claude read that message (a turn stopped or
       // failed before claude read it doesn't count).
-      const blocks = sentBlocks.get(s) ?? {};
-      if (blocks.pending?.r.delivered) blocks.committed = blocks.pending.sent;
-      blocks.pending = undefined;
-      sentBlocks.set(s, blocks);
+      const blocks = committedBlocks(owner);
       const lean = leanPlanBlock(planBlock, blocks.committed);
       let message = compacting
         ? text
