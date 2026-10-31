@@ -124,6 +124,9 @@ export function sessionArgs(o: {
   return args;
 }
 
+/** Claude Code compacts 33k below this window, so a conversation is summarised at about 250k instead of near 1M. */
+export const AUTO_COMPACT_WINDOW = 283_000;
+
 /**
  * The session's environment (D181, D277): claudeEnv (Claude Code's own sign-in, whatever it is; no
  * generator keys or other secrets; no CLAUDE_CODE_* from outside), plus the sign-in variables from
@@ -138,6 +141,7 @@ export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
   ENABLE_TOOL_SEARCH: "false",
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(AUTO_COMPACT_WINDOW),
 });
 
 /**

@@ -190,7 +190,7 @@ export const makeStream = (ctx: RunCtx) => {
       });
       return;
     }
-    const window = last ? resultWindow(msg, last.model ?? s.initModel ?? s.model) : undefined;
+    const window = last ? (s.window ?? resultWindow(msg, last.model ?? s.initModel ?? s.model)) : undefined;
     if (!last || !window) return;
     owner.context = { ...last, window };
     const key = windowKey(ids);

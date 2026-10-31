@@ -36,14 +36,14 @@ before(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-compact-redo-")));
 });
 
-async function setup(name: string) {
+async function setup(name: string, fake: Record<string, string> = {}) {
   const base = join(root, name);
   mkdirSync(join(base, "projects"), { recursive: true });
   const plan = join(base, "plan.json");
   const log = join(base, "prompts.jsonl");
   writeFileSync(log, "");
   const server = await startServer({
-    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_COMPACT_AT: "400000" },
+    env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_COMPACT_AT: "400000", ...fake },
   });
   const client = await connect(server.ready.port, server.ready.token);
   const agent = client.subscribe("agent.subscribe");
@@ -124,6 +124,18 @@ test(
     }
   },
 );
+
+test("the meter keeps Claude Code's capped window when a result reports the model's 1M", { skip, timeout: 60000 }, async () => {
+  const s = await setup("capped-window", { FAKE_CONTEXT_WINDOW: "283000", FAKE_COMPACT_AT: "250000" });
+  try {
+    await s.send("one", [{ text: "ok" }, { ...usage, contextWindow: 1_000_000 }]);
+    await s.send("two", [{ text: "ok" }, { ...usage, contextWindow: 1_000_000 }]);
+    await s.agent.until((v) => v?.context?.compactAt === 250_000, 5000);
+    assert.equal(s.latest().context.window, 283_000);
+  } finally {
+    await s.stop();
+  }
+});
 
 test("Compact with no conversation yet is refused", { skip, timeout: 30000 }, async () => {
   const s = await setup("compact-empty");

@@ -30,6 +30,7 @@ import {
   type Access,
   type PermissionContext,
 } from "../../apps/server/src/agent/agentPermissions.ts";
+import { COMPACT_HOOKS } from "../../apps/server/src/agent/permissions/settings.ts";
 import { doingLabel, stepLabel } from "../../apps/server/src/agent/agentTools.ts";
 import { safeName, sniff } from "../../apps/server/src/agent/agentDownload.ts";
 
@@ -429,7 +430,11 @@ test("D214 Auto's claude-side rules: the same secret deny rules in every access;
   const look = JSON.parse(sessionSettings({ access: "look" }));
   const ask = JSON.parse(sessionSettings({ access: "ask" }));
   const auto = JSON.parse(sessionSettings({ access: "auto", projects: [P, P] }));
-  const plain = { disableSkillShellExecution: true, permissions: { deny: denyRules(), ask: [...uploadAskRules(), ...appDataAskRules()] } };
+  const plain = {
+    disableSkillShellExecution: true,
+    hooks: COMPACT_HOOKS,
+    permissions: { deny: denyRules(), ask: [...uploadAskRules(), ...appDataAskRules()] },
+  };
   assert.deepEqual(look, plain);
   assert.deepEqual(ask, plain, "Ask first and Look only: the deny rules, and commands naming apps' data and uploads for Uncut");
   assert.deepEqual(JSON.parse(sessionSettings()), plain);
