@@ -50,7 +50,7 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
       {hasItems && (
         <div className="group" data-testid="new-format">
           <div className="group-label">New format</div>
-          <div className="format-copies">
+          <div className="field-row three">
             {ASPECTS.filter((a) => a.id !== aspect).map((a) => (
               <button
                 key={a.id}
@@ -65,7 +65,9 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
               </button>
             ))}
           </div>
-          <div className="muted small">Opens a copy next to this project with a new chat, so the long conversation stays here.</div>
+          <div className="muted small" style={{ marginTop: 6 }}>
+            Opens a copy next to this project with a new chat, so the long conversation stays here.
+          </div>
         </div>
       )}
       <div className="group">
