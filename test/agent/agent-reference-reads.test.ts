@@ -13,6 +13,8 @@ import {
   type PermissionContext,
 } from "../../apps/server/src/agent/agentPermissions.ts";
 
+import { sessionSettings } from "../../apps/server/src/agent/permissions/settings.ts";
+
 const HOME = "/Users/me";
 const PROJECT = `${HOME}/Movies/argent-100s.uncut`;
 const REF = `${HOME}/Movies/argent-e2e.uncut`;
@@ -110,7 +112,20 @@ test("the refusal says what runs: a cut after jq is named, and the rule lists an
   assert.match(r.message, /another Uncut project \(its project\.json/);
   assert.match(r.message, /`cut -c1-1500` isn't one/);
   const own = bash(`python3 -c "import json; d=json.load(open('project.json')); print(len(d['tracks']))"`);
-  assert.ok(own.kind === "deny" && /cp <path>\/project\.json \.cache\/work\//.test(own.message), own.kind === "deny" ? own.message : own.kind);
+  assert.ok(own.kind === "deny", own.kind);
+  assert.match(own.message, /This project's data comes from project_read/);
+});
+
+test("the copy a refusal advises runs: only this project's files are in claude's deny rules, and claude blocks a cp of those", () => {
+  const own = bash(`python3 -c "import json; print(json.load(open('project.json')))"`);
+  assert.ok(own.kind === "deny", own.kind);
+  const advised = /\(cp <that project>\/project\.json (\S+)\)/.exec(own.message);
+  assert.ok(advised, own.message);
+  assert.equal(bash(`cp ${REF}/project.json ${advised[1]}`).kind, "allow");
+  const deny = JSON.parse(sessionSettings({ access: "auto", projects: [PROJECT] })).permissions.deny as Array<string>;
+  assert.ok(deny.includes(`Edit(/${PROJECT}/project.json)`), "claude refuses this project's, so it's never advised");
+  assert.ok(!deny.some((rule) => rule.includes(REF)), "another project's isn't in a deny rule");
+  assert.doesNotMatch(own.message, /cp project\.json|cp <path>/);
 });
 
 test("the brand kits are read in Auto whether or not one is active (fam t0 #70, t15 #2); keys, token and settings stay refused", () => {
