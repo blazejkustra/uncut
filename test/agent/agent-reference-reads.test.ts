@@ -119,9 +119,10 @@ test("the refusal says what runs: a cut after jq is named, and the rule lists an
 test("the copy a refusal advises runs: only this project's files are in claude's deny rules, and claude blocks a cp of those", () => {
   const own = bash(`python3 -c "import json; print(json.load(open('project.json')))"`);
   assert.ok(own.kind === "deny", own.kind);
-  const advised = /\(cp <that project>\/project\.json (\S+)\)/.exec(own.message);
+  const advised = /\(mkdir -p \.cache\/work && cp <that project>\/project\.json (\S+)\)/.exec(own.message);
   assert.ok(advised, own.message);
-  assert.equal(bash(`cp ${REF}/project.json ${advised[1]}`).kind, "allow");
+  assert.equal(bash(`mkdir -p .cache/work && cp ${REF}/project.json ${advised[1]}`).kind, "allow");
+  assert.equal(bash(`python3 x.py ${advised[1]}`).kind, "ask", "the copy's name doesn't get it refused as Uncut's own file");
   const deny = JSON.parse(sessionSettings({ access: "auto", projects: [PROJECT] })).permissions.deny as Array<string>;
   assert.ok(deny.includes(`Edit(/${PROJECT}/project.json)`), "claude refuses this project's, so it's never advised");
   assert.ok(!deny.some((rule) => rule.includes(REF)), "another project's isn't in a deny rule");

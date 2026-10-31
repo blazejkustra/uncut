@@ -498,7 +498,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (ctx.access === "auto" && NAMES_OWN.test(command))
       return {
         kind: "deny",
-        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read. This project's data comes from project_read, and Claude Code blocks any cp of its project.json; to run another program on another project's, copy that one first (cp <that project>/project.json .cache/work/) and use the copy. Change the project with timeline_edit and the other Uncut tools.`,
+        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read. This project's data comes from project_read, and Claude Code blocks any cp of its project.json; to run another program on another project's, copy that one first (mkdir -p .cache/work && cp <that project>/project.json .cache/work/ref.json) and use the copy. Change the project with timeline_edit and the other Uncut tools.`,
       };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);
