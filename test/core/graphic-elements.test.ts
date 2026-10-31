@@ -9,7 +9,10 @@ import {
   createSession,
   elementBlocks,
   elementSpan,
-  planElementMove,
+  boxOnCanvas,
+  fromCanvas,
+  onCanvas,
+  planElementChanges,
   elementsInfo,
   graphicElementsFrom,
   graphicInfo,
@@ -248,8 +251,64 @@ test("a moved element takes the elements inside it along, in one edit", () => {
     { key: "word", from: [45, 50] as const, parent: "line" },
     { key: "other", from: [30, 90] as const },
   ];
-  const op = planElementMove({ id: "g" }, list, panel, { in: 60, out: 120 }) as unknown as { set: { elements: Record<string, { in: number; out: number }> } };
+  const op = planElementChanges({ id: "g" }, list, [{ element: panel, change: { in: 60, out: 120 } }], 30) as unknown as {
+    set: { elements: Record<string, { in: number; out: number }> };
+  };
   assert.deepEqual(Object.keys(op.set.elements).sort(), ["line", "panel", "word"]);
   assert.deepEqual([op.set.elements.line!.in, op.set.elements.line!.out], [70, 90]);
   assert.deepEqual([op.set.elements.word!.in, op.set.elements.word!.out], [75, 80]);
+});
+
+test("a stretched or trimmed element carries its children as it plays them, ends staying with its ends", () => {
+  const panel = { key: "panel", from: [30, 330] as const };
+  const early = { key: "early", from: [35, 45] as const, parent: "panel" };
+  const middle = { key: "middle", from: [150, 210] as const, parent: "panel" };
+  const late = { key: "late", from: [315, 325] as const, parent: "panel" };
+  const list = [panel, early, middle, late];
+  const spans = (change: { in?: number | null; out?: number | null }, elements?: Record<string, { from: ReadonlyArray<number>; in: number; out: number }>) =>
+    (
+      planElementChanges({ id: "g", ...(elements ? { elements } : {}) }, list, [{ element: panel, change }], 30) as unknown as {
+        set: { elements: Record<string, { in: number; out: number }> | null };
+      }
+    ).set.elements;
+  const longer = spans({ out: 630 })!;
+  assert.equal(longer.early, undefined, "the entrance keeps its pace, so it stays where the file has it");
+  assert.deepEqual([longer.late!.in, longer.late!.out], [615, 625], "the exit stays with the end");
+  assert.deepEqual([longer.middle!.in, longer.middle!.out], [266, 394], "the middle stretches with the parent");
+  const reset = spans({ in: null, out: null }, longer as never);
+  assert.equal(reset, null, "a reset brings the children back too");
+});
+
+test("an edit that names a child wins, and a change of looks moves nothing", () => {
+  const panel = { key: "panel", from: [30, 90] as const };
+  const child = { key: "child", from: [40, 60] as const, parent: "panel" };
+  const op = (edits: Parameters<typeof planElementChanges>[2]) =>
+    (planElementChanges({ id: "g" }, [panel, child], edits, 30) as unknown as { set: { elements: Record<string, { in?: number; x?: number }> } }).set.elements;
+  assert.equal(
+    op([
+      { element: panel, change: { in: 60, out: 120 } },
+      { element: child, change: { in: 100, out: 110 } },
+    ]).child!.in,
+    100,
+  );
+  assert.deepEqual(Object.keys(op([{ element: panel, change: { x: 5 } }])), ["panel"]);
+});
+
+test("canvas px and an element's own translate: a scaled wrapper, a turned one, a flat one", () => {
+  assert.deepEqual(fromCanvas([0.88, 0, 0, 0.88], 30, 15), [34.09, 17.05]);
+  assert.deepEqual(
+    onCanvas([0.88, 0, 0, 0.88], 34.09, 17.05).map((n) => Math.round(n)),
+    [30, 15],
+  );
+  assert.deepEqual(fromCanvas([0, 1, -1, 0], 10, 0), [0, -10]);
+  assert.deepEqual(fromCanvas([0, 0, 0, 0], 10, 5), [10, 5], "no measure: px as they are");
+});
+
+test("a document's box stays on the canvas", () => {
+  const canvas = { width: 1280, height: 720 };
+  assert.deepEqual(boxOnCanvas({ x: -1e7, y: -1e7, width: 2e7, height: 2e7 }, canvas), { x: 0, y: 0, width: 1280, height: 720 });
+  assert.deepEqual(boxOnCanvas({ x: 100, y: 50, width: 200, height: 1 }, canvas), { x: 100, y: 50, width: 200, height: 1 });
+  assert.equal(boxOnCanvas({ x: 2000, y: 0, width: 10, height: 10 }, canvas), undefined);
+  assert.equal(boxOnCanvas({ x: Number.NaN, y: 0, width: 10, height: 10 }, canvas), undefined);
+  assert.equal(boxOnCanvas(undefined, canvas), undefined);
 });

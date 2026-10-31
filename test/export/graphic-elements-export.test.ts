@@ -6,7 +6,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -18,8 +18,10 @@ import {
   planElementEdit,
   scanTimes,
   type Item,
+  type Project,
   type ScannedElement,
 } from "../../packages/core/src/index.ts";
+import { graphicElementsOf } from "../../apps/server/src/export/graphicElements.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../../apps/server/src/export/rasterizer.ts";
 
 const DESKTOP = process.env.UNCUT_TEST_DESKTOP ?? resolve("apps/desktop/dist/main.cjs");
@@ -223,4 +225,41 @@ test("motion blur's sub-frames each go through the edit", { skip }, async () => 
 test("the graphic-scan request is the page function's", () => {
   assert.match(readFileSync("apps/desktop/src/render.ts", "utf8"), /GRAPHIC_SCAN/);
   assert.match(GRAPHIC_SCAN, /__uncutRender/);
+});
+
+test("two items of one file with different props get their own scan; a slow scan is kept for a day", { skip }, async () => {
+  const html = `<style>div{position:absolute;width:40px;height:40px;background:#fff}</style><div id="a"></div><div id="b"></div><script>
+function render(t, info) {
+  const late = info?.props?.late ? 4 : 1;
+  document.getElementById("a").style.visibility = t >= late && t < late + 1 ? "visible" : "hidden";
+  document.getElementById("b").style.visibility = t >= 3 && t < 3.5 ? "visible" : "hidden";
+}
+</script>`;
+  const dir = join(root, "props.uncut");
+  mkdirSync(join(dir, "graphics"), { recursive: true });
+  writeFileSync(join(dir, "graphics", "p.html"), html);
+  process.env.UNCUT_RENDER_ENTRY = DESKTOP;
+  const item = (id: string, props?: unknown) => ({ id, type: "graphic", src: "graphics/p.html", duration: 180, ...(props ? { props } : {}) });
+  const project = {
+    format: "uncut/0",
+    name: "P",
+    canvas,
+    media: [],
+    tracks: [{ id: "v", kind: "video", role: "main", name: "Main", items: [item("one"), item("two", { late: true })] }],
+  } as unknown as Project;
+  const paths = { graphicLibsDir: resolve("assets/graphic-libs"), fontsDir: resolve("assets/fonts"), dataDir: join(root, "data") };
+  const startOf = async (id?: string) =>
+    (await graphicElementsOf(paths, "ffmpeg", dir, project, "graphics/p.html", id)).elements.find((e) => e.key === "a")?.from[0];
+  const early = await startOf("one");
+  const late = await startOf("two");
+  assert.ok(early !== undefined && late !== undefined && late - early > 60, `a at ${early} and ${late}`);
+
+  const folder = join(dir, ".cache", "graphic-elements");
+  const [one, two] = readdirSync(folder);
+  const slow = { elements: [], reason: "Uncut couldn't read this graphic's elements (too long). It stays one block: edit it as a whole." };
+  for (const file of [one!, two!]) writeFileSync(join(folder, file), JSON.stringify({ length: 180, result: slow, slowAt: Date.now() }));
+  assert.equal((await graphicElementsOf(paths, "ffmpeg", dir, project, "graphics/p.html", "one")).reason, slow.reason, "kept, no new scan");
+  const dayOld = Date.now() - 25 * 3600_000;
+  for (const file of [one!, two!]) writeFileSync(join(folder, file), JSON.stringify({ length: 180, result: slow, slowAt: dayOld }));
+  assert.equal(await startOf("one"), early, "a day later it is tried again");
 });

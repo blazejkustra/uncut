@@ -11,7 +11,7 @@ import {
   graphicTime,
   itemFrameOf,
   layout,
-  planElementEdits,
+  planElementChanges,
 } from "@uncut/core";
 
 export interface ElementEditArgs {
@@ -70,6 +70,7 @@ export function elementEditOp(
   item: Item,
   itemStart: number,
   edits: ReadonlyArray<ElementEditArgs>,
+  fps: number,
 ): { readonly op: Op } | { readonly problem: string } {
   const byKey = new Map<string, GraphicElement>(found.elements.map((e) => [e.key, e]));
   const missing = edits.find((e) => !byKey.has(e.element));
@@ -80,9 +81,11 @@ export function elementEditOp(
       problem: `${flattened.element} holds more than text, so a new text would wipe what's inside it. Change the text of the elements inside it, or write a new graphic.`,
     };
   return {
-    op: planElementEdits(
+    op: planElementChanges(
       item,
+      found.elements,
       edits.map((e) => ({ element: byKey.get(e.element)!, change: changeOf(e, item, itemStart) })),
+      fps,
     ),
   };
 }

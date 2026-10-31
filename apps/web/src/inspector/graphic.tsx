@@ -1,13 +1,13 @@
 // A graphic's elements in the Inspector (D316): the list (click selects, here, on the timeline and
 // on the canvas), and the selected element's times and looks. Each change is one edit on the item.
-import { elementSpan, itemFrameOf, planElementEdit, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
+import { elementSpan, fromCanvas, itemFrameOf, onCanvas, planElementChanges, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
 import { graphicTime } from "@uncut/core/graphics";
 import type { Item } from "@uncut/core/types";
 
 import { playback, usePlayback } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { findItem } from "../timeline/edit.ts";
-import { elementsOf, seekToElement, useElementsVersion } from "../timeline/graphicElements.ts";
+import { elementBasis, elementsOf, seekToElement, useElementsVersion } from "../timeline/graphicElements.ts";
 import { resetOp } from "../timeline/ElementRows.tsx";
 import { Prop, Section } from "./controls.tsx";
 import { ColorPicker, NumberField, send } from "./fields.tsx";
@@ -18,12 +18,14 @@ function ElementEditor({
   project,
   item,
   element,
+  elements,
   start,
   locked,
 }: {
   project: ProjectModel;
   item: Item;
   element: GraphicElement;
+  elements: ReadonlyArray<GraphicElement>;
   start: number;
   locked: boolean;
 }) {
@@ -33,8 +35,14 @@ function ElementEditor({
   const change = (next: ElementChange, summary = `Edited ${element.name}`) =>
     send((p) => {
       const now = findItem(p, item.id)?.item ?? item;
-      return { ops: [planElementEdit(now, element, next)], summary };
+      return { ops: [planElementChanges(now, elements, [{ element, change: next }], fps)], summary };
     });
+  const basis = elementBasis(item.id, element.key);
+  const [canvasX, canvasY] = onCanvas(basis, edit?.x ?? 0, edit?.y ?? 0);
+  const place = (x: number, y: number) => {
+    const [ownX, ownY] = fromCanvas(basis, x, y);
+    change({ x: ownX || null, y: ownY || null });
+  };
   const frameOn = (s: number) => graphicTime(item, Math.round(s * fps) - start);
   return (
     <Section title={element.name} testId="insp-element">
@@ -89,8 +97,8 @@ function ElementEditor({
         </Prop>
       )}
       <Prop label="Position">
-        <NumberField label="X" testId="element-x" disabled={locked} value={edit?.x ?? 0} onCommit={(x) => change({ x: x || null })} />
-        <NumberField label="Y" testId="element-y" disabled={locked} value={edit?.y ?? 0} onCommit={(y) => change({ y: y || null })} />
+        <NumberField label="X" testId="element-x" disabled={locked} value={Math.round(canvasX)} onCommit={(x) => place(x ?? 0, canvasY)} />
+        <NumberField label="Y" testId="element-y" disabled={locked} value={Math.round(canvasY)} onCommit={(y) => place(canvasX, y ?? 0)} />
       </Prop>
       <Prop label="Scale">
         <NumberField
@@ -127,7 +135,7 @@ function ElementEditor({
           className="btn"
           data-testid="element-reset"
           disabled={locked || !edit}
-          onClick={() => send((p) => ({ ops: [resetOp(findItem(p, item.id)?.item ?? item, element)], summary: `Reset ${element.name}` }))}
+          onClick={() => send((p) => ({ ops: [resetOp(findItem(p, item.id)?.item ?? item, elements, element, fps)], summary: `Reset ${element.name}` }))}
         >
           Reset
         </button>
@@ -139,7 +147,7 @@ function ElementEditor({
 export function GraphicElementsEditor({ project, item, start, locked }: { project: ProjectModel; item: Item; start: number; locked: boolean }) {
   useElementsVersion();
   const selected = usePlayback((s) => s.element);
-  const known = elementsOf(item.src);
+  const known = elementsOf(item);
   if (!known || known.status === "loading")
     return (
       <div className="insp-sub" data-testid="elements-reading">
@@ -179,7 +187,7 @@ export function GraphicElementsEditor({ project, item, start, locked }: { projec
           })}
         </div>
       </Section>
-      {element && <ElementEditor project={project} item={item} element={element} start={start} locked={locked} />}
+      {element && <ElementEditor project={project} item={item} element={element} elements={known.elements} start={start} locked={locked} />}
     </>
   );
 }

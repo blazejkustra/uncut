@@ -20,6 +20,7 @@
 .el-block:hover .el-grip, .el-block.selected .el-grip { background: rgb(255 255 255 / 22%); }
 .tl-lane.locked .el-block { cursor: not-allowed; }
 .pv-element-sel { position: absolute; box-sizing: border-box; border: 2px solid var(--select); cursor: move; pointer-events: auto; z-index: 40; }
+.pv-element-sel::after { content: ""; position: absolute; inset: calc(-2px - var(--grab-y)) calc(-2px - var(--grab-x)); }
 .el-list { display: flex; flex-direction: column; max-height: 240px; overflow-y: auto; margin: 0 -4px; }
 .el-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); font-size: 12px; text-align: left; cursor: pointer; }
 .el-row:hover { background: var(--select-soft); }

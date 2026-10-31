@@ -426,7 +426,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             await config.shellReady;
             return which("ffmpeg", process.env.PATH ?? "");
           });
-          const found = yield* Effect.promise(() => graphicElementsOf(config, bin, v.dir, project, placed.item.src!));
+          const found = yield* Effect.promise(() => graphicElementsOf(config, bin, v.dir, project, placed.item.src!, placed.item.id));
           if (name === "graphic_elements")
             return textResult({
               item: placed.item.id,
@@ -436,7 +436,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               elements: elementRows(found, placed.item, placed.start),
             });
           if (!Array.isArray(args.edits) || !args.edits.length) return textResult("edits must list at least one element.", true);
-          const planned = elementEditOp(found, placed.item, placed.start, args.edits as ReadonlyArray<ElementEditArgs>);
+          const planned = elementEditOp(found, placed.item, placed.start, args.edits as ReadonlyArray<ElementEditArgs>, project.canvas.fps);
           if ("problem" in planned) return textResult(found.reason ?? planned.problem, true);
           return yield* runTool(r, "timeline_edit", {
             baseRevision: args.baseRevision,
