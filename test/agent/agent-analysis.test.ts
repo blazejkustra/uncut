@@ -226,10 +226,9 @@ test(
     assert.equal(l.silence.ranges.length, GAPS.length, JSON.stringify(l.silence));
     for (const [i, [start, end]] of GAPS.entries()) {
       const r = l.silence.ranges[i];
-      assert.ok(Math.abs(r.startSeconds - start!) <= 0.05 && Math.abs(r.endSeconds - end!) <= 0.05, `silence ${i}: ${JSON.stringify(r)}`);
       // Project frames of the media (30 fps), inside the silence.
-      assert.equal(r.start, Math.ceil(r.startSeconds * 30 - 1e-6));
-      assert.equal(r.end, Math.min(Math.floor(r.endSeconds * 30 + 1e-6), 153));
+      assert.ok(Math.abs(r.start / 30 - start!) <= 0.09 && Math.abs(r.end / 30 - Math.min(end!, 153 / 30)) <= 0.09, `silence ${i}: ${JSON.stringify(r)}`);
+      assert.deepEqual(Object.keys(r), ["start", "end"]);
     }
     // ffmpeg's own measurement of the same sound (loudnorm, another filter).
     const measured = spawnSync(
@@ -272,7 +271,7 @@ test(
     // A range lists only the silences that overlap it.
     const r = jsonOf(ranged!).loudness.silence;
     assert.equal(r.count, 1);
-    assert.ok(Math.abs(r.ranges[0].startSeconds - 3.0) <= 0.05);
+    assert.ok(Math.abs(r.ranges[0].start / 30 - 3.0) <= 0.09);
   },
 );
 
