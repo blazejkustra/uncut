@@ -572,7 +572,7 @@ test(
               ops: [{ op: "insert_item", track: "cards", item: { id: "move", type: "graphic", src: "graphics/move.html", start: 120, duration: 30 } }],
             },
           },
-          { tool: "render_frames", args: { frames: [30, 90, 135], scale: 1 } },
+          ...[30, 90, 135].map((f) => ({ tool: "render_frames", args: { frames: [f], scale: 1 } })),
           {
             tool: "timeline_edit",
             args: {
@@ -597,7 +597,7 @@ test(
       .filter(Boolean)
       .slice(before)
       .map((l) => JSON.parse(l)) as Array<{ tool: string; result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string }> } }>;
-    const [, listed, edit, wrote, again, , edit2, frames] = results;
+    const [, listed, edit, wrote, again, , edit2, frame30, frame90, frame135] = results;
     // modules_list: every drawn component with its params schema and placement, showsInPreview.
     const mods = JSON.parse(listed!.result.content[0]!.text!) as Array<{
       id: string;
@@ -643,9 +643,10 @@ test(
     assert.match(again!.result.content[0]!.text!, /already exists, and graphics are never overwritten/);
     assert.ok(!edit2!.result.isError, edit2!.result.content[0]!.text);
     // render_frames: the phone with the footage in it, the end card, the graphic.
-    assert.ok(!frames!.result.isError, frames!.result.content[0]!.text);
-    const images = frames!.result.content.filter((c) => c.type === "image");
-    assert.equal(images.length, 3);
+    const images = [frame30!, frame90!, frame135!].map((f) => {
+      assert.ok(!f.result.isError, f.result.content[0]!.text);
+      return f.result.content.find((c) => c.type === "image");
+    });
     const jpgs = [30, 90, 135].map((f, i) => {
       const file = join(root, `agent-${f}.jpg`);
       writeFileSync(file, Buffer.from(images[i]!.data!, "base64"));

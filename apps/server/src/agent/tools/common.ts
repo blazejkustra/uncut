@@ -1,9 +1,21 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { LoudnessResult } from "../../analysis/analysis.ts";
+import { FRAME_EDGE } from "../agentTools.ts";
 
 /** D189: render_frames with phone true: frames this wide (a phone in a feed). */
 export const PHONE_WIDTH = 360;
+
+/**
+ * render_frames' scale: phone true draws a feed's width; else `asked` (0 to 1), which only a single
+ * frame (a detail check) may take past FRAME_EDGE; else FRAME_EDGE.
+ */
+export function frameScale(canvas: { readonly width: number; readonly height: number }, frames: number, asked: unknown, phone: boolean): number {
+  if (phone) return Math.min(1, PHONE_WIDTH / canvas.width);
+  const edge = Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
+  if (typeof asked !== "number" || asked <= 0 || asked > 1) return edge;
+  return frames === 1 ? asked : Math.min(asked, edge);
+}
 
 /** D194: media_download's limits per turn. */
 export const DOWNLOADS_PER_TURN = 20;
