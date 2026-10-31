@@ -4,7 +4,7 @@
 // on the way so the preview follows.
 import React from "react";
 
-import { elementBlocks, planElementEdit, planElementMove, type ElementBlock, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
+import { elementBlocks, planElementChanges, planElementEdit, type ElementBlock, type ElementChange, type GraphicElement } from "@uncut/core/graphicElements";
 import { graphicTime } from "@uncut/core/graphics";
 import type { Item } from "@uncut/core/types";
 
@@ -45,7 +45,7 @@ function snapped(delta: number, block: ElementBlock, grip: Grip, targets: Readon
   return best;
 }
 
-export function elementMenu(project: ProjectModel, item: Item, element: GraphicElement) {
+export function elementMenu(project: ProjectModel, item: Item, elements: ReadonlyArray<GraphicElement>, element: GraphicElement) {
   const edit = (change: ElementChange) => void actions.timelineEdit({ ops: [planElementEdit(item, element, change)], summary: `Edited ${element.name}` });
   return [
     { id: "element-delete", label: "Delete element", danger: true, run: () => edit({ hidden: true }) },
@@ -53,13 +53,18 @@ export function elementMenu(project: ProjectModel, item: Item, element: GraphicE
       id: "element-reset",
       label: "Reset element",
       disabled: !item.elements?.[element.key],
-      run: () => void actions.timelineEdit({ ops: [resetOp(item, element)], summary: `Reset ${element.name}` }),
+      run: () => void actions.timelineEdit({ ops: [resetOp(item, elements, element, project.canvas.fps)], summary: `Reset ${element.name}` }),
     },
   ];
 }
 
-export const resetOp = (item: Item, element: GraphicElement) =>
-  planElementEdit(item, element, { in: null, out: null, hidden: null, text: null, color: null, x: null, y: null, scale: null, opacity: null });
+export const resetOp = (item: Item, elements: ReadonlyArray<GraphicElement>, element: GraphicElement, fps: number) =>
+  planElementChanges(
+    item,
+    elements,
+    [{ element, change: { in: null, out: null, hidden: null, text: null, color: null, x: null, y: null, scale: null, opacity: null } }],
+    fps,
+  );
 
 export function ElementRows({
   project,
@@ -95,7 +100,7 @@ export function ElementRows({
     let moved = false;
     let change: { readonly in: number; readonly out: number } | undefined;
     let shownDraft: PreviewDraft | undefined;
-    const plan = () => (grip === "move" ? planElementMove(item, elements, block.element, change!) : planElementEdit(item, block.element, change!));
+    const plan = () => planElementChanges(item, elements, [{ element: block.element, change: change! }], project.canvas.fps);
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientX - x0) < DRAG_PX) return;
       moved = true;
@@ -160,7 +165,7 @@ export function ElementRows({
                 e.preventDefault();
                 e.stopPropagation();
                 playback.selectElement(item.id, block.element.key);
-                if (editable) openMenu(e.clientX, e.clientY, elementMenu(project, item, block.element), "Element");
+                if (editable) openMenu(e.clientX, e.clientY, elementMenu(project, item, elements, block.element), "Element");
               }}
             >
               {width > 26 && <span className="el-name">{block.element.name}</span>}

@@ -77,7 +77,8 @@ export const graphicUrl = (src: string) => {
   return u.href;
 };
 /** D316: a graphic's elements, by its src. */
-export const graphicElementsUrl = (src: string) => (src.startsWith("graphics/") ? serverUrl(GRAPHIC_ELEMENTS_PATH, src.slice("graphics/".length)) : undefined);
+export const graphicElementsUrl = (src: string, item: string) =>
+  src.startsWith("graphics/") ? `${serverUrl(GRAPHIC_ELEMENTS_PATH, src.slice("graphics/".length))}&item=${encodeURIComponent(item)}` : undefined;
 /** D290: a picture of a media item for a graphic in the preview (its frame at t seconds, fitting w × h); fetched by this page, never shown to the graphic. */
 export const graphicMediaUrl = (id: string, t: number, w?: number, h?: number, preview?: boolean) => {
   const url = serverUrl(GRAPHIC_MEDIA_PATH, id);

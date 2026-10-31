@@ -174,6 +174,8 @@ export type ElementChange = {
 };
 
 const SHORTEST: Frame = 1;
+/** An element's first and last moments keep their pace when its length changes. */
+const HANDLE_SECONDS = 0.6;
 
 const inkLength = (text: string) => text.replace(/\s/g, "").length;
 
@@ -216,25 +218,110 @@ export function planElementEdits(
   return { op: "update_item", item: item.id, set };
 }
 
-/** A move of `element` in time, with the elements inside it: they are drawn in its clone, so they play with it. One edit. */
-export function planElementMove(
-  item: { readonly id: Id; readonly elements?: Item["elements"] },
-  elements: ReadonlyArray<Pick<GraphicElement, "key" | "from" | "text" | "parent">>,
-  element: Pick<GraphicElement, "key" | "from" | "text">,
-  change: { readonly in: Frame; readonly out: Frame },
-): Op {
+type Span = readonly [Frame, Frame];
+
+/** The frame of the file shown at `shown` when span `file` plays over span `now`: GRAPHIC_ELEMENTS_BOOT's sourceTime in frames. */
+function fileFrame(file: Span, now: Span, shown: number, fps: number) {
+  const [a, b] = file;
+  const [A, B] = now;
+  const handle = Math.min(HANDLE_SECONDS * fps, (b - a) / 3);
+  const span = B - A;
+  if (span < handle * 2) return a + ((shown - A) * (b - a)) / span;
+  if (shown < A + handle) return a + (shown - A);
+  if (shown >= B - handle) return b - (B - shown);
+  return a + handle + ((shown - A - handle) * (b - a - handle * 2)) / (span - handle * 2);
+}
+
+/** The inverse of fileFrame: where frame `own` of the file is shown. */
+function shownFrame(file: Span, now: Span, own: number, fps: number) {
+  const [a, b] = file;
+  const [A, B] = now;
+  const handle = Math.min(HANDLE_SECONDS * fps, (b - a) / 3);
+  const span = B - A;
+  if (span < handle * 2) return A + ((own - a) * span) / (b - a);
+  if (own < a + handle) return A + (own - a);
+  if (own >= b - handle) return B - (b - own);
+  return A + handle + ((own - a - handle) * (span - handle * 2)) / (b - a - handle * 2);
+}
+
+type Listed = Pick<GraphicElement, "key" | "from" | "text" | "parent">;
+export interface ElementEdit {
+  readonly element: Listed;
+  readonly change: ElementChange;
+}
+
+/** The elements inside `element`, each retimed as its parent's new span plays them: they are drawn in its clone. */
+function followersOf(item: { readonly elements?: Item["elements"] }, elements: ReadonlyArray<Listed>, { element, change }: ElementEdit, fps: number) {
+  const had = item.elements?.[element.key];
+  const before = elementSpan(element, had);
+  const after = elementSpan(element, editedElement(element, had ?? {}, change));
+  if (before[0] === after[0] && before[1] === after[1]) return [];
   const byKey = new Map(elements.map((e) => [e.key, e]));
-  const inside = (e: Pick<GraphicElement, "parent">) => {
+  const inside = (e: Listed) => {
     for (let p = e.parent; p !== undefined; p = byKey.get(p)?.parent) if (p === element.key) return true;
     return false;
   };
-  const shift = change.in - elementSpan(element, item.elements?.[element.key])[0];
-  const followers = elements.filter(inside).map((e) => {
+  const carried = (frame: Frame) => Math.round(shownFrame(element.from, after, fileFrame(element.from, before, frame, fps), fps));
+  return elements.filter(inside).map((e): ElementEdit => {
     const [a, b] = elementSpan(e, item.elements?.[e.key]);
-    const from = Math.max(0, a + shift);
-    return { element: e, change: { in: from, out: Math.max(from + SHORTEST, b + shift) } };
+    const from = Math.max(0, carried(a));
+    return { element: e, change: { in: from, out: Math.max(from + SHORTEST, carried(b)) } };
   });
-  return planElementEdits(item, [{ element, change }, ...followers]);
+}
+
+/** One edit of these changes; a retimed element takes the elements inside it along, unless a change names them too. */
+export function planElementChanges(
+  item: { readonly id: Id; readonly elements?: Item["elements"] },
+  elements: ReadonlyArray<Listed>,
+  edits: ReadonlyArray<ElementEdit>,
+  fps: number,
+): Op {
+  const named = new Set(edits.map((e) => e.element.key));
+  const followers = edits.flatMap((edit) => followersOf(item, elements, edit, fps)).filter((f) => !named.has(f.element.key));
+  const once = new Map(followers.map((f) => [f.element.key, f]));
+  return planElementEdits(item, [...edits, ...once.values()]);
+}
+
+/** How one translate px moves an element on the canvas: x's move [0], [1], y's move [2], [3]. Ancestors scale or turn it. */
+export type ElementBasis = readonly [number, number, number, number];
+export const NO_BASIS: ElementBasis = [1, 0, 0, 1];
+
+const FLAT = 1e-6;
+const flattens = ([a, b, c, d]: ElementBasis) => Math.abs(a * d - b * c) < FLAT;
+
+/** A basis to convert with: an element scaled to nothing at this frame, or one translate can't move, tells nothing. */
+export const validBasis = (value: unknown): value is ElementBasis =>
+  Array.isArray(value) && value.length === 4 && value.every(Number.isFinite) && !flattens(value as unknown as ElementBasis);
+
+const TRANSLATE_PLACES = 100;
+const tidy = (n: number) => Math.round(n * TRANSLATE_PLACES) / TRANSLATE_PLACES;
+
+/** A translate as canvas px. */
+export const onCanvas = ([a, b, c, d]: ElementBasis, x: number, y: number): readonly [number, number] => [a * x + c * y, b * x + d * y];
+
+/** The translate that moves an element by canvas px (x, y). */
+export function fromCanvas(basis: ElementBasis, x: number, y: number): readonly [number, number] {
+  const [a, b, c, d] = basis;
+  if (flattens(basis)) return [tidy(x), tidy(y)];
+  const det = a * d - b * c;
+  return [tidy((d * x - c * y) / det), tidy((a * y - b * x) / det)];
+}
+
+export interface ElementBox {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** The part of a document's answer that is on the canvas; undefined if none is, or the answer isn't numbers. */
+export function boxOnCanvas(rect: ElementBox | undefined, canvas: { readonly width: number; readonly height: number }): ElementBox | undefined {
+  if (!rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return undefined;
+  const x = Math.max(0, rect.x);
+  const y = Math.max(0, rect.y);
+  const width = Math.min(canvas.width, rect.x + rect.width) - x;
+  const height = Math.min(canvas.height, rect.y + rect.height) - y;
+  return width > 0 && height >= 0 ? { x, y, width, height } : undefined;
 }
 
 /** The edits as render's info carries them, each with its key, in key order; undefined when there are none. */
@@ -349,6 +436,16 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
     for (let a = el; a; a = a.parentElement) o *= Number(getComputedStyle(a).opacity);
     return o >= 0.02;
   };
+  const thinAt = (x, y, keys, slop) => {
+    let best, gap = Infinity;
+    for (const key of keys) {
+      const r = rectOf(key);
+      if (!r || !r.width || !r.height || Math.min(r.width, r.height) >= slop * 2) continue;
+      const d = Math.hypot(Math.max(r.x - x, 0, x - r.x - r.width), Math.max(r.y - y, 0, y - r.y - r.height));
+      if (d <= slop && d < gap) { best = key; gap = d; }
+    }
+    return best;
+  };
   const keyAt = (x, y, keys) => {
     const known = new Set(keys);
     for (const hit of document.elementsFromPoint(x, y)) {
@@ -362,11 +459,25 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
     const r = el.getBoundingClientRect();
     return { x: r.x, y: r.y, width: r.width, height: r.height };
   };
+  const PROBE = 100;
+  const basisOf = (el) => {
+    const was = [el.style.getPropertyValue("translate"), el.style.getPropertyPriority("translate")];
+    const [tx = 0, ty = 0] = getComputedStyle(el).translate.split(" ").map(parseFloat).map((n) => n || 0);
+    const at = (x, y) => {
+      el.style.setProperty("translate", x + "px " + y + "px", "important");
+      return el.getBoundingClientRect();
+    };
+    const base = at(tx, ty), right = at(tx + PROBE, ty), down = at(tx, ty + PROBE);
+    el.style.setProperty("translate", was[0], was[1]);
+    return [(right.x - base.x) / PROBE, (right.y - base.y) / PROBE, (down.x - base.x) / PROBE, (down.y - base.y) / PROBE];
+  };
   addEventListener("message", (e) => {
     const d = e.data;
     if (!d || d.uncut !== "element-ask") return;
-    const key = d.point ? keyAt(d.point[0], d.point[1], d.keys ?? []) : d.key;
-    parent.postMessage({ uncut: "element-answer", seq: d.seq, key, rect: key === undefined ? undefined : rectOf(key) }, "*");
+    const key = d.point ? thinAt(d.point[0], d.point[1], d.keys ?? [], d.slop ?? 0) ?? keyAt(d.point[0], d.point[1], d.keys ?? []) : d.key;
+    const rect = key === undefined ? undefined : rectOf(key);
+    const basis = rect && !d.point ? basisOf(document.getElementById(key)) : undefined;
+    parent.postMessage({ uncut: "element-answer", seq: d.seq, key, rect, basis }, "*");
   });
   window.__uncutElements = { restore, frame, clear: () => setSheet("") };
 })();`;
