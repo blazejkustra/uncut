@@ -139,6 +139,35 @@ export function itemFrameOf(item: Pick<Item, "in" | "skips">, own: Frame): Frame
   return local;
 }
 
+export interface ElementBlock {
+  readonly element: GraphicElement;
+  /** Frames from the item's start, clipped to it. */
+  readonly from: number;
+  readonly to: number;
+  readonly row: number;
+}
+
+/** The item's elements as blocks, each on the first row free at its start. Deleted ones and ones outside the item aren't drawn. */
+export function elementBlocks(item: Item, elements: ReadonlyArray<GraphicElement>): ReadonlyArray<ElementBlock> {
+  const ends: Array<number> = [];
+  const blocks: Array<ElementBlock> = [];
+  const spans = elements.flatMap((element) => {
+    const edit = item.elements?.[element.key];
+    if (edit?.hidden) return [];
+    const [a, b] = elementSpan(element, edit);
+    const from = Math.max(0, itemFrameOf(item, a));
+    const to = Math.min(item.duration, itemFrameOf(item, b));
+    return to > from ? [{ element, from, to }] : [];
+  });
+  for (const span of [...spans].sort((x, y) => x.from - y.from || y.to - x.to)) {
+    const free = ends.findIndex((end) => end <= span.from);
+    const row = free < 0 ? ends.length : free;
+    ends[row] = span.to;
+    blocks.push({ ...span, row });
+  }
+  return blocks;
+}
+
 /** What a change to an element sets; null clears a field. `in` and `out`: the graphic's own frames. */
 export type ElementChange = {
   readonly [K in "in" | "out" | "text" | "color" | "x" | "y" | "scale" | "opacity" | "hidden"]?: GraphicElementEdit[K] | null;
@@ -185,6 +214,27 @@ export function planElementEdits(
   }
   const set = (Object.keys(all).length ? { elements: all } : { elements: null }) as unknown as FieldSet;
   return { op: "update_item", item: item.id, set };
+}
+
+/** A move of `element` in time, with the elements inside it: they are drawn in its clone, so they play with it. One edit. */
+export function planElementMove(
+  item: { readonly id: Id; readonly elements?: Item["elements"] },
+  elements: ReadonlyArray<Pick<GraphicElement, "key" | "from" | "text" | "parent">>,
+  element: Pick<GraphicElement, "key" | "from" | "text">,
+  change: { readonly in: Frame; readonly out: Frame },
+): Op {
+  const byKey = new Map(elements.map((e) => [e.key, e]));
+  const inside = (e: Pick<GraphicElement, "parent">) => {
+    for (let p = e.parent; p !== undefined; p = byKey.get(p)?.parent) if (p === element.key) return true;
+    return false;
+  };
+  const shift = change.in - elementSpan(element, item.elements?.[element.key])[0];
+  const followers = elements.filter(inside).map((e) => {
+    const [a, b] = elementSpan(e, item.elements?.[e.key]);
+    const from = Math.max(0, a + shift);
+    return { element: e, change: { in: from, out: Math.max(from + SHORTEST, b + shift) } };
+  });
+  return planElementEdits(item, [{ element, change }, ...followers]);
 }
 
 /** The edits as render's info carries them, each with its key, in key order; undefined when there are none. */
@@ -294,5 +344,29 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
       undo.push(() => live.removeAttribute("data-uncut-off"));
     }
   };
+  const shown = (el) => {
+    let o = 1;
+    for (let a = el; a; a = a.parentElement) o *= Number(getComputedStyle(a).opacity);
+    return o >= 0.02;
+  };
+  const keyAt = (x, y, keys) => {
+    const known = new Set(keys);
+    for (const hit of document.elementsFromPoint(x, y)) {
+      for (let a = hit; a; a = a.parentElement) if (a.id && known.has(a.id) && shown(a)) return a.id;
+    }
+    return undefined;
+  };
+  const rectOf = (key) => {
+    const el = document.getElementById(key);
+    if (!el || getComputedStyle(el).visibility !== "visible" || !shown(el)) return undefined;
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  };
+  addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d.uncut !== "element-ask") return;
+    const key = d.point ? keyAt(d.point[0], d.point[1], d.keys ?? []) : d.key;
+    parent.postMessage({ uncut: "element-answer", seq: d.seq, key, rect: key === undefined ? undefined : rectOf(key) }, "*");
+  });
   window.__uncutElements = { restore, frame, clear: () => setSheet("") };
 })();`;
