@@ -36,6 +36,32 @@ test("assistantUsage: cached tokens fill the window like fresh ones (a 400k cach
   );
 });
 
+test("assistantUsage: with the advisor, the last message iteration is the context, the summed usage isn't", () => {
+  const iteration = (type: string, input: number, read: number, write: number, output: number) => ({
+    type,
+    input_tokens: input,
+    cache_read_input_tokens: read,
+    cache_creation_input_tokens: write,
+    output_tokens: output,
+  });
+  const usage = {
+    input_tokens: 4,
+    cache_read_input_tokens: 342_680,
+    cache_creation_input_tokens: 1_760,
+    output_tokens: 58_142,
+    iterations: [
+      iteration("message", 2, 171_172, 336, 334),
+      iteration("advisor_message", 173_394, 0, 0, 3_902),
+      iteration("message", 2, 171_508, 1_424, 57_808),
+    ],
+  };
+  assert.deepEqual(assistantUsage(assistant(usage)), {
+    used: 172_934,
+    parts: { fresh: 2, cacheRead: 171_508, cacheWrite: 1_424, output: 57_808 },
+    model: "claude-opus-5-5",
+  });
+});
+
 test("contextUsageReply: Claude Code's window, auto-compact point and count", () => {
   assert.deepEqual(
     contextUsageReply({ totalTokens: 18_919, maxTokens: 1_000_000, rawMaxTokens: 1_000_000, autoCompactThreshold: 967_000, isAutoCompactEnabled: true }),

@@ -53,17 +53,22 @@ export interface CallTokens {
   readonly output: number;
 }
 
+const lastMessageIteration = (usage: Record<string, any>): Record<string, any> | undefined =>
+  Array.isArray(usage.iterations) ? usage.iterations.findLast((it) => it?.type === "message") : undefined;
+
 /**
  * The context an assistant message shows, counted as Claude Code's own context indicator counts it:
  * what the API call read (fresh input + cache read + cache creation). Its output joins the context
  * only as the next call's input. Cached tokens take the same room in the window as fresh ones (they
  * cost about a tenth to read), so `parts` keeps the split for the meter's tooltip. Undefined for a
- * subagent's message (parent_tool_use_id: its own context) or one without usage.
+ * subagent's message (parent_tool_use_id: its own context) or one without usage. With the advisor,
+ * the top-level usage sums every iteration of the call; the last "message" one is the context.
  */
 export function assistantUsage(msg: Record<string, any>): { used: number; parts: CallTokens; model: string | undefined } | undefined {
   if (msg?.type !== "assistant" || msg.parent_tool_use_id) return undefined;
-  const usage = msg.message?.usage;
-  if (!usage || typeof usage !== "object") return undefined;
+  const reported = msg.message?.usage;
+  if (!reported || typeof reported !== "object") return undefined;
+  const usage = lastMessageIteration(reported) ?? reported;
   const parts = {
     fresh: count(usage.input_tokens),
     cacheRead: count(usage.cache_read_input_tokens),
