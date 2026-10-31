@@ -128,13 +128,15 @@ export function sessionArgs(o: {
 
 /** Claude Code compacts 33k below this window, so a conversation is summarised at about 250k instead of near 1M. */
 export const AUTO_COMPACT_WINDOW = 283_000;
+const BASH_OUTPUT_CHARS = "8000";
 
 /**
  * The session's environment (D181, D277): claudeEnv (Claude Code's own sign-in, whatever it is; no
  * generator keys or other secrets; no CLAUDE_CODE_* from outside), plus the sign-in variables from
  * Claude Code's user settings `env` (--setting-sources "" skips that file), then tool search off
- * (every Uncut tool in the prompt, none deferred), no CLAUDE.md or rules files, no auto memory and
- * none of the skills that ship with Claude Code (config, keybindings, code review: none for a video editor).
+ * (every Uncut tool in the prompt, none deferred), no CLAUDE.md or rules files, no auto memory,
+ * none of the skills that ship with Claude Code (config, keybindings, code review: none for a video editor) and
+ * a command's output past BASH_OUTPUT_CHARS saved to a file, with a preview of it in the conversation.
  * The keychain login is untouched (no --bare, same CLAUDE_CONFIG_DIR).
  */
 export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
@@ -146,6 +148,7 @@ export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
   CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(AUTO_COMPACT_WINDOW),
   CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+  BASH_MAX_OUTPUT_LENGTH: BASH_OUTPUT_CHARS,
 });
 
 /**

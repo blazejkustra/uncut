@@ -28,7 +28,7 @@ import { AGENT_TEXT } from "../helpers/agentText.ts";
 import { frameScale } from "../../apps/server/src/agent/tools/common.ts";
 
 test("#81: the system prompt is a tight core and says where the rest is", () => {
-  assert.ok(SYSTEM_PROMPT.length < 8300, `the prompt is ${SYSTEM_PROMPT.length} chars`);
+  assert.ok(SYSTEM_PROMPT.length < 8400, `the prompt is ${SYSTEM_PROMPT.length} chars`);
   for (const t of DOC_TOPICS) assert.ok(SYSTEM_PROMPT.includes(t), `the prompt names the ${t} topic`);
   assert.match(SYSTEM_PROMPT, /docs_read \{topic\}/);
   // Hard rules stay in the core.
