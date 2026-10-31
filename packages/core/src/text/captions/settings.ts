@@ -29,7 +29,8 @@ export interface CaptionLines {
   readonly pause?: number;
 }
 
-export const CAPTION_DEFAULTS = { look: "text.caption", mode: "line" as CaptionMode, maxChars: 32, maxLines: 2, maxSeconds: 3, pause: 0.3 } as const;
+/** maxLines is what new captions are written with: an item with no maxLines, as older projects have, stays at 2. */
+export const CAPTION_DEFAULTS = { look: "text.caption", mode: "line" as CaptionMode, maxChars: 32, maxLines: 1, maxSeconds: 3, pause: 0.3 } as const;
 /** The schema's bounds for `lines` (project.schema.json), checked by every planner. */
 export const CAPTION_LINE_BOUNDS = {
   maxChars: { min: 4, max: 200, integer: true },

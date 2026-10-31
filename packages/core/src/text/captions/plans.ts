@@ -144,7 +144,7 @@ export function planMakeCaptions(project: Pick<Project, "canvas" | "theme" | "tr
     mode: styled?.mode ?? req.mode ?? CAPTION_DEFAULTS.mode,
     transform: fields.transform,
     style: (styled ? captionStyleFields(styled.id, project.canvas) : fields.style) as Item["style"],
-    ...(lines && Object.keys(lines).length ? { lines } : {}),
+    lines: { maxLines: CAPTION_DEFAULTS.maxLines, ...lines },
     ...(req.hideFillers ? { hideFillers: true } : {}),
     words,
   };
