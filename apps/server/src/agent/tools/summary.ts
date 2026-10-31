@@ -20,92 +20,80 @@ function subtitleNote(project: Project): string | undefined {
   return n ? `${n} subtitle cue${n === 1 ? "" : "s"} (captions cards and Subtitles tracks): subtitles_export writes them as .srt or .vtt.` : undefined;
 }
 
-/** D260 (issue #81): over this many items (in the range), project_read's summary lists them as compact lines. */
-export const COMPACT_ITEMS = 30;
+/** project_read lists at most this many item lines per track; `more` gives the range of the rest. */
+export const OUTLINE_ITEMS = 40;
 
-/** An item in a few fields (D260): enough to find it, place things next to it and name it. */
-function compactItem(project: Project, it: Item, start: number | undefined) {
+const OUTLINE_TEXT = 40;
+
+const OUTLINE_NOTE =
+  'Outline. Item lines: id type start+duration, then in, media, text and flags, in frames. items [ids] gives every field: read an item that way before update_item. range lists the lines in those frames. detail "items" gives every field of every item (with range, of those); detail "full" gives project.json.';
+
+/** An item on one line: enough to find it, cut it, move it and place things next to it. */
+function itemLine(it: Item, start: number): string {
   const x = it as Item & Record<string, unknown>;
-  const text = typeof x.text === "string" ? (x.text.length > 80 ? `${x.text.slice(0, 77)}...` : x.text) : undefined;
-  const tr = x.transitionIn as { module?: string; duration?: number } | undefined;
+  const text = typeof x.text === "string" ? (x.text.length > OUTLINE_TEXT ? `${x.text.slice(0, OUTLINE_TEXT - 3)}...` : x.text) : undefined;
+  const transition = x.transitionIn as { module?: string; duration?: number } | undefined;
+  const parts = [
+    it.id,
+    it.type,
+    `${start}+${it.duration}`,
+    x.in !== undefined ? `in ${x.in}` : "",
+    it.media ?? "",
+    text !== undefined ? JSON.stringify(text) : "",
+    typeof x.component === "string" ? x.component : "",
+    typeof x.src === "string" ? x.src : "",
+    x.gap ? `gap ${x.gap}` : "",
+    transition?.module ? `transition ${transition.module} ${transition.duration ?? ""}`.trim() : "",
+    x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
+    x.locked ? "locked" : "",
+    x.mute ? "mute" : "",
+    it.type === "captions" ? `${Array.isArray(x.words) ? x.words.length : 0} words` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+function mediaLine(m: Project["media"][number], fps: number): string {
+  const { frames, width, height, hasAudio } = m.probe ?? {};
+  const parts = [
+    m.id,
+    m.kind,
+    JSON.stringify(m.name),
+    frames ? `${frames}f ${Number((frames / fps).toFixed(2))}s` : "",
+    width && height ? `${width}x${height}` : "",
+    hasAudio ? "sound" : "",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+function trackHead(t: Project["tracks"][number]) {
   return {
-    id: it.id,
-    type: it.type,
-    ...(start !== undefined ? { start } : {}),
-    duration: it.duration,
-    ...(x.in !== undefined ? { in: x.in } : {}),
-    ...(it.media ? { media: it.media, ...mediaNameOf(project, it) } : {}),
-    ...(text !== undefined ? { text } : {}),
-    ...(typeof x.component === "string" ? { component: x.component } : {}),
-    ...(typeof x.src === "string" ? { src: x.src } : {}),
-    ...(x.gap ? { gap: x.gap } : {}),
-    ...(tr?.module ? { transitionIn: `${tr.module} ${tr.duration ?? ""}`.trim() } : {}),
-    ...(x.linkedTo ? { linkedTo: x.linkedTo } : {}),
-    ...(x.locked ? { locked: true } : {}),
-    ...(x.mute ? { mute: true } : {}),
-    ...(it.type === "captions" ? { words: Array.isArray(x.words) ? x.words.length : 0 } : {}),
+    id: t.id,
+    kind: t.kind,
+    ...(t.role ? { role: t.role } : {}),
+    ...(t.name ? { name: t.name } : {}),
+    ...(t.hidden ? { hidden: true } : {}),
+    ...(t.locked ? { locked: true } : {}),
   };
 }
 
-/**
- * project_read's summary: tracks with their items (main-track items get their resolved start),
- * the media with its probe, the length, and the revision to pass back as baseRevision. D260: a
- * long project's items (over COMPACT_ITEMS, no range) come as compact lines; detail "items" or
- * `items` (ids) gives every field.
- */
-export function projectSummary(
-  project: Project,
-  revision: number,
-  range?: { start: number; end: number },
-  opts: { readonly detail?: "summary" | "items"; readonly items?: ReadonlyArray<string> } = {},
-) {
-  const { starts, duration } = layout(project);
-  const end = project.tracks.some((t) => t.items.length) ? duration : 0;
-  const fps = project.canvas.fps;
-  const inRange = (id: string, length: number) => {
-    const start = starts.get(id) ?? 0;
-    return !range || (start < range.end && start + length > range.start);
-  };
-  const only = opts.items?.length ? new Set(opts.items) : undefined;
-  const picked = (it: Item) => (only ? only.has(it.id) : inRange(it.id, it.duration));
-  const count = project.tracks.reduce((n, t) => n + t.items.filter(picked).length, 0);
-  const compact = !only && !range && opts.detail !== "items" && count > COMPACT_ITEMS;
-  const full = (it: Item) =>
-    it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) };
+/** A track's items as lines by start, capped, with where to read on when they don't fit. */
+function outlineItems(items: ReadonlyArray<Item>, starts: ReadonlyMap<string, number>) {
+  const startOf = (it: Item) => starts.get(it.id) ?? 0;
+  const byStart = [...items].sort((a, b) => startOf(a) - startOf(b));
+  const rest = byStart.slice(OUTLINE_ITEMS);
   return {
-    revision,
-    name: project.name,
-    canvas: project.canvas,
-    duration: end,
-    seconds: Number((end / fps).toFixed(2)),
-    media: project.media.map((m) => ({
-      id: m.id,
-      kind: m.kind,
-      name: m.name,
-      ...(m.probe ? { probe: m.probe } : {}),
-      ...(m.probe?.frames ? { seconds: Number((m.probe.frames / fps).toFixed(2)) } : {}),
-    })),
-    tracks: project.tracks.map((t) => ({
-      id: t.id,
-      kind: t.kind,
-      ...(t.role ? { role: t.role } : {}),
-      ...(t.name ? { name: t.name } : {}),
-      ...(t.hidden ? { hidden: true } : {}),
-      // The mix (D83): volume, pan, mute, solo.
-      ...(t.mixer ? { mixer: t.mixer } : {}),
-      ...(t.locked ? { locked: true } : {}),
-      items: t.items.filter(picked).map((it) => (compact ? compactItem(project, it, starts.get(it.id)) : full(it))),
-    })),
-    ...(compact
-      ? {
-          itemsNote: `${count} items, listed compactly. project_read with detail "items" and items [ids] (or a range) gives every field; read an item that way before update_item.`,
-        }
+    count: items.length,
+    ...(items.length ? { end: Math.max(...items.map((it) => startOf(it) + it.duration)) } : {}),
+    items: byStart.slice(0, OUTLINE_ITEMS).map((it) => itemLine(it, startOf(it))),
+    ...(rest.length
+      ? { more: `${rest.length} more items: range {start ${startOf(rest[0]!)}, end ${Math.max(...rest.map((it) => startOf(it) + it.duration))}} lists them.` }
       : {}),
-    ...(only
-      ? {
-          itemsNote: `Only the items asked for${[...only].some((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))) ? `; not found: ${[...only].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))).join(", ")}` : ""}.`,
-        }
-      : {}),
+  };
+}
+
+/** What the outline and detail "items" answer beyond the tracks: the master and the notes. */
+function projectNotes(project: Project) {
+  return {
     ...(project.master ? { master: project.master } : {}),
     // Issue #118: what the user locked (edits that would change it are refused) and flagged to redo.
     ...(sectionsNote(project)
@@ -121,6 +109,79 @@ export function projectSummary(
     ...(subtitleNote(project) ? { subtitles: subtitleNote(project) } : {}),
     // D135: the library sounds' credits (CC BY ones need them in the video's description).
     ...(creditsText(project) ? { credits: creditsSummary(project) } : {}),
+  };
+}
+
+/**
+ * project_read's answer, with the revision to pass back as baseRevision.
+ * - By default an outline: canvas, media and track lines, the items as capped lines, the notes.
+ * - `range` narrows to the items in those frames and `items` (ids) to those, without the project's
+ *   canvas, media and notes; ids give every field, a range lines.
+ * - detail "items" gives every field: of every item with the media and notes, or of a range's.
+ */
+export function projectSummary(
+  project: Project,
+  revision: number,
+  range?: { start: number; end: number },
+  opts: { readonly detail?: "summary" | "items"; readonly items?: ReadonlyArray<string> } = {},
+) {
+  const { starts, duration } = layout(project);
+  const end = project.tracks.some((t) => t.items.length) ? duration : 0;
+  const fps = project.canvas.fps;
+  const seconds = Number((end / fps).toFixed(2));
+  const only = opts.items?.length ? new Set(opts.items) : undefined;
+  const everyField = !!only || opts.detail === "items";
+  const inRange = (it: Item) => {
+    const start = starts.get(it.id) ?? 0;
+    return !range || (start < range.end && start + it.duration > range.start);
+  };
+  const picked = (it: Item) => (only ? only.has(it.id) : inRange(it));
+  const full = (it: Item) =>
+    it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) };
+
+  if (only || range) {
+    const missing = [...(only ?? [])].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id)));
+    const tracks = project.tracks.flatMap((t) => {
+      const items = t.items.filter(picked);
+      if (!items.length) return [];
+      return [{ ...trackHead(t), ...(everyField ? { items: items.map(full) } : outlineItems(items, starts)) }];
+    });
+    return {
+      revision,
+      duration: end,
+      seconds,
+      tracks,
+      itemsNote: only
+        ? `Only the items asked for${missing.length ? `; not found: ${missing.join(", ")}` : ""}.`
+        : everyField
+          ? "Only the items in the range."
+          : OUTLINE_NOTE,
+    };
+  }
+
+  const tracks = project.tracks.map((t) => {
+    const head = { ...trackHead(t), ...(t.mixer ? { mixer: t.mixer } : {}) };
+    return everyField ? { ...head, items: t.items.map(full) } : { ...head, ...outlineItems(t.items, starts) };
+  });
+  const media = everyField
+    ? project.media.map((m) => ({
+        id: m.id,
+        kind: m.kind,
+        name: m.name,
+        ...(m.probe ? { probe: m.probe } : {}),
+        ...(m.probe?.frames ? { seconds: Number((m.probe.frames / fps).toFixed(2)) } : {}),
+      }))
+    : project.media.map((m) => mediaLine(m, fps));
+  return {
+    revision,
+    name: project.name,
+    canvas: project.canvas,
+    duration: end,
+    seconds,
+    media,
+    tracks,
+    ...(everyField ? {} : { itemsNote: OUTLINE_NOTE }),
+    ...projectNotes(project),
   };
 }
 

@@ -3,8 +3,8 @@
 // - No decision ids (D76…) in anything the model reads: prompt, docs, tool descriptions.
 // - <brand>/<plan> whole only when they changed since the conversation last saw them;
 //   unchanged ones are a line each.
-// - The manual-edits note is capped; project_read gives a long project's items as compact lines,
-//   every field on request (detail "items", items [ids]).
+// - The manual-edits note is capped; project_read is an outline with one line per item, every
+//   field on request (detail "items", items [ids]).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -19,7 +19,7 @@ import {
   doingLabel,
   SYSTEM_PROMPT,
   withoutDecisionIds,
-  COMPACT_ITEMS,
+  OUTLINE_ITEMS,
 } from "../../apps/server/src/agent/agentTools.ts";
 import { leanPlanBlock } from "../../apps/server/src/agent/session/send.ts";
 import { capNote, NOTE_LINES } from "../../apps/server/src/agent/turns/notes.ts";
@@ -139,34 +139,38 @@ test("#81: an added item's indented field lines go with it, kept or dropped", ()
   assert.equal(capNote(note, 2), note);
 });
 
-test("#81: project_read gives a long project's items as compact lines, every field on request", () => {
+test('#81: project_read is an outline, a range narrows it, ids and detail "items" give every field', () => {
   const project: any = {
     format: "uncut/0",
     name: "P",
     canvas: { width: 1920, height: 1080, fps: 30 },
     textLooks: 1,
-    media: [{ id: "m-a", kind: "video", name: "A.MP4", path: "/x/A.MP4", probe: { frames: 9000, fps: 30, width: 1920, height: 1080, hasAudio: true } }],
+    media: [
+      { id: "m-a", kind: "video", name: "A.MP4", path: "/x/A.MP4", probe: { frames: 9000, fps: 30, width: 1920, height: 1080, hasAudio: true } },
+      { id: "m-b", kind: "image", name: "B.png", path: "/x/B.png", probe: { width: 200, height: 100, hasAudio: false } },
+    ],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [] },
-      { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [
+          {
+            id: "title-1",
+            type: "text",
+            start: 30,
+            duration: 90,
+            text: "A very long title ".repeat(10),
+            transform: { x: 100, y: 100 },
+            style: { preset: "text.title", size: 120 },
+          },
+        ],
+      },
+      { id: "main", kind: "video", role: "main", name: "Main", mixer: { volumeDb: -3 }, items: [] },
     ],
   };
-  const small = structuredClone(project);
-  small.tracks[0].items.push({
-    id: "title-1",
-    type: "text",
-    start: 0,
-    duration: 90,
-    text: "Hello",
-    transform: { x: 100, y: 100 },
-    style: { preset: "text.title", size: 120, weight: 700 },
-  });
-  const s = projectSummary(small, 3) as any;
-  assert.equal(s.tracks[0].items[0].style.size, 120, "a small project: every field, as before");
-  assert.equal(s.itemsNote, undefined);
-  const big = structuredClone(project);
-  for (let i = 0; i < COMPACT_ITEMS + 1; i++)
-    big.tracks[1].items.push({
+  const clips = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
       id: `clip-${i}`,
       type: "clip",
       media: "m-a",
@@ -174,48 +178,62 @@ test("#81: project_read gives a long project's items as compact lines, every fie
       duration: 60,
       transform: { x: 0, y: 0, w: 960, h: 540, fit: "cover" },
       ...(i ? { transitionIn: { module: "transition.crossfade", duration: 10 } } : {}),
-    });
-  big.tracks[0].items.push({
-    id: "title-1",
-    type: "text",
-    start: 30,
-    duration: 90,
-    text: "A very long title ".repeat(10),
-    style: { preset: "text.title", size: 120 },
-  });
+    }));
+
+  const small = structuredClone(project);
+  small.tracks[1].items.push(...clips(2));
+  const s = projectSummary(small, 3) as any;
+  assert.equal(s.revision, 3, "the revision for baseRevision");
+  assert.equal(s.seconds, 4);
+  assert.deepEqual(s.media, ['m-a video "A.MP4" 9000f 300s 1920x1080 sound', 'm-b image "B.png" 200x100']);
+  assert.equal(s.tracks[1].name, "Main");
+  assert.deepEqual(s.tracks[1].mixer, { volumeDb: -3 });
+  assert.equal(s.tracks[1].count, 2);
+  assert.equal(s.tracks[1].end, 120);
+  assert.deepEqual(s.tracks[1].items, ["clip-0 clip 0+60 in 0 m-a", "clip-1 clip 60+60 in 10 m-a transition transition.crossfade 10"]);
+  assert.match(s.tracks[0].items[0], /^title-1 text 30\+90 "A very long title A very long title A\.\.\."$/);
+  assert.match(s.itemsNote, /items \[ids\] gives every field: read an item that way before update_item/);
+  assert.match(s.itemsNote, /detail "full" gives project\.json/);
+
+  const big = structuredClone(project);
+  big.tracks[1].items.push(...clips(OUTLINE_ITEMS + 5));
   const c = projectSummary(big, 4) as any;
-  const clip = c.tracks[1].items[1];
-  assert.deepEqual(clip, {
-    id: "clip-1",
-    type: "clip",
-    start: 60,
-    duration: 60,
-    in: 10,
-    media: "m-a",
-    mediaName: "A.MP4",
-    transitionIn: "transition.crossfade 10",
-  });
-  assert.equal(c.tracks[0].items[0].style, undefined);
-  assert.ok(c.tracks[0].items[0].text.length <= 80);
-  assert.match(c.itemsNote, /32 items, listed compactly[^]*detail "items"/);
-  assert.equal(c.revision, 4);
-  // Every field: detail "items", or a list of ids, or a range.
-  const all = projectSummary(big, 4, undefined, { detail: "items" }) as any;
-  assert.deepEqual(all.tracks[1].items[1].transform, { x: 0, y: 0, w: 960, h: 540, fit: "cover" });
+  assert.equal(c.tracks[1].count, OUTLINE_ITEMS + 5);
+  assert.equal(c.tracks[1].items.length, OUTLINE_ITEMS);
+  assert.equal(c.tracks[1].more, `5 more items: range {start ${OUTLINE_ITEMS * 60}, end ${(OUTLINE_ITEMS + 5) * 60}} lists them.`);
+
+  const ranged = projectSummary(big, 4, { start: OUTLINE_ITEMS * 60, end: (OUTLINE_ITEMS + 5) * 60 }, { detail: "summary" }) as any;
+  assert.equal(ranged.revision, 4);
+  assert.deepEqual(
+    ranged.tracks.map((t: any) => t.id),
+    ["main"],
+    "only tracks with something in the range",
+  );
+  assert.equal(ranged.tracks[0].items.length, 5);
+  assert.equal(typeof ranged.tracks[0].items[0], "string", "a range lists lines");
+  assert.equal(ranged.tracks[0].more, undefined);
+  assert.equal(ranged.media, undefined, "no project-wide repeat on a narrowed read");
+
   const some = projectSummary(big, 4, undefined, { items: ["title-1", "nope"] }) as any;
   assert.deepEqual(
     some.tracks.map((t: any) => t.items.map((i: any) => i.id)),
-    [["title-1"], []],
+    [["title-1"]],
   );
   assert.equal(some.tracks[0].items[0].style.size, 120);
   assert.match(some.itemsNote, /not found: nope/);
-  const ranged = projectSummary(big, 4, { start: 0, end: 120 }) as any;
+  assert.equal(some.revision, 4, "a read by id still gives the revision");
+  assert.equal(some.media, undefined);
+
+  const inRange = projectSummary(big, 4, { start: 0, end: 120 }, { detail: "items" }) as any;
   assert.ok(
-    ranged.tracks[1].items.every((i: any) => i.transform),
-    "a range gives every field",
+    inRange.tracks.flatMap((t: any) => t.items).every((i: any) => i.transform),
+    "detail items with a range gives every field",
   );
-  // Compact JSON is what the agent gets (no indentation).
-  assert.ok(JSON.stringify(c).length < JSON.stringify(all).length * 0.75);
+  const all = projectSummary(big, 4, undefined, { detail: "items" }) as any;
+  assert.deepEqual(all.tracks[1].items[1].transform, { x: 0, y: 0, w: 960, h: 540, fit: "cover" });
+  assert.equal(all.tracks[1].items.length, OUTLINE_ITEMS + 5, "detail items isn't capped");
+  assert.equal(all.media[0].probe.frames, 9000);
+  assert.ok(JSON.stringify(c).length < JSON.stringify(all).length * 0.4);
 });
 
 test("docs_read graphics lists the bundled libraries and gives each one's own API by name, so the agent never searches the disk for them", async () => {

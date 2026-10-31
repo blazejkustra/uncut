@@ -147,7 +147,7 @@ test("media_import of a .srt, project_read, subtitles_export as .srt and .vtt, r
   writeFileSync(inside, "1\n00:00:04,000 --> 00:00:05,000\nInside\n");
   const { turn, results } = await ask("import the subtitles and export them", [
     { tool: "media_import", args: { paths: [join(footage, "talk.srt"), inside] } },
-    { tool: "project_read", args: {} },
+    { tool: "project_read", args: { detail: "items" } },
     { tool: "subtitles_export", args: {} },
     { tool: "subtitles_export", args: { path: vtt } },
     { tool: "subtitles_export", args: {} },

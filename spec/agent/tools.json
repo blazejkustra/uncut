@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "project_read",
-      "description": "Read the project and its revision (pass it as timeline_edit's baseRevision). 'summary' (default) gives the canvas, media, tracks with their mixer and items, the master and notes; a long project's items come as compact lines unless you pass range or items. 'items' gives every field of every item (or of the ids in items): read an item this way before update_item, which replaces style, transform and effects whole. 'full' gives project.json.",
+      "description": "Read the project and its revision (pass it as timeline_edit's baseRevision). By default an outline: canvas, media, each track with its mixer and one capped line per item (id, type, start+duration, in, media, text), the master and notes. items [ids] gives those items with every field: read an item this way before update_item, which replaces style, transform and effects whole. range lists the item lines in those frames. detail 'items' gives every field of every item (with range, of those); 'full' gives project.json.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -29,7 +29,7 @@
           }
         }
       },
-      "returns": "revision, duration, and the project summary or full JSON"
+      "returns": "revision, duration, and the outline, the items asked for, or full JSON"
     },
     {
       "name": "timeline_edit",

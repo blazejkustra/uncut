@@ -8,7 +8,7 @@ import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
 export { stepLabel, shownUrl, doingLabel, partialFields } from "./tools/labels.ts";
 export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.ts";
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
-export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, COMPACT_ITEMS } from "./tools/summary.ts";
+export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, OUTLINE_ITEMS } from "./tools/summary.ts";
 export { modulesIndex, modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 export { withoutDecisionIds } from "./tools/decisionIds.ts";
