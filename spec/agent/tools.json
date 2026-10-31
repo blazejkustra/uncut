@@ -65,7 +65,7 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the edit exactly as export would, as images (768 px on the longest side; scale 1 for full size). Up to 12 per call: pick the moments that matter. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines stills miss.",
+      "description": "Render frames of the edit exactly as export would (768 px on the longest side; scale 1 for full size). Up to 12 per call: pick the moments that matter. Past 4 they come back as one sheet with each cell labelled, sized by Uncut; sheet false or phone gives separate images. For motion use run: up to 48 frames in a row as one sheet, measured at full size for 1 px text shake and edge lines stills miss.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -87,6 +87,10 @@
           "phone": {
             "type": "boolean",
             "description": "Draw them 360 px wide, the size of a phone in a feed, to judge readability (overrides scale)."
+          },
+          "sheet": {
+            "type": "boolean",
+            "description": "false: every frame as its own image, also past 4."
           },
           "run": {
             "type": "object",
@@ -110,7 +114,7 @@
           }
         }
       },
-      "returns": "one image per frame, or one contact sheet and the motion measured for a run"
+      "returns": "one image per frame up to 4 frames (or with sheet false or phone), one labelled sheet past that, or one contact sheet and the motion measured for a run"
     },
     {
       "name": "contact_sheet",

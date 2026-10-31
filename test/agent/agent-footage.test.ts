@@ -532,7 +532,7 @@ test(
             ],
           },
         },
-        { tool: "render_frames", args: { frames: [0, 1, 2, 3, 10, 11, 12, 13, 14, 15], scale: 0.1 } },
+        { tool: "render_frames", args: { frames: [0, 1, 2, 3, 10, 11, 12, 13, 14, 15], scale: 0.1, sheet: false } },
         { tool: "contact_sheet", args: { media: "m-r25", range: { start: 0, end: 4 } } },
         { tool: "contact_sheet", args: { media: "m-s5994", range: { start: 0, end: 6 } } },
         { tool: "contact_sheet", args: { media: "m-v" } },
@@ -648,7 +648,7 @@ test("media_import returns the user's changes made since the agent's read, and i
 });
 
 test("sheet maths and step labels: frames, the grid, the clock, the turn card's words", async () => {
-  const { sheetFrames, sheetLayout, clock } = await import("../../apps/server/src/agent/agentFootage.ts");
+  const { sheetFrames, sheetLayout, frameSheetLayout, SHEET_MAX_EDGE, SHEET_MAX_PIXELS, clock } = await import("../../apps/server/src/agent/agentFootage.ts");
   const { stepLabel, TOOL_NAMES } = await import("../../apps/server/src/agent/agentTools.ts");
   assert.deepEqual(sheetFrames(0, 120, 30, 60), [0, 30, 60, 90]);
   assert.deepEqual(sheetFrames(10, 20, undefined, 4), [10, 12, 15, 17]);
@@ -660,6 +660,16 @@ test("sheet maths and step labels: frames, the grid, the clock, the turn card's 
   // A column count whose cells would be too small (or out of range) gives way to the best fit.
   assert.equal(sheetLayout(60, 16 / 9, 1).columns, 6);
   assert.equal(sheetLayout(5, 16 / 9, 99).columns, 5);
+  // render_frames' sheet: bigger cells than contact_sheet's, all of them seen at their real size.
+  assert.deepEqual(frameSheetLayout(12, 16 / 9), { columns: 4, rows: 3, cellWidth: 380, cellHeight: 214, width: 1550, height: 732 });
+  assert.deepEqual(frameSheetLayout(12, 9 / 16), { columns: 6, rows: 2, cellWidth: 220, cellHeight: 391, width: 1362, height: 844 });
+  for (const aspect of [21 / 9, 16 / 9, 1, 4 / 5, 9 / 16]) {
+    for (let n = 5; n <= 12; n++) {
+      const l = frameSheetLayout(n, aspect);
+      assert.ok(l.width <= SHEET_MAX_EDGE && l.height <= SHEET_MAX_EDGE && l.width * l.height <= SHEET_MAX_PIXELS, `${n} at ${aspect}: ${l.width}×${l.height}`);
+      assert.ok(l.columns * l.rows >= n);
+    }
+  }
   for (const aspect of [16 / 9, 9 / 16, 1, 21 / 9, 1 / 3]) {
     for (const n of [1, 5, 12, 24, 37, 60]) {
       for (const columns of [undefined, 1, 10]) {
