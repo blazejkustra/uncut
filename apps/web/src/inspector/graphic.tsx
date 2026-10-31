@@ -61,7 +61,7 @@ function ElementEditor({
           onCommit={(v) => v !== undefined && change({ out: frameOn(v) })}
         />
       </Prop>
-      {element.text && (
+      {element.text && element.plain && (
         <Prop label="Text">
           <textarea
             key={`${element.key}-${edit?.text ?? ""}`}
