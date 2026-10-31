@@ -441,6 +441,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "media_analyze":
           return yield* mediaAnalyze(v, args);
         case "measure":
+          if (args.what === "position") r.measuredPosition = true;
           return yield* measure(v, args);
         case "media_rank":
           return yield* mediaRank(v, args);

@@ -518,8 +518,11 @@ test(
           },
           // 11: an id that isn't in the last review.
           { tool: "review_submit", args: { fixes: [{ defect: "d9", what: "something" }] } },
+          // 12: an off-centre fix with no position measured, then the measure that clears it.
+          { tool: "review_submit", args: { fixes: [{ defect: "d2", what: "centred the title" }] } },
+          { tool: "measure", args: { what: "position", frames: [20] } },
           { tool: "render_frames", args: { frames: [0, 20], phone: true } },
-          // 13: round 2 (Uncut renders each claimed fix's moment itself).
+          // 15: round 2 (Uncut renders each claimed fix's moment itself).
           {
             tool: "review_submit",
             args: {
@@ -536,7 +539,7 @@ test(
           },
           { tool: "contact_sheet", args: { max: 4 } },
           { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-          // 18: no round 3: d1 came back after its fix, so the user decides it.
+          // 20: no round 3: d1 came back after its fix, so the user decides it.
           { tool: "review_submit", args: { fixes: [{ defect: "d1", what: "the recording plays in the phone" }] } },
         ],
         { access: "auto" },
@@ -564,7 +567,9 @@ test(
       assert.equal(round1.determinism, "1 graphic drew the same twice");
       assert.match(textOf(r[8]!.result), /Nothing changed since round 1/);
       assert.match(textOf(r[11]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
-      const round2 = jsonOf(r[13]!.result);
+      assert.match(textOf(r[12]!.result), /d2 is off-centre: measure with what "position"/);
+      assert.ok(jsonOf(r[13]!.result).frames[0].box.width > 100, "the graphic's box on a real render");
+      const round2 = jsonOf(r[15]!.result);
       assert.ok(
         round2.fixes.every((f: any) => !("what" in f)),
         "the agent's own claims aren't echoed",
@@ -586,7 +591,7 @@ test(
         round2.next,
         /the last one \(round 2 of at most 6: every blocker left came back unchanged after a fix \(d1\), so the user decides them[\s\S]*Unresolved[\s\S]*ask_user/,
       );
-      assert.match(textOf(r[18]!.result), /No more review rounds in this turn \(round 2 of at most 6: every blocker left came back unchanged/);
+      assert.match(textOf(r[20]!.result), /No more review rounds in this turn \(round 2 of at most 6: every blocker left came back unchanged/);
       // Saved by the critic.
       const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
       assert.equal(saved.by, "critic");
