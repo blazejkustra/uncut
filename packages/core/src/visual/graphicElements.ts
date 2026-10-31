@@ -139,6 +139,35 @@ export function itemFrameOf(item: Pick<Item, "in" | "skips">, own: Frame): Frame
   return local;
 }
 
+export interface ElementBlock {
+  readonly element: GraphicElement;
+  /** Frames from the item's start, clipped to it. */
+  readonly from: number;
+  readonly to: number;
+  readonly row: number;
+}
+
+/** The item's elements as blocks, each on the first row free at its start. Deleted ones and ones outside the item aren't drawn. */
+export function elementBlocks(item: Item, elements: ReadonlyArray<GraphicElement>): ReadonlyArray<ElementBlock> {
+  const ends: Array<number> = [];
+  const blocks: Array<ElementBlock> = [];
+  const spans = elements.flatMap((element) => {
+    const edit = item.elements?.[element.key];
+    if (edit?.hidden) return [];
+    const [a, b] = elementSpan(element, edit);
+    const from = Math.max(0, itemFrameOf(item, a));
+    const to = Math.min(item.duration, itemFrameOf(item, b));
+    return to > from ? [{ element, from, to }] : [];
+  });
+  for (const span of [...spans].sort((x, y) => x.from - y.from || y.to - x.to)) {
+    const free = ends.findIndex((end) => end <= span.from);
+    const row = free < 0 ? ends.length : free;
+    ends[row] = span.to;
+    blocks.push({ ...span, row });
+  }
+  return blocks;
+}
+
 /** What a change to an element sets; null clears a field. `in` and `out`: the graphic's own frames. */
 export type ElementChange = {
   readonly [K in "in" | "out" | "text" | "color" | "x" | "y" | "scale" | "opacity" | "hidden"]?: GraphicElementEdit[K] | null;
