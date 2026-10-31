@@ -31,3 +31,6 @@
 }
 /* Scrolling a field into view (Tab, a click) keeps it above the pinned foot. */
 #root .welcome-body:has(.new-project-foot) { scroll-padding-bottom: 76px; }
+/* The form's left edge: the checkbox and Cancel's word line up with the fields. */
+#root .wiz-toggle input { margin-left: 0; }
+#root .new-project-foot > .btn.ghost { margin-left: -13px; }
