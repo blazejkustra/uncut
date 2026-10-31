@@ -124,6 +124,8 @@ export interface ProjectsShape {
     matchFirstClip?: boolean | undefined;
   }) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly open: (dir: string) => Effect.Effect<ProjectSnapshot, ProjectError>;
+  /** The open project copied next to it for a new format, and opened with a new chat. The original isn't changed. */
+  readonly copy: (input: { format: string; width: number; height: number }) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly close: Effect.Effect<void>;

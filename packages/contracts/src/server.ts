@@ -10,6 +10,7 @@ export const RPC_METHODS = {
   serverHello: "server.hello",
   projectCreate: "project.create",
   projectOpen: "project.open",
+  projectCopy: "project.copy",
   projectGet: "project.get",
   projectReload: "project.reload",
   projectClose: "project.close",

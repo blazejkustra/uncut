@@ -246,6 +246,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .seg { display: flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .seg button { padding: 3px 10px; border-radius: 4px; color: var(--muted); }
 .seg button.active { background: var(--raised); color: var(--fg); }
+.format-copies { display: flex; gap: 6px; margin-bottom: 6px; }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
 /* F12: as tall as the panel at least, so the empty space under the lanes starts a marquee too. */
 .tl { display: grid; grid-template-columns: 184px 1fr; grid-template-rows: 1fr; min-width: 100%; min-height: 100%; width: max-content; position: relative; }
