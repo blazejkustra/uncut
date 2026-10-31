@@ -247,7 +247,8 @@ export async function loadAgentHistory(dir: string, agentId: string = DEFAULT_AG
     const stored = db.agent();
     const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
     const context = storedContext(stored.context);
-    if (!existsSync(historyFile(dir))) return { ...conversationHere(dir, stored), turns, pendingNote: stored.pendingNote, orphaned: orphanedIn(stored.turns), context };
+    if (!existsSync(historyFile(dir)))
+      return { ...conversationHere(dir, stored), turns, pendingNote: stored.pendingNote, orphaned: orphanedIn(stored.turns), context };
     const known = new Set(turns.map((t) => t.id));
     const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
     const sessionId = stored.sessionId ?? legacy.sessionId;
