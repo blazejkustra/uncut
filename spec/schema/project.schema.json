@@ -299,6 +299,28 @@
               "description": "C6: stretches of the graphic's own time that ripple cuts removed with the footage: at the item's frame `at`, render(t) jumps ahead `frames`. In `at` order.",
               "items": { "type": "object", "required": ["at", "frames"], "additionalProperties": false, "properties": { "at": { "type": "integer", "minimum": 1 }, "frames": { "type": "integer", "minimum": 1 } } }
             },
+            "elements": {
+              "type": "object",
+              "description": "D316: edits of the graphic's elements, by element id. from, in, out: the graphic's own frames (where the file has it, where it plays now). x, y: canvas pixels added to its place.",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "dependentRequired": { "from": ["in", "out"], "in": ["from", "out"], "out": ["from", "in"] },
+                "properties": {
+                  "from": { "type": "array", "items": { "$ref": "#/$defs/frame" }, "minItems": 2, "maxItems": 2 },
+                  "in": { "$ref": "#/$defs/frame" },
+                  "out": { "$ref": "#/$defs/frame" },
+                  "hidden": { "type": "boolean" },
+                  "text": { "type": "string", "maxLength": 2000 },
+                  "sourceLength": { "type": "integer", "minimum": 1 },
+                  "color": { "type": "string", "pattern": "^[#A-Za-z0-9(),.% -]{1,40}$" },
+                  "x": { "type": "number" },
+                  "y": { "type": "number" },
+                  "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 20 },
+                  "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+                }
+              }
+            },
             "props": { "type": "object" }
           },
           "required": ["src"]

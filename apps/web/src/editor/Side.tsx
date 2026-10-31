@@ -9,6 +9,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { hasSound } from "../audio/sound.ts";
 import { AgentPanel } from "../panels/Agent.tsx";
 import { ComponentEditor } from "../inspector/component.tsx";
+import { GraphicElementsEditor } from "../inspector/graphic.tsx";
 import { HistoryPanel } from "../panels/History.tsx";
 import { AudioEditor } from "../inspector/audio.tsx";
 import { hasSpeed, NamesEditor, SpeedEditor } from "../inspector/speed.tsx";
@@ -24,7 +25,7 @@ import { TransitionInspector } from "../inspector/transition.tsx";
 import { playback, usePlayback } from "../preview/playback.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { frameTimecode } from "../state/format.ts";
-import { itemLabel } from "../state/project.ts";
+import { itemLabel, layoutOf } from "../state/project.ts";
 import { actions, useApp, type Project } from "../state/store.ts";
 import { isBoxed } from "../timeline/clip.ts";
 import { findItem } from "../timeline/edit.ts";
@@ -192,6 +193,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       {item.type === "captions" && <CaptionsEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
+      {item.type === "graphic" && <GraphicElementsEditor project={project} item={item} start={layoutOf(project).starts.get(item.id) ?? 0} locked={locked} />}
       {/* F17 (D160): the clip's controls in sections that fold, each one's state remembered on this Mac. */}
       {isBoxed(project, item) && (
         <Section title="Transform" testId="insp-sec-transform" remember="transform">

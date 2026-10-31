@@ -1,5 +1,5 @@
 /* D261 (issue #93): the composer's context meter. */
-.token-meter { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 5px; border-radius: var(--radius-sm); font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; flex: none; cursor: default; }
+.token-meter { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 5px; border-radius: var(--radius-sm); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; flex: none; cursor: default; }
 .token-meter:hover, .token-meter:focus-visible { background: var(--raised); color: var(--muted); }
 .token-meter svg { width: 13px; height: 13px; flex: none; transform: rotate(-90deg); }
 .token-meter circle { fill: none; stroke-width: 2; }

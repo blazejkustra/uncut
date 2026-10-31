@@ -34,6 +34,8 @@ export interface PlaybackState {
   readonly end: number;
   readonly fps: number;
   readonly selected: string | undefined;
+  /** D316: a selected element of the selected graphic: its id in the file. */
+  readonly element: string | undefined;
   /**
    * A selected cut on the main track (D73): the id of the clip after it, whose transitionIn the
    * transition is. Exclusive with `selected`; the Inspector shows the cut's transition.
@@ -103,6 +105,7 @@ let state: PlaybackState = {
   end: 0,
   fps: 30,
   selected: undefined,
+  element: undefined,
   cut: undefined,
   zoom: 1,
   snapping: savedSnapping(),
@@ -120,7 +123,8 @@ let state: PlaybackState = {
 };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
-  state = { ...state, ...patch };
+  const element = "selected" in patch && !("element" in patch) ? { element: undefined } : {};
+  state = { ...state, ...patch, ...element };
   for (const l of listeners) l();
 };
 const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
@@ -273,8 +277,13 @@ export const playback = {
     follower = fn;
   },
 
+  /** D316: select element `key` of graphic `id`; undefined selects just the item. */
+  selectElement: (id: string, key: string | undefined) =>
+    id === state.selected && key === state.element && state.cut === undefined
+      ? undefined
+      : set({ selected: id, element: key, cut: undefined, gainKey: undefined, also: [] }),
   select: (id: string | undefined) =>
-    id === state.selected && state.cut === undefined && state.gainKey === undefined && !state.also.length
+    id === state.selected && state.element === undefined && state.cut === undefined && state.gainKey === undefined && !state.also.length
       ? undefined
       : set({ selected: id, cut: undefined, gainKey: undefined, also: [] }),
   /** Select the cut before main item `id` (its transition, if it has one); undefined clears it. */
