@@ -510,7 +510,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             : "The end has to come after the start."}
         </p>
         <div className="group-label export-label">Loudness</div>
-        <div className="wiz-cards">
+        <div className="wiz-cards four">
           {LOUDNESS.map((l) => (
             <button
               type="button"
