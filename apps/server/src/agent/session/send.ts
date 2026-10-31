@@ -35,7 +35,10 @@ export interface SentBlocks {
  * that hasn't changed since is one line instead. The record outlives a respawn, which resumes the
  * same conversation; a different conversation id, or a compaction, sends both whole.
  */
-const sentBlocks = new WeakMap<Loaded, { conversation?: string | undefined; committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running } }>();
+const sentBlocks = new WeakMap<
+  Loaded,
+  { conversation?: string | undefined; committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running; lean: string; whole: string } }
+>();
 
 /**
  * D266: claude compacted the conversation (auto or /compact: its system/compact_boundary event), so
@@ -45,15 +48,22 @@ export function forgetSentBlocks(s: ClaudeSession): void {
   sentBlocks.delete(s.owner);
 }
 
+/** The stored conversation was gone, so this message opens a new one and carries both blocks whole. */
+export function sendBlocksWhole(r: Running): void {
+  const pending = sentBlocks.get(r.owner)?.pending;
+  if (pending?.r === r) r.message = r.message.replace(pending.lean, () => pending.whole);
+}
+
 /** What this agent's current conversation has seen: the last message's blocks if claude read it, nothing if the conversation is another one. */
-function committedBlocks(owner: Loaded) {
+function committedBlocks(owner: Loaded, s: ClaudeSession) {
   const blocks = sentBlocks.get(owner) ?? {};
   if (blocks.pending?.r.delivered) {
     blocks.committed = blocks.pending.sent;
     blocks.conversation = blocks.pending.r.owner.sessionId;
   }
   blocks.pending = undefined;
-  if (!owner.sessionId || blocks.conversation !== owner.sessionId) blocks.committed = undefined;
+  const newConversation = !s.resumed && !s.gotInit;
+  if (newConversation || !owner.sessionId || blocks.conversation !== owner.sessionId) blocks.committed = undefined;
   sentBlocks.set(owner, blocks);
   return blocks;
 }
@@ -310,7 +320,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       // D260: the brand kit and plan whole only when they changed since this session last saw them.
       // What it has seen: the last message's blocks once claude read that message (a turn stopped or
       // failed before claude read it doesn't count).
-      const blocks = committedBlocks(owner);
+      const blocks = committedBlocks(owner, s);
       const lean = leanPlanBlock(planBlock, blocks.committed);
       let message = compacting
         ? text
@@ -402,7 +412,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         downloads: { bytes: 0, count: 0 },
         ...(ranges ? { ranges } : {}),
       };
-      if (planBlock) blocks.pending = { sent: lean.sent, r };
+      if (planBlock) blocks.pending = { sent: lean.sent, r, lean: lean.text, whole: planBlock };
       owner.running = r;
       persist(owner);
       publishNow();

@@ -144,6 +144,21 @@ test("a respawn that resumes keeps the plan as a line; a new chat gets it whole"
   }
 });
 
+test("a stored conversation that's gone: the fresh one gets the plan whole in that same message", { skip, timeout: 60000 }, async () => {
+  const s = await setup("gone-blocks", { UNCUT_AGENT_IDLE_MS: "300", FAKE_RESUME_GONE: "fake-session" });
+  const brief = { film: "A teaser for Acme", audience: "devs", duration: "20 s", formats: [], assets: [], visual: "dark", hardLines: [], deliverables: [] };
+  try {
+    await s.client.ok("agent.planSave", { brief });
+    await s.send("one", [{ text: "ok" }]);
+    await new Promise((r) => setTimeout(r, 900));
+    await s.send("two", [{ text: "ok" }]);
+    assert.match(s.prompts().at(-1)!, /A teaser for Acme/);
+    assert.doesNotMatch(s.prompts().at(-1)!, /Unchanged since/);
+  } finally {
+    await s.stop();
+  }
+});
+
 test("Compact with no conversation yet is refused", { skip, timeout: 30000 }, async () => {
   const s = await setup("compact-empty");
   try {
