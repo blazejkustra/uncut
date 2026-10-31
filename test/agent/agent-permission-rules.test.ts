@@ -1058,7 +1058,10 @@ test("round 9: this project's saved tool output is copied into the project (a pr
   ] as const) {
     const r = r9d(command);
     assert.ok(
-      r.kind === "deny" && r.message.includes(piece) && /Copy the files into the project first/.test(r.message) && r.message.includes("cp of such files"),
+      r.kind === "deny" &&
+        r.message.includes(piece) &&
+        /Claude Code blocks every cp out of that folder/.test(r.message) &&
+        r.message.includes("cp of such files"),
       r.kind === "deny" ? r.message : r.kind,
     );
   }
@@ -1068,11 +1071,11 @@ test("round 9: this project's saved tool output is copied into the project (a pr
     other.kind === "deny" &&
       other.message.includes("other conversations") &&
       other.message.includes("`python3 x.py") &&
-      !other.message.includes("Copy the files"),
+      !other.message.includes("every cp out of that folder"),
     other.kind === "deny" ? other.message : "",
   );
   const mixedOut = r9d(`python3 x.py ${R9_OUT}/a.jpg ${R9_HOME}/.claude/settings.json`);
-  assert.ok(mixedOut.kind === "deny" && !mixedOut.message.includes("Copy the files"), "another ~/.claude path on the line");
+  assert.ok(mixedOut.kind === "deny" && !mixedOut.message.includes("every cp out of that folder"), "another ~/.claude path on the line");
 });
 
 test("round 9: cp into the project on disk: a link at the destination or among a glob's matches can't take the token or write out", () => {

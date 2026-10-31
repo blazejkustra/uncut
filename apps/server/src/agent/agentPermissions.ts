@@ -169,7 +169,7 @@ const SPEECH_REFUSAL =
   "Not done: Uncut's speech models in its data folder are for Uncut's own transcription, so there is no whisper to find or run by hand. transcript_read gives a clip's words with their times (Uncut transcribes it first when needed), transcript_edit cuts by words and captions_make makes captions.";
 /** Where plain reads may happen, for the refusals (the rule nonReads applies). */
 const PLAIN =
-  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files (not a kit's) into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
+  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files (not a kit's or this project's project.json) into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
@@ -481,7 +481,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       if (named.length && named.every((p) => toolOutput(real(p))))
         return {
           kind: "deny",
-          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .cache/work/…) and run other programs on the copies.`,
+          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
         };
       return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
     }
@@ -498,7 +498,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (ctx.access === "auto" && NAMES_OWN.test(command))
       return {
         kind: "deny",
-        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; to run another program on a project.json, copy it first (cp <path>/project.json .cache/work/) and use the copy; change the project with timeline_edit and the other Uncut tools.`,
+        message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read. This project's data comes from project_read, and Claude Code blocks any cp of its project.json; to run another program on another project's, copy that one first (mkdir -p .cache/work && cp <that project>/project.json .cache/work/ref.json) and use the copy. Change the project with timeline_edit and the other Uncut tools.`,
       };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);
