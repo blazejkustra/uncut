@@ -151,6 +151,13 @@ test("a release never removes a lock it no longer owns; a reused pid's long-held
     const minute = new Date(Date.now() - 60_000);
     utimesSync(`${file}.lock`, minute, minute);
     assert.equal(await tryFileLock(file), undefined, "a live owner's lock is never taken, however old");
+
+    // cp -R of an open project: the lock came along naming the original's folder.
+    writeFileSync(`${file}.lock`, JSON.stringify({ pid: 1, token: "original", folder: "/elsewhere/original.uncut/.cache" }));
+    const copy = await tryFileLock(file);
+    assert.ok(copy, "a lock copied from another folder holds nothing here");
+    assert.equal(await tryFileLock(file), undefined, "the new lock names this folder and holds");
+    await copy();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

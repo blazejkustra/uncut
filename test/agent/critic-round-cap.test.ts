@@ -11,6 +11,7 @@ import {
   criticReview,
   criticUsage,
   criticUsageLine,
+  noMoreRounds,
   openBlockers,
   parseCritic,
   reviewNext,
@@ -84,6 +85,14 @@ test("the cap lists unresolved blockers too, and words a film with none left", (
   assert.equal(roundLimitLine(low), "Round limit reached, not passed: scores still under the bar.");
   assert.equal(roundLimitLine(failed()), "Round limit reached, not passed: 1 blocker still open.");
   assert.deepEqual(openBlockers({}), []);
+});
+
+test("the refusal of another round: a pass says so, a failed film names what is open", () => {
+  const passed = noMoreRounds("round 3 of at most 3: it passed", { passed: true });
+  assert.match(passed, /critic passed it/);
+  assert.doesNotMatch(passed, /still found|stop fixing/);
+  assert.match(noMoreRounds("cap", failed()), /what the critic still found: d1 blank at 4\.2 s: Empty frame\.$/);
+  assert.match(noMoreRounds("cap", undefined), /what the critic still found\.$/);
 });
 
 test("no notice without the cap: a pass, or a round that may go on or stopped for another reason", () => {

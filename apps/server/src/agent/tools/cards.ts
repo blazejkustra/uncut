@@ -29,7 +29,7 @@ import {
   criticReview,
   parseCritic,
   defectForAgent,
-  openBlockers,
+  noMoreRounds,
   reviewNext,
   reviewOutlook,
   roundLimit,
@@ -439,12 +439,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const ceiling = reviewCeiling(r.turn.prompt);
       const outlook = reviewOutlook(turnReviews(), r.reviewRounds, earlier, ceiling);
       if (!outlook.more) {
-        const last = turnReviews().at(-1);
-        const open = last ? openBlockers(last) : [];
-        return textResult(
-          `No more review rounds in this turn (${outlook.why}): stop fixing and tell the user in your final reply what the critic still found${open.length ? `: ${open.join("; ")}` : ""}.`,
-          true,
-        );
+        return textResult(noMoreRounds(outlook.why, turnReviews().at(-1)), true);
       }
       const project = v.session.project as Project;
       const fps = project.canvas.fps;

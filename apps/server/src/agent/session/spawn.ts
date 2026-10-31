@@ -91,6 +91,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       ...(before ? { before: before.value } : {}),
       ...(after ? { after: after.value } : {}),
     };
+    r.usageBeforeCompaction = true;
     publishNow();
   };
 
@@ -195,7 +196,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     } else if (msg.type === "result") {
       // D261: the window the result reports, before finish publishes the turn's end.
       noteContext(r, msg);
-      if (r.turn.compacted) askContextUsage(s, r.turn.kind === "compact");
+      if (r.turn.compacted) askContextUsage(s, r.turn.kind === "compact" || !!r.usageBeforeCompaction);
       // A Stop that crossed a successful result doesn't relabel the finished turn.
       if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
       if (r.turn.error) return finish(r, { status: "error" });

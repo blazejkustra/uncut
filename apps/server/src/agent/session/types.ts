@@ -185,6 +185,8 @@ export interface Running {
   session: ClaudeSession;
   // The message as claude gets it (prompt, <context>, <editor-context>).
   message: string;
+  // A compaction came after the last usage claude reported, so that count is from before it.
+  usageBeforeCompaction?: boolean;
   // export_video's range choices: the In/Out marks and the selected clips' span when the message was sent.
   readonly ranges?:
     | {

@@ -56,10 +56,31 @@ function trackOutline(track: Track | null) {
 const pick = (from: Record<string, unknown> | undefined, keys: ReadonlyArray<string>) =>
   Object.fromEntries(keys.filter((k) => from?.[k] !== undefined).map((k) => [k, from![k]]));
 
-async function graphicSizes(dir: string) {
+/** A graphic's real path, when it is in the project's own graphics folder. */
+async function graphicPath(dir: string, name: string, here: Here) {
+  const file = await readablePath(join(dir, "graphics", name), here);
+  return file?.startsWith(join(dir, "graphics") + sep) ? file : undefined;
+}
+
+async function graphicSizes(dir: string, here: Here) {
   const names = await readdir(join(dir, "graphics")).catch(() => [] as Array<string>);
-  const shown = names.filter((name) => GRAPHIC_FILE.test(name));
-  return Promise.all(shown.map(async (name) => ({ name, bytes: (await stat(join(dir, "graphics", name)).catch(() => undefined))?.size ?? 0 })));
+  const sized = await Promise.all(
+    names
+      .filter((name) => GRAPHIC_FILE.test(name))
+      .map(async (name) => {
+        const file = await graphicPath(dir, name, here);
+        const info = file ? await stat(file).catch(() => undefined) : undefined;
+        return info?.isFile() ? [{ name, bytes: info.size }] : [];
+      }),
+  );
+  return sized.flat();
+}
+
+function secretsHidden(value: unknown): unknown {
+  if (typeof value === "string") return hideSecrets(value);
+  if (Array.isArray(value)) return value.map(secretsHidden);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, secretsHidden(v)]));
+  return value;
 }
 
 /** Where a tool's `project` points: a path (~ too), or a project's name beside this one. */
@@ -72,8 +93,8 @@ function projectPath(project: string, current: string, home: string) {
 
 async function graphicFile(dir: string, name: string, here: Here): Promise<Peek> {
   if (!GRAPHIC_FILE.test(name)) return { problem: "graphic is a file name from this project's graphics list." };
-  const file = await readablePath(join(dir, "graphics", name), here);
-  const info = file?.startsWith(join(dir, "graphics") + sep) ? await stat(file) : undefined;
+  const file = await graphicPath(dir, name, here);
+  const info = file ? await stat(file) : undefined;
   if (!file || !info?.isFile()) return { problem: `There's no graphic ${name} to read in that project.` };
   const { size } = info;
   if (size > MAX_FILE_BYTES) return { problem: `${name} is ${size} bytes, over the ${MAX_FILE_BYTES} a peek shows. Use Read with an offset and limit.` };
@@ -103,10 +124,10 @@ export async function peekProject(o: {
   return {
     name: project.name,
     canvas: project.canvas,
-    brief: pick(await readJson(join(dir, "brief.json"), here), BRIEF_FIELDS),
+    brief: secretsHidden(pick(await readJson(join(dir, "brief.json"), here), BRIEF_FIELDS)),
     look: pick(project, ["theme", "master"]),
     tracks: tracks.map(trackOutline),
-    graphics: await graphicSizes(dir),
+    graphics: await graphicSizes(dir, here),
     note: "Read-only. project_peek with graphic gives one file; media_search finds its footage. Copy the look, not the words: this project's brief decides.",
   };
 }

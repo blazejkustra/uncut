@@ -168,8 +168,25 @@ const SPEECH_HUNT = /whisper|ggml|\.bin\b|\/models\b/i;
 const SPEECH_REFUSAL =
   "Not done: Uncut's speech models in its data folder are for Uncut's own transcription, so there is no whisper to find or run by hand. transcript_read gives a clip's words with their times (Uncut transcribes it first when needed), transcript_edit cuts by words and captions_make makes captions.";
 /** Where plain reads may happen, for the refusals (the rule nonReads applies). */
-const PLAIN =
-  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files (not a kit's or this project's project.json) into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
+const PLAIN_READS =
+  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most";
+const PLAIN_JOINS = "joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
+const PLAIN = `${PLAIN_READS}, or cp of such files (not a kit's or this project's project.json) into the project; ${PLAIN_JOINS}`;
+/** Options that run a program in another folder, or (env) run a command line of its own. Short ones bundle (env -iC, tar -xzC, tar xzCf). */
+const LEAVES_FOLDER = new Map([
+  ["env", /^(?:-[a-zA-Z0]*[CS]|--(?:chd|sp))/],
+  ["git", /^(?:-C|--(?:git-dir|work-tree))/],
+  ["make", /^(?:-[a-zA-Z]*C|--dir)/],
+  ["tar", /^(?:-[a-zA-Z]*C|--dir|[a-zA-Z]*C[a-zA-Z]*$)/],
+  ["pnpm", /^(?:-C|--(?:dir|cwd|chdir))/],
+]);
+const leavesFolder = (command: ReadonlyArray<string>) => {
+  const words = command.flatMap((word) => word.split(/\s+/));
+  return words.some((word, i) => {
+    const option = LEAVES_FOLDER.get(word.split("/").at(-1)!);
+    return option !== undefined && words.slice(i + 1).some((later) => option.test(later));
+  });
+};
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
@@ -319,12 +336,17 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.`,
   };
   // One plain command: a cd, a $ or a second command could put a relative .claude in the home folder.
-  const reachesOnlyProjectClaude = (command: string) =>
-    !("complex" in simpleCommand(command)) &&
-    withoutHomeClaude(command, home) === command &&
-    !configNamed(command) &&
-    !namesAppData(command, ctx.dataDir) &&
-    !(ctx.access === "auto" && NAMES_OWN.test(command));
+  const reachesOnlyProjectClaude = (command: string) => {
+    const parsed = simpleCommand(command);
+    return (
+      !("complex" in parsed) &&
+      !leavesFolder(parsed.words) &&
+      withoutHomeClaude(command, home) === command &&
+      !configNamed(command) &&
+      !namesAppData(command, ctx.dataDir) &&
+      !(ctx.access === "auto" && NAMES_OWN.test(command))
+    );
+  };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -488,7 +510,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       if (named.length && named.every((p) => toolOutput(real(p))))
         return {
           kind: "deny",
-          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
+          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN_READS}; ${PLAIN_JOINS}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
         };
       if (named.length && named.every((p) => inside(real(p), project)) && reachesOnlyProjectClaude(command))
         return {

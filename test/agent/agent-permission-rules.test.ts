@@ -1061,7 +1061,7 @@ test("round 9: this project's saved tool output is copied into the project (a pr
       r.kind === "deny" &&
         r.message.includes(piece) &&
         /Claude Code blocks every cp out of that folder/.test(r.message) &&
-        r.message.includes("cp of such files"),
+        !r.message.includes("cp of such files"),
       r.kind === "deny" ? r.message : r.kind,
     );
   }

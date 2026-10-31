@@ -452,6 +452,8 @@ async function main() {
   const grab = async (target: BrowserWindow, width: number, height: number, expected: number) => {
     const until = Date.now() + SENTINEL_WAIT_MS;
     for (;;) {
+      // A capture can stall for seconds and hand back the frame from before the stall, so only one started past the deadline ends the wait.
+      const lastTry = Date.now() > until;
       await nextPaint(target);
       let image = await capturePage(target, { x: 0, y: 0, width, height: height + 1 });
       const size = image.getSize();
@@ -459,7 +461,7 @@ async function main() {
       const row = image.crop({ x: 0, y: height, width: 1, height: 1 }).toBitmap();
       const seen = (row[2]! > 127 ? 4 : 0) + (row[1]! > 127 ? 2 : 0) + (row[0]! > 127 ? 1 : 0);
       if (seen === expected) return image.crop({ x: 0, y: 0, width, height });
-      if (Date.now() > until) throw new Error("the frame drawn never reached the capture (the machine too busy?)");
+      if (lastTry) throw new Error("the frame drawn never reached the capture (the machine too busy?)");
     }
   };
   // D292: an output size shrinks the capture (laid out and checked at full size) before it's encoded.
