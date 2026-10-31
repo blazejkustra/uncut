@@ -745,6 +745,12 @@ const children = () =>
     .filter(Boolean);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const resultLog = () => join(root, "results.jsonl");
+function resultsSince(before: number) {
+  const lines = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).slice(before);
+  const results = lines.map((l) => JSON.parse(l) as { result: { isError?: boolean; content: Array<{ type: string; data?: string }> } });
+  for (const r of results) assert.ok(!r.result.isError, JSON.stringify(r.result).slice(0, 300));
+  return results;
+}
 
 before(async () => {
   if (skipServer) return;
@@ -1344,15 +1350,7 @@ test(
     const agent = client.subscribe("agent.subscribe");
     const { turnId } = await client.ok("agent.send", { prompt: "Look at the transitions" });
     await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
-    const results = readFileSync(resultLog(), "utf8")
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .slice(before)
-      .map((l) => JSON.parse(l)) as Array<{
-      result: { isError?: boolean; content: Array<{ type: string; data?: string }> };
-    }>;
-    for (const r of results) assert.ok(!r.result.isError, JSON.stringify(r.result).slice(0, 300));
+    const results = resultsSince(before);
     for (const [i, f] of frames.entries()) {
       const jpg = join(root, `moves-agent-${f}.jpg`);
       writeFileSync(jpg, Buffer.from(results[i]!.result.content.find((c) => c.type === "image")!.data!, "base64"));
@@ -1422,15 +1420,7 @@ test(
     const agent = client.subscribe("agent.subscribe");
     const { turnId } = await client.ok("agent.send", { prompt: "Look at the box" });
     await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
-    const results = readFileSync(resultLog(), "utf8")
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .slice(before)
-      .map((l) => JSON.parse(l)) as Array<{
-      result: { isError?: boolean; content: Array<{ type: string; data?: string }> };
-    }>;
-    for (const r of results) assert.ok(!r.result.isError, JSON.stringify(r.result).slice(0, 300));
+    const results = resultsSince(before);
     for (const [i, f] of [0, 89].entries()) {
       const jpg = join(root, `split-agent-${f}.jpg`);
       writeFileSync(jpg, Buffer.from(results[i]!.result.content.find((c) => c.type === "image")!.data!, "base64"));
