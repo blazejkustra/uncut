@@ -37,7 +37,6 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Shared controls */
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--muted); }
 .icon-btn:not(:disabled):hover { background: var(--raised); color: var(--fg); }
 .icon-btn.active { color: var(--fg); background: var(--raised); }

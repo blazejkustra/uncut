@@ -548,3 +548,27 @@ test("a server that stops kills a claude that is still closing (idle close it di
   assert.ok(await gone(pid), "killed with the server");
   assert.ok(await gone(mcpPid));
 });
+
+test("a new format copy starts a new chat: no session, no turns, and the plan and note reach its first message", { skip, timeout: 60000 }, async () => {
+  const s = await setup("format");
+  try {
+    await s.ask("build it", [{ tool: "project_read" }, { text: "Built." }]);
+    writeFileSync(join(s.dir, "brief.json"), JSON.stringify({ film: "Launch film", notes: "Keep the blue logo", by: "user" }));
+    const original = readFileSync(join(s.dir, "project.json"), "utf8");
+
+    const copy = await s.client.ok("project.copy", { format: "9:16", width: 1080, height: 1920 });
+    await s.agent.until((a) => a?.dir === copy.dir, 10000);
+    assert.equal(s.agent.values.at(-1).turns.length, 0, "no turns came over");
+
+    const t = await s.ask("make it vertical", [{ tool: "project_read" }, { text: "On it." }]);
+    assert.equal(t.status, "done", t.error);
+    const first = s.runs().at(-1)!;
+    assert.equal(first.resume, null, "not resumed");
+    assert.match(first.prompt, /<plan>[\s\S]*Launch film[\s\S]*Keep the blue logo[\s\S]*<\/plan>/);
+    assert.match(first.prompt, /<brand>/);
+    assert.match(first.prompt, /a copy of "P", made for a 9:16 version/);
+    assert.equal(readFileSync(join(s.dir, "project.json"), "utf8"), original, "the original is as it was");
+  } finally {
+    await s.stop();
+  }
+});

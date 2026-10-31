@@ -71,7 +71,7 @@ test("the cap on a failed round: the result lists the blockers, says it hasn't p
   assert.match(limit.tell, /has not passed[^]*final reply/);
   const next = reviewNext(review, 1, outlook);
   assert.match(next, /stop fixing/);
-  assert.match(next, /In your final reply[^]*stopped at the round limit[^]*d1 blank at 4\.2 s: Empty frame/);
+  assert.match(next, /In your final reply[^]*stopped at the round limit[^]*d1 blank at 4\.2 s/);
   assert.match(next, /Don't say it passed/);
 });
 

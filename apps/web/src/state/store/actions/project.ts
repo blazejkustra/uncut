@@ -58,6 +58,21 @@ export const projectActions = {
     else set({ welcomeError: text });
   },
 
+  /** Opens a copy of the project for a new format, with a new chat; false when none opened. */
+  async copyForFormat(input: { format: string; width: number; height: number }): Promise<boolean> {
+    if (!(await confirmLeave("open-project"))) return false;
+    const result = await call((c) => c["project.copy"](input));
+    if (!result.ok) {
+      set({ notice: { text: `Couldn't make the copy. ${plainError(result.error)}`, transport: isTransportError(result.error) } });
+      return false;
+    }
+    rememberSideTab(result.value.dir, "agent");
+    applyFromCall(result.value);
+    set({ notice: undefined });
+    void refreshRecents();
+    return true;
+  },
+
   async openWithDialog() {
     const dir = await chooseFolder("project");
     if (dir) await actions.openProject(dir);

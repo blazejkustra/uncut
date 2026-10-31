@@ -23,6 +23,7 @@ import { ServerConfig } from "../app/config.ts";
 import { ProjectFormat } from "./format.ts";
 import { HistoryDb, type NewRow, type Row } from "./history.ts";
 import { sameJson } from "./jsonPatch.ts";
+import { copyFolder, copyNote, movedProjectText, reserveCopy } from "./projects/copy.ts";
 import { Recents } from "./recents.ts";
 import { Projects, type MediaRecord, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
 import { makeEditUnlocked } from "./projects/edit.ts";
@@ -409,6 +410,31 @@ export const layer = Layer.effect(
             const text = yield* readProjectFile(dir);
             const project = yield* parseProject(dir, text);
             return yield* setOpen(dir, project, text, false);
+          }),
+        ),
+
+      copy: ({ format: label, width, height }) =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            const p = yield* requireOpen;
+            const failed = (error: unknown) => ioError(p.dir)(error as Error);
+            const { dir, name } = yield* Effect.tryPromise({ try: () => reserveCopy(p.dir, label), catch: failed });
+            const removeCopy = fs.remove(dir, { recursive: true }).pipe(Effect.ignore);
+            const text = serialize({ ...JSON.parse(movedProjectText(p.diskText, p.dir, dir)), name });
+            const project = yield* parseProject(dir, text).pipe(Effect.tapError(() => removeCopy));
+            const fill = async () => {
+              await copyFolder(p.dir, dir);
+              const history = HistoryDb.open(dir);
+              history.saveAgent({ sessionId: undefined, pendingNote: copyNote(p.session.project.name, label, width, height), turns: [] });
+              history.close();
+            };
+            yield* Effect.uninterruptible(
+              Effect.tryPromise({ try: fill, catch: failed }).pipe(
+                Effect.andThen(writeFileAtomic(join(dir, "project.json"), text).pipe(Effect.mapError(ioError(dir)))),
+                Effect.tapError(() => removeCopy),
+              ),
+            );
+            return yield* setOpen(dir, project, text, true);
           }),
         ),
 

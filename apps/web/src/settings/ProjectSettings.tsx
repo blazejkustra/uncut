@@ -7,16 +7,23 @@ import { useEffect, useRef, useState } from "react";
 
 import { isTransportError } from "../state/connection.ts";
 import { shortPath } from "../state/format.ts";
+import { anyAgentRunning } from "../state/agents.ts";
 import { actions, getState, MAX_NAME_LENGTH, plainError, useApp, type Project } from "../state/store.ts";
-import { ASPECTS, aspectOf, canvasSide, FPS_CHOICES, planCanvas, type Canvas } from "./canvas.ts";
+import { ASPECTS, aspectOf, canvasSide, FPS_CHOICES, planCanvas, type Aspect, type Canvas } from "./canvas.ts";
 
 const canvasEdit = (patch: Partial<Canvas>, keepPositions = false) => actions.itemEdit((p) => planCanvas(p, patch, { keepPositions }));
 
+async function copyForFormat({ id, width, height }: Aspect, keepPositions: boolean) {
+  if (await actions.copyForFormat({ format: id, width, height })) void canvasEdit({ width, height }, keepPositions);
+}
+
 export function ProjectSettings({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
-  const { appInfo, environment } = useApp();
+  const app = useApp();
+  const { appInfo, environment, agent } = app;
   const { width, height, fps } = project.canvas;
   const hasItems = project.tracks.some((t) => t.items.length);
   const aspect = aspectOf(project.canvas);
+  const busy = anyAgentRunning(agent);
   // F10 (D155): a new size rescales what's on the canvas unless this is on.
   const [keep, setKeep] = useState(false);
   return (
@@ -40,6 +47,29 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
           ))}
         </div>
       </div>
+      {hasItems && (
+        <div className="group" data-testid="new-format">
+          <div className="group-label">New format</div>
+          <div className="field-row three">
+            {ASPECTS.filter((a) => a.id !== aspect).map((a) => (
+              <button
+                key={a.id}
+                className="btn"
+                data-testid="new-format-option"
+                data-aspect={a.id}
+                disabled={!online || busy}
+                title={busy ? "Wait for the agent to finish, or stop it" : `Open a copy at ${a.width}×${a.height}`}
+                onClick={() => void copyForFormat(a, keep)}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+          <div className="muted small" style={{ marginTop: 6 }}>
+            Opens a copy next to this project with a new chat, so the long conversation stays here.
+          </div>
+        </div>
+      )}
       <div className="group">
         <div className="group-label">Resolution</div>
         <div className="field-row">

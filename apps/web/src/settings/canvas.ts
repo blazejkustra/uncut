@@ -6,7 +6,13 @@ import type { Plan } from "../timeline/edit.ts";
 
 export type Canvas = ProjectModel["canvas"];
 export const FPS_CHOICES: ReadonlyArray<Canvas["fps"]> = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
-export const ASPECTS: ReadonlyArray<{ readonly id: string; readonly label: string; readonly width: number; readonly height: number }> = [
+export interface Aspect {
+  readonly id: string;
+  readonly label: string;
+  readonly width: number;
+  readonly height: number;
+}
+export const ASPECTS: ReadonlyArray<Aspect> = [
   { id: "16:9", label: "16:9", width: 1920, height: 1080 },
   { id: "9:16", label: "9:16", width: 1080, height: 1920 },
   { id: "1:1", label: "1:1", width: 1080, height: 1080 },

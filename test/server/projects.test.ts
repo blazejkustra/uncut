@@ -589,3 +589,44 @@ test("one server per project: another server's open is refused with the holder's
     await b.end();
   }
 });
+
+test("a new format copy sits next to the original with its files and none of its history", T, async () => {
+  const s = await session();
+  try {
+    const { dir } = await s.ok("project.create", { parentDir: root, name: "Film" });
+    const inside = join(dir, "media", "take.mp4");
+    writeFileSync(inside, "take");
+    await s.ok("project.edit", { ops: [addTitle] });
+    mkdirSync(join(dir, "agent"));
+    writeFileSync(join(dir, "agent", "turns.json"), `{"sessionId":"old","turns":[]}`);
+    writeFileSync(join(dir, "brief.json"), "{}");
+    writeFileSync(join(dir, ".cache", "keep"), "cached");
+    mkdirSync(join(dir, ".cache", "work"));
+    writeFileSync(join(dir, ".cache", "work", "scratch"), "scratch");
+    const hand = onDisk(dir);
+    hand.media = [{ id: "m", kind: "video", path: inside, name: "take", probe: { frames: 30, fps: 30, width: 1920, height: 1080, hasAudio: false } }];
+    writeFileSync(join(dir, "project.json"), `${JSON.stringify(hand, null, 2)}\n`);
+    await s.ok("project.reload");
+    const before = readFileSync(join(dir, "project.json"), "utf8");
+
+    const copy = await s.ok("project.copy", { format: "9:16", width: 1080, height: 1920 });
+    assert.equal(copy.dir, join(root, "Film 9x16.uncut"));
+    assert.equal(copy.project.name, "Film 9x16");
+    assert.equal(copy.project.tracks.find((t: { id: string }) => t.id === "text").items.length, 1, "the timeline came over");
+    assert.equal(copy.project.media[0].path, join(copy.dir, "media", "take.mp4"), "its media points into the copy");
+    assert.equal(copy.canUndo, false);
+    assert.equal(readFileSync(join(copy.dir, "media", "take.mp4"), "utf8"), "take");
+    assert.ok(existsSync(join(copy.dir, "brief.json")));
+    assert.ok(existsSync(join(copy.dir, ".cache", "keep")));
+    assert.equal(existsSync(join(copy.dir, "agent")), false);
+    assert.equal(existsSync(join(copy.dir, ".cache", "work")), false);
+
+    assert.equal(readFileSync(join(dir, "project.json"), "utf8"), before, "the original is as it was");
+    assert.equal(existsSync(join(dir, ".cache", "open.lock")), false, "and it isn't held open any more");
+
+    assert.equal((await s.ok("project.open", { dir })).dir, dir);
+    assert.equal((await s.ok("project.copy", { format: "9:16", width: 1080, height: 1920 })).dir, join(root, "Film 9x16 2.uncut"));
+  } finally {
+    await s.end();
+  }
+});

@@ -43,6 +43,13 @@ export const ProjectOpenRpc = Rpc.make(RPC_METHODS.projectOpen, {
   error: ProjectError,
 });
 
+// A copy of the open project next to it, for a new format: the copy opens with no chat.
+export const ProjectCopyRpc = Rpc.make(RPC_METHODS.projectCopy, {
+  payload: Schema.Struct({ format: Schema.String, width: Schema.Number, height: Schema.Number }),
+  success: ProjectSnapshot,
+  error: ProjectError,
+});
+
 export const ProjectGetRpc = Rpc.make(RPC_METHODS.projectGet, { payload: Empty, success: ProjectSnapshot, error: ProjectError });
 
 // Re-read project.json (after a hand edit). If it doesn't validate, the current session stays.
