@@ -109,6 +109,20 @@ test("Make captions: a captions item on its own track over the main track, valid
   assert.match((planMakeCaptions(p, { media: "m-talk", transcript: T, look: "text.nope" }) as { problem: string }).problem, /no text look/);
 });
 
+test("new captions are one line a card; asked lines win, an older item with no maxLines stays at 2", () => {
+  const p = projectWith([clip("clip-1", 0, 180)]);
+  const make = (req: { lines?: { maxLines?: number; maxChars?: number } }) => {
+    const plan = planMakeCaptions(p, { media: "m-talk", transcript: T, ...req });
+    assert.ok(!("problem" in plan));
+    return cut(p, plan.ops);
+  };
+  const short = { maxChars: 10 };
+  assert.deepEqual(capOf(make({ lines: short })).lines, { maxLines: 1, maxChars: 10 });
+  assert.deepEqual(texts(make({ lines: short })), ["Hello um", "this is a", "test.", "Second", "part"]);
+  assert.deepEqual(texts(make({ lines: { ...short, maxLines: 2 } })), ["Hello um / this is a", "test.", "Second / part"]);
+  assert.deepEqual(texts(projectWith([clip("clip-1", 0, 180)], { lines: short })), ["Hello um / this is a", "test.", "Second / part"]);
+});
+
 test("grouping: pauses, sentence ends, characters per line, 1 and 2 lines, max duration, words per line", () => {
   const main = [clip("clip-1", 0, 180)];
   // Defaults (32 chars, 2 lines, 3 s, 0.3 s pause): "test." ends a sentence and a 1 s pause follows.
