@@ -57,7 +57,7 @@
 
 .device-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; margin: 0 -4px; padding: 0 4px; }
 .device-group { display: flex; flex-direction: column; gap: 1px; }
-.device-group-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); padding: 2px 6px; }
+.device-group-title { font-size: 10px; color: var(--dim); padding: 2px 6px; }
 .device-option { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; text-align: left; min-width: 0; }
 .device-option:hover { background: var(--raised); }
 .device-option.active { background: var(--raised); box-shadow: inset 2px 0 0 var(--select); }

@@ -1153,7 +1153,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .approval { margin-top: 8px; padding: 10px 12px; border: 1px solid rgb(251 191 36 / 40%); border-radius: var(--radius-sm); background: rgb(251 191 36 / 8%); display: flex; flex-direction: column; gap: 6px; }
 .approval-text { font-weight: 600; font-size: 13px; }
 .approval-sub { font-size: 11px; color: var(--muted); }
-.approval-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.approval-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 /* Plugin contributions (D103): a small label with the plugin's name under a tile, next to a check's title. */
 .source-label { padding: 0 7px 6px; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .plugin-comp-thumb { background: linear-gradient(135deg, #2b2e36, #17181c); }
@@ -1470,7 +1470,7 @@ body.tile-dragging, body.tile-dragging * { cursor: grabbing !important; user-sel
 .approval-diff-field { color: var(--muted); font-size: 11px; }
 .approval-diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .approval-diff-cols > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.approval-diff-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+.approval-diff-label { font-size: 10px; color: var(--dim); }
 .approval-diff-row { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; min-width: 0; }
 .approval-diff-row.gone { color: var(--muted); text-decoration: line-through; }
 .approval-diff-row.new { color: var(--fg); }
@@ -1578,7 +1578,7 @@ div.card-head { cursor: default; }
 .blocker.marked, .defect.marked { opacity: 0.55; }
 .blocker.marked .grow, .defect.marked .grow { text-decoration: line-through; text-decoration-color: var(--muted); }
 .question-text, .brief-field textarea, .storyboard-card textarea { font-family: var(--font); }
-.storyboard-card .approval-btns { flex-wrap: wrap; }
+
 .storyboard-card .approval-btns .btn { display: inline-flex; align-items: center; gap: 4px; }
 .storyboard-card .approval-btns .btn svg { width: 12px; height: 12px; }
 .brand-editor .brand-body { padding: 0 14px 10px; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
@@ -1591,9 +1591,9 @@ div.card-head { cursor: default; }
 .beat-fields .grow { flex: 1; min-width: 0; width: auto; }
 
 /* D194: Claude Code's tools on a permission card, and a step's result in the work log. */
-.permission-card .permission-tool { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.permission-card .permission-target { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); background: rgb(0 0 0 / 25%); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
-.permission-card .permission-why { font-size: 11.5px; color: var(--warn); }
+.permission-card .permission-tool { font-size: 11px; color: var(--muted); }
+.permission-card .permission-target { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); background: rgb(0 0 0 / 25%); font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
+.permission-card .permission-why { font-size: 12px; color: var(--warn); }
 .step.has-result { cursor: pointer; }
 .step.has-result:hover { color: var(--fg); }
 .step .grow { flex: 1; min-width: 0; }
@@ -1751,9 +1751,9 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; user-select: no
 .provider-mark.md { width: 20px; height: 20px; }
 .provider-mark .provider-logo { width: 100%; height: 100%; display: block; }
 .provider-wordmark { font-weight: 600; letter-spacing: -0.01em; color: var(--fg); }
-.composer-choices .choice .provider-wordmark { font-size: 11.5px; }
-.choice-head { padding: 4px 8px 2px; font-size: 10.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.choice-foot { padding: 6px 8px 2px; font-size: 10.5px; color: var(--dim); border-top: 1px solid var(--border); margin-top: 3px; }
+.composer-choices .choice .provider-wordmark { font-size: 12px; }
+.choice-head { padding: 4px 8px 2px; font-size: 11px; color: var(--dim); }
+.choice-foot { padding: 6px 8px 2px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--border); margin-top: 3px; }
 .choice-menu.model-menu { flex-direction: row; padding: 0; overflow: hidden; }
 .model-rail { display: flex; flex-direction: column; gap: 4px; padding: 6px 4px; border-right: 1px solid var(--border); flex: none; }
 .model-rail-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; }

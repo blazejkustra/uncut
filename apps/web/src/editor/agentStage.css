@@ -15,7 +15,7 @@
   animation: agent-stage-card-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .agent-stage-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0 18px; }
-.agent-stage-kicker { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.agent-stage-kicker { font-size: 11px; color: var(--muted); }
 .agent-stage-head .grow, .agent-stage-foot .grow { flex: 1; }
 .agent-stage-card .agent { min-height: 0; }
 /* Room to read, and a bigger composer. Before the first turn the question and the composer sit
