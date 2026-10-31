@@ -125,8 +125,13 @@ test("a line that can reach ~/.claude, apps' data or Uncut's files stays refused
     `bash -c "echo hi > ~/.claude/settings.json" .claude/a`,
     `open .claude/a "${HOME}/Library/Application Support/Uncut/settings.json"`,
     `mv .claude/a project.json`,
+    `env -C ~ open .claude/settings.json`,
+    `env --chdir=${HOME} open .claude/settings.json`,
+    `env -S "open .claude/a" .claude/a`,
+    `git -C ~ add .claude/settings.json`,
   ])
     assert.equal(bash(command).kind, "deny", command);
+  assert.equal(bash(`open -S .claude/skills/a.md`).kind, "ask", "only programs that can change folder lose the card");
   const card = bash(`open .claude/skills/a.md`);
   assert.ok(card.kind === "ask" && card.updatedInput, card.kind);
   assert.match(String(card.updatedInput.command), /^cd '\/Users\/me\/Movies\/argent-100s\.uncut' && \(/);

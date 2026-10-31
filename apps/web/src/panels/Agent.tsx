@@ -50,7 +50,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         data-testid="agent-new-chat"
         aria-label="New chat"
         disabled={!online || running !== null || turns.length === 0}
-        onClick={() => (setShowEarlier(false), void actions.agentNewThread())}
+        onClick={() => void actions.agentNewThread()}
       >
         <SquarePen />
       </button>
@@ -97,7 +97,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
     stuck.current = true;
     setAway(false);
     setShowEarlier(false);
-  }, [agentId]);
+  }, [agentId, agent?.threadStart]);
   useLayoutEffect(() => {
     const el = thread.current;
     if (!el || !turns.length) return;

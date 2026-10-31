@@ -295,6 +295,8 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]").length === 5);
   await waitFor(page, "[data-testid=agent-thread-divider]");
   await page.screenshot({ path: "test-output/agent-earlier-chat.png" });
+  await page.click("[data-testid=agent-new-chat]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]").length === 0, { timeout: 10000 });
   assert.deepEqual(app.errors, []);
 }
 

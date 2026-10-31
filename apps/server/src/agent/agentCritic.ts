@@ -732,6 +732,13 @@ export function reviewNext(
 export const openBlockers = (review: Pick<Review, "blockers">): Array<string> =>
   (review.blockers ?? []).map((b) => `${b.id ?? "?"} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`);
 
+/** review_submit's refusal once a turn's rounds are over. */
+export function noMoreRounds(why: string, last: Pick<Review, "blockers" | "passed"> | undefined) {
+  if (last?.passed) return `No more review rounds in this turn (${why}): the critic passed it, so tell the user that in your final reply.`;
+  const open = last ? openBlockers(last) : [];
+  return `No more review rounds in this turn (${why}): stop fixing and tell the user in your final reply what the critic still found${open.length ? `: ${open.join("; ")}` : ""}.`;
+}
+
 /** review_submit's notice when the ceiling stopped a round that didn't pass; none otherwise. */
 export function roundLimit(review: Review, outlook: ReviewOutlook, rounds: number) {
   if (!outlook.capped || review.passed) return undefined;

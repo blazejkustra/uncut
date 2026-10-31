@@ -322,6 +322,7 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     }
     if ("raw" in step) {
       out({ parent_tool_use_id: null, session_id: sessionId, ...step.raw });
+      if (step.raw.subtype === "compact_boundary") compacted = true;
       continue;
     }
     if ("result" in step && !("builtin" in step)) {

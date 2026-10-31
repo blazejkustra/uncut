@@ -168,8 +168,13 @@ const SPEECH_HUNT = /whisper|ggml|\.bin\b|\/models\b/i;
 const SPEECH_REFUSAL =
   "Not done: Uncut's speech models in its data folder are for Uncut's own transcription, so there is no whisper to find or run by hand. transcript_read gives a clip's words with their times (Uncut transcribes it first when needed), transcript_edit cuts by words and captions_make makes captions.";
 /** Where plain reads may happen, for the refusals (the rule nonReads applies). */
-const PLAIN =
-  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files (not a kit's or this project's project.json) into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
+const PLAIN_READS =
+  "ls, cat, head, tail, stat, wc or grep (paths written out: no ~, .., globs or $) of files in this project, another Uncut project (its project.json, brief.json, storyboard.json, graphics/, brand/ and reviews/; ls of its folder and media/), a folder you were given, Uncut's brand kits or its graphic libraries, piped into head, tail, grep, wc, sort, uniq or a jq path at most";
+const PLAIN_JOINS = "joined by ; or && (cd allowed), no redirects but 2>/dev/null and 2>&1";
+const PLAIN = `${PLAIN_READS}, or cp of such files (not a kit's or this project's project.json) into the project; ${PLAIN_JOINS}`;
+/** Programs with an option that runs them in another folder, or (env) runs a command line of its own. */
+const FOLDER_OPTION_PROGRAMS = new Set(["env", "git", "make", "tar", "pnpm"]);
+const LEAVES_FOLDER = /^(-C|-S|--chdir|--cwd|--directory|--split-string)/;
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
@@ -319,12 +324,17 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.`,
   };
   // One plain command: a cd, a $ or a second command could put a relative .claude in the home folder.
-  const reachesOnlyProjectClaude = (command: string) =>
-    !("complex" in simpleCommand(command)) &&
-    withoutHomeClaude(command, home) === command &&
-    !configNamed(command) &&
-    !namesAppData(command, ctx.dataDir) &&
-    !(ctx.access === "auto" && NAMES_OWN.test(command));
+  const reachesOnlyProjectClaude = (command: string) => {
+    const parsed = simpleCommand(command);
+    return (
+      !("complex" in parsed) &&
+      !(parsed.words.some((word) => FOLDER_OPTION_PROGRAMS.has(word)) && parsed.words.some((word) => LEAVES_FOLDER.test(word))) &&
+      withoutHomeClaude(command, home) === command &&
+      !configNamed(command) &&
+      !namesAppData(command, ctx.dataDir) &&
+      !(ctx.access === "auto" && NAMES_OWN.test(command))
+    );
+  };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -488,7 +498,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       if (named.length && named.every((p) => toolOutput(real(p))))
         return {
           kind: "deny",
-          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
+          message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN_READS}; ${PLAIN_JOINS}); ${offending}. Read images and text with Read; Claude Code blocks every cp out of that folder.`,
         };
       if (named.length && named.every((p) => inside(real(p), project)) && reachesOnlyProjectClaude(command))
         return {

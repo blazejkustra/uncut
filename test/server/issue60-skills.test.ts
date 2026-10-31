@@ -93,6 +93,11 @@ test("plugin skills are discovered: a skills-only data plugin works, the first p
   );
 });
 
+test("with no skill installed the prompt still says how to make one", () => {
+  assert.match(skillsPrompt([]), /save it as \.claude\/skills\/<name>\/SKILL\.md/);
+  assert.doesNotMatch(skillsPrompt([]), /installed in Uncut/);
+});
+
 test("the system prompt lists every installed skill's name and description; skill_read is a tool", () => {
   const skills = bundledSkills();
   const argv = sessionArgs({ cfg: "/tmp/m.json", skills });

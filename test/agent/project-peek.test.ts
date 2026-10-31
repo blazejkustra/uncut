@@ -27,7 +27,10 @@ writeFileSync(
     tracks: [{ id: "v", kind: "video", name: "Main", role: "main", items: [{ type: "clip" }, { type: "clip" }, { type: "graphic" }] }],
   }),
 );
-writeFileSync(join(there, "brief.json"), JSON.stringify({ film: "A promo", visual: "Silver", assets: ["/Users/me/x.mov"] }));
+writeFileSync(
+  join(there, "brief.json"),
+  JSON.stringify({ film: "A promo", visual: "Silver", hardLines: ["key sk-ant-abcdefghijklmnopqrstuvwx"], assets: ["/Users/me/x.mov"] }),
+);
 writeFileSync(join(there, "graphics", "panel.html"), "<div>panel</div><script>const k = 'sk-ant-abcdefghijklmnopqrstuvwx';</script>");
 writeFileSync(join(there, "graphics", "huge.html"), "x".repeat(70 * 1024));
 writeFileSync(join(there, "secrets.env"), "KEY=1");
@@ -40,11 +43,23 @@ test("the outline: brief, canvas, look, tracks by type and graphic sizes, and no
   const seen = (await peek(there)) as Record<string, any>;
   assert.equal(seen.name, "there");
   assert.deepEqual(seen.canvas, { width: 1080, height: 1920, fps: 30 });
-  assert.deepEqual(seen.brief, { film: "A promo", visual: "Silver" });
+  assert.deepEqual(seen.brief, { film: "A promo", visual: "Silver", hardLines: ["key •••"] });
+  assert.ok(!seen.graphics.some((g: any) => g.name === "link.html"), "a link in graphics/ isn't listed");
   assert.deepEqual(seen.look, { theme: { colors: { bg: "#000" } } });
   assert.deepEqual(seen.tracks, [{ id: "v", kind: "video", name: "Main", role: "main", types: { clip: 2, graphic: 1 } }]);
   assert.ok(seen.graphics.some((g: any) => g.name === "panel.html" && g.bytes > 20));
   assert.doesNotMatch(JSON.stringify(seen), /secret\/footage/);
+});
+
+test("a graphics folder that links elsewhere lists nothing", async () => {
+  const linked = join(movies, "linked-graphics.uncut");
+  const elsewhere = join(home, "elsewhere");
+  mkdirSync(linked);
+  mkdirSync(elsewhere);
+  writeFileSync(join(linked, "project.json"), "{}");
+  writeFileSync(join(elsewhere, "private.html"), "x");
+  symlinkSync(elsewhere, join(linked, "graphics"));
+  assert.deepEqual(((await peek(linked)) as Record<string, any>).graphics, []);
 });
 
 test("a sibling by name and by ~ path", async () => {
