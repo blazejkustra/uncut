@@ -29,9 +29,9 @@
 @media (prefers-reduced-motion: reduce) { .shortcut-listening { animation: none; } }
 .shortcut-add.icon-btn, .shortcut-reset.icon-btn { width: 22px; height: 22px; }
 .shortcut-add svg.lucide, .shortcut-reset svg.lucide { width: 12px; height: 12px; }
-.shortcut-reset:disabled { opacity: 0.3; }
 .shortcut-clear { font-size: 11px; padding: 0 4px; color: var(--muted); }
-.shortcut-clear:disabled { opacity: 0.35; }
+.shortcut-clear, .shortcut-reset { opacity: 0; transition: opacity var(--fast, 120ms); }
+.shortcut-edit:hover .shortcut-clear:not(:disabled), .shortcut-edit:hover .shortcut-reset:not(:disabled), .shortcut-clear:focus-visible, .shortcut-reset:focus-visible { opacity: 1; }
 .shortcut-lock { display: inline-flex; align-items: center; color: var(--dim); margin-left: 2px; }
 .shortcut-lock svg.lucide { width: 11px; height: 11px; }
 .shortcut-row.fixed .shortcut-does { color: var(--muted); }

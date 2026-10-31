@@ -21,6 +21,7 @@ import { LabsSettings } from "./Labs.tsx";
 import { PluginsSettings } from "./plugins/PluginsSettings.tsx";
 import { LabsTip, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import "./settings.css";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },

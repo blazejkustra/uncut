@@ -682,7 +682,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .blade-line { position: absolute; width: 1px; margin-left: -0.5px; background: #ff5c5c; box-shadow: 0 0 4px rgb(255 92 92 / 70%); z-index: 9; pointer-events: none; }
 .blade-line.refused { background: var(--dim); box-shadow: none; }
 .drag-tip { position: absolute; top: 4px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--border-strong); font: 10px var(--mono); color: var(--fg); white-space: nowrap; z-index: 10; pointer-events: none; }
-.kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.kv-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
 .kv-row:last-child { border-bottom: 0; }
 .kv-row .mono { text-align: right; }
 .side .hint { padding: 12px 14px; }
@@ -758,7 +758,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .export-adv-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
 .export-adv-row select { min-width: 120px; }
 .export-adv-row .num-field { width: 150px; }
-[data-testid=settings-defaults] .kv-row .num-field { width: 150px; }
+.settings-body .kv-row .num-field, .settings-body .kv-row select { width: 150px; flex: none; }
 
 /* Transcript panel (D32, D69) */
 /* U11 (D177): the Transcript in the left column: its tools sit above the words, which scroll. */
