@@ -483,6 +483,13 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
           kind: "deny",
           message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .cache/work/…) and run other programs on the copies.`,
         };
+      if (named.length && named.every((p) => inside(real(p), project)))
+        return {
+          kind: "ask",
+          title: "Run a command",
+          target,
+          why: "It names this project's .claude folder, where Claude Code reads skills, hooks and settings from.",
+        };
       return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
     }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'

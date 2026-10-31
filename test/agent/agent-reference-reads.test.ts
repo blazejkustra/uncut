@@ -104,6 +104,14 @@ test("another project: its history, agent chats, cache, hidden files and media c
   assert.equal(kind("Read", { file_path: `${REF}/project.json` }, "ask", { webUsed: true }), "ask");
 });
 
+test("a command on this project's own .claude folder gets a card with no Always; ~/.claude stays refused", () => {
+  const project = bash(`open -a "Visual Studio Code" "${PROJECT}/.claude/skills/walkthrough/SKILL.md"`);
+  assert.ok(project.kind === "ask" && !project.grant, project.kind);
+  assert.match(project.why ?? "", /this project's \.claude folder/);
+  assert.equal(bash(`open -a "Visual Studio Code" "${HOME}/.claude/settings.json"`).kind, "deny");
+  assert.equal(bash(`open "${PROJECT}/.claude/skills/a.md" "${HOME}/.claude/settings.json"`).kind, "deny");
+});
+
 test("the refusal says what runs: a cut after jq is named, and the rule lists another project's files", () => {
   const r = bash(`jq '.tracks' ${REF}/project.json | cut -c1-1500`);
   assert.ok(r.kind === "deny", r.kind);
