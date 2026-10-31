@@ -111,6 +111,10 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "graphic_write":
       if (typeof args.from === "string") return `Edited the graphic ${args.from.replace(/^graphics\//, "")}`;
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
+    case "graphic_elements":
+      return "Read the graphic's elements";
+    case "graphic_element_edit":
+      return typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "Edited the graphic's elements";
     case "shader_write":
       return typeof args.name === "string" ? `Wrote the shader effect ${args.name}` : "Wrote a shader effect";
     case "generate_media": {
@@ -330,6 +334,8 @@ export function doingLabel(tool: string, input: unknown, plugin?: string, projec
   const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (tool === "timeline_edit" && args.dryRun !== true)
     return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
+  if (tool === "graphic_elements") return "Reading the graphic's elements";
+  if (tool === "graphic_element_edit") return "Editing the graphic's elements";
   if (tool === "graphic_write" && typeof args.from === "string") return `Editing graphic ${args.from.replace(/^graphics\//, "")}`;
   if (tool === "graphic_write") return typeof args.name === "string" && args.name.trim() ? `Writing graphic ${args.name.trim()}` : "Writing a graphic";
   if (tool === "shader_write")

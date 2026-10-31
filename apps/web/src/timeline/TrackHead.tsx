@@ -19,6 +19,7 @@ export function TrackHead({
   onRenamed,
   onMenu,
   onRename,
+  height,
 }: {
   project: ProjectModel;
   track: Track;
@@ -27,6 +28,8 @@ export function TrackHead({
   onRenamed: () => void;
   onMenu: (e: React.MouseEvent) => void;
   onRename: () => void;
+  /** D316: the lane's height when a graphic's elements make it taller. */
+  height?: number | undefined;
 }) {
   const main = track.role === "main";
   const Icon = track.kind === "text" ? Type : track.kind === "audio" ? AudioLines : main ? Film : Layers;
@@ -44,6 +47,7 @@ export function TrackHead({
       data-hidden={hidden ? "true" : undefined}
       data-muted={muted ? "true" : undefined}
       data-locked={locked ? "true" : undefined}
+      style={height ? { height } : undefined}
       onContextMenu={onMenu}
     >
       <div className="name" onDoubleClick={() => online && !locked && onRename()}>

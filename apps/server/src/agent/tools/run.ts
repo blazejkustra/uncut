@@ -49,6 +49,8 @@ import { makeExportVideo } from "./exportVideo.ts";
 import { clock, sheetLayout } from "../agentFootage.ts";
 import { jitterFindings, measureRun } from "../motionJitter.ts";
 import { which } from "../../app/setup.ts";
+import { graphicElementsOf } from "../../export/graphicElements.ts";
+import { elementEditOp, elementRows, graphicItem, type ElementEditArgs } from "./graphicElements.ts";
 import type { ProjectView } from "../../project/projects.ts";
 
 /** How long render_frames may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
@@ -386,6 +388,33 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             if (typeof args.name === "string") r.turn.graphics = [...new Set([...(r.turn.graphics ?? []), args.name])].slice(-200);
           }
           return out;
+        }
+        case "graphic_elements":
+        case "graphic_element_edit": {
+          const project = v.session.project as Project;
+          const placed = graphicItem(project, args.item);
+          if ("problem" in placed) return textResult(placed.problem, true);
+          const bin = yield* Effect.promise(async () => {
+            await config.shellReady;
+            return which("ffmpeg", process.env.PATH ?? "");
+          });
+          const found = yield* Effect.promise(() => graphicElementsOf(config, bin, v.dir, project, placed.item.src!));
+          if (name === "graphic_elements")
+            return textResult({
+              item: placed.item.id,
+              src: placed.item.src,
+              revision: v.session.revision,
+              ...(found.reason ? { reason: found.reason } : {}),
+              elements: elementRows(found, placed.item, placed.start),
+            });
+          if (!Array.isArray(args.edits) || !args.edits.length) return textResult("edits must list at least one element.", true);
+          const planned = elementEditOp(found, placed.item, placed.start, args.edits as ReadonlyArray<ElementEditArgs>);
+          if ("problem" in planned) return textResult(found.reason ?? planned.problem, true);
+          return yield* runTool(r, "timeline_edit", {
+            baseRevision: args.baseRevision,
+            summary: args.summary ?? "Edited the graphic's elements",
+            ops: [planned.op],
+          });
         }
         case "generate_media":
           return yield* generateMedia(r, v, args);

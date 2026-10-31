@@ -17,7 +17,7 @@
 .link-hint { color: var(--dim); font-size: 11px; line-height: 1.5; margin: 0 0 10px; }
 .link-options .link-hint { margin: 0; }
 .link-error { color: var(--error); font-size: 12px; line-height: 1.5; margin: 0 0 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
-.link-job-title { font-size: 12.5px; margin-bottom: 10px; }
+.link-job-title { font-size: 13px; margin-bottom: 10px; }
 .link-bar { height: 3px; background: var(--raised); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
 .link-bar span { display: block; height: 100%; background: var(--select); transition: width 0.2s; }
 .link-progress .link-cancel { grid-column: 2; justify-self: end; }

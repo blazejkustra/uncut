@@ -14,6 +14,7 @@ import {
   planRippleDelete,
 } from "../../../timeline/edit.ts";
 import { planResetPosition } from "../../../timeline/clip.ts";
+import { planDeleteElement } from "../../../timeline/graphicElements.ts";
 import { planPutOnMain, planDetachAudio, takenIds } from "@uncut/core/arrange";
 import { planSetLook, type LookDef, planEffect, lookInfo, effectInfo } from "@uncut/core/fx";
 import { planShader, planShaderValues } from "@uncut/core/shaders";
@@ -74,6 +75,12 @@ export const timelineActions = {
     if (cut !== undefined) {
       const placed = findItem(projectOf(state.snapshot), cut);
       if (placed?.item.transitionIn) await timelineEdit(planSetTransition(projectOf(state.snapshot), cut, null));
+      return;
+    }
+    // D316: a selected element: ⌫ deletes it from the graphic, not the graphic.
+    const element = planDeleteElement(projectOf(state.snapshot));
+    if (element) {
+      if (await timelineEdit(element)) playback.selectElement(getPlayback().selected!, undefined);
       return;
     }
     // A selected volume key (D83): ⌫ removes the key, not its item.

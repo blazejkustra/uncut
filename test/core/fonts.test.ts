@@ -58,7 +58,7 @@ test("resolveGraphicFonts declares the faces of the families a graphic names, be
 test("the graphic's bootstrap loads every declared face before calling render (canvas text doesn't wait for a font)", () => {
   const doc = graphicDocument("<p>x</p>", { width: 100, height: 100 });
   const at = doc.indexOf("await fontsReady();");
-  assert.ok(at > 0 && at < doc.indexOf("await window.render(t, info)"), "fonts first, then render");
+  assert.ok(at > 0 && at < doc.indexOf("await window.render(at,"), "fonts first, then render");
   assert.match(doc, /\[\.\.\.document\.fonts\]\.map\(\(f\) => f\.load\(\)/);
 });
 

@@ -72,6 +72,7 @@ function ItemBoxView({
   onRenamed,
   onContextMenu,
   onDoubleClick,
+  elementsBar,
 }: {
   project: ProjectModel;
   item: Item;
@@ -98,6 +99,8 @@ function ItemBoxView({
   onRenamed?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
+  /** D316: a graphic's element controls, on its clip. */
+  elementsBar?: React.ReactNode;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   timelineStats.itemRenders++;
@@ -205,6 +208,7 @@ function ItemBoxView({
           label
         )}
       </span>
+      {elementsBar}
       {(item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
         <span className="clip-badge" data-testid="clip-badge">
           {item.speed !== undefined && item.speed !== 1 && speedLabel(item.speed)}
