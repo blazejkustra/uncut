@@ -160,7 +160,7 @@ test("D277: claude gets Claude Code's own sign-in, but no generator key or paren
   // user's setup-token login, CLAUDE_CODE_OAUTH_TOKEN (D219: their subscription, as t3code passes it).
   assert.deepEqual(
     env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(),
-    ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"],
+    ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"],
     "CLAUDE_CODE_* from outside reached claude",
   );
   assert.ok(env.includes("HOME") && env.includes("FAKE_PLAN"), "the rest of the environment is passed on");
