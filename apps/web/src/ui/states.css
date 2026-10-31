@@ -1,0 +1,15 @@
+:root {
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 120ms;
+}
+select { font: 12px var(--font); color: var(--fg); height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); cursor: pointer; }
+select:disabled { cursor: not-allowed; opacity: 0.6; }
+select:not(:disabled):hover { border-color: var(--border-strong); }
+input[type="checkbox"], input[type="radio"], input[type="range"], input[type="color"], label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: pointer; }
+:where(button, select, a, summary, [role="button"], [role="radio"], [role="tab"], input[type="checkbox"], input[type="radio"], input[type="range"]):focus-visible { outline: 2px solid var(--select); outline-offset: 1px; }
+.icon-btn, .btn, .link-btn, .tabs button, .seg button, .rail button, .tile, .wiz-card, .wiz-row, .ctx-item, select { transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease), color var(--fast) var(--ease); }
+.icon-btn:not(:disabled):active, .btn:not(:disabled):active { background: var(--border-strong); }
+.rail button:not(.active):not(:disabled):hover { color: var(--fg); background: var(--panel-2); }
+.tabs button:not(.active):hover { color: var(--fg); }
+.seg button:not(.active):not(:disabled):hover { color: var(--fg); }
+.tool-picker .icon-btn.on { background: var(--raised); }

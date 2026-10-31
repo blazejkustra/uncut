@@ -12,6 +12,7 @@ import { actionFor, keymap, keyOf } from "../../editor/keymap.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 import { getPlayback, playback } from "../../preview/playback.ts";
 import "./mediaChat.css";
+import "./mediaTile.css";
 
 /** "59.94", "30", "23.98" */
 const fpsLabel = (fps: number) => String(Math.round(fps * 100) / 100);
@@ -204,7 +205,19 @@ export function MediaTile({
         }}
         onPointerDown={() => playback.hoverMedia(undefined)}
       >
-        {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
+        {src && !broken ? (
+          <img
+            key={src}
+            src={src}
+            alt=""
+            className={/\.svg$/i.test(item.path) ? "vector" : undefined}
+            draggable={false}
+            onError={() => setBroken(true)}
+            data-testid="thumb"
+          />
+        ) : (
+          <Icon />
+        )}
         {canScrub && scrub !== undefined && (
           <>
             <video
