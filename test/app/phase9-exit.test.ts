@@ -274,11 +274,11 @@ async function exitCheck() {
   // 3. A project on the remote, through its file browser; closed, then opened with Open….
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");
-  assert.equal(
-    await page.$eval("[data-testid=parent-dir]", (el) => (el as HTMLElement).title),
-    join(remoteHome(), "Movies"),
-    "the remote's own default folder",
-  );
+  const remoteDefault = join(remoteHome(), "Movies");
+  await page
+    .waitForFunction((dir) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")?.title === dir, { timeout: 10000 }, remoteDefault)
+    .catch(() => {});
+  assert.equal(await page.$eval("[data-testid=parent-dir]", (el) => (el as HTMLElement).title), remoteDefault, "the remote's own default folder");
   await page.click("[data-testid=choose-folder]");
   await waitFor("[data-testid=remote-browser][data-purpose=parent]");
   await waitFor("[data-testid=remote-entry][data-name=projects]");

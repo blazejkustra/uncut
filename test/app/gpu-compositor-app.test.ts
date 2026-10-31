@@ -23,7 +23,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { ssim } from "../helpers/image-compare.ts";
-import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
+import { NO_REAL_GPU, check, displayFrameMs, keepsDisplayRate } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -306,11 +306,16 @@ test(
     const r = results as Record<string, Run>;
     assert.equal(r["gpu many"]!.gpuLayers, MANY + 1, "the GPU compositor draws the main clip and every overlay with its effects");
     check(NO_REAL_GPU, r["gpu many"]!.dropped <= 10, `GPU: ${r["gpu many"]!.dropped} frames dropped`);
-    check(NO_REAL_GPU, r["gpu many"]!.rafMedian < 12, `GPU: animation frames every ${r["gpu many"]!.rafMedian} ms`);
+    const display = await displayFrameMs(page);
     check(
       NO_REAL_GPU,
-      r["gpu plain"]!.rafMedian < 12 && r["gpu fx"]!.rafMedian < 12,
-      `GPU: 12 overlays keep the animation frame rate (${r["gpu plain"]!.rafMedian}, ${r["gpu fx"]!.rafMedian} ms)`,
+      keepsDisplayRate(r["gpu many"]!.rafMedian, display),
+      `GPU: animation frames every ${r["gpu many"]!.rafMedian} ms on a ${display} ms display`,
+    );
+    check(
+      NO_REAL_GPU,
+      keepsDisplayRate(r["gpu plain"]!.rafMedian, display) && keepsDisplayRate(r["gpu fx"]!.rafMedian, display),
+      `GPU: 12 overlays keep the animation frame rate (${r["gpu plain"]!.rafMedian}, ${r["gpu fx"]!.rafMedian} ms on a ${display} ms display)`,
     );
     for (const f of [90, HALF + 90, 2 * HALF + 90, 3 * HALF + 90]) {
       await setGpu(false);

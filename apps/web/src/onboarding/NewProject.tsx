@@ -23,7 +23,8 @@ export function NewProject() {
   const { appInfo } = useApp();
   const [name, setName] = useState("Untitled");
   const [preset, setPreset] = useState(CANVAS_PRESETS[0]!.id);
-  const [parentDir, setParentDir] = useState(appInfo.defaultParentDir);
+  const [chosenDir, setChosenDir] = useState<string | undefined>();
+  const parentDir = chosenDir ?? appInfo.defaultParentDir;
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [width, setWidth] = useState("1920");
@@ -77,7 +78,7 @@ export function NewProject() {
 
   const choose = async () => {
     const dir = await actions.chooseParentFolder();
-    if (dir) setParentDir(dir);
+    if (dir) setChosenDir(dir);
   };
   const create = async () => {
     if (!name.trim()) return setError("A project needs a name.");
