@@ -308,7 +308,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "brand_read":
           return yield* brandRead(v, args);
         case "project_peek": {
-          if (r.owner.webUsed)
+          if (r.owner.webUsed && r.access !== "auto")
             return textResult("Not done: after web content, other projects are read only on the user's say. Read the file with Read, which asks them.", true);
           const peeked = yield* Effect.promise(() =>
             peekProject({
