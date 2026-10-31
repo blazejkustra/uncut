@@ -16,6 +16,7 @@ import { draftOf, findItem, visibleBeats } from "./edit.ts";
 import { ItemWaveform } from "./Waveform.tsx";
 import { ClipFilmstrip } from "./Filmstrip.tsx";
 import { RenameField } from "./RenameField.tsx";
+import "./clip.css";
 
 // A press has to move this far before it becomes a drag (a click only selects).
 export const DRAG_PX = 3;
