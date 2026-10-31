@@ -132,6 +132,23 @@ test("server.log moves to server.log.1 past its size cap", () => {
   }
 });
 
+test("a late tick with hardly any CPU reads as sleep, a busy one as a stall", async () => {
+  const lines: Array<string> = [];
+  const stop = watchLiveness({ write: (l) => lines.push(l), tickMs: 20, stallMs: 150 });
+  try {
+    await sleep(60);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); // like a sleeping machine: time passes, no CPU
+    await sleep(60);
+    assert.ok(
+      lines.some((l) => /^\[uncut\] not running for 0\.[3-9] s: the machine slept or the process was paused \(rss \d+ MB.*cpu 0\.\d s\)$/.test(l)),
+      lines.join("\n"),
+    );
+    assert.ok(!lines.some((l) => l.includes("stalled")), lines.join("\n"));
+  } finally {
+    stop();
+  }
+});
+
 test("the server notes event-loop stalls and a heartbeat with memory", async () => {
   const lines: Array<string> = [];
   const stop = watchLiveness({ write: (l) => lines.push(l), tickMs: 20, stallMs: 150, heartbeatMs: 40 });
