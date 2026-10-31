@@ -18,18 +18,9 @@ body.resizing .app { transition: none; }
 .focus-agent { grid-area: side; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
 .focus-agent .agent { flex: 1; min-height: 0; min-width: 0; }
 
-/* The rail fades at an edge while more tabs lie past it. No scrollable overflow, no timeline, no fade. */
-@property --rail-fade-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@property --rail-fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@keyframes rail-fade {
-  0% { --rail-fade-top: 0px; --rail-fade-end: 36px; }
-  12%, 88% { --rail-fade-top: 36px; --rail-fade-end: 36px; }
-  100% { --rail-fade-top: 36px; --rail-fade-end: 0px; }
-}
-.rail {
-  animation: rail-fade linear both;
-  animation-timeline: scroll(self);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--rail-fade-top), #000 calc(100% - var(--rail-fade-end)), transparent 100%);
-}
+/* The rail fades at an edge while more tabs lie past it. */
+.rail { --rail-fade-top: 0px; --rail-fade-end: 0px; mask-image: linear-gradient(to bottom, transparent 0, #000 var(--rail-fade-top), #000 calc(100% - var(--rail-fade-end)), transparent 100%); }
+.rail[data-more-up="true"] { --rail-fade-top: 36px; }
+.rail[data-more-down="true"] { --rail-fade-end: 36px; }
 
 @container stage (max-width: 720px) { .transport .canvas-fps { display: none; } }
