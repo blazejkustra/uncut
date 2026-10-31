@@ -61,6 +61,8 @@ const MAX_JSON_BYTES = 4 * 1024 * 1024;
 const MAX_QUERY = 200;
 /** An API reply must come within this. */
 export const API_MS = 30_000;
+/** A search that timed out gets one more try, this many times as long. */
+const RETRY_BUDGET = 2;
 /** A whole download or preview must finish within this. */
 export const TOTAL_MS = 5 * 60_000;
 /** The most a preview streams. */
@@ -78,6 +80,8 @@ export interface LibraryOptions {
   readonly now?: () => number;
   /** How long a whole download or preview may take (default TOTAL_MS; tests shorten it). */
   readonly totalMs?: number;
+  /** How long a search may take before its one longer retry (default API_MS; tests shorten it). */
+  readonly apiMs?: number;
   /** Where the user's sound folders are listed (D208): <dataDir>/sound-folders.json. */
   readonly dataDir?: string;
 }
@@ -160,10 +164,17 @@ export function soundLibrary(options: LibraryOptions) {
     const redact = (s: string) => (key ? s.split(key).join("[key]") : s);
     const limit = limiters[source].take();
     if (limit) return { limit };
+    const getWithin = (ms: number) => {
+      const bounded = signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
+      return retryOnReset(() => guardedFetch(url, { headers, redirect: "error", signal: bounded }), bounded);
+    };
+    const apiMs = options.apiMs ?? API_MS;
     let res: Response;
     try {
-      const bounded = signal ? AbortSignal.any([signal, AbortSignal.timeout(API_MS)]) : AbortSignal.timeout(API_MS);
-      res = await retryOnReset(() => guardedFetch(url, { headers, redirect: "error", signal: bounded }), bounded);
+      res = await getWithin(apiMs).catch((error: Error) => {
+        if (error.name !== "TimeoutError") throw error;
+        return getWithin(apiMs * RETRY_BUDGET);
+      });
     } catch (error) {
       throw fail("network", `Couldn't reach ${SOURCE_NAME[source]}: ${redact((error as Error).message)}`);
     }
