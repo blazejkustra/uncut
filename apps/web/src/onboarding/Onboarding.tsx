@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Clapperboard, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowRight, Check, RefreshCw, TriangleAlert } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "../state/store.ts";
@@ -123,15 +123,6 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
       <>
         <h1>Start a video</h1>
         <p className="wiz-lead">A project is a folder on this Mac. Pick a shape and where to keep it; your footage stays where it is.</p>
-        <div className="wiz-list">
-          <div className="wiz-row">
-            <Clapperboard />
-            <div className="grow">
-              <div className="wiz-name">New project</div>
-              <div className="wiz-sub">Landscape, vertical, 4:5 or 4K</div>
-            </div>
-          </div>
-        </div>
         <div className="wiz-foot">
           {/* D283: one quiet line about anonymous usage data (turned off in Settings › App). */}
           <WizardUsageData />

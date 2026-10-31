@@ -17,3 +17,10 @@ body.resizing .app { transition: none; }
 /* Focus mode (D270): the preview on the left, the agent (thread and composer) a full-height column on the right. */
 .focus-agent { grid-area: side; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
 .focus-agent .agent { flex: 1; min-height: 0; min-width: 0; }
+
+/* The rail fades at an edge while more tabs lie past it. */
+.rail { --rail-fade-top: 0px; --rail-fade-end: 0px; mask-image: linear-gradient(to bottom, transparent 0, #000 var(--rail-fade-top), #000 calc(100% - var(--rail-fade-end)), transparent 100%); }
+.rail[data-more-up="true"] { --rail-fade-top: 36px; }
+.rail[data-more-down="true"] { --rail-fade-end: 36px; }
+
+@container stage (max-width: 720px) { .transport .canvas-fps { display: none; } }

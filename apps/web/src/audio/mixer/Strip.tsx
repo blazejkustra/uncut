@@ -24,50 +24,56 @@ export function Strip({ project, track, online }: { project: ProjectModel; track
       <div className="strip-name ellipsis" title={track.name}>
         {track.name}
       </div>
-      <EffectSlots project={project} track={track} online={online} />
-      <DuckRow project={project} track={track} online={online} />
-      <PanSlider
-        name={track.name}
-        value={pan}
-        disabled={!online}
-        onPreview={(p) => (draft.current = preview(project, planTrackPan(project, track.id, p)) ?? draft.current)}
-        onCommit={(p) => commit((now) => planTrackPan(now, track.id, p), take())}
-      />
-      <div className="strip-body">
-        <Meter id={track.id} />
-        <Fader
-          testId="mixer-fader"
-          label={`${track.name} volume`}
-          value={db}
-          disabled={!online}
-          onPreview={(v) => (draft.current = preview(project, planTrackGain(project, track.id, v)) ?? draft.current)}
-          onCommit={(v) => commit((now) => planTrackGain(now, track.id, v), take())}
-        />
-      </div>
-      <div className="strip-foot">
-        <span className="strip-db mono" data-testid="mixer-db">
-          {dbLabel(db)}
-        </span>
-        <button
-          className={`ms-btn ${muted ? "on mute" : ""}`}
-          data-testid="mixer-mute"
-          aria-pressed={muted}
-          disabled={!online}
-          title={muted ? "Unmute" : "Mute"}
-          onClick={() => void actions.toggleTrack(track.id, "mute")}
-        >
-          M
-        </button>
-        <button
-          className={`ms-btn ${solo ? "on solo" : ""}`}
-          data-testid="mixer-solo"
-          aria-pressed={solo}
-          disabled={!online}
-          title={solo ? "Unsolo" : "Solo: only soloed tracks play, in the preview and the export"}
-          onClick={() => commit((now) => planTrackFlag(now, track.id, "solo"))}
-        >
-          S
-        </button>
+      <div className="strip-main">
+        <div className="strip-sends">
+          <EffectSlots project={project} track={track} online={online} />
+          <DuckRow project={project} track={track} online={online} />
+          <PanSlider
+            name={track.name}
+            value={pan}
+            disabled={!online}
+            onPreview={(p) => (draft.current = preview(project, planTrackPan(project, track.id, p)) ?? draft.current)}
+            onCommit={(p) => commit((now) => planTrackPan(now, track.id, p), take())}
+          />
+        </div>
+        <div className="strip-fade">
+          <div className="strip-body">
+            <Meter id={track.id} />
+            <Fader
+              testId="mixer-fader"
+              label={`${track.name} volume`}
+              value={db}
+              disabled={!online}
+              onPreview={(v) => (draft.current = preview(project, planTrackGain(project, track.id, v)) ?? draft.current)}
+              onCommit={(v) => commit((now) => planTrackGain(now, track.id, v), take())}
+            />
+          </div>
+          <div className="strip-foot">
+            <span className="strip-db mono" data-testid="mixer-db">
+              {dbLabel(db)}
+            </span>
+            <button
+              className={`ms-btn ${muted ? "on mute" : ""}`}
+              data-testid="mixer-mute"
+              aria-pressed={muted}
+              disabled={!online}
+              title={muted ? "Unmute" : "Mute"}
+              onClick={() => void actions.toggleTrack(track.id, "mute")}
+            >
+              M
+            </button>
+            <button
+              className={`ms-btn ${solo ? "on solo" : ""}`}
+              data-testid="mixer-solo"
+              aria-pressed={solo}
+              disabled={!online}
+              title={solo ? "Unsolo" : "Solo: only soloed tracks play, in the preview and the export"}
+              onClick={() => commit((now) => planTrackFlag(now, track.id, "solo"))}
+            >
+              S
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

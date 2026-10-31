@@ -32,3 +32,7 @@
 .agent-add-detail { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-add-error { color: var(--error); }
 .agent-add-form .btn:disabled { cursor: not-allowed; }
+
+/* While an answer is awaited the pill takes its own row, so it can't sit on the card's buttons. */
+.agent-latest.waiting { margin: 6px 0; }
+@container (max-width: 280px) { .composer-choices .choice.model .choice-label { display: none; } }
