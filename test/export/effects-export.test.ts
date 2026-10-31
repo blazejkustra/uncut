@@ -467,39 +467,44 @@ const peakIn = (a: Float32Array, t: number) => {
   return Math.max(...a.subarray(from, Math.min(a.length, from + 2400)).map(Math.abs));
 };
 
-test("noise removal lines up with undenoised audio in a real export: lag under 1 ms, the end kept, part range too (D330)", { skip, timeout: 120000 }, async () => {
-  const denoise: ModuleUse = { module: "audio.denoise", params: { amount: 0.5 } };
-  const project = (effects?: Array<ModuleUse>) => mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)]);
-  const measured = await denoiseLagOf("ffmpeg");
-  console.log(`afftdn lag on this ffmpeg: ${measured} samples`);
-  const off = pcmOf(await exportFile(project(), "off", "tick-off"));
-  const on = pcmOf(await exportFile(project([denoise]), "off", "tick-on", measured));
-  const raw = pcmOf(await exportFile(project([denoise]), "off", "tick-raw", 0));
-  assert.equal(on.length, off.length);
+test(
+  "noise removal lines up with undenoised audio in a real export: lag under 1 ms, the end kept, part range too (D330)",
+  { skip, timeout: 120000 },
+  async () => {
+    const denoise: ModuleUse = { module: "audio.denoise", params: { amount: 0.5 } };
+    const project = (effects?: Array<ModuleUse>) => mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)]);
+    const measured = await denoiseLagOf("ffmpeg");
+    console.log(`afftdn lag on this ffmpeg: ${measured} samples`);
+    const off = pcmOf(await exportFile(project(), "off", "tick-off"));
+    const on = pcmOf(await exportFile(project([denoise]), "off", "tick-on", measured));
+    const raw = pcmOf(await exportFile(project([denoise]), "off", "tick-raw", 0));
+    assert.equal(on.length, off.length);
 
-  for (const t of CLICKS_S) {
-    const lag = lagAt(off, on, t);
-    console.log(`click at ${t} s: denoised lag ${((lag / 48000) * 1000).toFixed(2)} ms`);
-    assert.ok(Math.abs(lag) < 48, `click at ${t} s is ${lag} samples late`);
-  }
-  // The uncompensated filter shows what the measurement gives back.
-  assert.ok(Math.abs(lagAt(off, raw, 1.5) - measured) < 48, "the measured lag is the filter's");
-  within(dB(peakIn(on, 5.95)), dB(peakIn(off, 5.95)), 6, "the click just before the end");
+    for (const t of CLICKS_S) {
+      const lag = lagAt(off, on, t);
+      console.log(`click at ${t} s: denoised lag ${((lag / 48000) * 1000).toFixed(2)} ms`);
+      assert.ok(Math.abs(lag) < 48, `click at ${t} s is ${lag} samples late`);
+    }
+    // The uncompensated filter shows what the measurement gives back.
+    assert.ok(Math.abs(lagAt(off, raw, 1.5) - measured) < 48, "the measured lag is the filter's");
+    within(dB(peakIn(on, 5.95)), dB(peakIn(off, 5.95)), 6, "the click just before the end");
 
-  const part = (effects?: Array<ModuleUse>) => {
-    const sliced = sliceProject(project(effects), { from: 30, to: 150 });
-    if ("problem" in sliced) throw new Error(sliced.problem);
-    return sliced;
-  };
-  const partOff = pcmOf(await exportFile(part(), "off", "tick-part-off"));
-  const partOn = pcmOf(await exportFile(part([denoise]), "off", "tick-part-on", measured));
-  assert.equal(partOn.length, partOff.length);
-  for (const t of [0.5, 2, 3.95]) assert.ok(Math.abs(lagAt(partOff, partOn, t)) < 48, `part range, click at ${t} s`);
-  within(dB(peakIn(partOn, 3.95)), dB(peakIn(partOff, 3.95)), 6, "the click just before the part's end");
-});
+    const part = (effects?: Array<ModuleUse>) => {
+      const sliced = sliceProject(project(effects), { from: 30, to: 150 });
+      if ("problem" in sliced) throw new Error(sliced.problem);
+      return sliced;
+    };
+    const partOff = pcmOf(await exportFile(part(), "off", "tick-part-off"));
+    const partOn = pcmOf(await exportFile(part([denoise]), "off", "tick-part-on", measured));
+    assert.equal(partOn.length, partOff.length);
+    for (const t of [0.5, 2, 3.95]) assert.ok(Math.abs(lagAt(partOff, partOn, t)) < 48, `part range, click at ${t} s`);
+    within(dB(peakIn(partOn, 3.95)), dB(peakIn(partOff, 3.95)), 6, "the click just before the part's end");
+  },
+);
 
 test("noise removal's compensation stays out of a graph without it, and a build's lag can't be read: the known one", { skip }, async () => {
-  const graphOf = (effects?: Array<ModuleUse>) => audioGraph(plan(mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)])), 0).filters.join(";");
+  const graphOf = (effects?: Array<ModuleUse>) =>
+    audioGraph(plan(mixProject([track("voice", [audioItem("t", "tick", 180)], effects ? { effects } : undefined)])), 0).filters.join(";");
   const bypassed = graphOf([{ module: "audio.denoise", bypass: true }]);
   assert.equal(bypassed, graphOf());
   assert.doesNotMatch(bypassed, /afftdn|apad|start_sample/);

@@ -36,7 +36,7 @@ export const capsOf = (bin: string) => {
   return caps;
 };
 
-const DENOISE_PROBE_SAMPLES = 24000;
+const DENOISE_PROBE_SAMPLES = 16800;
 const DENOISE_PROBE_CLICK = 12000;
 
 /** How far a 32-bit float mono decode's loudest sample sits after the probe's click; undefined when it can't be the click. */
