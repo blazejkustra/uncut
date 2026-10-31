@@ -156,6 +156,7 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
     case "project_check":
       return "Checked the video against the taste checks";
     case "measure":
+      if (args.what === "position") return "Measured the position";
       return args.what === "colour"
         ? Array.isArray(args.items) && args.items.length > 1
           ? "Compared the clips' colour"

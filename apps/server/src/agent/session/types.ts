@@ -227,6 +227,8 @@ export interface Running {
   stills?: number;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
+  // A measure of what position since the last review: a claimed off-centre fix needs one.
+  measuredPosition?: boolean;
   // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).
   readonly limits: TurnLimits;
   // D189: review rounds in this turn.
