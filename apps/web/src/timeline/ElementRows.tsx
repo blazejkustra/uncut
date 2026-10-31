@@ -16,6 +16,7 @@ import { draftOf, findItem, SNAP_PX } from "./edit.ts";
 import { MAX_ROWS, ROW_HEIGHT, seekToElement } from "./graphicElements.ts";
 import { DRAG_PX } from "./ItemBox.tsx";
 import { getTool } from "./tools.ts";
+import "./elements.css";
 
 type Grip = "move" | "start" | "end";
 
