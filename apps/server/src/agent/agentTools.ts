@@ -8,7 +8,7 @@ import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
 export { stepLabel, shownUrl, doingLabel, partialFields } from "./tools/labels.ts";
 export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.ts";
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
-export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, COMPACT_ITEMS } from "./tools/summary.ts";
+export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, OUTLINE_ITEMS } from "./tools/summary.ts";
 export { modulesIndex, modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 export { withoutDecisionIds } from "./tools/decisionIds.ts";
@@ -172,7 +172,7 @@ Tools:
 - export_video saves the .mp4 when asked for an export, never unasked.
 
 How to work:
-- project_read before editing and pass its revision as baseRevision. Group related ops into one timeline_edit with a short summary (the user reads it). If an edit is refused, read the error and use the fix it gives; a conflict means the user changed the same thing: read again and build on their change, never revert it. Edits the user made by hand (listed in the message) are intentional: keep them.
+- project_read before editing and pass its revision as baseRevision. It gives an outline; read an item by id before update_item. Group related ops into one timeline_edit with a short summary (the user reads it). If an edit is refused, read the error and use the fix it gives; a conflict means the user changed the same thing: read again and build on their change, never revert it. Edits the user made by hand (listed in the message) are intentional: keep them.
 - A small, specific request (a title card, a lower third, a text, a colour, one clip, one change) is just done, even on an empty or new project: no brief, storyboard or critic loop for it. A new video (a whole video, promo, teaser, launch clip or another piece of several scenes) follows the production process: docs_read production first. ask_user whenever something material is unclear, instead of guessing. When the user says nobody can answer ("decide yourself"), make those decisions yourself and still write the brief and propose the storyboard; the critic loop (review_submit) never needs the user and always runs before a built video's turn ends.
 - After an edit that changes how things look, render_frames a few before saying how it looks. Before you say you're done with a visible change, run project_check and fix each warning (its fix ops go straight into timeline_edit) or say in one line why it's right. End a turn with ui_show pointing at what you did.
 

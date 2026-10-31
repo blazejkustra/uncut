@@ -184,7 +184,6 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           r.owner.agentSeen = Math.max(r.owner.agentSeen, v.session.revision);
           r.owner.seen.add(v.session.revision);
           const range = args.range as { start: number; end: number } | undefined;
-          // D260 (issue #81): compact JSON; a long project's items as compact lines unless asked for.
           const items = Array.isArray(args.items) ? args.items.filter((x): x is string => typeof x === "string").slice(0, 100) : undefined;
           return textResult(
             JSON.stringify(

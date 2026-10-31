@@ -168,7 +168,7 @@ test(
     const start = await client.ok("project.get", {});
     const { turn, results } = await ask("add karaoke captions and fix the name", [
       { tool: "captions_make", args: { mode: "word", hideFillers: true } },
-      { tool: "project_read", args: {} },
+      { tool: "project_read", args: { items: ["captions-1"] } },
       {
         tool: "timeline_edit",
         args: {
@@ -178,7 +178,7 @@ test(
         },
       },
       { tool: "transcript_edit", args: { remove: [{ from: "w4", to: "w5" }] } },
-      { tool: "project_read", args: {} },
+      { tool: "project_read", args: { detail: "items" } },
       { tool: "render_frames", args: { frames: [20], width: 640 } },
     ]);
     assert.equal(turn.status, "done", turn.error);
