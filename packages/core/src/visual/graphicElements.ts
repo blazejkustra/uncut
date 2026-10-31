@@ -17,6 +17,8 @@ export interface GraphicElement {
   /** Where it is in the file: the graphic's own frames [from, to). */
   readonly from: readonly [Frame, Frame];
   readonly text?: string;
+  /** Its text can be replaced: nothing but text and inline markup inside. */
+  readonly plain?: boolean;
   readonly timing: "declared" | "measured";
 }
 
@@ -38,7 +40,7 @@ const kindOf = (tag: string, text: string): GraphicElement["kind"] => {
 };
 
 const shortName = (text: string) => {
-  const line = text.split(/\s*\n\s*/)[0]!.trim();
+  const line = text.replace(/\s+/g, " ").trim();
   return line.length > 40 ? `${line.slice(0, 39)}…` : line;
 };
 
@@ -104,6 +106,7 @@ export function graphicElementsFrom(scan: ReadonlyArray<ScannedElement>, ts: Rea
         ...(parent ? { parent } : {}),
         from: spans.get(e.key)!,
         ...(text ? { text } : {}),
+        ...(e.plain ? { plain: true } : {}),
         timing: e.at !== undefined ? "declared" : "measured",
       };
     })
@@ -143,6 +146,8 @@ export type ElementChange = {
 
 const SHORTEST: Frame = 1;
 
+const inkLength = (text: string) => text.replace(/\s/g, "").length;
+
 function editedElement(element: Pick<GraphicElement, "from" | "text">, had: GraphicElementEdit, change: ElementChange): GraphicElementEdit {
   const next: Record<string, unknown> = { ...had };
   for (const [k, v] of Object.entries(change)) {
@@ -157,7 +162,7 @@ function editedElement(element: Pick<GraphicElement, "from" | "text">, had: Grap
   delete next.out;
   if (at !== element.from[0] || to !== element.from[1]) Object.assign(next, { from: element.from, in: at, out: Math.max(at + SHORTEST, to) });
   if (next.text === element.text) delete next.text;
-  if (next.text !== undefined && element.text) next.sourceLength = element.text.length;
+  if (next.text !== undefined && element.text) next.sourceLength = inkLength(element.text);
   else delete next.sourceLength;
   return next as GraphicElementEdit;
 }
@@ -239,8 +244,9 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
     return copy;
   };
   const typed = (e, shown) => {
-    if (!e.sourceLength || shown.length >= e.sourceLength) return e.text;
-    return e.text.slice(0, Math.round((shown.length / e.sourceLength) * e.text.length));
+    const ink = shown.replace(/\\s/g, "").length;
+    if (!e.sourceLength || ink >= e.sourceLength) return e.text;
+    return e.text.slice(0, Math.round((ink / e.sourceLength) * e.text.length));
   };
   let undo = [];
   const restore = () => { for (const f of undo.reverse()) f(); undo = []; };
@@ -268,6 +274,7 @@ export const GRAPHIC_ELEMENTS_BOOT = `(() => {
     };
     for (const g of groups.values()) {
       await draw(g.at);
+      await window.__uncutMedia.held();
       g.list.forEach(take);
     }
     await draw(t);

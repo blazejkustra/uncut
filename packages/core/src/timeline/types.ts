@@ -109,7 +109,7 @@ export interface TextBackground {
 /**
  * An edit of one element of a graphic (D316), by the element's id in the file. `from`, `in`, `out`:
  * the graphic's own frames, where the file has it and where it plays now (all three or none).
- * `x`, `y`: canvas pixels added to its place. `sourceLength`: its text's length in the file, so a
+ * `x`, `y`: canvas pixels added to its place. `sourceLength`: its text's length in the file, whitespace aside, so a
  * new text still types on as the old one did.
  */
 export interface GraphicElementEdit {

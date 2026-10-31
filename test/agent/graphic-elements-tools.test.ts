@@ -9,7 +9,7 @@ import type { GraphicElements, Item, Op, Project } from "../../packages/core/src
 const item: Item = { id: "g", type: "graphic", src: "graphics/a.html", start: 100, duration: 200, in: 30, skips: [{ at: 50, frames: 20 }] };
 const found: GraphicElements = {
   elements: [
-    { key: "title", name: "Title", kind: "text", from: [40, 60], text: "Hello", timing: "measured" },
+    { key: "title", name: "Title", kind: "text", from: [40, 60], text: "Hello", plain: true, timing: "measured" },
     { key: "late", name: "late", kind: "box", from: [120, 150], timing: "declared" },
   ],
 };
@@ -57,4 +57,14 @@ test("an edit in timeline frames lands on the graphic's own frames, one op for a
 
 test("an element that isn't there is refused by name", () => {
   assert.match((elementEditOp(found, item, 100, [{ element: "nope", hidden: true }]) as { problem: string }).problem, /no element "nope"/);
+});
+
+test("a new text is refused on an element with more than text inside; a plain one takes it", () => {
+  const more: GraphicElements = {
+    elements: [...found.elements, { key: "scene", name: "Scene", kind: "text", from: [40, 60], text: "Heading Body", timing: "measured" }],
+  };
+  const refused = elementEditOp(more, item, 100, [{ element: "scene", text: "Flat" }]);
+  assert.match((refused as { problem: string }).problem, /scene holds more than text/);
+  assert.ok("op" in elementEditOp(more, item, 100, [{ element: "scene", text: null, color: "#fff" }]));
+  assert.ok("op" in elementEditOp(found, item, 100, [{ element: "title", text: "New" }]));
 });

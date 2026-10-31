@@ -10,7 +10,16 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { GRAPHIC_SCAN, graphicDocument, graphicElementsFrom, graphicInfo, scanTimes, type Item, type ScannedElement } from "../../packages/core/src/index.ts";
+import {
+  GRAPHIC_SCAN,
+  graphicDocument,
+  graphicElementsFrom,
+  graphicInfo,
+  planElementEdit,
+  scanTimes,
+  type Item,
+  type ScannedElement,
+} from "../../packages/core/src/index.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../../apps/server/src/export/rasterizer.ts";
 
 const DESKTOP = process.env.UNCUT_TEST_DESKTOP ?? resolve("apps/desktop/dist/main.cjs");
@@ -154,6 +163,48 @@ test("a retimed canvas keeps its pixels, a new text types as the old one did", {
   const typedHalf = await frame({ elements: { t: { text: "Goodbye you", sourceLength: 5 } } }, 45);
   const typedAll = await frame({ elements: { t: { text: "Goodbye you", sourceLength: 5 } } }, 120);
   differ(typedHalf, typedAll, "still typing at 1.5 s");
+});
+
+test("a text with a line break keeps all of its new text", { skip }, async () => {
+  const html = `<style>html,body{background:#000}#h{position:absolute;left:0;top:0;margin:0;font:20px sans-serif;color:#fff;white-space:nowrap}</style><h1 id="h">Lines<br>so</h1><script>function render() {}</script>`;
+  const document = graphicDocument(html, canvas);
+  const reply = await raster.render({
+    kind: "graphic-scan",
+    width: 320,
+    height: 180,
+    doc: document,
+    info: graphicInfo({ duration: 200 }, canvas, 0) as never,
+    ts: [0, 1],
+  });
+  const scanned = (reply as { scan: ReadonlyArray<ScannedElement> }).scan[0]!;
+  assert.equal(scanned.plain, true);
+  const op = planElementEdit({ id: "g" }, { key: "h", from: [0, 200], text: scanned.text.replace(/\s+/g, " ") }, { text: "MMMMMMMMMM" }) as unknown as {
+    set: { elements: Item["elements"] };
+  };
+  const whole = await frame({ elements: { h: { text: "MMMMMMMMMM" } } }, 10, document);
+  same(await frame({ elements: op.set.elements! }, 10, document), whole, "nothing cut off");
+});
+
+test("markup with blocks, ids or drawings inside isn't plain text", { skip }, async () => {
+  const html = `<div id="scene"><h2>Title</h2><p>Body</p></div><h1 id="head">Hi <span>you</span></h1><h1 id="named">Hi <span id="n">you</span></h1><script>function render() {}</script>`;
+  const reply = await raster.render({
+    kind: "graphic-scan",
+    width: 320,
+    height: 180,
+    doc: graphicDocument(html, canvas),
+    info: graphicInfo({ duration: 200 }, canvas, 0) as never,
+    ts: [0],
+  });
+  const plain = Object.fromEntries((reply as { scan: ReadonlyArray<ScannedElement> }).scan.map((e) => [e.key, e.plain]));
+  assert.deepEqual([plain.scene, plain.head, plain.named], [false, true, false]);
+});
+
+test("a retimed element waits for what its script holds the frame for", { skip }, async () => {
+  const html = `<style>html,body{background:#000}#c{position:absolute;left:0;top:0}</style><canvas id="c" width="100" height="100"></canvas>
+<script>function render(t) { const x = document.getElementById("c").getContext("2d"); window.__uncutMedia.hold(new Promise((r) => setTimeout(r, 30)).then(() => { x.fillStyle = t < 1 ? "#ff0000" : "#0000ff"; x.fillRect(0, 0, 100, 100); })); }</script>`;
+  const document = graphicDocument(html, canvas);
+  const moved = await frame({ elements: { c: { from: [0, 30], in: 45, out: 75 } } }, 50, document);
+  assert.deepEqual(at(moved, 50, 50), [255, 0, 0], "its own moment's picture");
 });
 
 test("motion blur's sub-frames each go through the edit", { skip }, async () => {

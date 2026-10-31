@@ -49,6 +49,7 @@ export function elementRows(found: GraphicElements, item: Item, itemStart: numbe
       end: itemStart + itemFrameOf(item, b),
       timing: e.timing,
       ...(e.text ? { text: e.text.slice(0, 120) } : {}),
+      ...(e.plain ? { textEditable: true } : {}),
       ...(edit ? { edit } : {}),
     };
   });
@@ -73,6 +74,11 @@ export function elementEditOp(
   const byKey = new Map<string, GraphicElement>(found.elements.map((e) => [e.key, e]));
   const missing = edits.find((e) => !byKey.has(e.element));
   if (missing) return { problem: `${item.id} has no element ${JSON.stringify(missing.element)}; graphic_elements lists them.` };
+  const flattened = edits.find((e) => typeof e.text === "string" && !byKey.get(e.element)!.plain);
+  if (flattened)
+    return {
+      problem: `${flattened.element} holds more than text, so a new text would wipe what's inside it. Change the text of the elements inside it, or write a new graphic.`,
+    };
   return {
     op: planElementEdits(
       item,

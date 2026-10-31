@@ -12,6 +12,8 @@ export interface ScannedElement {
   readonly out?: number;
   readonly text: string;
   readonly area: number;
+  /** Nothing but text and inline markup inside: its text can be replaced without losing a piece of the page. */
+  readonly plain?: boolean;
   readonly runs: ReadonlyArray<readonly [number, number]>;
 }
 
@@ -44,6 +46,8 @@ export function joinScans(chunks: ReadonlyArray<ReadonlyArray<ScannedElement>>, 
 
 /** The page function: (ts, info) gives Array<ScannedElement>, run after the document has loaded. */
 export const GRAPHIC_SCAN = `async (ts, info) => {
+  const INLINE = new Set(["span", "b", "i", "em", "strong", "u", "s", "small", "sub", "sup", "mark", "code", "br", "tspan"]);
+  const plainText = (el) => [...el.querySelectorAll("*")].every((c) => !c.id && INLINE.has(c.tagName.toLowerCase()));
   const SKIP = new Set(["script", "style", "defs", "marker", "clippath", "lineargradient", "radialgradient", "stop", "filter", "mask", "symbol", "title"]);
   const inert = (el) => { for (let a = el; a; a = a.parentElement) if (SKIP.has(a.tagName.toLowerCase())) return true; return false; };
   const list = [...document.body.querySelectorAll("[id]")].filter((el) => el.id && !inert(el));
@@ -72,7 +76,7 @@ export const GRAPHIC_SCAN = `async (ts, info) => {
       let e = seen.get(el);
       if (!e) { e = { area: 0, text: "", runs: [] }; seen.set(el, e); }
       e.area = Math.max(e.area, area);
-      const text = (el.textContent || "").trim();
+      const text = (el.innerText ?? el.textContent ?? "").trim();
       if (text.length > e.text.length) e.text = text;
       const last = e.runs.at(-1);
       if (last && last[1] === i - 1) last[1] = i;
@@ -93,6 +97,7 @@ export const GRAPHIC_SCAN = `async (ts, info) => {
       at,
       out: number(el.getAttribute("data-out")),
       text: (e ? e.text : "").slice(0, 400),
+      plain: plainText(el),
       area: Math.round(e ? e.area : 0),
       runs: e ? e.runs : [],
     }];

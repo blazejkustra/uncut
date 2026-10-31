@@ -31,7 +31,7 @@ const CHUNK = 500;
 /** A graphic slower than this to sample stays one block. */
 const BUDGET_MS = 90_000;
 /** Bump when a scan's result changes shape or meaning: older cache files are then ignored. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 export interface ScanPaths {
   readonly graphicLibsDir: string;
