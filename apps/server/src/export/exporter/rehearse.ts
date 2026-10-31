@@ -87,7 +87,10 @@ const rememberStall = (key: string, result: Rehearsal) => {
 // The canvas and fps too: render(t, info) gets them (a canvas or fps change reruns it), as do the item's in and duration.
 const keyOf = (layers: ReadonlyArray<GraphicLayer>, plan: ExportPlan) => {
   const h = createHash("sha256").update(JSON.stringify([plan.canvas.width, plan.canvas.height, plan.fps]));
-  for (const l of layers) h.update(l.doc).update(JSON.stringify([l.f0, l.frames, l.motion?.ts ?? null, l.item.props ?? null, l.item.in ?? 0, l.item.duration]));
+  for (const l of layers)
+    h.update(l.doc).update(
+      JSON.stringify([l.f0, l.frames, l.motion?.ts ?? null, l.item.props ?? null, l.item.elements ?? null, l.item.in ?? 0, l.item.duration]),
+    );
   return h.digest("hex");
 };
 

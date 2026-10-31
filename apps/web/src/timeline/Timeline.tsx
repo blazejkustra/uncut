@@ -21,7 +21,21 @@
 // Skimming (issue #118, as in iMovie): with the pointer over the ruler or the lanes (no button
 // held, not the Hand), the preview shows the frame under it and a faint line marks it; the
 // playhead stays. A press, or the pointer leaving, shows the playhead's frame again.
-import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, ScanLine, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsLeftRight,
+  Hand,
+  Link2,
+  Magnet,
+  MousePointer2,
+  ScanLine,
+  Scissors,
+  Slice,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cutsOf } from "@uncut/core/transitions";
 import { captionCards, captionExtent } from "@uncut/core/captions";
@@ -33,7 +47,10 @@ import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
+import { elementBlocks } from "@uncut/core/graphicElements";
 import { ItemBox } from "./ItemBox.tsx";
+import { ElementRows } from "./ElementRows.tsx";
+import { elementsOf, isCollapsed, rowsHeight, toggleCollapsed, useElementsVersion } from "./graphicElements.ts";
 import { Playhead, Skimmer } from "./Playhead.tsx";
 import { Sections } from "./Sections.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
@@ -66,6 +83,39 @@ const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800];
 // Issue #118: drawn again only when its project changes (the editor around it renders on every app
 // state change), and reading only the app state it shows.
 export const Timeline = React.memo(TimelineView);
+
+/** D316: on a graphic's clip: its elements folded or shown, or why it stays one block. */
+function ElementsBar({ item }: { item: Item }) {
+  const known = elementsOf(item.src);
+  if (known?.status === "loading")
+    return (
+      <span className="el-note" data-testid="elements-loading">
+        Reading elements
+      </span>
+    );
+  if (known?.status !== "ready") return null;
+  if (!known.elements.length)
+    return (
+      <span className="el-note" data-testid="elements-none" title={known.reason}>
+        One block
+      </span>
+    );
+  const folded = isCollapsed(item.id);
+  const Icon = folded ? ChevronRight : ChevronDown;
+  return (
+    <button
+      className="el-fold"
+      data-testid="elements-fold"
+      aria-expanded={!folded}
+      title={folded ? "Show the graphic's elements" : "Fold the graphic's elements"}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => toggleCollapsed(item.id)}
+    >
+      <Icon />
+      {known.elements.length}
+    </button>
+  );
+}
 
 function TimelineView({ project }: { project: ProjectModel }) {
   const thumbIds = useAppSelect((s) => s.thumbIds);
@@ -149,6 +199,19 @@ function TimelineView({ project }: { project: ProjectModel }) {
   // The main track's cuts as drawn (a drag's planned result included).
   const cuts = cutsOf(view.tracks.find((t) => t.role === "main"));
   const selection = new Set(selected === undefined ? [] : [selected, ...also]);
+  useElementsVersion();
+  /** D316: what a track's lane adds for its graphics' element rows. */
+  const elementsHeight = (track: Track) =>
+    (view.tracks.find((t) => t.id === track.id) ?? track).items.reduce((most, item) => {
+      if (item.type !== "graphic" || isCollapsed(item.id)) return most;
+      const known = elementsOf(item.src);
+      if (known?.status !== "ready") return most;
+      return Math.max(most, rowsHeight(elementBlocks(item, known.elements).reduce((n, b) => Math.max(n, b.row + 1), 0)));
+    }, 0);
+  const laneHeight = (track: Track) => {
+    const extra = elementsHeight(track);
+    return extra ? (track.role === "main" ? 52 : 40) + extra : undefined;
+  };
 
   const { laneEls, laneHit, laneAt, laneIndexAt, frameAt } = makeLaneGeometry({ project, lanesRef, laneOrder, ppf });
 
@@ -355,6 +418,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                 track={track}
                 online={online}
                 renaming={renamingTrack === track.id}
+                height={laneHeight(track)}
                 onRename={() => setRenamingTrack(track.id)}
                 onRenamed={() => setRenamingTrack(undefined)}
                 onMenu={(e) => {
@@ -445,6 +509,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                   className={`tl-lane ${track.role === "main" ? "main" : ""} ${track.hidden ? "hidden" : ""} ${track.locked ? "locked" : ""} ${dropLane === track.id ? "drop-target" : ""}`}
                   data-testid="lane"
                   data-track={track.id}
+                  style={laneHeight(track) ? { height: laneHeight(track) } : undefined}
                   onPointerDown={(e) => onEmptyDown(e)}
                   onContextMenu={(e) => onEmptyMenu(e, track)}
                 >
@@ -483,6 +548,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         renaming={renaming === item.id}
                         onRenamed={() => setRenaming(undefined)}
                         {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
+                        elementsBar={item.type === "graphic" ? <ElementsBar item={item} /> : undefined}
                         onPointerDown={(e) => {
                           const now = live.current;
                           now.onItemDown(e, findItem(now.project, item.id)?.item ?? item, now.project.tracks.find((t) => t.id === track.id) ?? track);
@@ -495,6 +561,20 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         }}
                       />
                     );
+                  })}
+                  {items.map((item) => {
+                    const known = item.type === "graphic" && !isCollapsed(item.id) ? elementsOf(item.src) : undefined;
+                    return known?.status === "ready" && known.elements.length ? (
+                      <ElementRows
+                        key={`rows-${item.id}`}
+                        project={project}
+                        item={findItem(project, item.id)?.item ?? item}
+                        start={viewStarts.get(item.id) ?? 0}
+                        ppf={ppf}
+                        elements={known.elements}
+                        editable={editable && !item.locked}
+                      />
+                    ) : null;
                   })}
                   {track.role === "main" && (
                     <CutMarkers

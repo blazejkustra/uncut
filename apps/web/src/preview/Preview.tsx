@@ -32,6 +32,7 @@ import { Compositor } from "./compositor/Compositor.ts";
 import { type InlineEdit, InlineEditor } from "./stage/InlineEditor.tsx";
 import { dropGhostHtml } from "./stage/dropGhost.ts";
 import { ClipSelection, TextSelection } from "./stage/selection.tsx";
+import { ElementSelection, pickElement } from "./stage/ElementSelection.tsx";
 import { AgentChangePill } from "./stage/AgentChangePill.tsx";
 import { MediaSkim } from "./stage/MediaSkim.tsx";
 import { RegionPins, RegionSelect } from "./stage/Region.tsx";
@@ -174,6 +175,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     const before = getPlayback().selected;
     const corner = target.closest<HTMLElement>("[data-handle]")?.dataset.handle as Corner | undefined;
     if (!corner) playback.select(target.closest<HTMLElement>("[data-item]")?.dataset.item);
+    const onItem = target.closest<HTMLElement>("[data-item]");
+    if (!corner && (!onItem || onItem.classList.contains("pv-graphic"))) void pickElement(project, e.clientX, e.clientY);
     const snapshot = getState().snapshot;
     if (editing || !snapshot || snapshot.dir !== dir) return;
     const start = { pointer: e.pointerId, px: e.clientX, py: e.clientY, frame: Math.round(getPlayback().frame), revision: snapshot.revision, moved: false };
@@ -459,6 +462,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
               {dropGhost && <div className="pv-drop-ghost" data-testid="drop-ghost" dangerouslySetInnerHTML={{ __html: dropGhost }} />}
               {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
               <ClipSelection project={project} />
+              <ElementSelection project={project} />
               {!editing && <TextSelection layer={textRef} project={project} />}
             </div>
           </div>
