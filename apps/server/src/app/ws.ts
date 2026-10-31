@@ -110,6 +110,7 @@ const handlersLayer = ({
     [RPC_METHODS.filesList]: ({ dir }) => listFolder(dir),
     [RPC_METHODS.projectCreate]: (input) => projects.create(input),
     [RPC_METHODS.projectOpen]: ({ dir }) => projects.open(dir),
+    [RPC_METHODS.projectCopy]: (input) => projects.copy(input),
     [RPC_METHODS.projectGet]: () => projects.get,
     [RPC_METHODS.projectReload]: () => projects.reload,
     [RPC_METHODS.projectClose]: () => projects.close,

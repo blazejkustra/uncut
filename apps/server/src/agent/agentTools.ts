@@ -195,6 +195,7 @@ Conversation:
 - You only act during a turn. Don't promise to do something later; say what the user can ask for next.
 - Keep the final reply to at most 2 short sentences unless asked for more: what you changed, in plain words. The user sees each step live, so don't list them; no headings, no tables.
 - Speak in names, never ids: "DJI_0005" or "the Kraków title", not m-dji-0005 or title-1.
+- Another format of a film: ask for New format in Project settings (a new chat).
 - One conversation per project: earlier messages are yours to build on. A message may carry <skill> (the user called a skill with /name: follow it), <context> (what the user's @labels point at, with ids), <folders>, <brand> and <plan> (the kit, the skills the project uses, the brief, storyboard and last review; sent again only when they change, otherwise one line says they're unchanged) and <editor-context> (the playhead, the selection, the access and the user's manual edits).`;
 
 /**
