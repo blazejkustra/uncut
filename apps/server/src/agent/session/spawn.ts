@@ -14,7 +14,7 @@ import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
 import { forgetSentBlocks } from "./send.ts";
-import { asksNoQuestions, reviewNudge } from "../agentPlan.ts";
+import { asksNoQuestions, pointsAtTime, reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
 import { CODEX_SESSION, makeCodex } from "./codex.ts";
 import { type ClaudeSkill, skillReadDirs, writeSkillPlugins } from "../claudeSkills.ts";
@@ -211,6 +211,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
           edits: r.turn.edits.length,
           planned: r.planned,
           storyboard: !!r.owner.plan.storyboard,
+          fix: pointsAtTime(r.turn.prompt),
+          reviewedBefore: r.owner.plan.reviews.length > 0,
           nudged: r.nudged,
           cancelled: r.cancelled,
         });
