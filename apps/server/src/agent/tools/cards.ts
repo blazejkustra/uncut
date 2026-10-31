@@ -28,6 +28,7 @@ import {
   criticMessage,
   criticReview,
   parseCritic,
+  defectForAgent,
   reviewNext,
   reviewOutlook,
   runCritic,
@@ -978,14 +979,13 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         return textResult({
           round: number,
           passed: review.passed,
-          by: "Uncut's critic (a separate Claude that sees only the frames, the brief, the kit and the storyboard)",
           ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
           scores: review.scores,
           ...(review.rubric ? { rubric: review.rubric, sound: soundProfileText(rubric.sound) } : {}),
           ...(review.intended ? { intended: `${review.intended} finding${review.intended === 1 ? "" : "s"} the user marked Intended left out` } : {}),
           blockers: review.blockers,
-          defects: review.defects,
-          ...(review.fixes ? { fixes: review.fixes } : {}),
+          defects: review.defects.map(defectForAgent),
+          ...(review.fixes ? { fixes: review.fixes.map(({ what: _claim, ...fix }) => fix) } : {}),
           motion: {
             strips: motion.images.length,
             ...(cut ? { scanCut: cut } : {}),
@@ -1006,8 +1006,6 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                   ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}),
                 }
               : {}),
-            found: motionChecks.map((c) => c.message),
-            facts: motionFacts,
           },
           determinism: checked.length
             ? differed.length
