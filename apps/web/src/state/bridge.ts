@@ -128,6 +128,19 @@ export interface UncutBridge {
   readonly setUpdateBusy?: (busy: boolean) => void;
   readonly checkForUpdates?: () => Promise<void>;
   readonly installUpdate?: () => Promise<"installing" | "busy" | "not-ready">;
+  /** Outside agents over MCP (Settings › App); absent outside the desktop app. */
+  readonly mcpState?: () => Promise<McpState>;
+  readonly setMcpEnabled?: (enabled: boolean) => Promise<McpState>;
+  readonly renewMcpToken?: () => Promise<McpState>;
+}
+
+/** The gateway for outside agents (apps/desktop/src/ipc.ts). */
+export interface McpState {
+  readonly enabled: boolean;
+  readonly listening: boolean;
+  readonly url: string;
+  readonly token: string;
+  readonly problem?: string;
 }
 
 /** What the updater is doing (apps/desktop/src/ipc.ts); `manual`: the user asked (Check for Updates…). */

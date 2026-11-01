@@ -86,6 +86,7 @@ import { makeStream } from "./session/stream.ts";
 import { makeSpawn } from "./session/spawn.ts";
 import { makeCodex } from "./session/codex.ts";
 import { makeSend } from "./session/send.ts";
+import { makeExternal } from "./session/external.ts";
 export { PROVIDER } from "./session/config.ts";
 export { findClaude, sessionArgs, sessionEnv } from "./session/config.ts";
 export { readHistory, loadAgentHistory } from "./turns/history.ts";
@@ -164,6 +165,10 @@ export interface AgentShape {
   readonly authorized: (token: string | null) => Effect.Effect<boolean>;
   /** For the bridge: run a tool call of the running turn, or undefined when `token` isn't its. */
   readonly call: (token: string | null, name: unknown, args: unknown) => Effect.Effect<McpResult | undefined>;
+  /** For an outside agent (externalMcp.ts): the tools it gets. */
+  readonly externalTools: Effect.Effect<ReadonlyArray<McpTool>>;
+  /** For an outside agent: one tool call, in a turn of its own agent in the open project. */
+  readonly externalCall: (name: string, args: unknown) => Effect.Effect<McpResult>;
 }
 
 export class Agent extends Context.Service<Agent, AgentShape>()("uncut/Agent") {}
@@ -305,6 +310,7 @@ export const layer = Layer.effect(
     // Issue #106: claude (makeSpawn) or Codex (makeCodex) runs a session.
     const withSpawn = { ...withStream, ...makeSpawn(withStream), ...makeCodex(withStream) };
     const { send } = makeSend(withSpawn);
+    const externalLock = yield* Semaphore.make(1);
     const { allowed, runTool, publishNow } = withSpawn;
 
     /** The agent that ran a turn of the open project, and the turn. */
@@ -318,6 +324,32 @@ export const layer = Layer.effect(
         }
         return yield* new AgentError({ reason: "unknown-turn", message: "That turn isn't in this project's history." });
       });
+
+    const create: AgentShape["create"] = ({ name, focus }) =>
+      Effect.gen(function* () {
+        const agents = yield* ensureLoaded;
+        const v = view();
+        if (!agents || !v || v.openId !== agents[0]?.openId) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+        if (agents.length >= AGENT_COLOURS.length)
+          return yield* new AgentError({ reason: "failed", message: `A project has at most ${AGENT_COLOURS.length} agents. Close one first.` });
+        const used = new Set(agents.map((a) => a.colour));
+        const info: StoredAgent = {
+          id: `ag-${randomBytes(3).toString("hex")}`,
+          name: freeName(
+            name?.trim().slice(0, 40) || FOCUS_NAMES[focus],
+            agents.map((a) => a.name),
+          ),
+          focus,
+          colour: AGENT_COLOURS.find((c) => !used.has(c)) ?? AGENT_COLOURS[0],
+          createdAt: new Date().toISOString(),
+        };
+        yield* saveAgentList(v.dir, (saved) => [...saved, info]);
+        const added = addLoaded(v, info);
+        publish();
+        return infoOf(added);
+      });
+
+    const { externalCall, externalTools } = makeExternal({ ...withSpawn, createAgent: create, externalLock });
 
     return Agent.of({
       changes: SubscriptionRef.changes(stateRef),
@@ -433,29 +465,7 @@ export const layer = Layer.effect(
           publish();
           return { threadStart: owner.threadStart };
         }),
-      create: ({ name, focus }) =>
-        Effect.gen(function* () {
-          const agents = yield* ensureLoaded;
-          const v = view();
-          if (!agents || !v || v.openId !== agents[0]?.openId) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
-          if (agents.length >= AGENT_COLOURS.length)
-            return yield* new AgentError({ reason: "failed", message: `A project has at most ${AGENT_COLOURS.length} agents. Close one first.` });
-          const used = new Set(agents.map((a) => a.colour));
-          const info: StoredAgent = {
-            id: `ag-${randomBytes(3).toString("hex")}`,
-            name: freeName(
-              name?.trim().slice(0, 40) || FOCUS_NAMES[focus],
-              agents.map((a) => a.name),
-            ),
-            focus,
-            colour: AGENT_COLOURS.find((c) => !used.has(c)) ?? AGENT_COLOURS[0],
-            createdAt: new Date().toISOString(),
-          };
-          yield* saveAgentList(v.dir, (saved) => [...saved, info]);
-          const added = addLoaded(v, info);
-          publish();
-          return infoOf(added);
-        }),
+      create,
       archive: (agentId) =>
         Effect.gen(function* () {
           const owner = yield* agentOf(agentId);
@@ -482,6 +492,8 @@ export const layer = Layer.effect(
             }),
           );
         }),
+      externalTools,
+      externalCall,
       authorized: (token) => Effect.sync(() => runningFor(token) !== undefined),
       // A call goes to the running turn of the agent whose session the token is: none while idle,
       // none while a stopped turn's result is still pending (r.cancelled). The next turn is written

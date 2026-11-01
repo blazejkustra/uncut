@@ -12,8 +12,7 @@ import { calledSkills, planContext, skillBlocks, userMessageText } from "../agen
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
-import { turnLimits } from "../agentLimits.ts";
-import type { ClaudeSession, Loaded, Running, StoredTurn } from "./types.ts";
+import { freshTurnState, type ClaudeSession, type Loaded, type Running, type StoredTurn } from "./types.ts";
 import { teamBlock } from "../agentTeam.ts";
 import { capNote, joinNotes, noteFor, noteShowsAll } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT, sessionEnv } from "./config.ts";
@@ -376,40 +375,16 @@ export const makeSend = (ctx: SpawnCtx) => {
       owner.turns.push(turn);
       owner.bounds.set(turn.id, { start: v.session.revision });
       const r: Running = {
+        ...freshTurnState(),
         turn,
         owner,
         openId: owner.openId,
         session: s,
         message,
-        delivered: false,
-        abort: new AbortController(),
-        cancelled: false,
-        interruptTimer: undefined,
-        steps: new Map(),
-        blocks: new Map(),
-        messageId: "",
-        streamed: new Map(),
-        announced: [],
         gen: ++s.gens,
         noteRevision: compacting ? owner.agentSeen : v.session.revision,
-        stopReason: undefined,
         access,
         images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),
-        inputs: new Map(),
-        looked: { sheet: false, phone: false },
-        limits: turnLimits(),
-        reviewRounds: 0,
-        planned: false,
-        rendered: [],
-        graphicWrites: 0,
-        addedTracks: new Set(),
-        reviewedStamp: undefined,
-        picked: [],
-        permissionQueue: Promise.resolve(),
-        turnGrants: new Set(),
-        turnRefusals: new Map(),
-        toolNames: new Map(),
-        downloads: { bytes: 0, count: 0 },
         ...(ranges ? { ranges } : {}),
       };
       if (planBlock) blocks.pending = { sent: lean.sent, r, lean: lean.text, whole: planBlock };
