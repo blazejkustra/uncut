@@ -124,7 +124,7 @@ test(
       await page.click("[data-testid=rail-skills]");
       await waitFor("[data-testid=skills-group]");
       assert.match(await page.$eval("[data-testid=skills-group]", (el) => (el as HTMLElement).innerText), /^Uncut skills/i);
-      assert.equal((await page.$$("[data-testid=skills-group] [data-testid^=skill-]")).length, 11);
+      assert.equal((await page.$$("[data-testid=skills-group] [data-testid^=skill-]")).length, 15);
       await page.screenshot({ path: out("skills") });
 
       // One opens read-only; Duplicate makes the user's copy.
