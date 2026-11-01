@@ -3,7 +3,7 @@
 .footage-bar .recent-search { flex: 1; min-width: 0; margin: 0; }
 .footage-bar .media-sort { flex: none; max-width: 96px; }
 .footage-progress { margin: 0 0 8px; grid-template-columns: auto 1fr auto; }
-.footage-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-bottom: 8px; font-size: 11px; color: var(--dim); }
+.footage-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-height: 16px; margin-bottom: 8px; font-size: 11px; color: var(--dim); }
 .footage-error { flex-basis: 100%; color: var(--muted); overflow-wrap: anywhere; }
 .footage-hit[draggable="false"] { cursor: default; }
 .footage-thumb { position: relative; width: 88px; height: 56px; }

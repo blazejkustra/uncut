@@ -49,12 +49,13 @@ function IndexState({ status, online }: { status: FootageStatus; online: boolean
       </div>
     );
   }
-  if (status.clips === 0) return null;
   return (
     <div className="footage-state" data-testid="footage-state">
-      <span>
-        {status.indexed} of {status.clips} clips searchable
-      </span>
+      {status.clips > 0 && (
+        <span>
+          {status.indexed} of {status.clips} clips searchable
+        </span>
+      )}
       {status.indexed < status.clips && (
         <button
           className="link-btn"
@@ -154,7 +155,7 @@ export function FootageSearch({ project }: { project: Project }) {
       clearTimeout(timer);
     };
   }, [online, asked, scope, revision]);
-  if (!status || (status.clips === 0 && status.everywhere === 0)) return null;
+  if (!status || (project.media.length === 0 && status.everywhere === 0)) return null;
   return (
     <div className="lib-section footage-search" data-testid="footage-search">
       <div className="footage-bar">
