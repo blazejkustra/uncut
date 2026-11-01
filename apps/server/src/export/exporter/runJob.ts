@@ -20,7 +20,7 @@ import { exportCommand, planLoudness, RASTER_CSS, graphFileArgs, hardwareEncoder
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasterizer.ts";
 import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
-import { Cancelled, capsOf, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
+import { Cancelled, capsOf, denoiseLagOf, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
@@ -98,6 +98,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       if (missing) throw new Error(missing);
       stage = "rasterise";
       const caps = await capsOf(bin);
+      if (plan.buses.some((b) => b.stages.some((s) => s.kind === "denoise"))) plan = { ...plan, denoiseLag: await denoiseLagOf(bin) };
       temp = await makeTemp();
       if (signal.aborted) throw new Cancelled();
 
