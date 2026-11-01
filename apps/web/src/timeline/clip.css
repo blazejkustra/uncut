@@ -7,3 +7,5 @@
 .tl-lanes.tool-slip .clip, .tl-lanes.tool-slip .clip * { cursor: ew-resize !important; }
 .tl-lanes.tool-roll .clip, .tl-lanes.tool-roll .clip * { cursor: col-resize !important; }
 .tl-lanes.tool-slip .tl-lane.locked .clip, .tl-lanes.tool-roll .tl-lane.locked .clip, .tl-lanes.tool-slip .clip[data-locked], .tl-lanes.tool-roll .clip[data-locked] { cursor: not-allowed !important; }
+.clip[data-locked] { cursor: not-allowed; }
+.clip[data-locked]::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 9%) 6px 12px); }
