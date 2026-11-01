@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://uncut.dev/schema/edit-ops/0.json",
   "title": "Uncut edit operations",
-  "description": "Every change to project.json, by the user or the agent, is a list of these ops. They are applied atomically, recorded in history.db with who made them, and are what the agent sees in the manual-edit log.",
+  "description": "Every change to project.json, by the user or the agent, is a list of these ops. They are applied atomically, recorded in history.db with who made them, and are what the agent sees in the manual-edit log. Ops on a locked item or track are refused for everyone; only the user may unlock, and the agent's whole edit is refused if it would change, move or unlock a locked item, track or section.",
   "type": "array",
   "minItems": 1,
   "items": { "$ref": "#/$defs/op" },
