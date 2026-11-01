@@ -198,6 +198,7 @@ test("edits are atomic: an invalid edit leaves the project untouched", () => {
 
 test("every op type works and keeps the promo valid", () => {
   let s = createSession(promo);
+  const mainId = promo.tracks.find((t) => t.role === "main")!.id;
   const steps: Array<Array<Op>> = [
     [
       {
@@ -219,6 +220,15 @@ test("every op type works and keeps the promo valid", () => {
     [{ op: "update_project", set: { name: "Close the loop v2" } }],
     [{ op: "update_item", item: "txt-taps", set: { animation: null } }],
     [{ op: "trim_item", item: "terminal", edge: "start", frames: 30 }],
+    [{ op: "insert_item", track: mainId, item: { id: "extra", type: "text", text: "Extra", duration: 30 } }],
+    [{ op: "nest_items", items: ["extra"], sequence: "extra-seq", item: "extra-nest" }],
+    [{ op: "edit_sequence", sequence: "extra-seq", ops: [{ op: "update_item", item: "extra", set: { name: "Inside" } }] }],
+    [{ op: "unnest_item", item: "extra-nest" }],
+    [{ op: "nest_items", items: ["extra"], sequence: "extra-seq", item: "extra-nest" }],
+    [
+      { op: "delete_item", item: "extra-nest" },
+      { op: "delete_sequence", sequence: "extra-seq" },
+    ],
   ];
   for (const ops of steps) s = applyEdit(s, { actor: "user", ops }, validate);
   assert.deepEqual(validate(s.project), []);
