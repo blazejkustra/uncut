@@ -20,6 +20,9 @@
     "dist": "pnpm build && pnpm --filter @uncut/desktop dist",
     "dist:signed": "node apps/desktop/scripts/dist-signed.ts",
     "tools:build": "node native/tools/build.ts",
+    "server:image": "docker build -f infra/server/Dockerfile -t uncut-server .",
+    "server:tarball": "docker build -f infra/server/Dockerfile --target tarball -o release .",
+    "server:check": "node scripts/server-image-check.ts",
     "site:build": "node scripts/site-build.ts",
     "site:dev": "pnpm --filter @uncut/site dev"
   },

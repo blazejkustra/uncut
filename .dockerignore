@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/target
+**/*.md
+.git
+.claude
+apps/desktop/stage
+release
+site
+test
+test-output
+native/tools/out
+native/tools/work
+.env*

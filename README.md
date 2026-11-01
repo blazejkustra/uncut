@@ -24,7 +24,8 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 ## What it does
 
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
-- **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **A real timeline.** Tracks, trims, slip and roll, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Locked cuts.** Lock a clip, a range or a track and the agent can't change, move or unlock it. Its edit is refused with the reason, and you unlock by hand whenever you want.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
@@ -33,10 +34,29 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
-- **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles.
+- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles.
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).
+
+## Linux server
+
+Environments (Settings › Labs) lets the Mac app edit on another machine. The server for that machine builds into a container image with Docker or OrbStack:
+
+```sh
+pnpm server:image
+docker run -d --name uncut-server -p 127.0.0.1:8790:8790 -v uncut-server:/data \
+  -e UNCUT_PUBLIC_URL=http://127.0.0.1:8790 uncut-server
+docker logs uncut-server
+```
+
+The log ends with a `uncut://pair?...` line. Paste it into Settings › Environments › Add environment. `UNCUT_PUBLIC_URL` is the address the app will use, since a server in a container can't see its published port. The token, settings and projects live in the `/data` volume.
+
+The server speaks plain http, so keep the port on loopback and reach it through an SSH tunnel, Tailscale or an https proxy (with `-e UNCUT_PUBLIC_URL=https://...`). The agent needs Claude Code or Codex in the image: build your own `FROM uncut-server`, install it, and sign in with `docker exec -it uncut-server claude`. Whisper transcription needs `whisper-cli` the same way.
+
+`pnpm server:tarball` puts `uncut-server-linux-<arch>.tar.gz` in `release/`, for a machine without Docker. It needs Node 24 and ffmpeg on PATH: run `./uncut-server --host 0.0.0.0` (port 8790, data in `~/.uncut-server`, change them with `--port` and `--data-dir`). Every export also needs Electron on a display: set `UNCUT_RENDER_BIN` to a script that starts it with `--no-sandbox`, as `scripts/remote-docker/electron-render.sh` does. The image has this built in.
+
+`pnpm server:check` builds both and tests them in containers. `node scripts/server-image-check.ts --app` also pairs the packaged app.
 
 ## Development
 

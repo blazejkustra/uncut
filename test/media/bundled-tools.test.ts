@@ -89,7 +89,7 @@ test("it has the filters, encoders and decoders Uncut uses", T, () => {
   const filters = ffmpeg("-filters");
   for (const name of USED_FILTERS) assert.match(filters, new RegExp(`\\s${name}\\s`), name);
   const encoders = ffmpeg("-encoders");
-  for (const name of ["h264_videotoolbox", "hevc_videotoolbox", "aac", "ffv1", "png", "mjpeg"]) assert.ok(encoders.includes(` ${name} `), name);
+  for (const name of ["h264_videotoolbox", "hevc_videotoolbox", "prores_ks", "aac", "ffv1", "png", "mjpeg"]) assert.ok(encoders.includes(` ${name} `), name);
   const decoders = ffmpeg("-decoders");
   for (const name of ["h264", "hevc", "prores", "vp9", "libdav1d", "aac", "mp3", "opus"]) assert.ok(decoders.includes(` ${name} `), name);
   assert.match(ffmpeg("-hwaccels"), /videotoolbox/);

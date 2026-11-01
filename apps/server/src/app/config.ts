@@ -21,6 +21,8 @@ export interface ServerConfigShape {
   readonly headless?: boolean;
   /** Where a headless server keeps its token (D106). */
   readonly tokenFile?: string | undefined;
+  /** The address the pairing line names: UNCUT_PUBLIC_URL, for a server behind a container's port or a proxy. */
+  readonly publicUrl?: string | undefined;
   /** Origins allowed besides the defaults (D110): UNCUT_ALLOWED_ORIGINS, comma-separated (the dev page). */
   readonly allowedOrigins?: ReadonlyArray<string>;
   // True when nobody handed us a token, so the ready line has to tell the caller.
@@ -143,7 +145,7 @@ export const readConfig = (
   return {
     version: typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev",
     host: headless?.host || "127.0.0.1",
-    ...(headless ? { headless: true, tokenFile: headless.tokenFile } : {}),
+    ...(headless ? { headless: true, tokenFile: headless.tokenFile, publicUrl: env.UNCUT_PUBLIC_URL || undefined } : {}),
     allowedOrigins: (env.UNCUT_ALLOWED_ORIGINS ?? "")
       .split(",")
       .map((o) => o.trim())

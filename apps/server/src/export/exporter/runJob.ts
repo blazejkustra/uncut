@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 
 import type { ExportJob } from "@uncut/contracts";
 import {
+  codecExtension,
   denoiseMediaIds,
   duckMediaIds,
   flattenCues,
@@ -149,7 +150,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
             });
 
       stage = "encode";
-      const partial = join(temp, "export.mp4");
+      const partial = join(temp, `export.${codecExtension(job.codec ?? "h264")}`);
       // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
       const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
       let subtitles: { file: string; language: string; show: boolean } | undefined;
@@ -160,7 +161,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
       }
       const luts = await writeLuts(plan, temp);
-      const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps };
+      const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps, alpha: job.alpha };
       const total = plan.frames / plan.fps;
       const graphFile = join(temp, "graph.txt");
       const softwareBin = await ffmpegWith(bin, softwareEncoder(job.codec));
@@ -201,7 +202,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       usedEncoder = hardware ? "hardware" : "software";
       patch(job.id, {
         encoder: usedEncoder,
-        ...(video.encoder === "software" && hardware ? { warnings: [...(plan.warnings ?? []), NO_SOFTWARE_ENCODER] } : {}),
+        ...(wantsSoftware(job.quality, video) && hardware ? { warnings: [...(plan.warnings ?? []), NO_SOFTWARE_ENCODER] } : {}),
       });
       let r = await encode(encoderBin, video);
       // D212: VideoToolbox can be listed and still refuse (no constant-quality mode on an Intel Mac,

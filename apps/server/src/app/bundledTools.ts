@@ -29,3 +29,9 @@ export const systemPath = (path: string, env: NodeJS.ProcessEnv = process.env) =
     .filter((dir) => dir !== bundled)
     .join(":");
 };
+
+/** PATH with an installed ffmpeg ahead of the shipped one, which has no libx264 or libx265. */
+export const installedToolsFirst = (path: string, env: NodeJS.ProcessEnv = process.env) => {
+  const bundled = bundledToolsBin(env);
+  return bundled ? [...systemPath(path, env).split(":"), bundled].join(":") : path;
+};

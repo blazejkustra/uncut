@@ -6,7 +6,9 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { agentEnv } from "../../apps/server/src/app/shellEnv.ts";
 import { ffmpegWith } from "../../apps/server/src/export/exporter/ffmpeg.ts";
+import { softwareEncoder } from "../../apps/server/src/export/exportPlan.ts";
 
 let root = "";
 const saved = { PATH: process.env.PATH, UNCUT_TOOLS_DIR: process.env.UNCUT_TOOLS_DIR };
@@ -49,4 +51,19 @@ test("with no system ffmpeg there's nothing to fall back on", async () => {
   process.env.UNCUT_TOOLS_DIR = join(root, "alone/tools");
   process.env.PATH = `${join(root, "alone/tools/bin")}:/nowhere`;
   assert.equal(await ffmpegWith(bundled, "libx264"), undefined);
+});
+
+test("ProRes stays on the shipped ffmpeg, which has prores_ks", async () => {
+  const bundled = fakeFfmpeg(join(root, "prores/tools/bin"), ["prores_ks"]);
+  process.env.UNCUT_TOOLS_DIR = join(root, "prores/tools");
+  process.env.PATH = `${join(root, "prores/tools/bin")}:/nowhere`;
+  assert.equal(await ffmpegWith(bundled, softwareEncoder("prores4444")), bundled);
+});
+
+test("the agent's plain ffmpeg is the installed one, with the shipped one still on its PATH", () => {
+  fakeFfmpeg(join(root, "agent/tools/bin"), []);
+  const shipped = join(root, "agent/tools/bin");
+  const env = { UNCUT_TOOLS_DIR: join(root, "agent/tools"), PATH: `${shipped}:/opt/homebrew/bin:/usr/bin` };
+  assert.equal(agentEnv(env).PATH, `/opt/homebrew/bin:/usr/bin:${shipped}`);
+  assert.equal(agentEnv({ UNCUT_TOOLS_DIR: "", PATH: "/opt/homebrew/bin:/usr/bin" }).PATH, "/opt/homebrew/bin:/usr/bin");
 });
