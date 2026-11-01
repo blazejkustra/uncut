@@ -186,7 +186,7 @@ const noteLine = (note: ReviewNote, fps: number, textMax: number) =>
     frame: note.frame,
     seconds: Number((note.frame / fps).toFixed(2)),
     ...(note.author ? { author: note.author } : {}),
-    text: note.text.length > textMax ? `${note.text.slice(0, textMax)}... (cut short, project_read has it all)` : note.text,
+    text: note.text.length > textMax ? `${note.text.slice(0, textMax)}... (cut short, project_read detail "full" has it all)` : note.text,
     ...(note.region ? { region: note.region } : {}),
   });
 
@@ -194,7 +194,7 @@ const notesBlock = (project: Project, max: number, textMax: number) => {
   const open = openReviewNotes(project);
   if (!open.length) return "";
   const lines = open.slice(0, max).map((n) => noteLine(n, project.canvas.fps, textMax));
-  const more = open.length > max ? [`${open.length - max} more open notes: project_read lists them.`] : [];
+  const more = open.length > max ? [`${open.length - max} more open notes: project_read detail "full" lists them.`] : [];
   return [REVIEW_NOTES_GUARD, "<review_notes>", ...lines, "</review_notes>", ...more].join("\n");
 };
 

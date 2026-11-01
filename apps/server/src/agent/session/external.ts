@@ -127,8 +127,8 @@ export const makeExternal = (
 
   const onStop = (r: Running) => {
     stoppedByUser = r.stopReason === undefined;
-    spend.add(r.openId, r.turn.spend);
     if (link?.r === r) {
+      spend.add(r.openId, r.turn.spend);
       clearTimeout(link.timer);
       link = undefined;
     }
