@@ -14,7 +14,8 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { flattenSequences } from "@uncut/core/nesting";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useBeatsLoading } from "../audio/beats.ts";
 import { useDuckLoading } from "../audio/ducking.ts";
@@ -45,6 +46,7 @@ import { Wordmark } from "./Wordmark.tsx";
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
+  const played = useMemo(() => flattenSequences(project), [project]);
   const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft, environment, environmentProblem } =
     useApp();
   const online = connection === "connected";
@@ -138,7 +140,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
       {/* #76 (D256): hidden parts aren't rendered; focus mode is the preview and the agent beside it (D270). */}
       {panelShown(shown, "lib") && <Rail tab={tab} onTab={setTab} />}
       {panelShown(shown, "lib") && <Library project={project} dir={snapshot.dir} tab={tab} onTab={setTab} />}
-      <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
+      <Stage key={snapshot.dir} project={played} dir={snapshot.dir} />
       {panelShown(shown, "side") && <Side snapshot={snapshot} project={project} online={online} staged={staged} onDock={() => dismissStage("link")} />}
       {shown.focus ? (
         <section className="focus-agent" data-testid="focus-agent">

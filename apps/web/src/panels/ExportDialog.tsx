@@ -65,9 +65,10 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const [advanced, setAdvanced] = useState(false);
   const [codec, setCodec] = useState<ExportCodec>("h264");
   const proRes = isProRes(codec);
-  const extension = codecExtension(codec);
+  const [reviewPage, setReviewPage] = useState(false);
+  const extension = codecExtension(reviewPage ? "h264" : codec);
   const [transparent, setTransparent] = useState(false);
-  const alpha = codec === "prores4444" && transparent;
+  const alpha = codec === "prores4444" && transparent && !reviewPage;
   const [bitrate, setBitrate] = useState<number | undefined>();
   // D212: undefined = the preset's (High software, Draft and Standard hardware).
   const [encoder, setEncoder] = useState<ExportEncoder | undefined>();
@@ -80,7 +81,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const LOUDNESS = loudnessCards(target);
   const [name, setName] = useState(fileName(project.name));
   const [folder, setFolder] = useState(exportFolder ?? appInfo.defaultParentDir);
-  const [error, setError] = useState<{ reason?: string | undefined; message: string; subtitles?: boolean } | undefined>();
+  const [error, setError] = useState<{ reason?: string | undefined; message: string; subtitles?: boolean; timeline?: boolean } | undefined>();
   const [busy, setBusy] = useState(false);
   // Subtitles (D105): what the project's captions and Subtitles tracks would export as.
   const cueCount = useMemo(() => subtitleCues(project as Parameters<typeof subtitleCues>[0]).length, [project]);
@@ -90,6 +91,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const [subFormat, setSubFormat] = useState<SubtitleFormat>("srt");
   const [language, setLanguage] = useState("en");
   const [savedSubs, setSavedSubs] = useState<string | undefined>();
+  const [timelineFormat, setTimelineFormat] = useState<"fcpxml" | "edl">("fcpxml");
+  const [savedTimeline, setSavedTimeline] = useState<{ name: string; lost: ReadonlyArray<string> } | undefined>();
   // D291: motion blur on graphics; undefined = the default for the quality (and the project's setting).
   const hasGraphics = useMemo(() => project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic")), [project]);
   const [blurChoice, setBlurChoice] = useState<boolean | undefined>();
@@ -143,7 +146,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     const subtitles: ExportSubtitles | undefined =
       cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
     const video = {
-      ...(codec !== "h264" ? { codec } : {}),
+      ...(codec !== "h264" && !reviewPage ? { codec } : {}),
       ...(encoder !== undefined && !proRes ? { encoder } : {}),
       ...(bitrate !== undefined && !proRes ? { bitrateMbps: bitrate } : {}),
       ...(shortSide !== undefined ? { shortSide } : {}),
@@ -161,6 +164,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
       ...(cueCount && !burn ? { burnCaptions: false } : {}),
       ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}),
       ...(hasGraphics ? { motionBlur: blurOn } : {}),
+      ...(reviewPage ? { review: true } : {}),
     });
     setBusy(false);
     if (refused) {
@@ -178,6 +182,16 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setBusy(false);
     if ("message" in result) setError({ ...result, subtitles: true });
     else setSavedSubs(`Saved ${baseName(result.path)} (${result.cues} cue${result.cues === 1 ? "" : "s"}).`);
+  };
+  /** The timeline for another editor, named like the video, in the chosen folder; no video. */
+  const timelineOnly = async (overwrite = false) => {
+    setBusy(true);
+    setError(undefined);
+    setSavedTimeline(undefined);
+    const result = await actions.exportTimeline({ output: output.replace(VIDEO_EXTENSION, `.${timelineFormat}`), overwrite });
+    setBusy(false);
+    if ("message" in result) setError({ ...result, timeline: true });
+    else setSavedTimeline({ name: baseName(result.path), lost: result.warnings });
   };
   const change = async () => {
     const chosen = await actions.chooseExportPath(output);
@@ -238,6 +252,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           {job.alpha ? ", transparent" : ""}
           {job.motionBlur && hasGraphics ? ", motion blur" : ""}
         </p>
+        {job.reviewFolder && (
+          <p className="wiz-meta" data-testid="export-job-review" data-folder={job.reviewFolder}>
+            Review page in {baseName(job.reviewFolder)}: open index.html or host the folder anywhere. Reviewers send their comments back as a file or block;
+            there is no live sync.
+          </p>
+        )}
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
           <p className="wiz-meta" data-testid="export-job-subtitles">
             {[
@@ -593,6 +613,26 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
           </p>
         )}
+        <div className="group-label export-label">Share</div>
+        <div className="export-subs" data-testid="export-review">
+          <label className="export-sub-row">
+            <input
+              type="checkbox"
+              data-testid="export-review-page"
+              checked={reviewPage}
+              disabled={remote}
+              onChange={(e) => (setReviewPage(e.target.checked), setError(undefined))}
+            />
+            <span>Review page</span>
+            <span className="muted">{remote ? "Only for exports on this Mac" : "A folder with one page and the video, H.264"}</span>
+          </label>
+        </div>
+        {reviewPage && (
+          <p className="wiz-meta" data-testid="export-review-note">
+            Open it locally or host it anywhere; no Uncut account or service is involved. Reviewers pin comments to a timecode and send you a file or block to
+            import in the Review tab. There is no live multiplayer or automatic sync.
+          </p>
+        )}
         {hasGraphics && (
           <>
             <div className="group-label export-label">Motion</div>
@@ -670,6 +710,34 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             )}
           </>
         )}
+        <div className="group-label export-label">Other editors</div>
+        <div className="export-subs" data-testid="export-timeline">
+          <div className="export-sub-row">
+            <span className="muted">Timeline file</span>
+            <div className="seg" data-testid="export-timeline-format">
+              {(["fcpxml", "edl"] as const).map((f) => (
+                <button
+                  type="button"
+                  key={f}
+                  className={f === timelineFormat ? "active" : ""}
+                  data-testid={`export-timeline-${f}`}
+                  data-active={f === timelineFormat}
+                  onClick={() => setTimelineFormat(f)}
+                >
+                  {f === "fcpxml" ? "FCPXML" : "EDL"}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn" data-testid="export-timeline-save" disabled={busy || !name.trim()} onClick={() => void timelineOnly()}>
+              Save timeline
+            </button>
+          </div>
+          {savedTimeline && (
+            <p className="wiz-meta" data-testid="export-timeline-saved">
+              Saved {savedTimeline.name}.{savedTimeline.lost.length > 0 && ` ${savedTimeline.lost.join(" ")}`}
+            </p>
+          )}
+        </div>
         {cancelled && !error && <p className="wiz-meta">The last export was cancelled; nothing was saved.</p>}
         {error && (
           <div className="inline-error" role="alert" data-testid="export-refused" data-reason={error.reason}>
@@ -680,7 +748,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 className="btn export-replace"
                 data-testid="export-replace"
                 disabled={busy}
-                onClick={() => void (error.subtitles ? subtitlesOnly(true) : start(true))}
+                onClick={() => void (error.timeline ? timelineOnly(true) : error.subtitles ? subtitlesOnly(true) : start(true))}
               >
                 Replace it
               </button>

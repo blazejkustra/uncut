@@ -318,6 +318,14 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
   switch (op.op) {
     case "trim_item":
       return `${op.frames > 0 ? "Trimmed" : "Extended"} ${it(op.item)} by ${secs(op.frames, fps)} at the ${op.edge}`;
+    case "nest_items":
+      return `Nested ${op.items.length === 1 ? it(op.items[0]!) : `${op.items.length} items`} into sequence ${op.name ?? op.sequence}`;
+    case "unnest_item":
+      return `Put ${it(op.item)} back on Main`;
+    case "edit_sequence":
+      return `In sequence ${op.sequence}: ${op.ops.map((inner) => describeOp(inner, project, hint)).join("; ")}`;
+    case "delete_sequence":
+      return `Deleted sequence ${op.sequence}`;
     case "slip_item":
       return `Slipped ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"} in its media`;
     case "roll_edit":
@@ -407,7 +415,12 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         ].filter(Boolean);
         return parts.length ? `Set motion blur: ${parts.join(", ")}` : "Changed motion blur";
       }
+      if (keys.length === 1 && keys[0] === "reviewNotes") return "Changed the review notes";
       return `Changed project ${keys.join(", ")}`;
+    }
+    case "resolve_review_notes": {
+      const n = op.notes.length;
+      return `${op.resolved === false ? "Reopened" : "Resolved"} ${n} review note${n === 1 ? "" : "s"}`;
     }
     default:
       // Every op is handled above; this is for ops from a newer format.

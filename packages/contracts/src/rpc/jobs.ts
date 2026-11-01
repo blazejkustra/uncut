@@ -3,6 +3,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import { RPC_METHODS, HistoryState, ProjectError, ProjectSnapshot, EditRefused, FileListing, FilesError } from "../server.ts";
 import { ExportQuality, ExportLoudness, ExportSubtitles, ExportRange, ExportVideo, ExportError, ExportJob } from "../export.ts";
 import { Empty } from "./rpcs.ts";
+import { FootageHit, FootageStatus } from "../footage.ts";
 import { Analyzer, AnalysisError, AnalysisJob, TranscriptionState, TranscriptionError } from "../analysis.ts";
 import { PluginInfo, PluginError, PluginContributions, CatalogEntry } from "../plugins.ts";
 import { CaptureState, CaptureError, CaptureOptions, CaptureOrientation, TakeKind, MultiPart, MultiLayout } from "../capture.ts";
@@ -33,6 +34,8 @@ export const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
     range: Schema.optional(ExportRange),
     video: Schema.optional(ExportVideo),
     motionBlur: Schema.optional(Schema.Boolean),
+    /** A review page: `output` names a folder beside it, holding the page and the video (H.264). */
+    review: Schema.optional(Schema.Boolean),
   }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
@@ -45,6 +48,13 @@ export const ExportCancelRpc = Rpc.make(RPC_METHODS.exportCancel, { payload: Sch
 export const ExportSubtitlesRpc = Rpc.make(RPC_METHODS.exportSubtitles, {
   payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ path: Schema.String, format: Schema.Literals(["srt", "vtt"]), cues: Schema.Number }),
+  error: ExportError,
+});
+
+/** The timeline for another editor, as a .fcpxml or .edl file (the format by its extension). warnings: what the file can't carry. */
+export const ExportTimelineRpc = Rpc.make(RPC_METHODS.exportTimeline, {
+  payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ path: Schema.String, warnings: Schema.Array(Schema.String) }),
   error: ExportError,
 });
 
@@ -68,6 +78,14 @@ export const AnalysisStartRpc = Rpc.make(RPC_METHODS.analysisStart, {
 });
 // Recent analysis jobs, now and on every change.
 export const AnalysisJobsRpc = Rpc.make(RPC_METHODS.analysisJobs, { payload: Empty, success: Schema.Array(AnalysisJob), stream: true });
+// The footage index: moments matching a search, what it's doing, and its background run for the open project.
+export const FootageSearchRpc = Rpc.make(RPC_METHODS.footageSearch, {
+  payload: Schema.Struct({ query: Schema.String, thisProject: Schema.Boolean, limit: Schema.optional(Schema.Number) }),
+  success: Schema.Struct({ hits: Schema.Array(FootageHit) }),
+});
+export const FootageStatusRpc = Rpc.make(RPC_METHODS.footageStatus, { payload: Empty, success: FootageStatus, stream: true });
+export const FootageStartRpc = Rpc.make(RPC_METHODS.footageStart, { payload: Empty });
+export const FootageCancelRpc = Rpc.make(RPC_METHODS.footageCancel, { payload: Empty });
 // Stops a queued or running analysis; nothing of it is left in .cache.
 export const AnalysisCancelRpc = Rpc.make(RPC_METHODS.analysisCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 

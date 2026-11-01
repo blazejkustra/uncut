@@ -13,6 +13,7 @@ import type { LibraryShape } from "../../library/library.ts";
 import type { MediaLibraryShape } from "../../media/media.ts";
 import type { MediaCoreShape } from "../../media/mediaCore.ts";
 import type { MediaIndexShape } from "../../media/mediaIndex.ts";
+import type { FootageIndexShape } from "../../footage/footageIndex.ts";
 import type { PluginsShape } from "../../plugins/plugins.ts";
 import type { ProjectFormatShape } from "../../project/format.ts";
 import type { ProjectsShape, ProjectView } from "../../project/projects.ts";
@@ -33,6 +34,7 @@ export interface AgentServices {
   readonly capture: CaptureShape;
   readonly sounds: LibraryShape;
   readonly mediaIndex: MediaIndexShape;
+  readonly footage: FootageIndexShape;
   readonly bridgeUrl: string;
   readonly stateRef: SubscriptionRef.SubscriptionRef<AgentState | null>;
   readonly loadLock: Semaphore.Semaphore;

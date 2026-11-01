@@ -8,7 +8,7 @@ import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
 export { stepLabel, shownUrl, doingLabel, partialFields } from "./tools/labels.ts";
 export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.ts";
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
-export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, OUTLINE_ITEMS } from "./tools/summary.ts";
+export { fullProject, projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, OUTLINE_ITEMS } from "./tools/summary.ts";
 export { modulesIndex, modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 export { withoutDecisionIds } from "./tools/decisionIds.ts";
@@ -35,6 +35,7 @@ export const TOOL_NAMES = [
   "transcript_edit",
   "captions_make",
   "subtitles_export",
+  "timeline_export",
   "export_video",
   "project_check",
   "library_search",
@@ -47,6 +48,7 @@ export const TOOL_NAMES = [
   "screen_record",
   "argent_boot",
   "media_search",
+  "media_describe",
   "ask_user",
   "brief_write",
   "storyboard_propose",
@@ -187,7 +189,7 @@ How to work:
 
 Hard rules:
 - Never invent facts, quotes, numbers, logos, brand colours, fonts or product UI: use what you found or were given, and say where it came from when it matters. With a brand kit in <brand>, use its colours, fonts and logo files by default.
-- Product footage (an app on a phone, a website): never draw a placeholder screen while real footage could exist. media_search the user's other projects first, then offer to record it (argent_boot and argent_record, or screen_record), else ask_user. Say plainly if a placeholder is left.
+- Product footage (an app on a phone, a website): never draw a placeholder screen while real footage could exist. media_search the user's footage first, then offer to record it (argent_boot and argent_record, or screen_record), else ask_user. Say plainly if a placeholder is left.
 - Taste (project_check lists what breaks it; a skill the film follows overrides it, and the user's own direction overrides both): restraint, few elements per frame, the product is the hero; one typeface family with a real size scale and one accent colour that carries meaning; hard cuts or short crossfades, motion only when the story changes, not the same entrance on every text; every text fully visible for at least words ÷ 3 s (2 s minimum, after its in move), the last line holding 3 s, no new text in the last 2 s; plain dev-to-dev wording, no filler ("seamlessly", "unlock"), no trailing periods on titles and captions, never ·, • or * between words (commas or line breaks); text at least 28 px at a 1080 px shorter side, inside the safe margin; frame 1 is the thumbnail, so it shows the claim, never black or a fade from black; footage at one honest speed (say a speed-up in words); a film that shows the user's prompt being typed because they asked for it ("this prompt", "my prompt") types their own words (a long one cut with an ellipsis), never a made-up prompt; music that fits the pace, never corporate stock, and only when asked or the video has no sound.
 - Plugins (modules_list entries with plugin true) add tools that return data and never change the project: put what they give into it with timeline_edit or media_import (capture plugins import their takes themselves). A plugin the user hasn't allowed refuses its calls: say it needs their approval in Settings. You can't install or allow plugins; suggest one if it would help.
 

@@ -11,7 +11,10 @@ import {
   type Op,
   planCaptionEdit,
   locksNote,
+  reviewNotesBlock,
+  reviewNotesTurnBlock,
   sectionsNote,
+  sequencesNote,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
@@ -46,6 +49,7 @@ function itemLine(it: Item, start: number): string {
     x.gap ? `gap ${x.gap}` : "",
     transition?.module ? `transition ${transition.module} ${transition.duration ?? ""}`.trim() : "",
     x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
+    x.sequence ? `sequence ${x.sequence}` : "",
     x.locked ? "locked" : "",
     x.mute ? "mute" : "",
     it.type === "captions" ? `${Array.isArray(x.words) ? x.words.length : 0} words` : "",
@@ -110,6 +114,10 @@ function projectNotes(project: Project) {
           lockedNote: "Only the user unlocks these. Edits that change or move them are refused: work around them, or ask the user to unlock one.",
         }
       : {}),
+    ...(sequencesNote(project)
+      ? { sequences: sequencesNote(project), sequencesNote: "Sequence items on Main play these. Change what's in one with edit_sequence." }
+      : {}),
+    ...(reviewNotesTurnBlock(project) ? { reviewNotes: reviewNotesTurnBlock(project) } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.
@@ -117,6 +125,12 @@ function projectNotes(project: Project) {
     // D135: the library sounds' credits (CC BY ones need them in the video's description).
     ...(creditsText(project) ? { credits: creditsSummary(project) } : {}),
   };
+}
+
+/** project_read's detail "full": project.json with the reviewers' text moved behind its warning. */
+export function fullProject(project: Project, revision: number) {
+  const { reviewNotes: _, ...rest } = withoutLutTables(project);
+  return { revision, project: rest, ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}) };
 }
 
 /**

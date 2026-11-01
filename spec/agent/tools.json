@@ -33,7 +33,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically: one call is one undo step in your turn. Pass the revision you last read as baseRevision; if the user changed the same items since then, the edit is refused and you get their changes. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is. Edits that touch a lock are refused; only the user unlocks. dryRun: true returns the planned lines, diff and conflicts without applying.\nEdit ops (fields in the schema): insert_item (main track: index, default the end; other tracks: the item needs a start), update_item (null removes a field; transform, style, animation, effects and keys are replaced whole, so send what you keep), trim_item (frames > 0 shortens, < 0 lengthens; on main the rest ripples), slip_item (same place and length, other frames of its media), roll_edit (the cut after item moves frames later; nothing else shifts), split_item (at counts from the item's start; the second half gets newId), move_item (main: index; other tracks: start), delete_item (on main the rest closes up), set_transition (on the incoming main item, not the first; null clears it; modules_list kind \"transition\" lists the modules and their frame limits; allowTrim: true trims the spare media an overlap lacks), add_track, update_track (mixer replaced whole), delete_track, add_media, update_media, delete_media (no item may still use it), update_project (master replaced whole).\ndocs_read edits gives every op's fields and rules; docs_read text, picture and sound give the style, transform, keys, effects and mixer fields.",
+      "description": "Apply edit ops atomically: one call is one undo step in your turn. Pass the revision you last read as baseRevision; if the user changed the same items since then, the edit is refused and you get their changes. A refusal gives each problem a fix (a start frame, a track, a free id): use it. Edits that touch a lock are refused; only the user unlocks. dryRun: true returns lines, diff and conflicts without applying.\nEdit ops (fields in the schema): insert_item (main: index, default the end; other tracks: item needs a start), update_item (null removes a field; transform, style, animation, effects and keys are replaced whole, so send what you keep), trim_item (frames > 0 shortens, < 0 lengthens; on main the rest ripples), slip_item (same place and length, other frames of its media), roll_edit (the cut after item moves frames later; nothing else shifts), split_item (at counts from the item's start; the second half gets newId), move_item (main: index; other tracks: start), delete_item (on main the rest closes up), nest_items (neighbouring Main items into a sequence), unnest_item, edit_sequence (ops inside a sequence), delete_sequence, set_transition (on the incoming main item, not the first; null clears it; modules_list kind \"transition\" lists them and their limits; allowTrim: true trims the spare media an overlap lacks), add_track, update_track (mixer replaced whole), delete_track, add_media, update_media, delete_media (unused only), update_project (master replaced whole).\ndocs_read edits gives every op's fields and rules; docs_read text, picture and sound give style, transform, keys, effects and mixer fields.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -169,7 +169,7 @@
         "properties": {
           "media": {
             "type": "string",
-            "description": "A media id from project_read."
+            "description": "A media id."
           },
           "analyzers": {
             "type": "array",
@@ -416,6 +416,19 @@
         }
       },
       "returns": "{ media, item, remade, mode, words, cards: [{ from, to, words: 'w12–w18', text }] (the first 40; frames of the edit), cardCount, revision, notes? }"
+    },
+    {
+      "name": "timeline_export",
+      "description": "Save the timeline for Final Cut or Resolve next to project.json. media_import of a .fcpxml in an empty project builds one.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "format": { "enum": ["fcpxml", "edl"], "description": "fcpxml (default); edl is the main track only" },
+          "overwrite": { "type": "boolean" }
+        }
+      },
+      "returns": "{ path, lost }"
     },
     {
       "name": "subtitles_export",
@@ -955,7 +968,7 @@
     },
     {
       "name": "media_search",
-      "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and date. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
+      "description": "Search the user's footage on this Mac. moments: what's said in indexed clips and what media_describe stored, across projects, best first, with clip and time range (in this project: media and frames usable as in; else its path). found: media from other projects by name: captures, imports and generations, newest first. Bring one in with media_import {path} (a file inside another project is copied into media/imports; others are referenced). Search here before drawing a placeholder for product footage. \"in quotes\" is an exact phrase.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -963,8 +976,9 @@
           "query": {
             "type": "string",
             "maxLength": 200,
-            "description": "Words to match in the name, file, project, device or app, e.g. \"argent demo\"; empty lists the newest."
+            "description": "Words to match in speech, descriptions, name, file, project, device or app; empty lists the newest."
           },
+          "scope": {"enum": ["project", "all"], "description": "Moments from this project or all (default)."},
           "kind": {
             "enum": [
               "video",
@@ -978,7 +992,57 @@
           }
         }
       },
-      "returns": "found: [{ path, name, kind, origin, seconds, size, project, device, app, created, import }]"
+      "returns": "moments: [{ media?, start?, end?, path?, project?, name, source: speech | visual, startSeconds, endSeconds, text }], found: [{ path, name, kind, origin, seconds, size, project, device, app, created, import }], note"
+    },
+    {
+      "name": "media_describe",
+      "description": "Store what's on screen in a media file so media_search finds it: one entry per shot, in plain words. Kept on this Mac; replaces entries it overlaps; changes nothing in the project.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "media",
+          "moments"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read."
+          },
+          "moments": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "end",
+                "text"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Project frames of the media."
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "description": "What's on screen."
+                }
+              }
+            }
+          }
+        }
+      },
+      "returns": "{ media, stored, note }"
     },
     {
       "name": "ask_user",

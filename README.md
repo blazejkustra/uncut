@@ -31,8 +31,10 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief, plans the shots in a storyboard, builds the edit, then an independent critic reviews it from rendered frames. Every turn is one undoable step, and a meter shows how full the agent's context is.
 - **A real timeline.** Tracks, trims, slip and roll, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Nested sequences.** Fold neighbouring clips on Main into a sequence, play it from one clip, and it previews and exports as if it were on the timeline.
 - **Locked cuts.** Lock a clip, a range or a track and the agent can't change, move or unlock it. Its edit is refused with the reason, and you unlock by hand whenever you want.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
+- **Search across your footage.** A local index of every clip's speech, with word timecodes, in one project or all of them. Find a moment in the Media panel and drag it onto the timeline; the agent searches the same index with `media_search`. Pictures are searchable once the agent has described them.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
 - **Sound.** The Uncut sounds pack, your own sound folders, your Music library, and online search on Openverse or Freesound (with your own key). A mixer with ducking under speech and loudness targets for export.
@@ -40,10 +42,73 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects, voiceover and music with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
-- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles.
+- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles. Timelines go to Final Cut Pro and DaVinci Resolve as FCPXML or an EDL, and FCPXML comes back in ([what maps and what's lost](#timeline-interchange)).
+- **Outside agents.** Drive Uncut from Claude Code in a terminal, Claude Desktop or Cursor over a local MCP server. See [Connect an outside agent](#connect-an-outside-agent).
+- **Shareable review, with no account or hosted service.** Export › Review page makes a folder with one HTML page and the video; open it locally or host it anywhere. See [Review pages](#review-pages).
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon).
+
+## Timeline interchange
+
+Uncut writes a timeline as FCPXML 1.10 for Final Cut Pro and DaVinci Resolve, or as a CMX 3600 EDL. It reads FCPXML back in. Source files are referenced where they are: nothing is copied or rendered.
+
+Every export lists what it left out, in the Export dialog and in the tool's reply.
+
+### FCPXML export
+
+| Uncut | FCPXML |
+| --- | --- |
+| Main track | The spine |
+| Other video and text tracks | Connected clips in lanes above the spine |
+| Audio tracks | Connected clips in lanes below the spine |
+| Clips and sounds | `asset-clip`, stills as `video` |
+| Plain text | `title` on Basic Title |
+| Gaps | `gap` |
+| Crossfades | `Cross Dissolve` transitions |
+| Clip gain | `adjust-volume` |
+| Canvas size and rate | The sequence's `format`, with exact frame fractions |
+
+Left out, each with a warning:
+
+- Effects, colour looks and LUTs
+- Keyframes, position, size and opacity
+- Speed changes, animations and loops
+- Hidden tracks
+- Graphics, shapes and anything else with no plain file or text
+- Transitions other than a crossfade, which are written as a dissolve
+
+An item on the main track that can't be written leaves a gap of the same length, so everything after it stays in place.
+
+### EDL export
+
+An EDL holds one picture track. Uncut writes the main track's clips as cuts and dissolves with non-drop timecode, and adds each clip's name and source path as comments.
+
+Left out, each with a warning:
+
+- Every other track, including text and sound
+- Items on the main track with no source file
+- Everything FCPXML leaves out of a clip
+
+### FCPXML import
+
+Import a `.fcpxml` file into an empty project. In any other project the import is refused and nothing changes: no media, no canvas.
+
+The project takes the file's size and rate. The rates are 23.976, 24, 25, 29.97, 30, 50, 59.94 and 60. A timeline at another rate is timed at the nearest of those, with a warning.
+
+| FCPXML | Uncut |
+| --- | --- |
+| The first sequence's spine | The main track |
+| Connected clips | Video and text tracks by lane, sound tracks for negative lanes |
+| `asset-clip`, `clip`, `video`, `audio` | Clips and sounds; their files are imported |
+| `title` | Text in the title style |
+| Dissolves | Crossfades |
+| `adjust-volume` | Clip gain |
+| `tcStart` and an asset's `start` | Accounted for: the timeline starts at frame 0 and a clip's in point counts from the start of its file |
+
+Only `file:` URLs are read. A clip with any other source, or with no file, is left out with a warning.
+
+Compound, sync and multicam clips and auditions are left out with a warning.
 
 ## Linux server
 
@@ -63,6 +128,40 @@ The server speaks plain http, so keep the port on loopback and reach it through 
 `pnpm server:tarball` puts `uncut-server-linux-<arch>.tar.gz` in `release/`, for a machine without Docker. It needs Node 24 and ffmpeg on PATH: run `./uncut-server --host 0.0.0.0` (port 8790, data in `~/.uncut-server`, change them with `--port` and `--data-dir`). Every export also needs Electron on a display: set `UNCUT_RENDER_BIN` to a script that starts it with `--no-sandbox`, as `scripts/remote-docker/electron-render.sh` does. The image has this built in.
 
 `pnpm server:check` builds both and tests them in containers. `node scripts/server-image-check.ts --app` also pairs the packaged app.
+
+## Connect an outside agent
+
+Agents outside Uncut can use the same tools as its own agent. Turn on Settings › App › Outside agents, then pick your client there for its setup with your token. For Claude Code:
+
+```sh
+claude mcp add --transport http --scope user uncut http://127.0.0.1:47821/mcp --header "Authorization: Bearer <token>"
+```
+
+Or install the plugin, which reads the token by itself and adds `/uncut:open-footage` to open a footage folder as a new project:
+
+```sh
+claude plugin marketplace add blazejkustra/uncut
+claude plugin install uncut@uncut
+```
+
+Claude Desktop connects through `mcp-remote` and Cursor through `~/.cursor/mcp.json`. ChatGPT connects only to servers on the internet, so it can't reach this one.
+
+- **Off by default.** Nothing listens until you turn it on, and it stops when you turn it off.
+- **This Mac only.** It binds to 127.0.0.1, requires a bearer token made for your install (Settings › New token replaces it), and refuses requests with a foreign Host or any Origin, so a web page can't reach it.
+- **You stay in charge.** The agent works in its own tab, its turns undo like any other, and big changes wait for your Allow. Stop ends its turn.
+- **Unmetered.** Uncut counts nothing and charges nothing for it. The client you connect bills as it normally does.
+
+The tools answer for the project in the focused window. With no project open, `project_open` opens a footage folder or a `.uncut` project.
+
+## Review pages
+
+Tick **Review page** in the Export dialog to get a `<name> review` folder holding `index.html` and `video.mp4`. Send the folder to a reviewer, or put it on any static host. The page works offline and makes no third-party requests.
+
+The reviewer plays the cut and pins comments to a timecode, optionally with a region of the frame. Comments stay in that browser's storage until the reviewer saves them as a small `.uncut-review.json` file or copies them as a block.
+
+Drop the file or paste the block into the **Review** tab. The comments become pins on the timeline ruler and notes the agent sees: ask it to "address the review notes" and it resolves each one it handles, or tick them off yourself. Reviewer text is treated as untrusted data: it is escaped on the page and in Uncut, and the agent is told to read it as feedback and never as instructions.
+
+The limit: there is no live multiplayer and no automatic sync. Reviewers don't see each other's comments, and comments reach you only when someone sends them and you import them. Pins stay on their frame when the cut changes afterwards, and Uncut warns on import if the cut has changed since the page was exported.
 
 ## Development
 
@@ -103,7 +202,8 @@ Never your footage, frames, transcripts, prompts, file names, paths or error mes
 
 What else leaves your Mac, and only when you use it:
 
-- **The agent.** Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac.
+- **The agent.** Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac. That includes search results from the footage index when the agent searches it, and the frames it looks at to describe a clip. The index itself stays on your Mac, in Uncut's data folder, and indexing sends nothing anywhere.
+- **Outside agents.** If you turn this on, the client you connect (Claude Code, Claude Desktop, Cursor) receives what its tools return: project data, frames, transcripts, file names. That client sends them on under its own account and terms. Uncut's token stays in a file only your user can read, in Uncut's data folder.
 - **Generators.** Image, video, sound effect, voiceover and music generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
 - **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
 - **Downloads.** The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.

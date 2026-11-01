@@ -54,6 +54,7 @@ import { ItemBox } from "./ItemBox.tsx";
 import { ElementRows } from "./ElementRows.tsx";
 import { elementsOf, isCollapsed, rowsHeight, toggleCollapsed, useElementsVersion } from "./graphicElements.ts";
 import { Playhead, Skimmer } from "./Playhead.tsx";
+import { ReviewPins } from "./ReviewPins.tsx";
 import { Sections } from "./Sections.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
@@ -76,7 +77,7 @@ import { Tooltip } from "../ui/Tooltip.tsx";
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand, slip: MoveHorizontal, roll: Columns2 };
 
 export { BottomTabs } from "./BottomTabs.tsx";
-export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";
+export { MEDIA_DRAG_TYPE, MEDIA_RANGE_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";
 
 // "Fit" shows the whole project, but never less than this, so an empty or short project has room.
 const MIN_FIT_SECONDS = 10;
@@ -491,6 +492,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                 </div>
               )}
               <Sections project={project} ppf={ppf} online={online} />
+              <ReviewPins project={project} ppf={ppf} online={online} />
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>

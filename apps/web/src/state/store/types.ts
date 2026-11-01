@@ -20,6 +20,7 @@ import type {
   AgentUiPanel,
   ExportJob,
   AnalysisJob,
+  FootageStatus,
   ProxyState,
   TranscriptionState,
   BrandState,
@@ -142,6 +143,8 @@ export interface AppStateShape {
   readonly exportFolder?: string;
   // Analysis jobs on the server (D66); the Library shows the open project's running ones per tile.
   readonly analysisJobs: ReadonlyArray<AnalysisJob>;
+  // The footage index for the open project (Media › search).
+  readonly footage?: FootageStatus;
   /** D212: the open project's preview proxies (media that needs none has no entry). */
   readonly proxies: ReadonlyArray<ProxyState>;
   // Why the last Analyze click was refused, shown in the Library.

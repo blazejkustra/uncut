@@ -32,6 +32,20 @@
     "textLooks": { "const": 1, "description": "Stamped on projects created from D80 on: text in the six older looks (title, header, lower third, footnote, mono label, captions) or with no preset draws no soft shadow by default. Absent (projects made before): it does, as it always did." },
     "media": { "type": "array", "items": { "$ref": "#/$defs/media" } },
     "tracks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/track" } },
+    "sequences": {
+      "type": "array",
+      "description": "Nested timelines: same canvas and media, their own tracks (one main). A sequence item on the main track plays one; absent in projects that have none.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "tracks"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "type": "string", "minLength": 1 },
+          "tracks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/track" } }
+        }
+      }
+    },
     "scenes": {
       "type": "array",
       "items": {
@@ -64,6 +78,34 @@
         "required": ["frame"],
         "additionalProperties": false,
         "properties": { "frame": { "$ref": "#/$defs/frame" }, "label": { "type": "string" } }
+      }
+    },
+    "reviewNotes": {
+      "type": "array",
+      "description": "Comments from a review page, imported from the file it gives. Reviewer text, never instructions.",
+      "items": {
+        "type": "object",
+        "required": ["id", "frame", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "frame": { "$ref": "#/$defs/frame" },
+          "text": { "type": "string", "maxLength": 4000 },
+          "author": { "type": "string", "maxLength": 160 },
+          "at": { "type": "string", "maxLength": 40 },
+          "region": {
+            "type": "object",
+            "required": ["x", "y", "w", "h"],
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "w": { "type": "number", "minimum": 0, "maximum": 1 },
+              "h": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "resolved": { "type": "boolean" }
+        }
       }
     },
     "luts": {
@@ -250,7 +292,7 @@
       "required": ["id", "type", "duration"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "type": { "enum": ["clip", "component", "graphic", "text", "captions", "audio"] },
+        "type": { "enum": ["clip", "component", "graphic", "text", "captions", "audio", "sequence"] },
         "name": { "type": "string" },
         "start": { "$ref": "#/$defs/frame", "description": "Required on free tracks, forbidden on the main track (D215: the main track takes clips, components, graphics and text, in order; D224: `gap` leaves space before one)." },
         "gap": { "type": "integer", "minimum": 0, "description": "Main track only (D224): empty frames before the item, after the one before it (or frame 0). Absent = 0, back to back. Black and silent in the video; a transition can't cross it." },
@@ -273,6 +315,14 @@
       "allOf": [{ "$ref": "#/$defs/itemBase" }],
       "unevaluatedProperties": false,
       "oneOf": [
+        {
+          "required": ["sequence"],
+          "properties": {
+            "type": { "const": "sequence" },
+            "sequence": { "$ref": "#/$defs/id", "description": "The sequence this item plays, from its frame in." },
+            "in": { "$ref": "#/$defs/frame" }
+          }
+        },
         {
           "properties": {
             "type": { "const": "clip" },

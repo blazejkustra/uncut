@@ -22,6 +22,7 @@ export {
   Canvas,
   RecentProject,
 } from "./server.ts";
+export { FOOTAGE_THUMB_PATH, FootageHit, FootageStatus } from "./footage.ts";
 export {
   THUMB_PATH,
   RECENT_THUMB_PATH,
@@ -102,6 +103,8 @@ export {
   CriticUsage,
   AGENT_BRIDGE_PATH,
   AGENT_TOKEN_HEADER,
+  EXTERNAL_MCP_PATH,
+  PROJECT_OPEN_TOOL,
   AgentItem,
   AGENT_PROVIDERS,
   AgentProvider,

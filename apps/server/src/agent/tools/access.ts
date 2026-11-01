@@ -30,6 +30,10 @@ export const LOOK_TOOLS = [
   "graphic_elements",
 ] as const;
 
+/** After web content, other projects are read only on the user's say. */
+export const otherProjectsClosed = (r: { readonly owner: { readonly webUsed?: boolean | undefined }; readonly access: string }) =>
+  Boolean(r.owner.webUsed) && r.access !== "auto";
+
 /** D184: more ops than this in one timeline_edit is a big change in "Ask first". */
 export const BIG_EDIT_OPS = 12;
 

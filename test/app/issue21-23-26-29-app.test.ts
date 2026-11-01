@@ -168,8 +168,8 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     await page.click("[data-testid=menu-rail-open-text]");
     await page.waitForSelector("[data-testid=rail-more].active");
     // Reset order brings the default order and the hidden tab back.
-    const mediaTab = await box("[data-testid=rail-media]");
-    await page.mouse.click(mediaTab.x + mediaTab.width / 2, mediaTab.y + mediaTab.height / 2, { button: "right" });
+    await page.click("[data-testid=rail-media]", { button: "right" });
+    await page.waitForSelector("[data-testid=menu-rail-reset]");
     await page.click("[data-testid=menu-rail-reset]");
     await page.waitForFunction(
       () =>

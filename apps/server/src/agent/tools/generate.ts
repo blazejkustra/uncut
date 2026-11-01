@@ -1,18 +1,52 @@
-// The agent's tools that make media: generate_media, screen_record, argent_boot, media_search, and the turn-end clean-up.
-import type { ProjectSnapshot } from "@uncut/contracts";
+// The agent's tools that make and find media: generate_media, screen_record, argent_boot, media_search, media_describe, and the turn-end clean-up.
+import type { FootageHit, ProjectSnapshot } from "@uncut/contracts";
 import { type Project, describeOp, type Op } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { emptyAddedTracks, KEEP_REVISIONS, trashGraphics, unusedGraphics } from "../agentCleanup.ts";
 import { withHistory } from "../../project/history.ts";
+import { targetOf } from "../../analysis/analysis.ts";
+import { MAX_FOOTAGE_HITS } from "../../footage/footageIndex.ts";
 import { MAX_FOUND } from "../../media/mediaIndex.ts";
 import { CONFIRM_OVER, needsKeyLine, TURN_CAP } from "../../generate/generate.ts";
 import { providerName } from "../../generate/keys.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import { type Running, pushEdit } from "../session/types.ts";
+import { otherProjectsClosed } from "./access.ts";
 import type { AskCtx } from "./ask.ts";
 
+const MAX_NOTE_CHARS = 500;
+
+/** A search hit for the agent: in the open project with its media id and project frames, else with the path to import. */
+const momentOut = (hit: FootageHit, fps: number) => ({
+  ...(hit.media ? { media: hit.media, start: Math.floor(hit.start * fps), end: Math.ceil(hit.end * fps) } : { path: hit.path, project: hit.project.name }),
+  name: hit.name,
+  source: hit.source,
+  startSeconds: hit.start,
+  endSeconds: hit.end,
+  text: [hit.before, hit.match, hit.after].filter(Boolean).join(" "),
+});
+
+const footageNote = (clips: number, indexed: number) =>
+  clips > indexed
+    ? ` ${clips - indexed} of this project's ${clips} clips have no transcript in the index yet: transcript_read adds one, or the user can index them all in the Media panel.`
+    : "";
+
+/** Whether notes is a list of { start, end, text } with end after start and text in length. */
+const validNotes = (notes: unknown): notes is ReadonlyArray<{ start: number; end: number; text: string }> =>
+  Array.isArray(notes) &&
+  notes.length > 0 &&
+  notes.every(
+    (n: { start?: unknown; end?: unknown; text?: unknown }) =>
+      Number.isInteger(n?.start) &&
+      Number.isInteger(n?.end) &&
+      (n.end as number) > (n.start as number) &&
+      typeof n.text === "string" &&
+      n.text.trim().length > 0 &&
+      n.text.length <= MAX_NOTE_CHARS,
+  );
+
 export const makeGenerateTools = (ctx: AskCtx) => {
-  const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, view, projects, seeOwn } = ctx;
+  const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, footage, view, projects, seeOwn } = ctx;
 
   /** Which provider keys are set, as booleans: all the agent ever learns about them (D311). */
   const keysSet = Effect.map(keys.list, (list) => Object.fromEntries(list.map((k) => [k.provider, k.set])));
@@ -41,9 +75,10 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           true,
         );
       const dollars = (n: number) => `$${n.toFixed(2)}`;
-      const overCap = () => estimate > 0 && (r.turn.spend ?? 0) + estimate > TURN_CAP;
+      const spentSoFar = () => (r.priorSpend ?? 0) + (r.turn.spend ?? 0);
+      const overCap = () => estimate > 0 && spentSoFar() + estimate > TURN_CAP;
       const capNote = () =>
-        `That would take this turn past ${dollars(TURN_CAP)} of estimated spend (${dollars(r.turn.spend ?? 0)} so far). Nothing was generated; the user can generate more from the Generate tab.`;
+        `That would take this ${r.priorSpend === undefined ? "turn" : "session"} past ${dollars(TURN_CAP)} of estimated spend (${dollars(spentSoFar())} so far). Nothing was generated; the user can generate more from the Generate tab.`;
       if (overCap()) return textResult(capNote(), true);
       if (estimate > CONFIRM_OVER) {
         const what =
@@ -301,17 +336,24 @@ export const makeGenerateTools = (ctx: AskCtx) => {
     });
 
   /**
-   * media_search (D205): the user's media index, captures, imports and generations from the other
-   * projects on this Mac, newest first. media_import with a result's path brings it in (copied
-   * when it lives inside another project, D12).
+   * media_search: moments in the footage index (speech and stored descriptions, with clip and time
+   * ranges) and the media index (D205): captures, imports and generations from the other projects
+   * on this Mac, newest first. media_import with a result's path brings it in (copied when it lives
+   * inside another project, D12).
    */
-  const mediaSearch = (args: Record<string, unknown>) =>
+  const mediaSearch = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       const kind = typeof args.kind === "string" ? args.kind.toLowerCase() : undefined;
       if (kind && !["video", "image", "audio", "capture", "import", "generated"].includes(kind))
         return textResult("kind is video, image, audio, capture, import or generated.", true);
+      if (args.scope !== undefined && args.scope !== "project" && args.scope !== "all") return textResult("scope is project or all.", true);
       const query = typeof args.query === "string" ? args.query.slice(0, 200) : "";
-      const found = yield* mediaIndex.search({ query, ...(kind ? { kind } : {}), limit: MAX_FOUND });
+      const closed = otherProjectsClosed(r);
+      const found = closed ? [] : yield* mediaIndex.search({ query, ...(kind ? { kind } : {}), limit: MAX_FOUND });
+      const hits = yield* footage.search({ query, thisProject: closed || args.scope === "project", limit: MAX_FOOTAGE_HITS });
+      const fps = v.session.project.canvas.fps;
+      const moments = hits.filter((hit) => !kind || hit.kind === kind || !["video", "image", "audio"].includes(kind)).map((hit) => momentOut(hit, fps));
+      const status = yield* footage.current;
       const out = found.map((e) => ({
         path: e.path,
         name: e.name,
@@ -325,12 +367,32 @@ export const makeGenerateTools = (ctx: AskCtx) => {
         created: e.created,
         import: e.copies ? "copied into this project's media/imports" : "referenced where it is",
       }));
+      const nothing = `Nothing ${query ? `matching "${query}" ` : ""}in the footage index or other projects. Offer to record it (argent_boot, argent_record, screen_record) or ask the user for footage before drawing a placeholder.`;
+      const place =
+        "A moment with media is in this project: start and end are its frames, usable as in. Bring in anything with a path with media_import {path}; then place it with timeline_edit.";
       return textResult({
+        moments,
         found: out,
-        note: out.length
-          ? "Bring one in with media_import {path}; then place it with timeline_edit."
-          : `Nothing ${query ? `matching "${query}" ` : ""}in other projects. Offer to record it (argent_boot, argent_record, screen_record) or ask the user for footage before drawing a placeholder.`,
+        note: `${out.length || moments.length ? place : nothing}${footageNote(status.clips, status.indexed)}${closed ? " After web content this searched this project only." : ""}`,
       });
+    });
+
+  /** media_describe: stores what's on screen in a media file in the footage index, for media_search. Changes nothing in the project. */
+  const mediaDescribe = (v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const project = v.session.project;
+      const media = project.media.find((m) => m.id === args.media);
+      if (!media) return textResult(`There's no media "${String(args.media)}". project_read lists the media ids.`, true);
+      if (!validNotes(args.moments))
+        return textResult(
+          `moments is a list of { start, end, text }: project frames of the media, end after start, text up to ${MAX_NOTE_CHARS} characters.`,
+          true,
+        );
+      const fps = project.canvas.fps;
+      const notes = args.moments.map((n) => ({ start: n.start / fps, end: n.end / fps, text: n.text }));
+      const saved = yield* Effect.result(footage.describe(targetOf(v.dir, media, fps).path, notes));
+      if (saved._tag === "Failure") return textResult(`Couldn't read ${media.name}: ${saved.failure.message}`, true);
+      return textResult({ media: media.id, stored: notes.length, note: "On this Mac only; media_search finds these now." });
     });
 
   /**
@@ -384,7 +446,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
       }
     });
 
-  return { keysSet, generateMedia, screenRecord, argentBoot, mediaSearch, turnCleanup };
+  return { keysSet, generateMedia, screenRecord, argentBoot, mediaSearch, mediaDescribe, turnCleanup };
 };
 
 export type GenerateCtx = AskCtx & ReturnType<typeof makeGenerateTools>;

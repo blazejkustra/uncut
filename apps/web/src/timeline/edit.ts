@@ -12,6 +12,7 @@ export { planMove, planMoveToNewTrack, newTrackIndexOver, planGroupMove, planLay
 export type { MovePlan, NewTrackSide, GroupMovePlan } from "./edit/move.ts";
 export { planRippleDelete, planTrim, planSplit, planBladeSplit, planDelete, planGroupTrim } from "./edit/trim.ts";
 export type { TrimPlan, SplitPlan } from "./edit/trim.ts";
+export { planNest, planUnnest } from "./edit/nest.ts";
 export { planRoll, planSlip, rollTarget } from "./edit/slipRoll.ts";
 export { mainCuts, nearestCut, planSetTransition, trackFlag, planTrackFlag, cutFit } from "./edit/transitions.ts";
 export type { TrackFlag, CutFit } from "./edit/transitions.ts";

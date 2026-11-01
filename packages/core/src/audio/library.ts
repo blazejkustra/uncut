@@ -8,6 +8,7 @@
 // library.bundled): where it came from, its title and creator, its licence and the attribution
 // line CC BY asks for (D135: creditsOf / creditsText list them for the video's description).
 import sfxJson from "../../../../assets/sfx/library.json" with { type: "json" };
+import { takenIds } from "../timeline/arrange/place.ts";
 import type { Media, Project } from "../timeline/types.ts";
 import { expandQuery, matchesQuery, scoreSound, SOUND_ALIASES } from "./search.ts";
 
@@ -268,12 +269,7 @@ export function mediaIdFor(name: string, taken: ReadonlySet<string>) {
 }
 
 /** Every id the validator requires to be unique. */
-export const projectIds = (project: Pick<Project, "media" | "tracks" | "scenes">) =>
-  new Set([
-    ...project.media.map((m) => m.id),
-    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-    ...(project.scenes ?? []).map((s) => s.id),
-  ]);
+export const projectIds = (project: Pick<Project, "media" | "tracks" | "scenes" | "sequences">) => takenIds(project);
 
 export interface Credits {
   /** CC BY: the credit each one needs, in the order they were added. */

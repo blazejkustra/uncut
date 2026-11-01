@@ -1,5 +1,5 @@
 // One export job, from measuring and drawing to the moved file (inside the Exporter layer).
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 import type { ExportJob } from "@uncut/contracts";
@@ -31,7 +31,8 @@ import {
 } from "../exportPlan.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasterizer.ts";
 import { overwritesImported } from "../subtitleSources.ts";
-import { exists, makeTemp, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
+import { exists, makeTemp, writeInto, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
+import { REVIEW_PAGE } from "./reviewPage.ts";
 import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
@@ -79,6 +80,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string },
     cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>,
     css: string = RASTER_CSS,
+    reviewPage?: string,
   ) => {
     let plan = planned;
     const started = Date.now();
@@ -238,8 +240,10 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         await writeFile(sidecar, writeSubtitles(cues, plan.fps, subtitleFormatOf(job.subtitlesFile) ?? "srt"));
       }
       try {
+        if (job.reviewFolder) await mkdir(job.reviewFolder, { recursive: true });
         await moveInto(partial, job.output);
         if (sidecar && job.subtitlesFile) await moveInto(sidecar, job.subtitlesFile);
+        if (job.reviewFolder && reviewPage) await writeInto(join(job.reviewFolder, REVIEW_PAGE), reviewPage);
       } catch (error) {
         throw new Error(plainFsError(error, dirname(job.output)));
       }

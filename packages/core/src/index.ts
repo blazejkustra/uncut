@@ -5,6 +5,23 @@ export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStar
 export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
 export { agentLockProblem, locksNote } from "./timeline/locks.ts";
+export { canUnnest, flattenSequences, sequenceLength, sequencesNote } from "./timeline/nesting.ts";
+export {
+  REVIEW_AUTHOR_MAX,
+  REVIEW_NOTES_FORMAT,
+  REVIEW_TEXT_MAX,
+  inertJson,
+  openReviewNotes,
+  parseReviewNotes,
+  planRemoveReviewNote,
+  planResolveReviewNote,
+  planReviewImport,
+  reviewCut,
+  reviewNotesBlock,
+  reviewNotesTurnBlock,
+  type ReviewExchange,
+  type ReviewImport,
+} from "./timeline/review.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
   byUser,
@@ -430,6 +447,9 @@ export {
   type ExportEncoder,
 } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
+export { writeEdl } from "./timeline/interchange/edl.ts";
+export { writeFcpxml } from "./timeline/interchange/fcpxml.ts";
+export { planImportTimeline, readFcpxml, type TimelineFile } from "./timeline/interchange/readFcpxml.ts";
 export {
   decodeEnvelope,
   DEFAULT_PAUSE_MIN_S,

@@ -66,7 +66,9 @@ export default function Privacy() {
           <ul>
             <li>
               <strong>The agent.</strong> Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI what the agent works with: your prompts,
-              frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac.
+              frames from your video, transcripts, file and project names, under that account and its terms. That includes search results from the footage index
+              when the agent searches it, and the frames it looks at to describe a clip. Your footage files and the index stay on your Mac, and indexing sends
+              nothing anywhere.
             </li>
             <li>
               <strong>Generators.</strong> Image, video, sound effect, voiceover and music generators send your prompts (and any image you give them) to OpenAI,
