@@ -14,6 +14,7 @@ planning/
 fixtures/
 *.mp4
 *.MP4
+!/site/public/assets/video/launch.mp4
 *.mov
 *.MOV
 

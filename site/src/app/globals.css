@@ -49,7 +49,7 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 .top nav a:hover { color: var(--fg); }
 .top nav .nav-link { padding: 0 6px; font-weight: 500; }
 /* The GitHub button and the compact Download: same 34px height, small radius, never a pill. The
-   button has a fixed width so the count replacing "Star" (StarButton.tsx, from 10 stars) moves nothing. */
+   button has a fixed width so the count replacing "Star" (StarButton.tsx, from 200 stars) moves nothing. */
 .top nav .nav-stars {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-width: 92px; height: 34px; padding: 0 12px;
@@ -162,6 +162,10 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 .zoom.open { background: rgb(5 5 8 / 82%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .zoom-img { width: auto; height: auto; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); box-shadow: 0 40px 160px -40px rgb(109 140 255 / 30%), 0 30px 80px rgb(0 0 0 / 70%); transform-origin: center; transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); will-change: transform; }
 
+/* The launch film: 4:5, beside its caption. */
+.film { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; }
+.film video { display: block; width: 100%; max-width: 440px; height: auto; margin: 0 auto; aspect-ratio: 4 / 5; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); cursor: pointer; }
+
 /* Sections */
 section { padding: 72px 0; }
 h2 { margin: 0; font-size: clamp(28px, 4.2vw, 40px); line-height: 1.12; font-weight: 650; letter-spacing: -0.03em; }
@@ -251,12 +255,20 @@ footer a:hover { color: var(--fg); }
 .prose figure { margin: 32px 0 0; }
 .prose figure img { width: 100%; border-radius: var(--radius); border: 1px solid var(--border-strong); }
 .prose figcaption { margin-top: 10px; color: var(--dim); font-size: 14px; text-align: center; }
+.prose table { display: block; margin-top: 24px; overflow-x: auto; border-collapse: collapse; font-size: 15px; }
+.prose th, .prose td { padding: 10px 14px 10px 0; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; min-width: 150px; color: #c8c8c8; }
+.prose th { color: var(--fg); font-weight: 600; }
+.compare-list { list-style: none; margin: 40px 0 0; padding: 0; }
+.compare-list li { padding: 18px 0; border-bottom: 1px solid var(--border); }
+.compare-list a { color: var(--fg); font-weight: 600; text-decoration: none; cursor: pointer; }
+.compare-list a:hover { color: var(--select); }
+.compare-list p { margin-top: 4px; color: var(--muted); }
 .post-cta { max-width: 720px; margin: 56px 0 80px; padding: 32px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); text-align: center; }
 .post-cta .sub { margin-left: auto; margin-right: auto; }
 .post-cta .actions { margin-top: 24px; }
 
 @media (max-width: 980px) {
-  .agent { grid-template-columns: 1fr; gap: 40px; }
+  .agent, .film { grid-template-columns: 1fr; gap: 40px; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {

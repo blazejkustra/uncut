@@ -1,5 +1,5 @@
 "use client";
-// The nav's GitHub button: "Star" until the repo has 10 stars, then the count in the same fixed width
+// The nav's GitHub button: "Star" until the repo has 200 stars, then the count in the same fixed width
 // (hero.ts fetchStars, cached for the session). Rendered on the server with the label; the count, if
 // any, arrives after hydration.
 import { useEffect, useState } from "react";

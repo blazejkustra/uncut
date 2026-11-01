@@ -17,7 +17,9 @@ const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--
 const PUBLIC_MD = ["README.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md"];
 /** The blog's posts are published too (the website's content), and only straight in that folder. */
 const BLOG_POST = /^site\/content\/blog\/[a-z0-9-]+\.md$/;
-const BINARY = /\.(m4a|mp3|wav|woff2?|ttf|otf|png|jpe?g|gif|icns|ico|webp)$/i;
+/** The website's launch film, the one video the repo publishes. */
+const SITE_FILM = "site/public/assets/video/launch.mp4";
+const BINARY = /\.(mp4|m4a|mp3|wav|woff2?|ttf|otf|png|jpe?g|gif|icns|ico|webp)$/i;
 const texts = files.filter((f) => !BINARY.test(f)).map((f) => ({ file: f, text: readFileSync(f, "utf8") }));
 
 /** Every match of `re` in tracked text files, as "file:line: match", minus what `allowed` keeps. */
@@ -90,7 +92,7 @@ test("no file over 5 MB but the bundled music and fonts", () => {
 
 test("no footage, no .md, no fixtures", () => {
   assert.deepEqual(
-    files.filter((f) => /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)),
+    files.filter((f) => f !== SITE_FILM && /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)),
     [],
     "footage",
   );

@@ -9,6 +9,8 @@ export default function SiteFooter({ home = false }: { home?: boolean }) {
         <p>Uncut is MIT licensed. Not affiliated with Anthropic or OpenAI.</p>
         <nav aria-label="Footer">
           {home ? <a href="/">Home</a> : <a href="/privacy/">Privacy</a>}
+          <a href="/vs/">Compare</a>
+          <a href="/guides/edit-video-with-claude-code/">Guide</a>
           <a href={REPO_URL}>GitHub</a>
           <a href={`${REPO_URL}/blob/main/LICENSE`}>Licence</a>
           <a href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES`}>Third-party notices</a>
