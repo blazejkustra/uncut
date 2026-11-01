@@ -254,6 +254,50 @@ test("an unplugged drive keeps places and passages: the hit is back when the fil
   }
 });
 
+test("the top matches being missing files doesn't use up the limit", async () => {
+  const t = setup();
+  try {
+    const gone = [t.addClip("gone-1"), t.addClip("gone-2")];
+    const kept = t.addClip("kept");
+    t.indexer.schedule();
+    await t.indexer.settled();
+    for (const path of gone) await t.indexer.describe(path, [{ start: 1, end: 3, text: "lighthouse" }]);
+    await t.indexer.describe(kept, [{ start: 1, end: 3, text: "a lighthouse far away over the water at the end of a long evening" }]);
+    for (const path of gone) rmSync(path);
+    assert.notEqual(t.store.search({ query: "lighthouse", limit: 1 })[0]!.places[0]!.path, kept);
+    const hits = await t.indexer.search({ query: "lighthouse", thisProject: false, limit: 1 });
+    assert.deepEqual(
+      hits.map((hit) => hit.path),
+      [kept],
+    );
+  } finally {
+    await t.close();
+  }
+});
+
+test("a deleted project goes from the index, with its transcripts and descriptions", async () => {
+  const t = setup();
+  try {
+    const path = t.addClip("drone");
+    const fp = await fingerprint(path);
+    await writeCached(t.dir, fp, "transcript", transcript("spoken words"));
+    t.indexer.schedule();
+    await t.indexer.settled();
+    await t.indexer.describe(path, [{ start: 1, end: 3, text: "lighthouse at dusk" }]);
+
+    t.closeProject();
+    rmSync(t.dir, { recursive: true });
+    t.indexer.schedule();
+    await t.indexer.settled();
+    assert.deepEqual(t.store.places(fp), []);
+    assert.deepEqual(t.store.search({ query: "spoken", limit: 1 }), []);
+    assert.deepEqual(t.store.search({ query: "lighthouse", limit: 1 }), []);
+    assert.equal(t.store.isIndexed(fp), false);
+  } finally {
+    await t.close();
+  }
+});
+
 test("a project folder that can't be reached keeps its clips; media taken out of a project goes", async () => {
   const t = setup();
   try {
@@ -264,7 +308,7 @@ test("a project folder that can't be reached keeps its clips; media taken out of
     const fingerprint = t.store.search({ query: "lighthouse", limit: 1 })[0]!.fingerprint;
 
     t.closeProject();
-    rmSync(t.dir, { recursive: true });
+    rmSync(t.root, { recursive: true });
     t.indexer.schedule();
     await t.indexer.settled();
     assert.equal(t.store.search({ query: "lighthouse", limit: 1 }).length, 1);

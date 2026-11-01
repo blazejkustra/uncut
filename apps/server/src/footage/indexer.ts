@@ -4,7 +4,7 @@
 // waits for exports). The user starts it, and from then on new media of that project joins by
 // itself until they cancel. A run resumes clip by clip: a clip's transcript is cached when it ends.
 import { stat, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { AnalysisJob, FootageHit, FootageStatus } from "@uncut/contracts";
 
@@ -62,6 +62,9 @@ const exists = (path: string) =>
     () => true,
     () => false,
   );
+
+/** A missing folder whose parent is missing too may be on an unplugged drive, so only one with its parent present counts as deleted. */
+const wasDeleted = async (dir: string) => !(await exists(dir)) && (await exists(dirname(dir)));
 
 async function readProject(dir: string, name: string) {
   try {
@@ -211,9 +214,10 @@ export class FootageIndexer {
     return clips.filter((clip) => clip.place.kind !== "image");
   }
 
-  /** A project folder that can't be reached may be on an unplugged drive, so its clips stay. */
-  private async pruneUnplaced() {
-    this.store.prune([]);
+  private async pruneDeleted() {
+    const dirs = this.store.projectDirs();
+    const deleted = await Promise.all(dirs.map(wasDeleted));
+    this.store.prune(dirs.filter((_, i) => deleted[i]));
     await this.deps.afterPrune?.();
   }
 
@@ -225,7 +229,7 @@ export class FootageIndexer {
       if (project) await this.syncProject(project);
     }
     this.clips = open ? await this.syncProject(open) : [];
-    await this.pruneUnplaced();
+    await this.pruneDeleted();
     this.publish(true);
     if (open && !this.running && this.store.isAuto(open.dir) && this.nextClip()) void this.run(open.dir);
   }
@@ -273,9 +277,9 @@ export class FootageIndexer {
 
   async search(options: { readonly query: string; readonly thisProject: boolean; readonly limit: number }): Promise<ReadonlyArray<FootageHit>> {
     const open = this.deps.open()?.dir;
-    const found = this.store.search({ query: options.query, limit: options.limit, ...(options.thisProject ? { dir: open } : {}) });
+    const found = this.store.search({ query: options.query, limit: options.limit * 3, ...(options.thisProject ? { dir: open } : {}) });
     const hits = await Promise.all(found.map((hit) => this.shownHit(hit, open)));
-    return hits.filter((hit) => hit !== undefined);
+    return hits.filter((hit) => hit !== undefined).slice(0, options.limit);
   }
 
   private async shownHit(hit: StoreHit, open: string | undefined): Promise<FootageHit | undefined> {

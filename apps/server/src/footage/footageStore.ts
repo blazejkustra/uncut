@@ -273,6 +273,10 @@ export class FootageStore {
     });
   }
 
+  projectDirs() {
+    return (this.db.prepare("SELECT DISTINCT dir FROM places").all() as unknown as ReadonlyArray<{ dir: string }>).map((row) => row.dir);
+  }
+
   places(fingerprint: string) {
     return (this.db.prepare("SELECT * FROM places WHERE fingerprint = ?").all(fingerprint) as unknown as ReadonlyArray<PlaceRow>).map(placeOf);
   }

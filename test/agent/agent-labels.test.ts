@@ -75,7 +75,7 @@ test("access: Look only tools read and look; Ask first asks about removals, proj
 
 test("after web content other projects stay closed unless the turn runs on auto", () => {
   assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "ask" }), true);
-  assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "readonly" }), true);
+  assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "look" }), true);
   assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "auto" }), false);
   assert.equal(otherProjectsClosed({ owner: { webUsed: false }, access: "ask" }), false);
 });
