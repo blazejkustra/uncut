@@ -1,18 +1,20 @@
-import { maskGeq } from "@uncut/core";
+import { codecExtension, isProRes, maskGeq } from "@uncut/core";
 import type { ExportPlan } from "./types.ts";
 import { type CommandOptions, fadeFilters, alphaFilters, boxGraph, videoSource, same, placeAt } from "./video.ts";
 import { fxGraph } from "./fx.ts";
 import { blurPad, BLUR_STEPS, IRIS_MASK_STEP } from "./layers.ts";
 import { n } from "./num.ts";
 import { audioGraph } from "./audio.ts";
-import { videoCodec } from "./codec.ts";
+import { pictureFormats, videoCodec } from "./codec.ts";
 
 export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
   const { width: W, height: H, fps } = plan;
   const inputs: Array<string> = ["-i", opts.background];
   const graph: Array<string> = [];
-  const toYuv = (alpha: boolean) => `scale=w=${W}:h=${H}:out_color_matrix=bt709:out_range=tv,format=${alpha ? "yuva420p" : "yuv420p"}`;
-  graph.push(`[0:v]${toYuv(false)},loop=loop=${plan.frames - 1}:size=1:start=0,settb=1/${fps},setpts=N[b0]`);
+  const pictures = pictureFormats(opts.video);
+  const toYuv = (alpha: boolean) => `scale=w=${W}:h=${H}:out_color_matrix=bt709:out_range=tv,format=${alpha ? pictures.alpha : pictures.plain}`;
+  const backdrop = opts.video?.alpha ? `${toYuv(true)},lutyuv=a=0` : toYuv(false);
+  graph.push(`[0:v]${backdrop},loop=loop=${plan.frames - 1}:size=1:start=0,settb=1/${fps},setpts=N[b0]`);
   let base = "b0";
   plan.visuals.forEach((layer, k) => {
     const index = k + 1;
@@ -52,7 +54,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         chain = [
           ...picked,
           `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2:out_color_matrix=bt709:out_range=tv`,
-          `format=${alpha ? "yuva420p" : "yuv420p"}`,
+          `format=${alpha ? pictures.alpha : pictures.plain}`,
           ...(layer.fills ? [] : [`pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0`]),
           `setpts=PTS-STARTPTS+${layer.f0}`,
           ...fades,
@@ -88,7 +90,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       } else {
         chain = [
           `[${index}:v:0]scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2:out_color_matrix=bt709:out_range=tv`,
-          "format=yuva420p",
+          `format=${pictures.alpha}`,
           ...(layer.fills ? [] : [`pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0`]),
           ...looped,
           `setpts=N+${layer.f0}`,
@@ -122,7 +124,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // one, and overlaying it X − W to the left puts the shown part back where it was. Both
     // expressions see the same frame time, so they agree on X.
     let at = "";
-    let fmt = "auto";
+    let fmt = pictures.overlay;
     if (layer.blur) {
       // A blur dissolve (D133): gblur's sigma set frame by frame (sendcmd), as the preview's CSS
       // blur draws it: on premultiplied colour, with transparency past the layer's edges (padded
@@ -205,13 +207,17 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   // fps on frames already on the 1/fps grid passes them through one to one; it gives the stream its rate.
   // F4 (D171): another output rate resamples the finished picture (the edit is timed in the plan's frames).
   const outFps = opts.video?.fps !== undefined && opts.video.fps > 0 && Math.abs(opts.video.fps - fps) > 1e-6 ? opts.video.fps : undefined;
-  graph.push(`[${base}]format=yuv420p,fps=${fps},trim=end_frame=${plan.frames}${outFps ? `,fps=${n(outFps)}` : ""}[vout]`);
+  const codec = opts.video?.codec ?? "h264";
+  // prores_ks takes its colour tags from the frames, unlike the bitstream filters of the delivery codecs.
+  const tags = isProRes(codec) ? ",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv" : "";
+  graph.push(`[${base}]format=${pictures.output}${tags},fps=${fps},trim=end_frame=${plan.frames}${outFps ? `,fps=${n(outFps)}` : ""}[vout]`);
   const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudness ?? opts.loudnorm);
   inputs.push(...audio.inputs);
   graph.push(...audio.filters);
   // The soft subtitle track (D105): the last input, its own stream (cue times are the edit's).
   const subtitleInput = inputs.filter((a) => a === "-i").length;
   if (opts.subtitles) inputs.push("-f", "srt", "-i", opts.subtitles.file);
+  const audioCodec = isProRes(codec) ? ["-c:a", "pcm_s24le"] : ["-c:a", "aac", "-b:a", opts.quality === "draft" ? "128k" : "192k"];
   const outputArgs = [
     "-map",
     "[vout]",
@@ -231,7 +237,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       : []),
     ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
     "-pix_fmt",
-    "yuv420p",
+    pictures.output,
     "-colorspace",
     "bt709",
     "-color_primaries",
@@ -244,18 +250,15 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // shift the picture by a frame when inputs are seeked (seen on the DJI clip), so it's off.
     "-fps_mode",
     "passthrough",
-    "-c:a",
-    "aac",
-    "-b:a",
-    opts.quality === "draft" ? "128k" : "192k",
+    ...audioCodec,
     "-ar",
     "48000",
     "-t",
     n(plan.frames / fps),
     "-movflags",
-    "+faststart",
+    isProRes(codec) ? "+faststart+write_colr" : "+faststart",
     "-f",
-    "mp4",
+    codecExtension(codec),
     opts.output,
   ];
   return { inputs, graph: graph.join(";\n"), outputArgs };
