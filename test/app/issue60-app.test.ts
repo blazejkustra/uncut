@@ -48,6 +48,11 @@ const OWN = [
   "sound-design",
   "brand-application",
   "make-brand-kit",
+  "loudness-rules",
+  "echo-cleanup",
+  "vertical-reframe",
+  "broll-over-dialogue",
+  "cut-takes",
   "motion-film",
 ];
 
