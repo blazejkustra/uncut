@@ -411,7 +411,7 @@ test("export_video: the tool, its labels and the prompt line", () => {
   assert.match(tool.description, /only when the user asks/);
   assert.equal(stepLabel("export_video", { folder: "Desktop" }), "Exported the video to Desktop");
   assert.equal(doingLabel("export_video", {}), "Exporting the video");
-  assert.match(SYSTEM_PROMPT, /export_video saves the video when asked for an export, never unasked/);
+  assert.match(SYSTEM_PROMPT, /export_video saves the file when asked for an export, never unasked/);
 });
 
 // ---- the bundled server ----
