@@ -6,6 +6,8 @@ An AI-first video editor for macOS: it runs your installed Claude Code or Codex,
 
 If Uncut is useful to you, [star it on GitHub](https://github.com/blazejkustra/uncut): it helps other people find it.
 
+https://github.com/user-attachments/assets/04bffd94-ba59-4d17-a648-4982aff295ae
+
 ![Uncut editing a travel film from drone footage: the title "Day four" over a Croatian coast road at golden hour in the preview, the day's clips in the media panel, a timeline with text, graphics, six clips with transitions and music, and the agent's brief, storyboard and passed review](docs/hero.png)
 
 ## Download
