@@ -419,12 +419,12 @@
     },
     {
       "name": "timeline_export",
-      "description": "The timeline for another editor, saved next to project.json: FCPXML (Final Cut Pro, DaVinci Resolve) or a CMX 3600 EDL (main track only). Cuts, gaps, crossfades, volume and plain text carry over; lost lists what doesn't. media_import of a .fcpxml in an empty project builds its timeline.",
+      "description": "Save the timeline for Final Cut or Resolve next to project.json. media_import of a .fcpxml in an empty project builds one.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "format": { "enum": ["fcpxml", "edl"], "description": "fcpxml (default) or edl" },
+          "format": { "enum": ["fcpxml", "edl"], "description": "fcpxml (default); edl is the main track only" },
           "overwrite": { "type": "boolean" }
         }
       },
