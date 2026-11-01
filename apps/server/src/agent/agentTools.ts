@@ -35,6 +35,7 @@ export const TOOL_NAMES = [
   "transcript_edit",
   "captions_make",
   "subtitles_export",
+  "timeline_export",
   "export_video",
   "project_check",
   "library_search",

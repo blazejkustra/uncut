@@ -102,6 +102,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     transcriptEdit,
     captionsMake,
     subtitlesExport,
+    timelineExport,
     projects,
     persist,
     duckAnalysis,
@@ -467,6 +468,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* captionsMake(r, v, args);
         case "subtitles_export":
           return yield* subtitlesExport(v, args);
+        case "timeline_export":
+          return yield* timelineExport(v, args);
         case "export_video":
           return yield* exportVideo(r, v, args);
         case "timeline_edit": {

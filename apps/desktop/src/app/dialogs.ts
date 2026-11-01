@@ -12,7 +12,27 @@ export const appInfo: AppInfo = {
   defaultParentDir: existsSync(path.join(home, "Movies")) ? path.join(home, "Movies") : home,
 };
 
-const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp", "srt", "vtt"];
+const MEDIA_EXTENSIONS = [
+  "mp4",
+  "mov",
+  "m4v",
+  "m4a",
+  "mp3",
+  "wav",
+  "aac",
+  "aif",
+  "aiff",
+  "flac",
+  "png",
+  "jpg",
+  "jpeg",
+  "heic",
+  "gif",
+  "webp",
+  "srt",
+  "vtt",
+  "fcpxml",
+];
 
 /** Native multi-select for footage, music and images; [] when cancelled. */
 export async function chooseMedia(win: BrowserWindow): Promise<Array<string>> {
@@ -26,7 +46,7 @@ export async function chooseMedia(win: BrowserWindow): Promise<Array<string>> {
     defaultPath: appInfo.defaultParentDir,
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Video, audio, images and subtitles", extensions: MEDIA_EXTENSIONS },
+      { name: "Video, audio, images, subtitles and timelines", extensions: MEDIA_EXTENSIONS },
       { name: "All files", extensions: ["*"] },
     ],
   });

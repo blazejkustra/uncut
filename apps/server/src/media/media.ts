@@ -7,7 +7,7 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
-import { planImportSubtitles, planReshoot, subtitleFormatOf, type ParsedCue, type Project } from "@uncut/core";
+import { planImportSubtitles, planImportTimeline, planReshoot, subtitleFormatOf, type ParsedCue, type Project, type TimelineFile } from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
 import { planPlaceMulti, planPlaceTake, type MultiKind, type MultiLayoutName, type PlacedMulti, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
@@ -46,6 +46,7 @@ import {
   posterName,
   realOr,
   readSubtitleFile,
+  readTimelineFile,
   PROBE_ERRORS,
   type ProjectShape,
   allIds,
@@ -190,6 +191,7 @@ export const layer = Layer.effect(
         const todo: Array<{ path: string; real: string; at: number }> = [];
         const subtitleFiles: Array<{ path: string; at: number; cues: ReadonlyArray<ParsedCue> }> = [];
         const subtitles: Array<ImportedSubtitles & { at: number }> = [];
+        const timelines: Array<{ path: string; at: number; file: TimelineFile }> = [];
         const seen = new Set<string>();
         for (const [at, path] of paths.entries()) {
           const problem = yield* precheck(path);
@@ -208,6 +210,25 @@ export const layer = Layer.effect(
             const read = yield* Effect.promise(() => readSubtitleFile(path));
             if ("problem" in read) failed.push({ path, message: read.problem, at });
             else subtitleFiles.push({ path, at, cues: read.cues });
+            continue;
+          }
+          // A timeline file isn't media either: its clips' files are imported, then built in the same edit.
+          if (/\.fcpxml$/i.test(path)) {
+            const read = yield* Effect.promise(() => readTimelineFile(path));
+            if ("problem" in read) {
+              failed.push({ path, message: read.problem, at });
+              continue;
+            }
+            timelines.push({ path, at, file: read });
+            for (const asset of new Set(read.clips.flatMap((c) => (c.path ? [c.path] : [])))) {
+              const assetProblem = yield* precheck(asset);
+              const assetReal = yield* Effect.promise(() => realOr(asset));
+              if (assetProblem) failed.push({ path: asset, message: assetProblem, at });
+              else if (!seen.has(assetReal)) {
+                seen.add(assetReal);
+                todo.push({ path: asset, real: assetReal, at });
+              }
+            }
             continue;
           }
           todo.push({ path, real, at });
@@ -270,7 +291,9 @@ export const layer = Layer.effect(
               const taken = allIds(project);
               // D209: "Match first clip": the first video brought into an empty project sets the canvas
               // (size and rate) in this edit, before its length in frames is counted at that rate.
-              const matched = (yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined;
+              const fileCanvas = timelines.find((t) => t.file.canvas)?.file.canvas;
+              const matched =
+                fileCanvas ?? ((yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined);
               const fps = matched?.fps ?? project.canvas.fps;
               entries = [];
               const entryPaths = new Map<string, string>();
@@ -321,8 +344,24 @@ export const layer = Layer.effect(
                 const added = plan.ops[0] as { track: Project["tracks"][number] };
                 view = { ...view, tracks: [{ ...added.track, items: [] }, ...view.tracks] };
               }
+              // Timeline files (.fcpxml): the sequence built from the media as it stands now, in the same edit.
+              const timelineOps: Array<unknown> = [];
+              const mediaAt = new Map<string, { id: string; kind: "video" | "image" | "audio" }>();
+              for (const [real, m] of existing) mediaAt.set(real, m as unknown as { id: string; kind: "video" | "image" | "audio" });
+              for (const { entry } of entries) mediaAt.set(yield* Effect.promise(() => realOr(entryPaths.get(entry.id)!)), entry);
+              for (const t of timelines) {
+                const reals = new Map<string, string>();
+                for (const c of t.file.clips) if (c.path) reals.set(c.path, yield* Effect.promise(() => realOr(c.path!)));
+                const plan = planImportTimeline(raw as Project, t.file, (path) => mediaAt.get(reals.get(path) ?? path), taken);
+                if ("problem" in plan) {
+                  if (!failed.some((x) => x.path === t.path)) failed.push({ path: t.path, message: plan.problem, at: t.at });
+                  continue;
+                }
+                timelineOps.push(...plan.ops);
+                for (const warning of plan.warnings) failed.push({ path: t.path, message: warning, at: t.at });
+              }
               const count = entries.length + subtitles.length;
-              if (count === 0 && !toPlace.length) return undefined;
+              if (count === 0 && !toPlace.length && !timelineOps.length) return undefined;
               const canvasOps = matched ? [{ op: "update_project", set: { canvas: matched } }] : [];
               if (matched) {
                 matchedDir = projectDir;
@@ -371,20 +410,22 @@ export const layer = Layer.effect(
                 }
               }
               return {
-                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
-                summary: options.multi
-                  ? options.multi.summary
-                  : dropped
-                    ? placeable.length > 1
-                      ? `Add ${placeable.length} files to the timeline`
-                      : `Add ${placeable[0]!.name} to the timeline`
-                    : placed
-                      ? `Record ${entries[0]!.entry.name}`
-                      : count > 1
-                        ? `Import ${count} files`
-                        : entries.length === 1
-                          ? `Import ${entries[0]!.entry.name}`
-                          : `Import subtitles ${basename(subtitles[0]!.path)}`,
+                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...timelineOps, ...placeOps],
+                summary: timelineOps.length
+                  ? `Import timeline ${basename(timelines[0]!.path)}`
+                  : options.multi
+                    ? options.multi.summary
+                    : dropped
+                      ? placeable.length > 1
+                        ? `Add ${placeable.length} files to the timeline`
+                        : `Add ${placeable[0]!.name} to the timeline`
+                      : placed
+                        ? `Record ${entries[0]!.entry.name}`
+                        : count > 1
+                          ? `Import ${count} files`
+                          : entries.length === 1
+                            ? `Import ${entries[0]!.entry.name}`
+                            : `Import subtitles ${basename(subtitles[0]!.path)}`,
               };
             }),
           options.agent,

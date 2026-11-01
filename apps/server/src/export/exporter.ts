@@ -35,6 +35,7 @@ import { type RenderedFrame, type FrameSessionOptions, openFrameSession, renderF
 import type { Rehearsal } from "./exporter/rehearse.ts";
 import { type MediaFrame, mediaFramesWith, drawSheet } from "./exporter/sheets.ts";
 import { type SavedSubtitles, NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
+import { type SavedTimeline, saveTimelineFile } from "./exporter/timelineFile.ts";
 import { sweepStaleTemp, exists, plainFsError, canonical } from "./exporter/files.ts";
 import { capsOf, withPictureSizes } from "./exporter/ffmpeg.ts";
 import { projectGraphics } from "./exporter/graphics.ts";
@@ -110,6 +111,8 @@ export interface ExporterShape {
   readonly sheetImage: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
   /** D105: the open project's subtitles as a .srt or .vtt file (the format by the extension), no video. */
   readonly saveSubtitles: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedSubtitles, ExportError>;
+  /** The open project's timeline as a .fcpxml or .edl file (the format by the extension). */
+  readonly saveTimeline: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedTimeline, ExportError>;
   /** D246: the loudness gain the export would use for `targetLufs` (the preview's At target). */
   readonly previewLoudness: (targetLufs: number) => Effect.Effect<{ gainDb?: number; lufs?: number; cancelled?: boolean }, ExportError>;
   /** The open project's mix as the export plays it, measured whole and by role (undefined: nothing sounds). */
@@ -402,6 +405,14 @@ export const layer = Layer.effect(
         return saved;
       });
 
+    const saveTimeline = ({ output, overwrite }: { readonly output: string; readonly overwrite?: boolean | undefined }) =>
+      Effect.gen(function* () {
+        const { project, mediaPath } = yield* current;
+        const saved = yield* Effect.promise(() => saveTimelineFile(project, mediaPath, output, overwrite === true));
+        if ("reason" in saved) return yield* new ExportError({ reason: saved.reason, message: saved.message });
+        return saved;
+      });
+
     const measureLoudness = makePreviewLoudness();
     const previewLoudness = (targetLufs: number) =>
       Effect.gen(function* () {
@@ -449,6 +460,7 @@ export const layer = Layer.effect(
       mediaFrames,
       sheetImage,
       saveSubtitles,
+      saveTimeline,
       previewLoudness,
       measureMix,
       jpegPixels: pixelsOf,

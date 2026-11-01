@@ -35,7 +35,7 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
-- **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles.
+- **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles. Timelines go to Final Cut Pro and DaVinci Resolve as FCPXML or an EDL, and FCPXML comes back in ([what maps and what's lost](docs/timeline-interchange.md)).
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).

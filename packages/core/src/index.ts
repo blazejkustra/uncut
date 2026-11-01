@@ -422,6 +422,9 @@ export {
   type ExportEncoder,
 } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
+export { writeEdl } from "./timeline/interchange/edl.ts";
+export { writeFcpxml } from "./timeline/interchange/fcpxml.ts";
+export { planImportTimeline, readFcpxml, type TimelineFile } from "./timeline/interchange/readFcpxml.ts";
 export {
   decodeEnvelope,
   DEFAULT_PAUSE_MIN_S,
