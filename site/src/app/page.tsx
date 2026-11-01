@@ -7,7 +7,7 @@ import { ClaudeMark, CodexMark } from "../components/Icons.tsx";
 import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
 import ZoomShot from "../components/ZoomShot.tsx";
-import { alternates, SITE_URL } from "../lib/site.ts";
+import { alternates, REPO_URL, SITE_URL } from "../lib/site.ts";
 
 export const metadata: Metadata = {
   title: { absolute: "Uncut: edit videos by talking to an agent" },
@@ -48,7 +48,10 @@ export default function Home() {
               coming soon. The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
             </p>
             <DownloadButtons />
-            <p className="req">For Apple silicon Macs. Free and open source.</p>
+            <p className="req">
+              For Apple silicon Macs. Free and open source. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
+              <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>.
+            </p>
             <ZoomShot
               className="shot"
               src="/assets/img/editor.webp"
@@ -202,7 +205,10 @@ export default function Home() {
             <h2>Start your next cut</h2>
             <p className="sub">Install Claude Code and sign in, then open Uncut and tell it what to make.</p>
             <DownloadButtons />
-            <p className="req">For Apple silicon Macs.</p>
+            <p className="req">
+              For Apple silicon Macs. Uses code of FFmpeg licensed under the LGPLv2.1, <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>
+              .
+            </p>
           </div>
         </section>
       </main>

@@ -110,7 +110,7 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
  * plugins and plugin-sdk: a headless server started from an installed app (the SSH helper's command,
  * D111) finds them there without the desktop passing their paths.
  */
-const packagedResources = (): string | undefined => (existsSync(besideServer("../bin/uncut-media")) ? besideServer("..") : undefined);
+export const packagedResources = (): string | undefined => (existsSync(besideServer("../bin/uncut-media")) ? besideServer("..") : undefined);
 const fromResources = (rel: string, dev: string) => {
   const root = packagedResources();
   return root ? join(root, rel) : besideServer(dev);
