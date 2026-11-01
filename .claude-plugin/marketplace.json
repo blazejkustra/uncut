@@ -1,0 +1,14 @@
+{
+  "name": "uncut",
+  "description": "Uncut, an AI-first video editor for macOS, for Claude Code.",
+  "owner": {
+    "name": "Błażej Kustra"
+  },
+  "plugins": [
+    {
+      "name": "uncut",
+      "source": "./integrations/claude-code",
+      "description": "Edit video in Uncut from Claude Code."
+    }
+  ]
+}

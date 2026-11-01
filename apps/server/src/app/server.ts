@@ -14,6 +14,7 @@ import { droppedBecause } from "./liveness.ts";
 import { pairingText } from "./pairing.ts";
 import * as Remote from "./remote.ts";
 import * as AgentBridge from "../agent/agentBridge.ts";
+import * as ExternalMcp from "../agent/externalMcp.ts";
 import * as Analysis from "../analysis/analysis.ts";
 import * as Capture from "../capture/capture.ts";
 import * as Config from "./config.ts";
@@ -108,6 +109,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
       Waveforms.layer,
       Filmstrips.layer,
       AgentBridge.layer,
+      ExternalMcp.layer,
       Remote.layer,
     ),
     { disableLogger: true, disableListenLog: true },

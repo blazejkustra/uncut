@@ -42,6 +42,7 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects, voiceover and music with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
 - **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles. Timelines go to Final Cut Pro and DaVinci Resolve as FCPXML or an EDL, and FCPXML comes back in ([what maps and what's lost](#timeline-interchange)).
+- **Outside agents.** Drive Uncut from Claude Code in a terminal, Claude Desktop or Cursor over a local MCP server. See [Connect an outside agent](#connect-an-outside-agent).
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon).
@@ -126,6 +127,30 @@ The server speaks plain http, so keep the port on loopback and reach it through 
 
 `pnpm server:check` builds both and tests them in containers. `node scripts/server-image-check.ts --app` also pairs the packaged app.
 
+## Connect an outside agent
+
+Agents outside Uncut can use the same tools as its own agent. Turn on Settings › App › Outside agents, then pick your client there for its setup with your token. For Claude Code:
+
+```sh
+claude mcp add --transport http --scope user uncut http://127.0.0.1:47821/mcp --header "Authorization: Bearer <token>"
+```
+
+Or install the plugin, which reads the token by itself and adds `/uncut:open-footage` to open a footage folder as a new project:
+
+```sh
+claude plugin marketplace add blazejkustra/uncut
+claude plugin install uncut@uncut
+```
+
+Claude Desktop connects through `mcp-remote` and Cursor through `~/.cursor/mcp.json`. ChatGPT connects only to servers on the internet, so it can't reach this one.
+
+- **Off by default.** Nothing listens until you turn it on, and it stops when you turn it off.
+- **This Mac only.** It binds to 127.0.0.1, requires a bearer token made for your install (Settings › New token replaces it), and refuses requests with a foreign Host or any Origin, so a web page can't reach it.
+- **You stay in charge.** The agent works in its own tab, its turns undo like any other, and big changes wait for your Allow. Stop ends its turn.
+- **Unmetered.** Uncut counts nothing and charges nothing for it. The client you connect bills as it normally does.
+
+The tools answer for the project in the focused window. With no project open, `project_open` opens a footage folder or a `.uncut` project.
+
 ## Development
 
 You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg. A build from source uses the ffmpeg and whisper-cli on your PATH, unless you run `pnpm tools:build` first (it needs cmake, meson and ninja).
@@ -166,6 +191,7 @@ Never your footage, frames, transcripts, prompts, file names, paths or error mes
 What else leaves your Mac, and only when you use it:
 
 - **The agent.** Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac.
+- **Outside agents.** If you turn this on, the client you connect (Claude Code, Claude Desktop, Cursor) receives what its tools return: project data, frames, transcripts, file names. That client sends them on under its own account and terms. Uncut's token stays in a file only your user can read, in Uncut's data folder.
 - **Generators.** Image, video, sound effect, voiceover and music generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
 - **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
 - **Downloads.** The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.

@@ -41,9 +41,10 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           true,
         );
       const dollars = (n: number) => `$${n.toFixed(2)}`;
-      const overCap = () => estimate > 0 && (r.turn.spend ?? 0) + estimate > TURN_CAP;
+      const spentSoFar = () => (r.priorSpend ?? 0) + (r.turn.spend ?? 0);
+      const overCap = () => estimate > 0 && spentSoFar() + estimate > TURN_CAP;
       const capNote = () =>
-        `That would take this turn past ${dollars(TURN_CAP)} of estimated spend (${dollars(r.turn.spend ?? 0)} so far). Nothing was generated; the user can generate more from the Generate tab.`;
+        `That would take this ${r.priorSpend === undefined ? "turn" : "session"} past ${dollars(TURN_CAP)} of estimated spend (${dollars(spentSoFar())} so far). Nothing was generated; the user can generate more from the Generate tab.`;
       if (overCap()) return textResult(capNote(), true);
       if (estimate > CONFIRM_OVER) {
         const what =

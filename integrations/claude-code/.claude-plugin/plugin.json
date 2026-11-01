@@ -1,0 +1,18 @@
+{
+  "name": "uncut",
+  "displayName": "Uncut",
+  "version": "0.1.0",
+  "description": "Edit video in Uncut from Claude Code: open a footage folder and drive the timeline over Uncut's local MCP server.",
+  "author": {
+    "name": "Błażej Kustra"
+  },
+  "homepage": "https://uncut.video",
+  "repository": "https://github.com/blazejkustra/uncut",
+  "license": "MIT",
+  "keywords": [
+    "video",
+    "editing",
+    "mcp"
+  ],
+  "privacyPolicyUrl": "https://github.com/blazejkustra/uncut#privacy"
+}

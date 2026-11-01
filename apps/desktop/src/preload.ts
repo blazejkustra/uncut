@@ -22,6 +22,9 @@ import {
   ENVIRONMENT_SWITCH_CHANNEL,
   ENVIRONMENT_TEST_CHANNEL,
   ENVIRONMENTS_CHANNEL,
+  MCP_RENEW_TOKEN_CHANNEL,
+  MCP_SET_CHANNEL,
+  MCP_STATE_CHANNEL,
   MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   OPEN_PRIVACY_SETTINGS_CHANNEL,
@@ -116,6 +119,10 @@ contextBridge.exposeInMainWorld("uncut", {
   setUpdateBusy: (busy: boolean) => ipcRenderer.send(UPDATE_BUSY_CHANNEL, busy),
   checkForUpdates: () => ipcRenderer.invoke(UPDATE_CHECK_CHANNEL),
   installUpdate: () => ipcRenderer.invoke(UPDATE_INSTALL_CHANNEL),
+  // Outside agents over MCP (Settings › App).
+  mcpState: () => ipcRenderer.invoke(MCP_STATE_CHANNEL),
+  setMcpEnabled: (enabled: boolean) => ipcRenderer.invoke(MCP_SET_CHANNEL, enabled),
+  renewMcpToken: () => ipcRenderer.invoke(MCP_RENEW_TOKEN_CHANNEL),
   // True only in a background test run: the preview's audio goes to no device.
   silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });
