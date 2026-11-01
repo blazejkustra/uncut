@@ -54,7 +54,13 @@ before(async () => {
   writeFileSync(prompts(), "");
   app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: prompts() },
+    env: {
+      UNCUT_DATA_DIR: join(root, "data"),
+      UNCUT_TEST_DIALOG: JSON.stringify([dir, join(root, "Launch.mp4")]),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan(),
+      FAKE_PROMPT_LOG: prompts(),
+    },
   });
   page = app.page;
   await waitForWelcome(page);
@@ -72,6 +78,8 @@ test("Export › Review page makes a folder with the page and the video, and say
   await page.keyboard.press("e");
   await page.keyboard.up("Meta");
   await page.waitForSelector("[data-testid=export-review-page]");
+  await page.click("[data-testid=export-change]");
+  await page.waitForFunction((folder) => document.querySelector<HTMLElement>("[data-testid=export-folder]")?.title === folder, { timeout: 5000 }, root);
   await page.click("[data-testid=export-review-page]");
   const note = await page.$eval("[data-testid=export-review-note]", (el) => el.textContent ?? "");
   assert.match(note, /no live multiplayer or automatic sync/);
