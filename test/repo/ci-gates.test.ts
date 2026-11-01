@@ -109,10 +109,10 @@ test("the quarantine list names real test files, each with a reason and a date",
   }
 });
 
-test("waiting CI runs on main are queued, and only a PR's are cancelled", () => {
+test("a push to main never shares a concurrency group with another, and only a PR's run is cancelled", () => {
   const yml = readFileSync(".github/workflows/ci.yml", "utf8");
   assert.match(
     yml,
-    /\nconcurrency:\n  group: ci-\$\{\{ github\.ref \}\}\n  queue: max\n  cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\n/,
+    /\nconcurrency:\n  group: ci-\$\{\{ github\.event_name == 'pull_request' && github\.ref \|\| github\.sha \}\}\n  cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\n/,
   );
 });
