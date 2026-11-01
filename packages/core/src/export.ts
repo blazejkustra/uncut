@@ -1,8 +1,15 @@
 // Export settings shared by the server (which renders) and the renderer (whose dialog shows them).
 
 export type ExportQuality = "draft" | "standard" | "high";
-/** F4 (D171): every preset is H.264; HEVC only when chosen (Advanced). */
-export type ExportCodec = "h264" | "hevc";
+/** F4 (D171): every preset is H.264; HEVC and the ProRes masters only when chosen (Advanced). */
+export type ExportCodec = "h264" | "hevc" | "prores422" | "prores422hq" | "prores4444";
+
+export const PRORES_CODECS = ["prores422", "prores422hq", "prores4444"] as const;
+export const isProRes = (codec: ExportCodec) => codec.startsWith("prores");
+/** The container a codec is saved in: ProRes goes in QuickTime. */
+export const codecExtension = (codec: ExportCodec) => (isProRes(codec) ? "mov" : "mp4");
+/** The end of a video file name an export writes. */
+export const VIDEO_EXTENSION = /\.(?:mp4|mov)$/i;
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
 
@@ -39,12 +46,23 @@ export const HARDWARE_H264_QUALITY: Readonly<Record<ExportQuality, number>> = { 
 /** libx264's constant rate factor per preset (D171). */
 export const SOFTWARE_H264_CRF: Readonly<Record<ExportQuality, number>> = { draft: 26, standard: 20, high: 17 };
 
-export const CODEC_NAMES: Readonly<Record<ExportCodec, string>> = { h264: "H.264", hevc: "HEVC" };
+export const CODEC_NAMES: Readonly<Record<ExportCodec, string>> = {
+  h264: "H.264",
+  hevc: "HEVC",
+  prores422: "ProRes 422",
+  prores422hq: "ProRes 422 HQ",
+  prores4444: "ProRes 4444",
+};
 
-/** Bits per pixel per frame of each preset: HEVC's target bitrate (H.264 is constant quality, D212, unless a bitrate is set). */
+const flatBpp = (bpp: number) => ({ draft: bpp, standard: bpp, high: bpp });
+
+/** Bits per pixel per frame of each preset: HEVC's target bitrate, ProRes's nominal one (H.264 is constant quality, D212, unless a bitrate is set). */
 const BPP: Readonly<Record<ExportCodec, Readonly<Record<ExportQuality, number>>>> = {
   h264: { draft: 0.06, standard: 0.1, high: 0.16 },
   hevc: { draft: 0.04, standard: 0.06, high: 0.1 },
+  prores422: flatBpp(2.4),
+  prores422hq: flatBpp(3.5),
+  prores4444: flatBpp(5.3),
 };
 
 /** The preset's target bitrate in Mb/s (one decimal, at least 1) for a size and frame rate. */

@@ -1,4 +1,4 @@
-import { type ExportCodec, type ExportEncoder, defaultEncoder, presetBitrateMbps, HARDWARE_H264_QUALITY, SOFTWARE_H264_CRF } from "@uncut/core";
+import { type ExportCodec, type ExportEncoder, defaultEncoder, isProRes, presetBitrateMbps, HARDWARE_H264_QUALITY, SOFTWARE_H264_CRF } from "@uncut/core";
 import type { Quality } from "./types.ts";
 
 // ---- ffmpeg ----
@@ -30,14 +30,42 @@ export interface VideoChoice {
   /** D212: hardware (VideoToolbox) or software; absent = the preset's (`defaultEncoder`). */
   readonly encoder?: ExportEncoder | undefined;
   readonly bitrateMbps?: number | undefined;
+  /** ProRes 4444: the canvas background left out, the alpha channel kept. */
+  readonly alpha?: boolean | undefined;
+}
+
+/** The ffmpeg pixel formats an export composites and encodes in. */
+export interface PictureFormats {
+  readonly plain: string;
+  readonly alpha: string;
+  readonly overlay: string;
+  readonly output: string;
+}
+
+const DELIVERY_FORMATS: PictureFormats = { plain: "yuv420p", alpha: "yuva420p", overlay: "auto", output: "yuv420p" };
+
+/**
+ * ProRes keeps more chroma than delivery codecs, so it composites in 4:4:4 and every overlay stays
+ * there. The compositor is 8-bit either way: the 10-bit output only carries that picture.
+ */
+export function pictureFormats({ codec = "h264", alpha = false }: VideoChoice = {}): PictureFormats {
+  if (!isProRes(codec)) return DELIVERY_FORMATS;
+  const output = codec !== "prores4444" ? "yuv422p10le" : alpha ? "yuva444p10le" : "yuv444p10le";
+  return { plain: alpha ? "yuva444p" : "yuv444p", alpha: "yuva444p", overlay: "yuv444", output };
 }
 
 /** Whether this ffmpeg can make HEVC (VideoToolbox, else libx265). */
 export const canHevc = (caps: Pick<Caps, "encoders">) => caps.encoders.has("hevc_videotoolbox") || caps.encoders.has("libx265");
 
+/** Whether this ffmpeg can make ProRes: prores_ks, the software encoder every build has, writes alpha exactly. */
+export const canProRes = (caps: Pick<Caps, "encoders">) => caps.encoders.has("prores_ks");
+
+const PRORES_PROFILES: Readonly<Record<string, string>> = { prores422: "standard", prores422hq: "hq", prores4444: "4444" };
+
 /** D212: whether an export with these choices encodes with VideoToolbox on this ffmpeg. */
 export function usesHardware(quality: Quality, caps: Pick<Caps, "encoders">, choice: VideoChoice = {}): boolean {
   const codec = choice.codec ?? "h264";
+  if (isProRes(codec)) return false;
   const hardware = codec === "hevc" ? caps.encoders.has("hevc_videotoolbox") : caps.encoders.has("h264_videotoolbox");
   if (!hardware) return false;
   // HEVC without libx265 has only VideoToolbox, whatever was asked.
@@ -54,11 +82,12 @@ export function usesHardware(quality: Quality, caps: Pick<Caps, "encoders">, cho
  */
 export function videoCodec(quality: Quality, caps: Caps, size: { width: number; height: number }, fps: number, choice: VideoChoice = {}): Array<string> {
   const codec = choice.codec ?? "h264";
+  if (isProRes(codec)) return ["-c:v", "prores_ks", "-profile:v", PRORES_PROFILES[codec]!, "-vendor", "apl0"];
   const chosen = choice.bitrateMbps !== undefined && choice.bitrateMbps > 0 ? `${Math.round(choice.bitrateMbps * 10) / 10}M` : undefined;
   const rate = chosen ?? `${presetBitrateMbps(quality, codec, size, fps)}M`;
   const hardware = usesHardware(quality, caps, choice);
   // The encoders don't all write the colour tags they're given, so the bitstream filter does.
-  const tags = (c: ExportCodec) => ["-bsf:v", `${c}_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0`];
+  const tags = (c: "h264" | "hevc") => ["-bsf:v", `${c}_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0`];
   if (codec === "hevc") {
     if (hardware) return ["-c:v", "hevc_videotoolbox", "-allow_sw", "1", "-profile:v", "main", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
     return ["-c:v", "libx265", "-preset", quality === "draft" ? "veryfast" : "medium", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
