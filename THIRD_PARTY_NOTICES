@@ -467,15 +467,40 @@ for Chromium, MIT for Node.js, among others). Their full texts ship inside the a
 Uncut.app/Contents/Resources/licenses (LICENSE.electron.txt and LICENSES.chromium.html).
 
 ==============================================================================
+Media tools: FFmpeg (LGPL 2.1 or later), dav1d (BSD 2-Clause), whisper.cpp (MIT)
+==============================================================================
+
+Shipped in Uncut.app/Contents/Resources/tools and run as separate programs. Their licence texts
+are in tools/licenses. This software uses libraries from the FFmpeg project under the LGPLv2.1.
+FFmpeg is not owned by Uncut's authors; dav1d is linked into its libavcodec.
+
+ffmpeg 9.0.2, unmodified: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+  SHA-256 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+dav1d 1.5.4, unmodified: https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.bz2
+  SHA-256 2abfb0c89212e6e4733a54e0ae509ec00a5b845a6360946f918806e14aedb011
+whisper.cpp 1.9.5, unmodified: https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.5.tar.gz
+  SHA-256 ff1a9053feb509ff9d7729703355541ae9690073a6b1c40eb692c962e0dc1720
+
+FFmpeg is built without GPL or nonfree parts, with: --arch=arm64 --cc=clang --disable-static --enable-shared --install-name-dir=@rpath --disable-autodetect --disable-indevs --enable-indev=lavfi --disable-outdevs --disable-debug --disable-doc --disable-ffplay --enable-audiotoolbox --enable-bzlib --enable-libdav1d --enable-securetransport --enable-videotoolbox --enable-zlib
+
+Source: each archive above is attached to the GitHub release of every Uncut version that ships it
+(https://github.com/blazejkustra/uncut/releases), and the build recipe is native/tools in Uncut's
+repository. For three years after a release, the same archives are also available on request from
+the contact in the README, for no more than the cost of sending them.
+
+Relinking: tools/lib holds FFmpeg's shared libraries, which ffmpeg and ffprobe load through @rpath.
+Build your own with native/tools, replace them in a copy of the app and re-sign it.
+macOS's VideoToolbox does the H.264 and HEVC encoding; a user's own ffmpeg, when installed, adds
+libx264 and libx265 under its own licence. Those are not shipped.
+
+==============================================================================
 Not shipped: programs Uncut uses when they're installed
 ==============================================================================
 
-ffmpeg and ffprobe: not bundled. The user installs them (for example brew install ffmpeg) and
-Uncut runs them as separate programs. Their licence (LGPL 2.1 or later, or GPL when built with
-GPL parts, as Homebrew's build is) applies to those programs, not to Uncut. https://ffmpeg.org
+A system ffmpeg, when Uncut needs an encoder its own lacks: the user installs it (for example brew
+install ffmpeg) and Uncut runs it as a separate program, under that build's licence.
 
-whisper.cpp (whisper-cli): not bundled. The user installs it (brew install whisper-cpp); MIT,
-https://github.com/ggml-org/whisper.cpp. Speech models are not in the app or the repository:
+Speech models are not in the app or the repository:
 Uncut downloads the one the user picks from huggingface.co/ggerganov/whisper.cpp into its data
 folder and checks its SHA-256. The Whisper model weights are OpenAI's, released under MIT.
 

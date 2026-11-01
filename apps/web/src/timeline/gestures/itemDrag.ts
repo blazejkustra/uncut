@@ -13,7 +13,10 @@ import {
   planGroupTrim,
   planMove,
   planMoveToNewTrack,
+  planRoll,
+  planSlip,
   planTrim,
+  rollTarget,
   SNAP_PX,
   snapTargets,
   trimSnapTargets,
@@ -24,6 +27,7 @@ import { getPlayback, playback } from "../../preview/playback.ts";
 import type { Item, Layout, ProjectModel, Track } from "../../state/project.ts";
 import { actions, getState, projectOf, type AppStateShape } from "../../state/store.ts";
 import { DRAG_PX } from "../ItemBox.tsx";
+import { getTool } from "../tools.ts";
 import { type DragView, selectionIds } from "./dragView.ts";
 import type { LaneGeometry } from "./lanes.ts";
 
@@ -106,6 +110,10 @@ export function makeItemDrag(ctx: ItemDragCtx) {
     const pressEdge = edge === "end" ? press.start + press.item.duration : press.start;
     let active = false;
     let plan: Plan | undefined;
+    const tool = getTool();
+    // Roll takes the cut nearest the press: the item's own end, or its start (the end of the one before).
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rollStart = tool === "roll" && e.clientX < box.left + box.width / 2;
     let raf = 0;
     let last: PointerEvent | undefined;
     /** Plan from the pointer against `base`, and draw it (or why it can't be dropped there). */
@@ -114,6 +122,21 @@ export function makeItemDrag(ctx: ItemDragCtx) {
       const placed = findItem(base, item.id);
       if (!placed) return;
       const delta = (ev.clientX - x0) / ppf;
+      if (tool === "slip" || tool === "roll") {
+        const p = tool === "slip" ? planSlip(base, item.id, delta) : planRoll(base, rollTarget(placed, rollStart), delta);
+        if ("problem" in p) return setDrag({ itemId: item.id, mode: tool, view: base, refused: p.problem, tipAt: placed.start, tip: p.problem });
+        const draft = draftOf(base, p.ops);
+        if (!("problem" in draft)) plan = p;
+        setDrag({
+          itemId: item.id,
+          mode: tool,
+          view: "problem" in draft ? base : draft.project,
+          ...("problem" in draft ? { refused: draft.problem } : {}),
+          tipAt: tool === "slip" ? placed.start : p.at,
+          tip: "problem" in draft ? draft.problem : p.tip,
+        });
+        return;
+      }
       const snapOn = getPlayback().snapping && !ev.metaKey;
       const threshold = SNAP_PX / ppf;
       const beats = { beats: getBeats().map, ppf };

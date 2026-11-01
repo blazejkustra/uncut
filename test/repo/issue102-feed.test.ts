@@ -89,7 +89,7 @@ test("release.yml: a tag needs the certificate (no dmg-only release), drafts the
   assert.match(yml, /- name: Ad-hoc dmg[^\n]*\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type != 'tag'/);
   assert.match(
     yml,
-    /- name: Draft release\n\s+if: env\.HAS_CERT == 'true' && github\.ref_type == 'tag'\n[^]*?gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml --draft/,
+    /- name: Draft release\n\s+if: env\.HAS_CERT == 'true' && github\.ref_type == 'tag'\n[^]*?gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml native\/tools\/out\/sources\/\* --draft/,
   );
   assert.equal((yml.match(/gh release create/g) ?? []).length, 1, "the only release is the signed one");
   assert.match(yml, /workflow_dispatch:/);

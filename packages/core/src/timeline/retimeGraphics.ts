@@ -151,7 +151,7 @@ export function withGraphicRetime(
 ): { readonly ops: ReadonlyArray<Op>; readonly retimed: ReadonlyArray<GraphicRetime> } {
   let after: Project;
   try {
-    after = applyEdit(createSession(project), { actor: "agent", ops }).project;
+    after = applyEdit(createSession(project), { actor: "user", ops }).project;
   } catch {
     return { ops, retimed: [] };
   }

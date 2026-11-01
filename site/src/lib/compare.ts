@@ -177,11 +177,11 @@ ${UNCUT_BASICS}
 | Price | Free, you pay your agent's provider | Free tier and Pro; prices vary by region and device |
 | Editing style | Prompt an agent, then edit by hand | By hand, with templates and AI tools |
 | Captions | Local transcripts, burned-in or word by word, SRT and WebVTT | Automatic captions |
-| Content terms | No licence to your content | Licence to content you submit through the services |
+| Content terms | No licence to your content | Outside the EU and UK, a licence to content you submit, for operating, developing and providing the Services, subject to your Platform settings |
 
-We could not find an official CapCut Pro price: it is set in the app. Third-party guides commonly report about $20 a month, so treat that as unconfirmed.
+We could not find an official CapCut Pro price: it is set in the app.
 
-CapCut's terms, last updated April 15, 2026, give it "a non-exclusive, royalty-free, transferable, sub-licensable, perpetual and worldwide license" to content you submit through its services (section 10). Read them yourself if you handle client work.
+Outside the EU and UK, CapCut's terms, last updated April 15, 2026, give it "a non-exclusive, royalty-free, transferable, sub-licensable, perpetual and worldwide license" to content you submit, "for the purposes of operating, developing and providing the Services, subject to your Platform settings" (section 10). The EU and UK supplement says the User-Generated Content paragraphs of section 10 "shall not apply". Read the terms for your region if you handle client work.
 
 ## Where CapCut is better
 
@@ -223,7 +223,7 @@ ${UNCUT_BASICS}
 | | Uncut | Kino (from its docs unless marked) |
 | --- | --- | --- |
 | Licence | MIT | Proprietary |
-| Platforms | Apple silicon Macs | macOS, Windows, Linux, web |
+| Platforms | Apple silicon Macs | macOS, Windows, Linux |
 | Account | None (tested) | Required: the app opens on sign-in (tested) |
 | Price | Free, you pay your agent's provider | Free; Pro $25 per editor per month ($20 billed yearly), plus usage; Enterprise custom |
 | Metering | None from Uncut | Indexing 5 h a month on Free, 75 h on Pro; 100 MCP calls a week on Free |
@@ -241,7 +241,7 @@ All of this is from Kino's docs, apart from the skills, which ship in its app.
 - **Finding a moment.** Search across hours of footage by speech, visuals or person. Uncut has no equivalent.
 - **Client review.** Viewers comment on a frame in the browser with no account, and the agent can pick those comments up.
 - **Teams.** A multiplayer timeline with cursors, seats and delivery links.
-- **Reach.** Windows, Linux and web, plus agents that work in the cloud.
+- **Reach.** Windows and Linux, plus agents that work in the cloud.
 - **Pro formats.** BRAW, REDCODE, ProRes and DNx in, ProRes and alpha out.
 - **Migration.** Import from other editors, though Kino labels this Beta.
 - **Skills.** It ships 20 agent skills, which we read: the audio and reframing recipes are detailed and clearly drawn from real productions.
@@ -266,6 +266,7 @@ Pick Kino if a team shares a large footage library or clients review your work. 
 - [Kino docs: storage](https://kino.ai/docs/storage)
 - [Kino docs: working with agents](https://kino.ai/docs/working-with-agents)
 - [Kino docs: pro media formats](https://kino.ai/docs/pro-media-formats)
+- [Kino docs: import from other editors](https://kino.ai/docs/import-from-other-editors)
 - [Kino docs: Kino for editors](https://kino.ai/docs/kino-for-editors)
 - [Kino changelog](https://kino.ai/changelog)
 ${UNCUT_SOURCES}`,

@@ -22,17 +22,16 @@ brew install --cask blazejkustra/tap/uncut
 
 The app updates itself after that, so there's no need for `brew upgrade` (`brew uninstall --zap --cask uncut` also removes its data).
 
-On first launch Uncut checks what it needs and shows how to install anything missing:
+ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest and shows how to install anything missing:
 
 - **[Claude Code](https://claude.com/claude-code) or [Codex](https://github.com/openai/codex)**, installed and signed in. Uncut uses whatever sign-in each has: for Claude Code a Claude subscription, an API key, or Bedrock, Vertex AI or Foundry; for Codex your ChatGPT plan or an OpenAI API key. Usage is billed the way your agent's usage normally is. The independent critic runs through Claude Code, so reviews need it installed even when you edit with Codex.
-- **ffmpeg**: `brew install ffmpeg`.
-- **whisper.cpp** (optional, for transcripts): `brew install whisper-cpp`.
 - **[Argent](https://www.npmjs.com/package/@swmansion/argent)** (optional, to record simulators, emulators and apps): `npx @swmansion/argent@latest init -y`.
 
 ## What it does
 
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief, plans the shots in a storyboard, builds the edit, then an independent critic reviews it from rendered frames. Every turn is one undoable step, and a meter shows how full the agent's context is.
-- **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **A real timeline.** Tracks, trims, slip and roll, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Locked cuts.** Lock a clip, a range or a track and the agent can't change, move or unlock it. Its edit is refused with the reason, and you unlock by hand whenever you want.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
@@ -41,14 +40,33 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects, voiceover and music with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
-- **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles.
+- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles.
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon).
 
+## Linux server
+
+Environments (Settings › Labs) lets the Mac app edit on another machine. The server for that machine builds into a container image with Docker or OrbStack:
+
+```sh
+pnpm server:image
+docker run -d --name uncut-server -p 127.0.0.1:8790:8790 -v uncut-server:/data \
+  -e UNCUT_PUBLIC_URL=http://127.0.0.1:8790 uncut-server
+docker logs uncut-server
+```
+
+The log ends with a `uncut://pair?...` line. Paste it into Settings › Environments › Add environment. `UNCUT_PUBLIC_URL` is the address the app will use, since a server in a container can't see its published port. The token, settings and projects live in the `/data` volume.
+
+The server speaks plain http, so keep the port on loopback and reach it through an SSH tunnel, Tailscale or an https proxy (with `-e UNCUT_PUBLIC_URL=https://...`). The agent needs Claude Code or Codex in the image: build your own `FROM uncut-server`, install it, and sign in with `docker exec -it uncut-server claude`. Whisper transcription needs `whisper-cli` the same way.
+
+`pnpm server:tarball` puts `uncut-server-linux-<arch>.tar.gz` in `release/`, for a machine without Docker. It needs Node 24 and ffmpeg on PATH: run `./uncut-server --host 0.0.0.0` (port 8790, data in `~/.uncut-server`, change them with `--port` and `--data-dir`). Every export also needs Electron on a display: set `UNCUT_RENDER_BIN` to a script that starts it with `--no-sandbox`, as `scripts/remote-docker/electron-render.sh` does. The image has this built in.
+
+`pnpm server:check` builds both and tests them in containers. `node scripts/server-image-check.ts --app` also pairs the packaged app.
+
 ## Development
 
-You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg.
+You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg. A build from source uses the ffmpeg and whisper-cli on your PATH, unless you run `pnpm tools:build` first (it needs cmake, meson and ninja).
 
 ```sh
 git clone https://github.com/blazejkustra/uncut
@@ -62,7 +80,8 @@ pnpm dev            # builds the media core, server and shell, opens the app
 pnpm test:fast      # typecheck and every test outside test/app
 pnpm test           # everything, including the packaged-app tests (run pnpm dist first)
 pnpm dist           # an ad-hoc signed .app and dmg in dist/
-pnpm dist:signed    # a Developer ID signed, notarized dmg in release/
+pnpm tools:build    # the LGPL ffmpeg, ffprobe and whisper-cli the app ships, in native/tools/out
+pnpm dist:signed    # a Developer ID signed, notarized dmg in release/ (needs pnpm tools:build)
 pnpm site:dev       # the website (site/, Next.js) at localhost:3000
 pnpm site:build     # its static export in site/out, ready for Cloudflare Pages (site/DEPLOY.txt)
 ```
@@ -97,4 +116,8 @@ Bug reports, fixes and plugins are welcome. See [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Not affiliated with Anthropic or OpenAI.
+MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons, tools and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Not affiliated with Anthropic or OpenAI.
+
+This software uses code of [FFmpeg](https://ffmpeg.org) licensed under the LGPLv2.1. Its source is attached to every [release](https://github.com/blazejkustra/uncut/releases), and `native/tools` is the recipe that builds it. Uncut's authors don't own FFmpeg.
+
+The app's own ffmpeg encodes with VideoToolbox. For the software encoders (libx264, libx265), which are GPL and can't ship with it, install a system ffmpeg (`brew install ffmpeg`) and Uncut uses it when an export asks for them.
