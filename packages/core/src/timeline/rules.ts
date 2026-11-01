@@ -12,6 +12,7 @@ const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>>
   text: ["text"],
   captions: ["text"],
   audio: ["audio"],
+  sequence: [],
 };
 
 /**
@@ -20,7 +21,7 @@ const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>>
  * its first and last look through a transition's overlap and needs no footage). Captions and sound
  * stay off it.
  */
-export const MAIN_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>(["clip", "component", "graphic", "text"]);
+export const MAIN_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>(["clip", "component", "graphic", "text", "sequence"]);
 
 /** Whether an item of this type may go on this track (the rule item-track-kind checks). */
 export const fitsTrackKind = (type: ItemType, track: Pick<Track, "kind" | "role">) =>

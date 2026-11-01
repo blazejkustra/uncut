@@ -79,6 +79,38 @@ test("an EDL saved by the server lists the main track", { skip, timeout: 60000 }
   assert.ok(saved.warnings.some((w: string) => /isn't in the EDL/.test(w)));
 });
 
+/** One clip and one subtitle, both only inside a sequence on Main. */
+const nestedProject = (): Project => {
+  const source = exportProject(join(root, "media"));
+  const main = source.tracks.find((t) => t.role === "main")!;
+  const clip = { id: "inner", type: "clip" as const, media: "m-b", in: 15, duration: 90 };
+  const subtitle = { id: "line", type: "text" as const, text: "Nested line", start: 10, duration: 30 };
+  return {
+    ...source,
+    tracks: [{ ...main, items: [{ id: "n1", type: "sequence", sequence: "seq", duration: 90 }] }],
+    sequences: [
+      {
+        id: "seq",
+        name: "Nested",
+        tracks: [
+          { id: "seq-subs", kind: "text", name: "Subtitles", items: [subtitle] },
+          { id: "seq-main", kind: "video", role: "main", name: "Main", items: [clip] },
+        ],
+      },
+    ],
+  };
+};
+
+test("FCPXML, EDL and subtitles keep what's inside a sequence", { skip, timeout: 60000 }, async () => {
+  await client.ok("project.open", { dir: writeProject(root, "Nested", nestedProject()) });
+  const fcpxml = await client.ok("export.timeline", { output: join(root, "out", "Nested.fcpxml") });
+  assert.match(readFileSync(fcpxml.path, "utf8"), /<asset-clip[^>]*name="B\.mp4"/);
+  const edl = await client.ok("export.timeline", { output: join(root, "out", "Nested.edl") });
+  assert.match(readFileSync(edl.path, "utf8"), /\* SOURCE FILE: .*B\.mp4/);
+  const subtitles = await client.ok("export.subtitles", { output: join(root, "out", "Nested.srt") });
+  assert.match(readFileSync(subtitles.path, "utf8"), /Nested line/);
+});
+
 test("FCPXML into a project with items is refused and changes neither its media nor its canvas", { skip, timeout: 120000 }, async () => {
   const dir = join(root, "Source.uncut");
   const opened = (await client.ok("project.open", { dir })).project as Project;

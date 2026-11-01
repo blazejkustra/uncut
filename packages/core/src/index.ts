@@ -5,6 +5,7 @@ export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStar
 export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
 export { agentLockProblem, locksNote } from "./timeline/locks.ts";
+export { canUnnest, flattenSequences, sequenceLength, sequencesNote } from "./timeline/nesting.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
   byUser,

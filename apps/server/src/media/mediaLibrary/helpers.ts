@@ -68,6 +68,7 @@ export type ProjectShape = {
   media: ReadonlyArray<{ id: string; path: string }>;
   tracks: ReadonlyArray<{ id: string; items: ReadonlyArray<{ id: string }> }>;
   scenes?: ReadonlyArray<{ id: string }>;
+  sequences?: ReadonlyArray<{ id: string; tracks: ReadonlyArray<{ id: string; items: ReadonlyArray<{ id: string }> }> }>;
 };
 
 export const thumbDir = (projectDir: string) => join(projectDir, ".cache", "thumbs");
@@ -93,6 +94,7 @@ export const allIds = (project: ProjectShape) =>
     ...project.media.map((m) => m.id),
     ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
     ...(project.scenes ?? []).map((s) => s.id),
+    ...(project.sequences ?? []).flatMap((s) => [s.id, ...s.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]),
   ]);
 
 export const realOr = (path: string) => realpath(path).catch(() => path);

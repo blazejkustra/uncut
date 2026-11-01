@@ -50,13 +50,14 @@ export const displayTracks = (project: ProjectModel) => [
   ...project.tracks.filter((t) => t.kind === "audio"),
 ];
 
-/** An id no media, track, item or scene uses yet: "clip-1", "clip-2", … */
+/** An id no media, track, item, scene or sequence uses yet: "clip-1", "clip-2", … */
 export function uniqueId(project: ProjectModel, base: string, taken = new Set<string>()) {
   const ids = new Set([
     ...taken,
     ...project.media.map((m) => m.id),
     ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
     ...(project.scenes ?? []).map((s) => s.id),
+    ...(project.sequences ?? []).flatMap((s) => [s.id, ...s.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]),
   ]);
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }

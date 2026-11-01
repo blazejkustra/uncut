@@ -31,6 +31,7 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief, plans the shots in a storyboard, builds the edit, then an independent critic reviews it from rendered frames. Every turn is one undoable step, and a meter shows how full the agent's context is.
 - **A real timeline.** Tracks, trims, slip and roll, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Nested sequences.** Fold neighbouring clips on Main into a sequence, play it from one clip, and it previews and exports as if it were on the timeline.
 - **Locked cuts.** Lock a clip, a range or a track and the agent can't change, move or unlock it. Its edit is refused with the reason, and you unlock by hand whenever you want.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.

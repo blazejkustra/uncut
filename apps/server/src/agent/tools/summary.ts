@@ -12,6 +12,7 @@ import {
   planCaptionEdit,
   locksNote,
   sectionsNote,
+  sequencesNote,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
@@ -46,6 +47,7 @@ function itemLine(it: Item, start: number): string {
     x.gap ? `gap ${x.gap}` : "",
     transition?.module ? `transition ${transition.module} ${transition.duration ?? ""}`.trim() : "",
     x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
+    x.sequence ? `sequence ${x.sequence}` : "",
     x.locked ? "locked" : "",
     x.mute ? "mute" : "",
     it.type === "captions" ? `${Array.isArray(x.words) ? x.words.length : 0} words` : "",
@@ -109,6 +111,9 @@ function projectNotes(project: Project) {
           locked: locksNote(project),
           lockedNote: "Only the user unlocks these. Edits that change or move them are refused: work around them, or ask the user to unlock one.",
         }
+      : {}),
+    ...(sequencesNote(project)
+      ? { sequences: sequencesNote(project), sequencesNote: "Sequence items on Main play these. Change what's in one with edit_sequence." }
       : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),

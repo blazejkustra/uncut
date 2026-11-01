@@ -2,6 +2,7 @@
 // aimed at a locked thing; agentLockProblem compares the project before and after a whole edit, so a
 // ripple, a relink or a transition next door can't reach it either. Only the user unlocks, and only
 // the agent is held to this. Browser-safe.
+import { sequenceContent } from "./nesting.ts";
 import { resolveStarts } from "./rules.ts";
 import type { Item, Problem, Project, Track } from "./types.ts";
 
@@ -51,6 +52,7 @@ function itemProblem(before: Project, after: Project, track: Track, item: Item, 
   if (!now || now.track.id !== track.id) return lockedItemProblem(track, item);
   if (item.locked && !now.item.locked) return problem(path, `only the user can unlock "${item.id}"; ask them to`);
   if (content(item) !== content(now.item)) return lockedItemProblem(track, item);
+  if (item.type === "sequence" && sequenceContent(before, item) !== sequenceContent(after, now.item)) return lockedItemProblem(track, item);
   const from = startsBefore.get(item.id);
   const to = startsAfter.get(item.id);
   if (from !== to)

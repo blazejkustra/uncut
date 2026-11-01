@@ -15,12 +15,13 @@ export const uniqueIn = (base: string, taken: Set<string>) => {
   }
 };
 
-/** Every id in use (media, tracks, items, scenes). */
-export const takenIds = (project: Pick<Project, "media" | "tracks"> & Partial<Pick<Project, "scenes">>) =>
+/** Every id in use (media, tracks, items, scenes, sequences and what they hold). */
+export const takenIds = (project: Pick<Project, "media" | "tracks"> & Partial<Pick<Project, "scenes" | "sequences">>) =>
   new Set([
     ...project.media.map((m) => m.id),
     ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
     ...(project.scenes ?? []).map((s) => s.id),
+    ...(project.sequences ?? []).flatMap((s) => [s.id, ...s.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]),
   ]);
 
 /** Free-track items other than `exclude`, as [start, end) in time order. */
