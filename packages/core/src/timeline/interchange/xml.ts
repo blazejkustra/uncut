@@ -23,14 +23,22 @@ export const escapeXml = (text: string) => text.replace(/&/g, "&amp;").replace(/
 
 const attributesOf = (source: string) => Object.fromEntries([...source.matchAll(ATTRIBUTE)].map((m) => [m[1]!, unescapeXml(m[2] ?? m[3] ?? "")]));
 
-const unclosedComment = (source: string) => {
-  const last = source.lastIndexOf("<!--");
-  return last !== -1 && !source.includes("-->", last);
+const SKIPPED_MARKUP = [
+  ["<!--", "-->"],
+  ["<?", "?>"],
+  ["<!DOCTYPE", ">"],
+] as const;
+
+const unclosed = (source: string, opener: string, closer: string) => {
+  const last = source.lastIndexOf(opener);
+  return last !== -1 && !source.includes(closer, last + opener.length);
 };
+
+const hasUnclosedMarkup = (source: string) => SKIPPED_MARKUP.some(([opener, closer]) => unclosed(source, opener, closer));
 
 /** The document's root element, or undefined when it isn't well formed. */
 export function parseXml(source: string): XmlNode | undefined {
-  if (unclosedComment(source)) return undefined;
+  if (hasUnclosedMarkup(source)) return undefined;
   const root: XmlNode = { name: "", attributes: {}, children: [], text: "" };
   const open = [root];
   for (const [, closing, name, attributes, selfClosed, text] of source.matchAll(TOKEN)) {

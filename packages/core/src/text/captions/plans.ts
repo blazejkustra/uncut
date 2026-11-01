@@ -2,6 +2,7 @@ import { TEXT_STYLES } from "../looks.ts";
 import { lookItem } from "../textPlan.ts";
 import { type CutTranscript, type SpeechEnvelope, soundParts, fillersOf, speechWords } from "../transcript.ts";
 import { mainEnd, projectDuration } from "../../timeline/rules.ts";
+import { takenIds } from "../../timeline/arrange/place.ts";
 import type { Op, Project, FieldSet, Item } from "../../timeline/types.ts";
 import { type CaptionMode, type CaptionLines, CAPTION_DEFAULTS, CAPTION_MODES, type CaptionWord, captionMode, CAPTION_MODE_NAMES } from "./settings.ts";
 import { checkCaptionLines, captionCards } from "./cards.ts";
@@ -38,8 +39,8 @@ export type MakeCaptionsPlan =
     }
   | { readonly problem: string };
 
-function freeId(project: Pick<Project, "media" | "tracks">, base: string, taken: ReadonlySet<string>) {
-  const ids = new Set([...taken, ...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]);
+function freeId(project: Pick<Project, "media" | "tracks" | "scenes" | "sequences">, base: string, taken: ReadonlySet<string>) {
+  const ids = new Set([...taken, ...takenIds(project)]);
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 

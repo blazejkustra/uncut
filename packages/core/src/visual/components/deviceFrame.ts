@@ -1,3 +1,4 @@
+import { takenIds } from "../../timeline/arrange/place.ts";
 import type { Project, Item, Canvas, Op, Media, Track, FieldSet } from "../../timeline/types.ts";
 import { type Device, screenRect, deviceOf, DEVICES, deviceSpec } from "./device.ts";
 import { componentBox } from "./registry.ts";
@@ -24,12 +25,6 @@ export interface DeviceFrameRequest {
 
 type Problem = { readonly problem: string };
 
-const allIds = (project: Pick<Project, "media" | "tracks" | "scenes">) =>
-  new Set([
-    ...project.media.map((m) => m.id),
-    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-    ...(project.scenes ?? []).map((s) => s.id),
-  ]);
 const freshId = (ids: Set<string>, base: string) => {
   for (let n = 1; ; n++) {
     if (!ids.has(`${base}-${n}`)) {
@@ -98,7 +93,7 @@ export function planDeviceFrame(
   const media: Media | undefined = req.media !== undefined ? project.media.find((m) => m.id === req.media) : undefined;
   if (req.media !== undefined && !media) return { problem: `media "${req.media}" does not exist.` };
   if (media && media.kind === "audio") return { problem: `"${media.id}" is audio-only: a device frame needs video or an image.` };
-  const ids = allIds(project);
+  const ids = takenIds(project);
   for (const id of [req.frameId, req.clipId]) if (id !== undefined && ids.has(id)) return { problem: `id "${id}" is already used.` };
   const frameId = req.frameId ?? freshId(ids, "device");
   ids.add(frameId);

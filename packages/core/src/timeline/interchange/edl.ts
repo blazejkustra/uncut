@@ -1,5 +1,5 @@
-// CMX 3600 EDL export: the main track's clips as cuts and dissolves. docs/timeline-interchange.md says
-// what maps and what's lost.
+// CMX 3600 EDL export: the main track's clips as cuts and dissolves. README.md's Timeline interchange
+// section says what maps and what's lost.
 import type { Media, Project } from "../types.ts";
 import { layout } from "../timeline.ts";
 import { itemLosses, sameTransition } from "./losses.ts";

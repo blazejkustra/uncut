@@ -420,7 +420,7 @@ export const layer = Layer.effect(
     const saveSubtitles = ({ output, overwrite }: { readonly output: string; readonly overwrite?: boolean | undefined }) =>
       Effect.gen(function* () {
         const { dir, project, mediaPath } = yield* current;
-        const saved = yield* Effect.promise(() => saveSubtitlesFile(project, dir, mediaPath, output, overwrite === true));
+        const saved = yield* Effect.promise(() => saveSubtitlesFile(flattenSequences(project), dir, mediaPath, output, overwrite === true));
         if ("reason" in saved) return yield* new ExportError({ reason: saved.reason, message: saved.message });
         return saved;
       });
@@ -428,7 +428,7 @@ export const layer = Layer.effect(
     const saveTimeline = ({ output, overwrite }: { readonly output: string; readonly overwrite?: boolean | undefined }) =>
       Effect.gen(function* () {
         const { project, mediaPath } = yield* current;
-        const saved = yield* Effect.promise(() => saveTimelineFile(project, mediaPath, output, overwrite === true));
+        const saved = yield* Effect.promise(() => saveTimelineFile(flattenSequences(project), mediaPath, output, overwrite === true));
         if ("reason" in saved) return yield* new ExportError({ reason: saved.reason, message: saved.message });
         return saved;
       });

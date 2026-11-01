@@ -5,6 +5,7 @@
 // Browser-safe.
 import { TEXT_STYLES, type TextLook } from "./looks.ts";
 import { safeMargin, textDecor } from "../visual/render.ts";
+import { takenIds } from "../timeline/arrange/place.ts";
 import type { FieldSet, Item, Op, Project, TextStyle, TimedModule, Track } from "../timeline/types.ts";
 
 export interface InsertTextRequest {
@@ -30,13 +31,8 @@ export interface InsertTextRequest {
 export type InsertTextPlan = { readonly ops: Array<Op>; readonly itemId: string; readonly itemIds: ReadonlyArray<string> } | { readonly problem: string };
 
 /** An id nothing in the project (or `taken`) uses: base-1, base-2, … */
-function freeId(project: Pick<Project, "media" | "tracks" | "scenes">, base: string, taken: Set<string>) {
-  const ids = new Set([
-    ...taken,
-    ...project.media.map((m) => m.id),
-    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-    ...(project.scenes ?? []).map((s) => s.id),
-  ]);
+function freeId(project: Pick<Project, "media" | "tracks" | "scenes" | "sequences">, base: string, taken: Set<string>) {
+  const ids = new Set([...taken, ...takenIds(project)]);
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
@@ -104,12 +100,7 @@ export function planInsertText(
   const taken = new Set<string>();
   // A requested id is reserved first, so a new track can't take it.
   if (req.id !== undefined) {
-    const used = [
-      ...project.media.map((m) => m.id),
-      ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-      ...(project.scenes ?? []).map((s) => s.id),
-    ];
-    if (used.includes(req.id)) return { problem: `The id "${req.id}" is already used in this project: pick another, or leave id out.` };
+    if (takenIds(project).has(req.id)) return { problem: `The id "${req.id}" is already used in this project: pick another, or leave id out.` };
     taken.add(req.id);
   }
   // Tracks as the timeline shows them, with what this plan puts on them. Hidden ones are skipped
