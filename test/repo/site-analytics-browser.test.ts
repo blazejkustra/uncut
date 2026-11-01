@@ -262,6 +262,7 @@ test("Download click: an event outside the EU and after Accept, none undecided o
 
 test("The launch film is requested under the CSP only once it's scrolled to", { skip }, async () => {
   const v = await visitor("US", 1280, 800);
+  await v.page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
   const isFilm = (r: { url(): string }) => r.url().endsWith("/assets/video/launch.mp4");
   let early = false;
   v.page.on("request", (r) => {
