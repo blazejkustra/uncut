@@ -5,6 +5,7 @@ import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../vis
 import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
+import { gapOf } from "./rules.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
 import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
@@ -124,6 +125,90 @@ function setSkips(item: DraftItem, skips: Skips) {
   else delete item.skips;
 }
 
+function trimItem(project: Draft, item: DraftItem, edge: "start" | "end", frames: number) {
+  // Box keys (D75) keep their values at a cut: a key goes on the cut with each keyed property's value there.
+  if (item.duration - frames < 1) throw new EditError(`Trimming ${frames} frames would leave "${item.id}" empty`);
+  item.duration -= frames;
+  if (edge === "start") {
+    // The source moves with the start, at the clip's speed. A still image has no source time.
+    if (item.type === "graphic") {
+      // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
+      const at = frames > 0 ? graphicTime(item, frames) : Math.max(0, (item.in ?? 0) + Math.round(frames * (item.speed ?? 1)));
+      if (at > 0 || item.in !== undefined) item.in = at;
+      if (item.skips) setSkips(item, skipsFrom(item.skips, frames));
+    } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+    if (item.start !== undefined) item.start += frames;
+    if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
+    // Keys stay on their moment: they shift with the new start, and ones now before it go.
+    if (item.keys && frames > 0)
+      item.keys = withCutKey(item.keys, frames, project.canvas.fps, item.duration + frames)
+        .map((k) => ({ ...k, frame: k.frame - frames }))
+        .filter((k) => k.frame >= 0);
+    else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - frames }));
+    if (item.gainKeys?.length) {
+      // The envelope keeps its value at the new start: a key goes there when keys were cut off.
+      const at = keyDbAt(item.gainKeys, frames);
+      const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - frames })).filter((k) => k.frame >= 0);
+      item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
+    }
+  } else {
+    if (item.keys?.some((k) => k.frame > item.duration))
+      item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + frames).filter((k) => k.frame <= item.duration);
+    if (item.skips)
+      setSkips(
+        item,
+        item.skips.filter((s) => s.at < item.duration),
+      );
+  }
+  if (item.keys?.length === 0) delete item.keys;
+}
+
+/** The item that plays right after `index` on its track, when one does: the next on main with no gap, a free item starting at its end. */
+export function adjacentAfter<T extends Pick<Item, "start" | "duration" | "gap">>(
+  track: { readonly role?: "main" | undefined; readonly items: ReadonlyArray<T> },
+  index: number,
+): T | undefined {
+  const item = track.items[index]!;
+  if (track.role === "main") {
+    const next = track.items[index + 1];
+    return next && gapOf(next) === 0 ? next : undefined;
+  }
+  const end = (item.start ?? 0) + item.duration;
+  return track.items.find((other) => other.start === end);
+}
+
+/** A roll's other side: the item after the cut, which the op changes too. */
+function rolledItem(project: Project, op: Op): Array<string> {
+  if (op.op !== "roll_edit") return [];
+  for (const track of project.tracks) {
+    const index = track.items.findIndex((i) => i.id === op.item);
+    if (index === -1) continue;
+    const next = adjacentAfter(track, index) as Item | undefined;
+    return next ? [next.id] : [];
+  }
+  return [];
+}
+
+function slipItem(project: Draft, item: DraftItem, frames: number) {
+  const timed = (item.type === "clip" || item.type === "audio") && item.media && hasSourceTime(project, item);
+  if (!timed) throw new EditError(`"${item.id}" has no media time to slip: only clips and sounds with video or audio slip`);
+  const next = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+  if (next < 0)
+    throw new EditError(
+      `Slipping "${item.id}" by ${frames} would start before its media (it can go back ${Math.floor((item.in ?? 0) / (item.speed ?? 1))} frames)`,
+    );
+  item.in = next;
+}
+
+function rollEdit(project: Draft, itemId: Id, frames: number) {
+  const { track, index, item } = editable(project, itemId);
+  const adjacent = adjacentAfter(track, index);
+  if (!adjacent) throw new EditError(`Nothing plays right after "${item.id}", so there's no cut to roll: use trim_item`);
+  const next = editable(project, (adjacent as DraftItem).id).item;
+  trimItem(project, item, "end", -frames);
+  trimItem(project, next, "start", frames);
+}
+
 function applyOp(project: Draft, op: Op) {
   switch (op.op) {
     case "insert_item": {
@@ -142,44 +227,15 @@ function applyOp(project: Draft, op: Op) {
       return;
     }
     case "trim_item": {
-      // Box keys (D75) keep their values at a cut: a key goes on the cut with each keyed property's value there.
-      const { item } = editable(project, op.item);
-      if (item.duration - op.frames < 1) throw new EditError(`Trimming ${op.frames} frames would leave "${item.id}" empty`);
-      item.duration -= op.frames;
-      if (op.edge === "start") {
-        // The source moves with the start, at the clip's speed. A still image has no source time.
-        if (item.type === "graphic") {
-          // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
-          const at = op.frames > 0 ? graphicTime(item, op.frames) : Math.max(0, (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1)));
-          if (at > 0 || item.in !== undefined) item.in = at;
-          if (item.skips) setSkips(item, skipsFrom(item.skips, op.frames));
-        } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
-        if (item.start !== undefined) item.start += op.frames;
-        if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
-        // Keys stay on their moment: they shift with the new start, and ones now before it go.
-        if (item.keys && op.frames > 0)
-          item.keys = withCutKey(item.keys, op.frames, project.canvas.fps, item.duration + op.frames)
-            .map((k) => ({ ...k, frame: k.frame - op.frames }))
-            .filter((k) => k.frame >= 0);
-        else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames }));
-        if (item.gainKeys?.length) {
-          // The envelope keeps its value at the new start: a key goes there when keys were cut off.
-          const at = keyDbAt(item.gainKeys, op.frames);
-          const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
-          item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
-        }
-      } else {
-        if (item.keys?.some((k) => k.frame > item.duration))
-          item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
-        if (item.skips)
-          setSkips(
-            item,
-            item.skips.filter((s) => s.at < item.duration),
-          );
-      }
-      if (item.keys?.length === 0) delete item.keys;
+      trimItem(project, editable(project, op.item).item, op.edge, op.frames);
       return;
     }
+    case "slip_item":
+      slipItem(project, editable(project, op.item).item, op.frames);
+      return;
+    case "roll_edit":
+      rollEdit(project, op.item, op.frames);
+      return;
     case "split_item": {
       const { track, index, item } = editable(project, op.item);
       if (op.at < 1 || op.at >= item.duration) throw new EditError(`Split point ${op.at} is outside "${item.id}"`);
@@ -333,7 +389,7 @@ export function applyEdit(
 ): Session {
   if (!["user", "agent"].includes(actor)) throw new EditError(`Unknown actor "${actor}"`);
   if (baseRevision < session.revision) {
-    const mine = new Set([...ops.flatMap(touches), ...ops.flatMap((op) => removedItems(session.project, op))]);
+    const mine = new Set([...ops.flatMap(touches), ...ops.flatMap((op) => [...removedItems(session.project, op), ...rolledItem(session.project, op)])]);
     const me = authorOf({ actor, agentId });
     const by = new Map<string, string>();
     for (const e of session.log) {
