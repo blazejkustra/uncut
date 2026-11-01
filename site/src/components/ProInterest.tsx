@@ -2,13 +2,19 @@
 import { useState } from "react";
 import { trackProInterest } from "../analytics.ts";
 
+const NOTES = {
+  idle: "Not built yet. No charge: a click only tells us what to build.",
+  noted: "Nothing was charged. This helps us decide what to build.",
+  unsent: "Analytics are off, so this click wasn't recorded. Use the email link below to tell us.",
+};
+
 export function InterestButton({ feature, name }: { feature: string; name: string }) {
-  const [noted, setNoted] = useState(false);
+  const [state, setState] = useState<keyof typeof NOTES>("idle");
+  const noted = state === "noted";
 
   function register() {
     if (noted) return;
-    trackProInterest(feature);
-    setNoted(true);
+    setState(trackProInterest(feature) ? "noted" : "unsent");
   }
 
   return (
@@ -17,7 +23,7 @@ export function InterestButton({ feature, name }: { feature: string; name: strin
         {noted ? "Noted, thanks" : "I'd pay for this"}
       </button>
       <p className="pro-note" role="status">
-        {noted ? "Nothing was charged. This helps us decide what to build." : "Not built yet. No charge: a click only tells us what to build."}
+        {NOTES[state]}
       </p>
     </div>
   );

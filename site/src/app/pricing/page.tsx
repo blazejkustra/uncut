@@ -32,7 +32,7 @@ const PRO_IDEAS = [
     feature: "cloud_render",
     name: "cloud render",
     title: "Cloud render",
-    benefit: "Send the export to our machines and keep cutting while your Mac stays free.",
+    benefit: "Send the export to our machines and keep working while it renders.",
   },
   {
     feature: "hosted_proxies",

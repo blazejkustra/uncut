@@ -274,13 +274,15 @@ const clickEmail = (p: Page) =>
     (a as HTMLElement).click();
   });
 const notedCount = (p: Page) => p.$$eval('.pro-btn[aria-disabled="true"]', (buttons) => buttons.length);
+const pointedToEmail = (p: Page) => p.$$eval(".pro-action .pro-note", (notes) => notes.filter((n) => n.textContent?.includes("email link")).length);
+const CONTACT = ["kustrablazej", "gmail.com"].join("@");
 
-test("Pro interest: events outside the EU and after Accept, none undecided or after Reject; the buttons confirm either way", { skip }, async () => {
+test("Pro interest: events outside the EU and after Accept, none undecided or after Reject; a button confirms only what was sent", { skip }, async () => {
   const us = await visitor("US");
   await us.page.goto(`${base}/pricing/`, { waitUntil: "networkidle0" });
   assert.equal(
     await us.page.$eval('a[href^="mailto:"]', (a) => (a as HTMLAnchorElement).href),
-    "mailto:kustrablazej@gmail.com?subject=Email%20me%20when%20Uncut%20Pro%20exists",
+    `mailto:${CONTACT}?subject=Email%20me%20when%20Uncut%20Pro%20exists`,
   );
   await clickIdea(us.page, 0);
   await clickIdea(us.page, 0);
@@ -288,7 +290,8 @@ test("Pro interest: events outside the EU and after Accept, none undecided or af
   assert.deepEqual(await proInterest(us.page), ["review_links", "email"]);
   await us.page.evaluate(() => delete window.gtag);
   await clickIdea(us.page, 1);
-  assert.equal(await notedCount(us.page), 2, "confirms with gtag blocked");
+  assert.equal(await notedCount(us.page), 1, "no confirmation with gtag blocked");
+  assert.equal(await pointedToEmail(us.page), 1, "the email link instead");
   await us.page.browserContext().close();
 
   const eu = await visitor("PL");
@@ -301,12 +304,14 @@ test("Pro interest: events outside the EU and after Accept, none undecided or af
   await clickIdea(eu.page, 1);
   await clickEmail(eu.page);
   assert.deepEqual(await proInterest(eu.page), [], "rejected");
-  assert.equal(await notedCount(eu.page), 2, "confirms without consent");
+  assert.equal(await notedCount(eu.page), 0, "no confirmation without consent");
+  assert.equal(await pointedToEmail(eu.page), 2, "the email link instead");
   await eu.page.click("footer [data-cookie-settings]");
   await settle(eu.page);
   await eu.page.click(".consent-btn:last-child");
   await clickIdea(eu.page, 2);
   assert.deepEqual(await proInterest(eu.page), ["visual_search"], "accepted");
+  assert.equal(await notedCount(eu.page), 1, "confirms what was sent");
   await eu.page.browserContext().close();
 });
 

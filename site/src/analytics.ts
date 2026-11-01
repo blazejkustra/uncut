@@ -124,10 +124,11 @@ export function openSettings(): void {
   openBanner(true);
 }
 
-/** Events go through here, so a click never reaches gtag while consent is denied or undecided. */
-function trackEvent(name: string, params: Record<string, string>): void {
-  if (!decide(regionFromCookies(document.cookie), readStored(), id).load) return;
-  window.gtag?.("event", name, params);
+/** Events go through here, so a click never reaches gtag while consent is denied or undecided. Returns whether it fired. */
+function trackEvent(name: string, params: Record<string, string>): boolean {
+  if (!decide(regionFromCookies(document.cookie), readStored(), id).load || !window.gtag) return false;
+  window.gtag("event", name, params);
+  return true;
 }
 
 function trackDownload(event: MouseEvent): void {
@@ -135,8 +136,8 @@ function trackDownload(event: MouseEvent): void {
   if (onDownload) trackEvent("download_click", { link_url: DOWNLOAD_URL, file_extension: "dmg" });
 }
 
-export function trackProInterest(feature: string): void {
-  trackEvent("pro_interest", { feature });
+export function trackProInterest(feature: string): boolean {
+  return trackEvent("pro_interest", { feature });
 }
 
 let started = false;
