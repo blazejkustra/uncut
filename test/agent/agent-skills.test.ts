@@ -40,7 +40,7 @@ test("Uncut's own skills (the bundled uncut.skills plugin): names, a review chec
     all.map((s) => s.name),
     Object.values(BUILTIN_IDS),
   );
-  assert.equal(all.length, 11);
+  assert.equal(all.length, 16);
   for (const s of all) {
     assert.ok(/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name) && s.title && s.description && s.plugin === "uncut.skills", s.name);
     const list = skillChecklist(s.instructions);
@@ -114,6 +114,19 @@ test("suggestSkills, a brief with no type (as before D217): a kind of film from 
   );
 });
 
+test("the production skills name only Uncut's real tools and edit ops", () => {
+  const tools = new Set((JSON.parse(readFileSync("spec/agent/tools.json", "utf8")) as { tools: Array<{ name: string }> }).tools.map((t) => t.name));
+  const ops = readFileSync("spec/schema/edit-ops.schema.json", "utf8");
+  const production = bundledSkills().filter((s) => ["loudness-rules", "echo-cleanup", "vertical-reframe", "broll-over-dialogue", "cut-takes"].includes(s.name));
+  assert.equal(production.length, 5);
+  for (const skill of production) {
+    assert.doesNotMatch(skill.instructions, /—/, skill.name);
+    for (const [word] of skill.instructions.matchAll(/\b[a-z]+_[a-z_]+\b/g)) {
+      assert.ok(tools.has(word) || ops.includes(`"${word}"`), `${skill.name} names ${word}`);
+    }
+  }
+});
+
 test("the store (D232): a plugin's skills listed read-only, never saved, deleted or shadowed; the user's own beside them; old builtin- ids read as their names", async () => {
   const dataDir = join(root, "store-data");
   const projectDir = join(root, "store-project");
@@ -133,7 +146,7 @@ test("the store (D232): a plugin's skills listed read-only, never saved, deleted
   );
   await saveSkill(dirs, { id: "my-promo", name: "My promo", scope: "global", description: "", body: "Review checklist\n- Mine" });
   const state = await readBrand(dirs);
-  assert.equal(state.skills.filter((s) => s.plugin === "uncut.skills").length, 11);
+  assert.equal(state.skills.filter((s) => s.plugin === "uncut.skills").length, 16);
   const sound = state.skills.find((s) => s.id === BUILTIN_IDS.sound)!;
   assert.equal(sound.name, "Sound design");
   assert.equal(sound.builtin, true);

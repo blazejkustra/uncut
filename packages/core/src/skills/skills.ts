@@ -20,6 +20,11 @@ export const BUILTIN_IDS = {
   brand: "brand-application",
   /** D232: the skill "Make from reference" in the Brand tab calls. */
   brandKit: "make-brand-kit",
+  loudness: "loudness-rules",
+  echo: "echo-cleanup",
+  vertical: "vertical-reframe",
+  broll: "broll-over-dialogue",
+  takes: "cut-takes",
   /** D292: a one-take, never-cut motion film on the beat (render(t) graphics, uncut:lib/motion.js). */
   film: "motion-film",
 } as const;
