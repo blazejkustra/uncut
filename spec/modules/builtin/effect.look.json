@@ -3,7 +3,7 @@
   "id": "effect.look",
   "kind": "effect",
   "name": "Filter",
-  "description": "A colour look on a clip: look (one of the built-in looks, or a plugin's with custom) at intensity 0-1",
+  "description": "A colour look on a clip: look (one of the built-in looks, a plugin's with custom, or a project's LUT) at intensity 0-1",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -22,7 +22,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 120,
-        "description": "The look: natural, warm, cool, vintage, film, teal-orange, bw, noir, fade, vivid, moody, sepia, cinematic, pastel, golden, arctic; a plugin's carries its definition in custom."
+        "description": "The look: natural, warm, cool, vintage, film, teal-orange, bw, noir, fade, vivid, moody, sepia, cinematic, pastel, golden, arctic; a plugin's carries its definition in custom; lut-<hash> is one of the project's LUTs."
       },
       "intensity": {
         "type": "number",
@@ -234,8 +234,9 @@
     },
     "if": {
       "not": {
-        "required": [
-          "custom"
+        "anyOf": [
+          { "required": ["custom"] },
+          { "properties": { "look": { "pattern": "^lut-" } } }
         ]
       }
     },

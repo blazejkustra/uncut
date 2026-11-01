@@ -51,6 +51,14 @@ export interface Media {
   readonly probe?: MediaProbe;
 }
 
+/** A user LUT (a .cube file) kept in the project: `size`³ RGB triples as little-endian 16-bit words in base64. */
+export interface ProjectLut {
+  readonly id: Id;
+  readonly name: string;
+  readonly size: number;
+  readonly data: string;
+}
+
 export interface Transform {
   readonly x?: number;
   readonly y?: number;
@@ -281,6 +289,7 @@ export interface Project {
   /** Issue #118: locked stretches and ones flagged for the agent to redo. */
   readonly sections?: ReadonlyArray<Section>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
+  readonly luts?: ReadonlyArray<ProjectLut>;
   readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
   /**
    * D291: motion blur in the export (graphics): `on` its default (absent: on for Standard and High,

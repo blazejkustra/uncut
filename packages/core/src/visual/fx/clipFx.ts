@@ -1,6 +1,7 @@
-import type { Item, ModuleUse } from "../../timeline/types.ts";
+import type { Item, ModuleUse, ProjectLut } from "../../timeline/types.ts";
 import { type ClipBox, fitRect, moveBox, type Rect } from "../box.ts";
 import type { ColourSpec } from "./colour.ts";
+import { lutTable } from "./cube.ts";
 import { type LookDef, lookInfo, type Adjust, LOOK, num, ADJUST, adjustOf, isNeutral, effectInfo, effectParams } from "./defs.ts";
 
 // ---- a clip's effects, compiled ----
@@ -26,10 +27,12 @@ export interface ClipFx {
 const live = (item: Pick<Item, "effects">): ReadonlyArray<ModuleUse> =>
   Array.isArray(item.effects) ? item.effects.filter((e) => e && typeof e.module === "string" && !e.bypass) : [];
 
-/** A look entry's definition: a built-in one, or the custom look it carries (a plugin's, D136). */
-export function lookDefOf(params: unknown): LookDef | undefined {
+/** A look entry's definition: a built-in one, a project's LUT, or the custom look it carries (a plugin's, D136). */
+export function lookDefOf(params: unknown, luts?: ReadonlyArray<ProjectLut>): LookDef | undefined {
   const p = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
   if (p.custom && typeof p.custom === "object") return p.custom as LookDef;
+  const lut = luts?.find((l) => l.id === p.look);
+  if (lut) return { cube: lutTable(lut) };
   return lookInfo(typeof p.look === "string" ? p.look : undefined)?.def;
 }
 
@@ -38,7 +41,7 @@ export const fxSkips = (media: { readonly kind: string; readonly path?: string }
   !!media && media.kind === "image" && /\.svg$/i.test(media.path ?? "");
 
 /** A clip's effects compiled to what the preview and export draw; undefined when nothing is drawn. */
-export function clipFx(item: Pick<Item, "type" | "effects">): ClipFx | undefined {
+export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArray<ProjectLut>): ClipFx | undefined {
   if (item.type !== "clip") return undefined;
   const entries = live(item);
   if (!entries.length) return undefined;
@@ -46,7 +49,7 @@ export function clipFx(item: Pick<Item, "type" | "effects">): ClipFx | undefined
   const colour: { look?: ColourSpec["look"]; adjust?: Adjust; invert?: boolean } = {};
   for (const e of entries) {
     if (e.module === LOOK) {
-      const def = lookDefOf(e.params);
+      const def = lookDefOf(e.params, luts);
       const p = (e.params ?? {}) as Record<string, unknown>;
       const intensity = num(p.intensity, 0, 1, 1);
       if (def && intensity > 0) colour.look = { def, intensity };

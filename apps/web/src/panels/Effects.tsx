@@ -5,6 +5,7 @@
 // on the canvas. Fine-tuning (intensity, Adjust, effect settings) is in the Inspector.
 import {
   clipFx,
+  lutTable,
   EFFECTS,
   effectParams,
   fxOverlayInner,
@@ -257,7 +258,11 @@ export function EffectsLibrary({ project }: { project: Project }) {
     [pluginFilters],
   );
   const fxs = useMemo(() => EFFECTS.map((e) => ({ info: e, fx: effectFx(e) })), []);
-  const shownLooks = [...looks, ...plugins].filter((l) => matches(query, l.name, l.description));
+  const luts = useMemo(
+    () => (project.luts ?? []).map((l) => ({ id: l.id, name: l.name, description: "Your LUT", fx: lookFx(l.id, { cube: lutTable(l) }) })),
+    [project.luts],
+  );
+  const shownLooks = [...luts, ...looks, ...plugins].filter((l) => matches(query, l.name, l.description));
   const shaders = useMemo(() => shaderDefs(project), [project, contributions]);
   const activeShader = (effects.find((e) => e.module === SHADER)?.params as { shader?: string } | undefined)?.shader;
   const shownShaders = shaders.filter((d) => matches(query, d.name, d.description ?? "", d.from, "shader"));
@@ -324,6 +329,9 @@ export function EffectsLibrary({ project }: { project: Project }) {
           <div className="muted small" data-testid="effects-target">
             {clip ? `On ${clip.name ?? media?.name ?? clip.id}` : "No clip selected"}
           </div>
+          <button className="btn" data-testid="import-lut" disabled={!online} onClick={() => void actions.importMedia()}>
+            Import LUT (.cube)
+          </button>
         </div>
         {shownLooks.length > 0 && (
           <>

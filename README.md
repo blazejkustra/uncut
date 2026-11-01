@@ -36,7 +36,7 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
 - **Sound.** The Uncut sounds pack, your own sound folders, your Music library, and online search on Openverse or Freesound (with your own key). A mixer with ducking under speech and loudness targets for export.
-- **Effects, looks and transitions.** Filters, colour looks and GPU shader effects, with the preview drawn on the GPU by default.
+- **Effects, looks and transitions.** Filters, colour looks, your own .cube LUTs and GPU shader effects, with the preview drawn on the GPU by default.
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects, voiceover and music with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
