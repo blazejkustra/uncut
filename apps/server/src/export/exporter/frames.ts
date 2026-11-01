@@ -328,7 +328,7 @@ export async function openFrameSession(
         // A blur dissolve (D133): gblur at the frame's sigma (output px).
         const blur = v.blur ? `,${blurFilters((v.blur * H) / ch)}` : "";
         // A clip's looks and effects (D136): picture effects before its box (which it then always has), overlays after it.
-        const effects = v.item.type === "clip" && media && !svg ? clipFx(v.item) : undefined;
+        const effects = v.item.type === "clip" && media && !svg ? clipFx(v.item, project.luts) : undefined;
         // D213: a shader effect is a picture pass, drawn first with the rasteriser's WebGPU as the export does.
         const shader = v.item.type === "clip" && media && !svg ? clipShader(v.item) : undefined;
         const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;

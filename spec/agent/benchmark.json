@@ -1,0 +1,153 @@
+{
+  "note": "Measured by scripts/benchmark.ts on one Mac with a Claude Code sign-in. Spend is what Claude Code reports, at list price. seeded: a scripted builder plants one defect per film and the real critic reviews one round; caughtAsBlocker needs a blocker of the right kind or words near the defect, caughtListed accepts a listed defect too, matcherNoise counts how often those rules fire on clean films. agent: the real builder and critic make each prompt.",
+  "caveats": [
+    "Small sample: 7 defects twice each, 2 clean films twice each, 2 agent prompts once each, on one synthetic title film style.",
+    "Read blockerCatchRate first. No clean run had a blocker, so a blocker near a seeded defect is signal. The listed rate is weaker: its matching rules fired on 9 of 28 clean pairs.",
+    "No clean film passed: the critic scored them under the bar on hook, motion or variety. So roundFailed says nothing about detection.",
+    "In agent mode no film passed within its rounds, so turns to pass has no number yet: 2 and 3 rounds ran, then the loop stopped."
+  ],
+  "agent": {
+    "measuredOn": "2026-11-01",
+    "model": "claude-sonnet-5-5",
+    "runs": 2,
+    "toolCalls": 47,
+    "toolFailures": 1,
+    "toolFailureRate": 0.021,
+    "timelineEdits": 10,
+    "timelineEditFailures": 0,
+    "passed": 0,
+    "roundsToPass": [
+      null,
+      null
+    ],
+    "roundsRun": [
+      2,
+      3
+    ],
+    "seconds": [
+      116.4,
+      189
+    ],
+    "spend": {
+      "builder": {
+        "costUsd": 0.8192,
+        "inputTokens": 70,
+        "cacheReadTokens": 1823431,
+        "cacheWriteTokens": 108402,
+        "outputTokens": 20311
+      },
+      "critic": {
+        "costUsd": 0.2258,
+        "inputTokens": 8,
+        "cacheReadTokens": 15332,
+        "cacheWriteTokens": 41890,
+        "outputTokens": 5674
+      },
+      "total": {
+        "costUsd": 1.0451,
+        "inputTokens": 78,
+        "cacheReadTokens": 1838763,
+        "cacheWriteTokens": 150292,
+        "outputTokens": 25985
+      }
+    }
+  },
+  "seeded": {
+    "measuredOn": "2026-11-01",
+    "model": "claude-sonnet-5-5",
+    "seededRuns": 14,
+    "caughtAsBlocker": 10,
+    "caughtListed": 12,
+    "roundFailed": 14,
+    "blockerCatchRate": 0.714,
+    "listedCatchRate": 0.857,
+    "cleanRuns": 4,
+    "cleanPassed": 0,
+    "cleanWithBlockers": 0,
+    "matcherNoise": {
+      "pairs": 28,
+      "hits": 9
+    },
+    "perCase": [
+      {
+        "id": "clean-a",
+        "defect": null,
+        "runs": 2,
+        "asBlocker": 0,
+        "listed": 0,
+        "passed": 0
+      },
+      {
+        "id": "clean-b",
+        "defect": null,
+        "runs": 2,
+        "asBlocker": 0,
+        "listed": 0,
+        "passed": 0
+      },
+      {
+        "id": "placeholder",
+        "defect": "the timeline panel the storyboard plans is an empty frame",
+        "runs": 2,
+        "asBlocker": 2,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "overflow",
+        "defect": "the headline runs off the right edge of the frame",
+        "runs": 2,
+        "asBlocker": 2,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "illegible",
+        "defect": "the headline is tiny and low in contrast",
+        "runs": 2,
+        "asBlocker": 2,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "blank",
+        "defect": "one second of black in the middle of the film",
+        "runs": 2,
+        "asBlocker": 2,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "invented",
+        "defect": "a customer count the brief forbids",
+        "runs": 2,
+        "asBlocker": 2,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "wrong-words",
+        "defect": "the headline's words differ from the approved storyboard",
+        "runs": 2,
+        "asBlocker": 0,
+        "listed": 2,
+        "passed": 0
+      },
+      {
+        "id": "off-centre",
+        "defect": "a headline meant to be centred sits well left of centre",
+        "runs": 2,
+        "asBlocker": 0,
+        "listed": 0,
+        "passed": 0
+      }
+    ],
+    "spend": {
+      "costUsd": 0.2882,
+      "inputTokens": 36,
+      "cacheReadTokens": 169769,
+      "cacheWriteTokens": 12138,
+      "outputTokens": 22250
+    }
+  }
+}

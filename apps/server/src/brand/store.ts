@@ -616,6 +616,8 @@ export function normReview(raw: unknown): Review | undefined {
     ...(str(o.rule, 60) ? { rule: str(o.rule, 60) } : {}),
     ...(typeof o.to === "number" && Number.isFinite(o.to) ? { to: Math.max(0, o.to) } : {}),
     ...(o.unresolved === true ? { unresolved: true } : {}),
+    ...(typeof o.frame === "number" && Number.isFinite(o.frame) ? { frame: Math.max(0, Math.round(o.frame)) } : {}),
+    ...(typeof o.still === "string" && AGENT_IMAGE_NAME.test(o.still) ? { still: o.still } : {}),
   });
   const det = r.determinism && typeof r.determinism === "object" ? (r.determinism as Record<string, unknown>) : undefined;
   const looked = r.looked && typeof r.looked === "object" ? (r.looked as Record<string, unknown>) : undefined;

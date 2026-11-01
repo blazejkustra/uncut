@@ -297,3 +297,7 @@ export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>
   }
   return { ops: out };
 }
+
+/** The project as project_read's full detail shows it: a LUT's table is about 290 KB of base64 the agent can't use. */
+export const withoutLutTables = (project: Project) =>
+  project.luts ? { ...project, luts: project.luts.map(({ id, name, size }) => ({ id, name, size })) } : project;
