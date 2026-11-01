@@ -181,7 +181,7 @@ ${UNCUT_BASICS}
 
 We could not find an official CapCut Pro price: it is set in the app.
 
-Outside the EU and UK, CapCut's terms, last updated April 15, 2026, give it "a non-exclusive, royalty-free, transferable, sub-licensable, perpetual and worldwide license" to content you submit, "for the purposes of operating, developing and providing the Services, subject to your Platform settings" (section 10). The EU and UK supplement says the User-Generated Content paragraphs of section 10 "shall not apply". Read the terms for your region if you handle client work.
+CapCut's global terms, last updated April 15, 2026, give Bytedance Pte. Ltd. and its affiliates "a non-exclusive, royalty-free, transferable, sub-licensable, perpetual and worldwide license" to content you submit, "for the purposes of operating, developing and providing the Services, subject to your Platform settings" (section 10). The EU and UK supplement says the User-Generated Content paragraphs of section 10 "shall not apply". US users have separate terms with TikTok USDS Joint Venture LLC, of the same date. Their User-Generated Content section is wider: "an unconditional, non-exclusive, royalty-free, fully transferable, sub-licensable, perpetual and worldwide license" for that company, its affiliates, agents, service providers, partners and "other connected third parties", with the same purposes and settings wording. Read the terms for your region if you handle client work.
 
 ## Where CapCut is better
 
@@ -206,6 +206,7 @@ Pick CapCut for quick social edits by hand, for free. Pick Uncut if you want an 
 
 - [CapCut desktop editor](https://www.capcut.com/tools/desktop-video-editor)
 - [CapCut terms of service](https://www.capcut.com/clause/terms-of-service)
+- [CapCut US terms of service](https://sf19.tiktokcdn-us.com/obj/draft-ttp-tx/terms-policy/capcut_terms_of_service_en-US.html)
 ${UNCUT_SOURCES}`,
   },
   {
