@@ -445,7 +445,7 @@
     },
     {
       "name": "export_video",
-      "description": "Export the .mp4, only when the user asks: the Export dialog's job (they see progress, can cancel). Waits until saved; one at a time; a taken name gets \" 2\". Asks on a card unless Auto and the user named the folder in this message.",
+      "description": "Export the video (.mp4, or .mov with a ProRes codec), only when the user asks: the Export dialog's job (they see progress, can cancel). Waits until saved; one at a time; a taken name gets \" 2\". Asks on a card unless Auto and the user named the folder in this message.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -457,7 +457,9 @@
           "loudness": { "enum": ["normal", "quiet", "broadcast", "target", "off"] },
           "motionBlur": { "type": "boolean" },
           "fps": { "type": "number" },
-          "shortSide": { "type": "number" }
+          "shortSide": { "type": "number" },
+          "codec": { "enum": ["h264", "hevc", "prores422", "prores422hq", "prores4444"], "description": "h264 (default), hevc, or a ProRes master" },
+          "transparent": { "type": "boolean", "description": "prores4444 only: leave out the canvas background, keeping alpha" }
         }
       },
       "returns": "{ saved, seconds, size, picture, preset, tookSeconds, warnings? }"

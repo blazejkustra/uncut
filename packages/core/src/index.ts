@@ -412,13 +412,17 @@ export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
 export {
   CODEC_NAMES,
+  codecExtension,
   defaultEncoder,
   exportFrameRates,
   exportShortSides,
   HARDWARE_H264_QUALITY,
+  isProRes,
   outputSize,
   presetBitrateMbps,
+  PRORES_CODECS,
   SOFTWARE_H264_CRF,
+  VIDEO_EXTENSION,
   type ExportEncoder,
 } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
