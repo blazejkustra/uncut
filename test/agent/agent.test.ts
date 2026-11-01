@@ -198,7 +198,7 @@ test("edits are atomic: an invalid edit leaves the project untouched", () => {
 
 test("every op type works and keeps the promo valid", () => {
   let s = createSession(promo);
-  const mainId = promo.tracks.find((t) => t.role === "main")!.id;
+  const mainId = (promo as Project).tracks.find((t) => t.role === "main")!.id;
   const steps: Array<Array<Op>> = [
     [
       {
