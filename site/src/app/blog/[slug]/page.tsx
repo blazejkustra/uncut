@@ -84,7 +84,9 @@ export default async function PostPage({ params }: Props) {
         </article>
         <aside className="post-cta">
           <h2>Try Uncut</h2>
-          <p className="sub">Free and open source, for Apple silicon Macs. Install Claude Code and sign in, then open Uncut and tell it what to make.</p>
+          <p className="sub">
+            Free and open source, for Apple silicon Macs. Install Claude Code or Codex and sign in, then open Uncut and tell it what to make.
+          </p>
           <DownloadButtons />
         </aside>
       </main>
