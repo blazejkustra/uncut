@@ -4,6 +4,7 @@ import {
   AGENT_IMAGE_PATH,
   THUMB_PATH,
   RECENT_THUMB_PATH,
+  FOOTAGE_THUMB_PATH,
   MEDIA_FILE_PATH,
   PROXY_PATH,
   SFX_FILE_PATH,
@@ -44,6 +45,8 @@ export const agentImageUrl = (name: string) => serverUrl(AGENT_IMAGE_PATH, name)
 export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
 /** D205: a poster from the user's media index. */
 export const recentThumbUrl = (id: string) => serverUrl(RECENT_THUMB_PATH, id);
+/** A frame of an indexed clip, for a search result. */
+export const footageThumbUrl = (fingerprint: string, second: number) => serverUrl(`${FOOTAGE_THUMB_PATH}/${fingerprint}`, String(second));
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 /** D212: a media item's preview proxy (tagged with the key of the file it was made from). */

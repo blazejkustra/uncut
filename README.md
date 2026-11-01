@@ -34,6 +34,7 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Nested sequences.** Fold neighbouring clips on Main into a sequence, play it from one clip, and it previews and exports as if it were on the timeline.
 - **Locked cuts.** Lock a clip, a range or a track and the agent can't change, move or unlock it. Its edit is refused with the reason, and you unlock by hand whenever you want.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
+- **Search across your footage.** A local index of every clip's speech, with word timecodes, in one project or all of them. Find a moment in the Media panel and drag it onto the timeline; the agent searches the same index with `media_search`. Pictures are searchable once the agent has described them.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
 - **Sound.** The Uncut sounds pack, your own sound folders, your Music library, and online search on Openverse or Freesound (with your own key). A mixer with ducking under speech and loudness targets for export.
@@ -201,7 +202,7 @@ Never your footage, frames, transcripts, prompts, file names, paths or error mes
 
 What else leaves your Mac, and only when you use it:
 
-- **The agent.** Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac.
+- **The agent.** Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under that account and its terms. Your footage files stay on your Mac. That includes search results from the footage index when the agent searches it, and the frames it looks at to describe a clip. The index itself stays on your Mac, in Uncut's data folder, and indexing sends nothing anywhere.
 - **Outside agents.** If you turn this on, the client you connect (Claude Code, Claude Desktop, Cursor) receives what its tools return: project data, frames, transcripts, file names. That client sends them on under its own account and terms. Uncut's token stays in a file only your user can read, in Uncut's data folder.
 - **Generators.** Image, video, sound effect, voiceover and music generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
 - **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.

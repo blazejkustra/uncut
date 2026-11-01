@@ -23,6 +23,7 @@ import { Exporter } from "../export/exporter.ts";
 import { graphicToken } from "../export/graphicToken.ts";
 import { MediaLibrary } from "../media/media.ts";
 import { importablePath, MediaIndex, shownEntry } from "../media/mediaIndex.ts";
+import { FootageIndex, MAX_FOOTAGE_HITS } from "../footage/footageIndex.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { copyComponent } from "../plugins/contributions.ts";
@@ -59,6 +60,7 @@ interface Services {
   readonly keys: typeof Keys.Service;
   readonly sounds: typeof Library.Service;
   readonly mediaIndex: typeof MediaIndex.Service;
+  readonly footage: typeof FootageIndex.Service;
   readonly proxies: typeof Proxies.Service;
   readonly links: typeof LinkImport.Service;
 }
@@ -88,6 +90,7 @@ const handlersLayer = ({
   keys,
   sounds,
   mediaIndex,
+  footage,
   proxies,
   links,
 }: Services) => {
@@ -201,6 +204,11 @@ const handlersLayer = ({
         });
         return { ...(imported.entries[0] ? { mediaId: imported.entries[0].id } : {}), name: entry.name, copied: target.copied };
       }),
+    [RPC_METHODS.footageSearch]: ({ query, thisProject, limit }) =>
+      Effect.map(footage.search({ query, thisProject, limit: limit ?? MAX_FOOTAGE_HITS }), (hits) => ({ hits })),
+    [RPC_METHODS.footageStatus]: () => footage.status,
+    [RPC_METHODS.footageStart]: () => footage.start,
+    [RPC_METHODS.footageCancel]: () => footage.cancel,
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
     [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
@@ -312,6 +320,7 @@ export const layer = Layer.unwrap(
     const keys = yield* Keys;
     const sounds = yield* Library;
     const mediaIndex = yield* MediaIndex;
+    const footage = yield* FootageIndex;
     const proxies = yield* Proxies;
     const links = yield* LinkImport;
     const rpcLayer = handlersLayer({
@@ -332,6 +341,7 @@ export const layer = Layer.unwrap(
       keys,
       sounds,
       mediaIndex,
+      footage,
       proxies,
       links,
     }).pipe(Layer.provideMerge(RpcSerialization.layerJson));

@@ -140,7 +140,11 @@ function planAudio(project: ProjectModel, media: Media, _length: number, frame: 
  * it (main: the slot nearest the drop; a free track: the nearest free spot; a video file on an audio
  * lane: its sound), else where core planPlaceMedia puts it. One edit.
  */
-export function planDropMedia(project: ProjectModel, mediaId: string, at: { readonly frame: number; readonly track?: string | undefined }): Planned {
+export function planDropMedia(
+  project: ProjectModel,
+  mediaId: string,
+  at: { readonly frame: number; readonly track?: string | undefined; readonly range?: { readonly in: number; readonly frames: number } | undefined },
+): Planned {
   const media = project.media.find((m) => m.id === mediaId);
   if (!media) return { problem: "That media isn't in the project any more." };
   const plan = planPlaceMedia(project, [media], { ...at, imageSeconds: defaultSeconds("still") }, takenIds(project));

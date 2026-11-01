@@ -127,6 +127,7 @@ export function planPlaceMedia(
     readonly frame: Frame;
     readonly track?: Id | undefined;
     /** A photo's length (F30: the app's default; IMAGE_SECONDS when absent). */ readonly imageSeconds?: number | undefined;
+    /** Only this stretch of the file (a search result), in project frames. */ readonly range?: { readonly in: Frame; readonly frames: Frame } | undefined;
   },
   taken: Set<string>,
 ): PlaceMediaPlan | { readonly problem: string } {
@@ -140,7 +141,7 @@ export function planPlaceMedia(
   const target = at.track !== undefined ? tracks.find((t) => t.id === at.track) : undefined;
   if (target?.locked) return { problem: `The ${target.name} track is locked. Unlock it to add to it.` };
   for (const m of media) {
-    const length = placedLength(m, fps, at.imageSeconds);
+    const length = at.range?.frames ?? placedLength(m, fps, at.imageSeconds);
     if (!length) return { problem: `${m.name} has no known length, so it can't go on the timeline.` };
     let track = target && itemTypeFor(m, target) ? target : undefined;
     const type = track ? itemTypeFor(m, track)! : m.kind === "audio" ? "audio" : "clip";
@@ -167,7 +168,7 @@ export function planPlaceMedia(
       }
     }
     const itemId = uniqueIn(type === "audio" ? "audio" : "clip", taken);
-    const body = { id: itemId, type, media: m.id, ...(m.kind === "image" ? {} : { in: 0 }), duration: length } as Item;
+    const body = { id: itemId, type, media: m.id, ...(m.kind === "image" ? {} : { in: at.range?.in ?? 0 }), duration: length } as Item;
     let start: number;
     if (track.role === "main") {
       // The cut nearest the drop: after every clip whose middle is at or before it.

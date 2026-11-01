@@ -54,6 +54,7 @@ import { ProjectFormat } from "../project/format.ts";
 import { MediaLibrary } from "../media/media.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { MediaIndex } from "../media/mediaIndex.ts";
+import { FootageIndex } from "../footage/footageIndex.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { Capture } from "../capture/capture.ts";
 import { uploadedTake } from "../capture/takes.ts";
@@ -223,6 +224,7 @@ export const layer = Layer.effect(
     const capture = yield* Capture;
     const sounds = yield* Library;
     const mediaIndex = yield* MediaIndex;
+    const footage = yield* FootageIndex;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
     // The MCP server dials back to this server: loopback, unless a headless server listens on one address only (D106).
@@ -259,6 +261,7 @@ export const layer = Layer.effect(
       capture,
       sounds,
       mediaIndex,
+      footage,
       bridgeUrl,
       stateRef,
       loadLock,

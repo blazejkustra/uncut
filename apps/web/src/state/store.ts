@@ -36,6 +36,7 @@ export {
   agentImageUrl,
   thumbUrl,
   recentThumbUrl,
+  footageThumbUrl,
   mediaUrl,
   proxyUrl,
   proxyOf,
@@ -59,6 +60,7 @@ let unsubscribeAgent: (() => void) | undefined;
 let unsubscribeHistory: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
 let unsubscribeAnalysis: (() => void) | undefined;
+let unsubscribeFootage: (() => void) | undefined;
 let unsubscribeProxies: (() => void) | undefined;
 let unsubscribeTranscription: (() => void) | undefined;
 let unsubscribeGenerate: (() => void) | undefined;
@@ -150,6 +152,11 @@ export async function start() {
       unsubscribeExports = conn.subscribe((c) => c["export.jobs"]({}), onExportJobs);
       unsubscribeAnalysis?.();
       unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
+      unsubscribeFootage?.();
+      unsubscribeFootage = conn.subscribe(
+        (c) => c["footage.status"]({}),
+        (footage) => set({ footage }),
+      );
       unsubscribeProxies?.();
       unsubscribeProxies = conn.subscribe(
         (c) => c["media.proxies"]({}),

@@ -166,7 +166,7 @@ test(
         found.found.some((f: any) => f.path === capturePath && f.origin === "capture" && f.project === "test argent"),
         JSON.stringify(found),
       );
-      assert.ok(JSON.stringify(turn1.items).includes('Searched other projects for \\"argent\\"'), "the step label");
+      assert.ok(JSON.stringify(turn1.items).includes('Searched the footage for \\"argent\\"'), "the step label");
       const imported = lastJson("media_import");
       assert.equal(imported.copied.length, 1, JSON.stringify(imported));
       assert.match(imported.copied[0], /^media\/imports\//);
@@ -184,6 +184,20 @@ test(
         (await client.ok("media.recent", {})).entries.map((e: any) => e.id),
         [cap.id],
       );
+
+      // The footage index: what media_describe stores, media_search finds with its frames, in this project.
+      const mediaId = project.values.at(-1).project.media[0].id;
+      const described = await send("Remember what's in that clip", [
+        { tool: "media_describe", args: { media: mediaId, moments: [{ start: 30, end: 60, text: "a lighthouse on the login screen" }] } },
+        { tool: "media_search", args: { query: "lighthouse", scope: "project" } },
+        { text: "Stored." },
+      ]);
+      assert.equal((await finished(described)).status, "done");
+      assert.equal(lastJson("media_describe").stored, 1);
+      const moment = lastJson("media_search").moments[0];
+      assert.equal(moment.media, mediaId);
+      assert.equal(moment.source, "visual");
+      assert.deepEqual([moment.start, moment.end], [30, 60]);
 
       // ---- #24: argent_boot ----
       assert.equal(boots(), 0);

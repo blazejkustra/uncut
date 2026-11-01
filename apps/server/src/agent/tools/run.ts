@@ -41,6 +41,7 @@ import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote } from "../../capture/capture.ts";
 import { type Running, pushEdit } from "../session/types.ts";
+import { otherProjectsClosed } from "./access.ts";
 import { noteFor, noteShowsAll } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH, frameScale } from "./common.ts";
@@ -96,6 +97,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     screenRecord,
     argentBoot,
     mediaSearch,
+    mediaDescribe,
     mediaAnalyze,
     measure,
     mediaRank,
@@ -326,7 +328,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "brand_read":
           return yield* brandRead(v, args);
         case "project_peek": {
-          if (r.owner.webUsed && r.access !== "auto")
+          if (otherProjectsClosed(r))
             return textResult("Not done: after web content, other projects are read only on the user's say. Read the file with Read, which asks them.", true);
           const peeked = yield* Effect.promise(() =>
             peekProject({
@@ -453,7 +455,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "argent_boot":
           return yield* argentBoot(r, args);
         case "media_search":
-          return yield* mediaSearch(args);
+          return yield* mediaSearch(r, v, args);
+        case "media_describe":
+          return yield* mediaDescribe(v, args);
         case "media_analyze":
           return yield* mediaAnalyze(v, args);
         case "measure":
