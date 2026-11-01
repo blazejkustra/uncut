@@ -1,6 +1,6 @@
 // FCPXML 1.10 export: the timeline for Final Cut Pro and DaVinci Resolve. The main track is the
 // spine, other tracks are connected clips in lanes, source files are referenced where they are.
-// docs/timeline-interchange.md says what maps and what's lost.
+// README.md's Timeline interchange section says what maps and what's lost.
 import type { Item, Media, Project, Track } from "../types.ts";
 import { layout } from "../timeline.ts";
 import { gapOf } from "../rules.ts";

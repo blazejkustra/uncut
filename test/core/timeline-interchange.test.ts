@@ -182,6 +182,20 @@ test("an XML comment with no end is not well formed", () => {
   assert.equal(parseXml("<a><!-- closed --></a>")?.name, "a");
 });
 
+test("a processing instruction or DOCTYPE with no end is not well formed", () => {
+  assert.equal(parseXml("<a><?open</a"), undefined);
+  assert.equal(parseXml("<!DOCTYPE open"), undefined);
+  assert.equal(parseXml('<?xml version="1.0"?><!DOCTYPE fcpxml><a/>')?.name, "a");
+});
+
+for (const opener of ["<?", "<!DOCTYPE"]) {
+  test(`a megabyte of unclosed ${opener} is refused quickly`, () => {
+    const started = performance.now();
+    assert.equal(parseXml(opener.repeat(Math.ceil(1_000_000 / opener.length))), undefined);
+    assert.ok(performance.now() - started < 1000);
+  });
+}
+
 test("what a file can't carry comes back as warnings", () => {
   const p = project();
   const main = p.tracks.find((t) => t.role === "main")!;
