@@ -68,8 +68,8 @@ export default function Home() {
             </p>
             <DownloadButtons />
             <p className="req">
-              For Apple silicon Macs. Free and open source. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
-              <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>.
+              For Apple silicon Macs. Free and open source. Needs ffmpeg from Homebrew. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
+              <a href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES`}>see the third-party notices</a>.
             </p>
             <ZoomShot
               className="shot"
@@ -237,11 +237,11 @@ export default function Home() {
         <section className="cta">
           <div className="wrap">
             <h2>Start your next cut</h2>
-            <p className="sub">Install Claude Code or Codex and sign in, then open Uncut and tell it what to make.</p>
+            <p className="sub">Install Claude Code or Codex and sign in, add ffmpeg with Homebrew, then open Uncut and tell it what to make.</p>
             <DownloadButtons />
             <p className="req">
-              For Apple silicon Macs. Uses code of FFmpeg licensed under the LGPLv2.1, <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>
-              .
+              For Apple silicon Macs. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
+              <a href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES`}>see the third-party notices</a>.
             </p>
           </div>
         </section>
