@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/target
+**/*.md
+.git
+.claude
+apps/desktop/stage
+release
+site
+test
+test-output

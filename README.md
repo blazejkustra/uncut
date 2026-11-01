@@ -40,6 +40,25 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).
 
+## Linux server
+
+Environments (Settings › Labs) lets the Mac app edit on another machine. The server for that machine builds into a container image with Docker or OrbStack:
+
+```sh
+pnpm server:image
+docker run -d --name uncut-server -p 127.0.0.1:8790:8790 -v uncut-server:/data \
+  -e UNCUT_PUBLIC_URL=http://127.0.0.1:8790 uncut-server
+docker logs uncut-server
+```
+
+The log ends with a `uncut://pair?...` line. Paste it into Settings › Environments › Add environment. `UNCUT_PUBLIC_URL` is the address the app will use, since a server in a container can't see its published port. The token, settings and projects live in the `/data` volume.
+
+The server speaks plain http, so keep the port on loopback and reach it through an SSH tunnel, Tailscale or an https proxy (with `-e UNCUT_PUBLIC_URL=https://...`). The agent needs Claude Code or Codex in the image: build your own `FROM uncut-server`, install it, and sign in with `docker exec -it uncut-server claude`. Whisper transcription needs `whisper-cli` the same way.
+
+`pnpm server:tarball` puts `uncut-server-linux-<arch>.tar.gz` in `release/`, for a machine without Docker. It needs Node 24 and ffmpeg on PATH: run `./uncut-server --host 0.0.0.0` (port 8790, data in `~/.uncut-server`, change them with `--port` and `--data-dir`). Every export also needs Electron on a display: set `UNCUT_RENDER_BIN` to a script that starts it with `--no-sandbox`, as `scripts/remote-docker/electron-render.sh` does. The image has this built in.
+
+`pnpm server:check` builds both and tests them in containers. `node scripts/server-image-check.ts --app` also pairs the packaged app.
+
 ## Development
 
 You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg.
