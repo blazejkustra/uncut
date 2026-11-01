@@ -12,8 +12,11 @@
 // `--retries N`: an app file that fails is run again up to N times. Every retry is printed, annotated
 // (::warning::) and listed in the summary as a flake, so a retry never hides a failure silently. Fast
 // files are never retried.
+//
+// test/quarantine.json lists known flaky files ({ path, reason, date }): they still run and show in
+// the summary, but their failure is a ::warning:: and can't fail the run.
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const arg = (name: string, fallback?: string) => {
@@ -30,6 +33,15 @@ if (!Number.isInteger(shard) || !Number.isInteger(of) || of < 1 || shard < 0 || 
 const FAST_AT_ONCE = 2;
 /** An app launch can take longer than on a laptop on a 3-core runner; only the app files get it. */
 const APP_ENV = { UNCUT_TEST_LAUNCH_MS: process.env.UNCUT_TEST_LAUNCH_MS ?? "120000" };
+
+interface QuarantineEntry {
+  path: string;
+  reason: string;
+  date: string;
+}
+const QUARANTINE_FILE = "test/quarantine.json";
+const readQuarantine = (): ReadonlyArray<QuarantineEntry> => (existsSync(QUARANTINE_FILE) ? JSON.parse(readFileSync(QUARANTINE_FILE, "utf8")) : []);
+const quarantine = new Map(readQuarantine().map((entry) => [entry.path, entry]));
 
 const testFiles = (dir: string): Array<string> =>
   readdirSync(dir, { withFileTypes: true })
@@ -105,7 +117,10 @@ interface Result {
 const results: Array<Result> = [];
 const report = (r: Result) => {
   results.push(r);
-  if (!r.ok) console.log(`::error file=${r.file}::${r.file} failed${r.tries > 1 ? ` (${r.tries} tries)` : ""}`);
+  const tries = r.tries > 1 ? ` (${r.tries} tries)` : "";
+  const held = quarantine.get(r.file);
+  if (!r.ok && held) console.log(`::warning file=${r.file}::${r.file} failed${tries}, quarantined since ${held.date}: ${held.reason}`);
+  if (!r.ok && !held) console.log(`::error file=${r.file}::${r.file} failed${tries}`);
   console.log(`# ${r.ok ? "ok" : "FAILED"} ${r.file} in ${r.seconds} s${r.tries > 1 ? ` after ${r.tries} tries` : ""}`);
 };
 
@@ -147,17 +162,25 @@ const skippedChecks = () => {
   }
 };
 writeFileSync(`test-output/shard-${shard}.json`, `${JSON.stringify(Object.fromEntries(results.map((r) => [r.file, r.seconds])), null, 1)}\n`);
-const failed = results.filter((r) => !r.ok);
+const failed = results.filter((r) => !r.ok && !quarantine.has(r.file));
+const quarantined = results.filter((r) => quarantine.has(r.file));
 const flaky = results.filter((r) => r.ok && r.tries > 1);
 const minutes = (rs: ReadonlyArray<Result>) => Math.round(rs.reduce((s, r) => s + r.seconds, 0) / 60);
+const resultCell = (r: Result) => {
+  const outcome = r.ok ? (r.tries > 1 ? `flaky (${r.tries} tries)` : "ok") : "**failed**";
+  return quarantine.has(r.file) ? `${outcome}, quarantined` : outcome;
+};
+const quarantineLine = quarantined.length
+  ? ` **${quarantined.length} quarantined** (can't fail the run): ${quarantined.map((r) => `\`${r.file}\` (${r.ok ? "passed" : "failed"}, ${quarantine.get(r.file)!.reason})`).join(", ")}.`
+  : "";
 const summary = [
   `### Tests, shard ${shard + 1}/${of}`,
   "",
-  `${results.length - failed.length} of ${results.length} files passed (fast: ${minutes(results.filter((r) => !isApp(r.file)))} min over ${FAST_AT_ONCE} at a time, app: ${minutes(results.filter((r) => isApp(r.file)))} min).${flaky.length ? ` **${flaky.length} passed only on a retry** (flaky): ${flaky.map((r) => `\`${r.file}\``).join(", ")}.` : ""}`,
+  `${results.filter((r) => r.ok).length} of ${results.length} files passed (fast: ${minutes(results.filter((r) => !isApp(r.file)))} min over ${FAST_AT_ONCE} at a time, app: ${minutes(results.filter((r) => isApp(r.file)))} min).${flaky.length ? ` **${flaky.length} passed only on a retry** (flaky): ${flaky.map((r) => `\`${r.file}\``).join(", ")}.` : ""}${quarantineLine}`,
   "",
   "| file | result | s |",
   "|---|---|---|",
-  ...results.map((r) => `| ${r.file} | ${r.ok ? (r.tries > 1 ? `flaky (${r.tries} tries)` : "ok") : "**failed**"} | ${r.seconds} |`),
+  ...results.map((r) => `| ${r.file} | ${resultCell(r)} | ${r.seconds} |`),
   "",
   ...(skippedTests.length ? ["<details><summary>Skipped tests</summary>", "", ...skippedTests.map((l) => `- ${l}`), "", "</details>", ""] : []),
   ...(skippedChecks().length
