@@ -445,21 +445,21 @@
     },
     {
       "name": "export_video",
-      "description": "Export the video (.mp4, or .mov with a ProRes codec), only when the user asks: the Export dialog's job (they see progress, can cancel). Waits until saved; one at a time; a taken name gets \" 2\". Asks on a card unless Auto and the user named the folder in this message.",
+      "description": "Export the video (.mov if ProRes), only when the user asks: the Export dialog's job (progress, cancel). Waits until saved; one at a time; a taken name gets \" 2\". Asks on a card unless Auto and the message named the folder.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "preset": { "enum": ["draft", "standard", "high"], "description": "draft 720p, standard 1080p (default), high full size" },
-          "folder": { "type": "string", "description": "Desktop, Movies, Downloads, Documents or a path; default the dialog's" },
-          "name": { "type": "string", "description": "Default the project's" },
-          "range": { "enum": ["all", "marks", "selection"], "description": "all (default), In to Out, or the selected clips" },
+          "folder": { "type": "string", "description": "Desktop, Movies... or a path" },
+          "name": { "type": "string" },
+          "range": { "enum": ["all", "marks", "selection"], "description": "all (default), marks, selected clips" },
           "loudness": { "enum": ["normal", "quiet", "broadcast", "target", "off"] },
           "motionBlur": { "type": "boolean" },
           "fps": { "type": "number" },
           "shortSide": { "type": "number" },
-          "codec": { "enum": ["h264", "hevc", "prores422", "prores422hq", "prores4444"], "description": "h264 (default), hevc, or a ProRes master" },
-          "transparent": { "type": "boolean", "description": "prores4444 only: leave out the canvas background, keeping alpha" }
+          "codec": { "enum": ["h264", "hevc", "prores422", "prores422hq", "prores4444"] },
+          "transparent": { "type": "boolean", "description": "prores4444: no background" }
         }
       },
       "returns": "{ saved, seconds, size, picture, preset, tookSeconds, warnings? }"
