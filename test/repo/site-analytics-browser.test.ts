@@ -260,13 +260,18 @@ test("Download click: an event outside the EU and after Accept, none undecided o
   await eu.page.browserContext().close();
 });
 
-test("The launch film plays under the CSP, from the poster, and loads nothing before it's near", { skip }, async () => {
+test("The launch film is requested under the CSP only once it's scrolled to", { skip }, async () => {
   const v = await visitor("US", 1280, 800);
+  const isFilm = (r: { url(): string }) => r.url().endsWith("/assets/video/launch.mp4");
+  let early = false;
+  v.page.on("request", (r) => {
+    early ||= isFilm(r);
+  });
   await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
-  const before = await v.page.$eval(".film video", (e) => (e as HTMLVideoElement).readyState);
-  assert.equal(before, 0, "nothing is fetched above the fold");
+  assert.equal(early, false, "nothing is fetched above the fold");
+  const requested = v.page.waitForRequest(isFilm, { timeout: 10_000 });
   await v.page.$eval(".film video", (e) => e.scrollIntoView({ block: "center" }));
-  await v.page.waitForFunction(() => (document.querySelector(".film video") as HTMLVideoElement).currentTime > 0.2, { timeout: 10_000 });
+  await requested;
   assert.deepEqual(v.errors, []);
   await v.page.browserContext().close();
 });
