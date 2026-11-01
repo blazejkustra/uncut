@@ -1,6 +1,6 @@
 // A critic round in the thread, shown like a subagent (user, 2026-10-27; T3 Code's rows): "Critic,
 // round 2" with its status, the live step under it while it runs, the elapsed time on the right, and
-// the findings when opened.
+// the scorecard when opened. The project's latest finished round opens by itself.
 import type { AgentCard } from "@uncut/contracts";
 import { ChevronDown, ChevronRight, Gauge, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -21,10 +21,12 @@ function useNow(on: boolean): number {
 }
 
 export function CriticItem({ card }: { card: AgentCard }) {
-  // A review saved before the live row (the uncutUI fixture's too) opens as review cards did; a live round starts closed.
-  const [open, setOpen] = useState(!card.critic && !!card.review);
+  const [toggled, setToggled] = useState<boolean>();
   const app = useApp();
   const review = card.review;
+  const reviews = app.agent?.plan?.reviews ?? [];
+  // A review saved before the live row (the uncutUI fixture's too) opens as review cards did.
+  const open = toggled ?? (!!review && (!card.critic || reviews.at(-1)?.round === review.round));
   const critic = card.critic;
   const status = critic?.status ?? (review ? statusOf(review) : "error");
   const running = status === "running";
@@ -42,7 +44,7 @@ export function CriticItem({ card }: { card: AgentCard }) {
       data-status={status}
       data-passed={review ? String(review.passed) : undefined}
     >
-      <button className="card-head critic-head" aria-expanded={open} disabled={!review} onClick={() => setOpen(!open)}>
+      <button className="card-head critic-head" aria-expanded={open} disabled={!review} onClick={() => setToggled(!open)}>
         <span className={`critic-icon ${status}`}>{running ? <LoaderCircle className="spin" /> : <Gauge />}</span>
         <span className="critic-text">
           <span className="critic-title">
@@ -51,7 +53,7 @@ export function CriticItem({ card }: { card: AgentCard }) {
               {criticLabel(status, review)}
             </span>
           </span>
-          {line && (
+          {line && !open && (
             <span className="critic-line" data-testid="critic-line" title={line}>
               {line}
             </span>
@@ -64,7 +66,7 @@ export function CriticItem({ card }: { card: AgentCard }) {
         )}
         {review && (open ? <ChevronDown /> : <ChevronRight />)}
       </button>
-      {open && review && <ReviewBody review={review} intended={app.agent?.plan?.intended ?? []} online={app.connection === "connected"} />}
+      {open && review && <ReviewBody review={review} reviews={reviews} intended={app.agent?.plan?.intended ?? []} online={app.connection === "connected"} />}
     </div>
   );
 }

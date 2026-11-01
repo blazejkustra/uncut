@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Brief, type BrandKit, type BrandSkill } from "@uncut/contracts";
+import { REVIEW_SCORES, type AgentCard, type AgentPlan, type AgentAnswer, type Brief, type BrandKit, type BrandSkill, type Review } from "@uncut/contracts";
 import {
   CHECK_IDS,
   fontRule,
@@ -99,6 +99,7 @@ import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { measuredMixLines } from "./measure.ts";
 import { censusNear, legibilityFacts, legibilityFindings, requestedTypePx, textFloorPct, underFloor } from "../agentLegibility.ts";
 import { criticRow } from "./criticRow.ts";
+import { findingFrames, stillName, withFrames } from "../criticStills.ts";
 import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
@@ -338,6 +339,38 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       }
       return out;
     });
+
+  /** The frames a round's findings point at, kept for the scorecard; a frame that can't be kept is left out. */
+  const keepFindingStills = (v: ProjectView, review: Review, last: number) =>
+    Effect.gen(function* () {
+      const canvas = v.session.project.canvas;
+      const frames = findingFrames(review, canvas.fps, last);
+      if (!frames.length) return new Map<number, string>();
+      const shots = yield* renderStills(
+        v.session.project,
+        frames.map((frame) => ({ frame })),
+        Math.min(canvas.width, STILL_WIDTH),
+      );
+      const folder = join(v.dir, ".cache", "agent-images");
+      return yield* Effect.tryPromise({
+        try: async () => {
+          await mkdir(folder, { recursive: true });
+          const kept = new Map<number, string>();
+          for (const [i, shot] of shots.entries()) {
+            const name = stillName(review, frames[i]!);
+            await writeFile(join(folder, name), shot.jpeg);
+            kept.set(frames[i]!, name);
+          }
+          return kept;
+        },
+        catch: (e) => e as Error,
+      });
+    }).pipe(
+      Effect.catch((error) => {
+        console.error(`[uncut] couldn't keep the findings' frames: ${(error as Error).message}`);
+        return Effect.succeed(new Map<number, string>());
+      }),
+    );
 
   const storyboardPropose = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
@@ -965,7 +998,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             true,
           );
         }
-        const review = criticReview(answer, {
+        const judged = criticReview(answer, {
           round: number,
           claims,
           checks,
@@ -979,6 +1012,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           previous: prev,
           usage: "usage" in run ? run.usage : undefined,
         });
+        row.step("Keeping the frames the findings point at");
+        const review = withFrames(judged, fps, last, yield* keepFindingStills(v, judged, last));
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
         r.reviewRounds = round;
         r.looked = { sheet: false, phone: false };

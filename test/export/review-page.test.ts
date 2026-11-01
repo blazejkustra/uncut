@@ -58,7 +58,7 @@ const electronBin = (() => {
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = !electronBin ? "needs Electron" : !hasFfmpeg ? "needs ffmpeg" : false;
 
-const PAGE_SCRIPT = `(async () => {
+const PAGE_SCRIPT = `const driveReviewPage = async () => {
   const video = document.getElementById("video");
   if (video.readyState < 1) await new Promise((r, x) => { video.onloadedmetadata = r; video.onerror = () => x(new Error("video failed")); });
   const seeked = new Promise((r) => video.addEventListener("seeked", r, { once: true }));
@@ -90,7 +90,8 @@ const PAGE_SCRIPT = `(async () => {
     width: video.videoWidth,
     timecode: document.querySelector("#comments .time").textContent,
   };
-})()`;
+};
+driveReviewPage();`;
 
 test("the round trip: comments on the page come back as notes, with hostile text inert", { skip }, () => {
   const dir = mkdtempSync(join(tmpdir(), "uncut-review-page-"));

@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import type { AgentProvider, AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext, AgentFocus } from "@uncut/contracts";
 import type { Approval } from "./state.ts";
 import type { Access } from "../agentPermissions.ts";
-import type { TurnLimits } from "../agentLimits.ts";
+import { turnLimits, type TurnLimits } from "../agentLimits.ts";
 import type { ClaudeSkill } from "../claudeSkills.ts";
 
 // The agent's in-memory records: stored turns, a project's Loaded agent, a claude session, a running turn.
@@ -90,6 +90,8 @@ export interface Loaded {
 export interface ClaudeSession {
   // Issue #106: the CLI it runs: claude (stream-json), or Codex's app-server (JSON-RPC, `codex`).
   readonly provider: AgentProvider;
+  // Set on an outside agent's stand-in (external.ts): no process to interrupt, Stop ends the turn here.
+  readonly endExternal?: (() => void) | undefined;
   readonly codex?: CodexLink | undefined;
   readonly owner: Loaded;
   readonly openId: number;
@@ -177,6 +179,35 @@ export function pushEdit(r: Running, edit: AgentEdit) {
   r.turn.edits.push(at === undefined ? edit : { ...edit, at });
 }
 
+/** A new turn's record-keeping, empty. */
+export const freshTurnState = () => ({
+  delivered: false,
+  abort: new AbortController(),
+  cancelled: false,
+  interruptTimer: undefined,
+  steps: new Map<string, number>(),
+  blocks: new Map<number, number>(),
+  messageId: "",
+  streamed: new Map<string, Array<{ kind: "text" | "thinking"; at: number; used: boolean }>>(),
+  announced: [],
+  stopReason: undefined,
+  inputs: new Map<number, { at: number; tool: string; json: string; shown: string }>(),
+  looked: { sheet: false, phone: false },
+  limits: turnLimits(),
+  reviewRounds: 0,
+  planned: false,
+  rendered: [],
+  graphicWrites: 0,
+  addedTracks: new Set<string>(),
+  reviewedStamp: undefined,
+  picked: [],
+  permissionQueue: Promise.resolve() as Promise<unknown>,
+  turnGrants: new Set<string>(),
+  turnRefusals: new Map<string, string>(),
+  toolNames: new Map<string, string>(),
+  downloads: { bytes: 0, count: 0 },
+});
+
 export interface Running {
   readonly turn: StoredTurn;
   readonly owner: Loaded;
@@ -255,6 +286,8 @@ export interface Running {
   readonly turnRefusals: Map<string, string>;
   // D194: tool_use id → tool name in this turn (to tell web results from file data).
   readonly toolNames: Map<string, string>;
+  // An outside agent: what its earlier turns spent in this opening of the project, towards TURN_CAP.
+  priorSpend?: number;
   // D194: media_download's spending in this turn.
   downloads: { bytes: number; count: number };
   // Uncut tools the model called by their bare name (graphic_write, not mcp__uncut__graphic_write):

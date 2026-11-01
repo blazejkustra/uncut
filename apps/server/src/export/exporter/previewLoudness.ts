@@ -5,6 +5,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Media, Project, SpeechEnvelope } from "@uncut/core";
+import { flattenSequences } from "@uncut/core/nesting";
 
 import { graphFileArgs, loudnessGain, planExport } from "../exportPlan.ts";
 import { capsOf, run, ffmpegError, Cancelled } from "./ffmpeg.ts";
@@ -14,11 +15,12 @@ export function makePreviewLoudness() {
   let running: AbortController | undefined;
   return async (
     bin: string,
-    project: Project,
+    edited: Project,
     mediaPath: (m: Media) => string,
     envelopes: ReadonlyMap<string, SpeechEnvelope | null>,
     targetLufs: number,
   ): Promise<{ gainDb?: number; lufs?: number; cancelled?: boolean } | { problem: string }> => {
+    const project = flattenSequences(edited);
     running?.abort();
     const controller = new AbortController();
     running = controller;

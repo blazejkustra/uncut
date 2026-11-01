@@ -76,6 +76,12 @@ function applyAdjust(c: Px, a: Adjust) {
 
 /** A look's function on one pixel (in place). */
 function lookFn(def: LookDef): (c: Px) => void {
+  const { cube } = def;
+  if (cube)
+    return (c) => {
+      const out = lutAt(cube, c[0], c[1], c[2]);
+      for (let i = 0; i < 3; i++) c[i] = out[i]!;
+    };
   const adjust = def.adjust ? adjustOf(def.adjust) : undefined;
   const master = curveFn(def.curve);
   const per = [curveFn(def.red), curveFn(def.green), curveFn(def.blue)];
@@ -151,7 +157,7 @@ const LUTS = new Map<string, ColourLut>();
 
 /** A colour spec's table, cached by its key (several clips with one look share it). */
 export function colourLut(spec: ColourSpec, size = LUT_SIZE): ColourLut {
-  const key = `${size}:${JSON.stringify(spec)}`;
+  const key = `${size}:${JSON.stringify(spec, (k, v) => (k === "cube" ? (v as ColourLut).key : v))}`;
   const known = LUTS.get(key);
   if (known) return known;
   const fn = colourFn(spec);
@@ -172,7 +178,7 @@ export function colourLut(spec: ColourSpec, size = LUT_SIZE): ColourLut {
 }
 
 /** A short stable name for a table (its file name in the export). */
-function lutHash(s: string) {
+export function lutHash(s: string) {
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;
   for (let i = 0; i < s.length; i++) {

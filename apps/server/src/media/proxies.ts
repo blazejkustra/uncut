@@ -19,6 +19,7 @@ import { ServerConfig } from "../app/config.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
 import { Exporter } from "../export/exporter.ts";
+import { ffmpegWith } from "../export/exporter/ffmpeg.ts";
 import { Projects } from "../project/projects.ts";
 import { posterKey } from "./media.ts";
 import { runProbe } from "./probe.ts";
@@ -336,10 +337,10 @@ export class ProxyQueue {
     await mkdir(folder, { recursive: true }).catch(() => {});
     const out = join(folder, proxyName(task.id, task.key));
     const part = `${out}.part`;
-    const attempt = (encoder: "hardware" | "software") =>
+    const attempt = (bin: string, encoder: "hardware" | "software") =>
       new Promise<boolean>((resolveRun) => {
         if (run.cancelled) return resolveRun(false);
-        const child = spawn(ffmpeg, localInputs(ffmpeg, proxyArgs(task.path, part, encoder)), {
+        const child = spawn(bin, localInputs(bin, proxyArgs(task.path, part, encoder)), {
           stdio: ["ignore", "pipe", "pipe"],
           env: withoutApiKey(process.env),
         });
@@ -358,9 +359,12 @@ export class ProxyQueue {
         child.on("error", () => resolveRun(false));
         child.on("close", (code) => resolveRun(code === 0 && !run.cancelled));
       });
-    let ok = (await this.hardware) ? await attempt("hardware") : false;
+    let ok = (await this.hardware) ? await attempt(ffmpeg, "hardware") : false;
     // VideoToolbox can refuse (no session free, an older Mac): libx264 then.
-    if (!ok && !run.cancelled) ok = await attempt("software");
+    if (!ok && !run.cancelled) {
+      const software = await ffmpegWith(ffmpeg, "libx264");
+      if (software) ok = await attempt(software, "software");
+    }
     if (ok && !run.cancelled) {
       // The original may have changed while the proxy was made: then it's not this file's proxy.
       const now = await posterKey(task.path);

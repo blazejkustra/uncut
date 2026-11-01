@@ -141,6 +141,8 @@ if (shareable) {
 }
 
 // 3. Build (with the telemetry token), then sign.
+assertBundledTools();
+
 if (skipBuild) {
   console.log("\n--skip-build: packaging the apps/*/dist already built.");
   // D266: the plugins are staged from the repo even so (cheap), so a plugins/ change since the last
@@ -277,6 +279,13 @@ function makeDmg(app: string, dmg: string) {
   }
   run("codesign", dmgSignArgs(identity.hash, dmg), "signing the DMG");
   run("codesign", ["--verify", "--strict", "--verbose=2", dmg], "codesign --verify (DMG)");
+}
+
+/** A release ships its own ffmpeg, ffprobe and whisper-cli, with their licences. */
+function assertBundledTools() {
+  const tools = resolve(root, "native/tools/out");
+  const missing = ["bin/ffmpeg", "bin/ffprobe", "bin/whisper-cli", "licenses/FFmpeg.LGPLv2.1.txt"].filter((f) => !existsSync(join(tools, f)));
+  if (missing.length) fail(`The bundled tools aren't built (${missing.join(", ")} missing): run pnpm tools:build first.`);
 }
 
 async function notarize(file: string, what: string, a: NotaryAuth) {

@@ -318,6 +318,18 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
   switch (op.op) {
     case "trim_item":
       return `${op.frames > 0 ? "Trimmed" : "Extended"} ${it(op.item)} by ${secs(op.frames, fps)} at the ${op.edge}`;
+    case "nest_items":
+      return `Nested ${op.items.length === 1 ? it(op.items[0]!) : `${op.items.length} items`} into sequence ${op.name ?? op.sequence}`;
+    case "unnest_item":
+      return `Put ${it(op.item)} back on Main`;
+    case "edit_sequence":
+      return `In sequence ${op.sequence}: ${op.ops.map((inner) => describeOp(inner, project, hint)).join("; ")}`;
+    case "delete_sequence":
+      return `Deleted sequence ${op.sequence}`;
+    case "slip_item":
+      return `Slipped ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"} in its media`;
+    case "roll_edit":
+      return `Rolled the cut after ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"}`;
     case "update_item":
       return describeUpdate(op.item, op.set, project, it, fps);
     case "split_item":

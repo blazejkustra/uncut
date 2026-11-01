@@ -1,3 +1,4 @@
+import type { ColourLut } from "./colour.ts";
 export const LOOK = "effect.look";
 export const ADJUST = "effect.color";
 export const STABILIZE = "effect.stabilize";
@@ -56,6 +57,8 @@ export type Curve = ReadonlyArray<readonly [number, number]>;
  * curves, split toning (a colour added in the shadows and in the highlights), fade (blacks lifted).
  */
 export interface LookDef {
+  /** A table instead of the steps below: a user LUT (cube.ts). */
+  readonly cube?: ColourLut;
   readonly mixer?: ReadonlyArray<number>;
   readonly mono?: number;
   readonly adjust?: Partial<Record<AdjustKey, number>>;

@@ -10,8 +10,11 @@ import {
   createSession,
   type Op,
   planCaptionEdit,
+  locksNote,
   reviewNotesBlock,
+  reviewNotesTurnBlock,
   sectionsNote,
+  sequencesNote,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
@@ -46,6 +49,7 @@ function itemLine(it: Item, start: number): string {
     x.gap ? `gap ${x.gap}` : "",
     transition?.module ? `transition ${transition.module} ${transition.duration ?? ""}`.trim() : "",
     x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
+    x.sequence ? `sequence ${x.sequence}` : "",
     x.locked ? "locked" : "",
     x.mute ? "mute" : "",
     it.type === "captions" ? `${Array.isArray(x.words) ? x.words.length : 0} words` : "",
@@ -104,7 +108,16 @@ function projectNotes(project: Project) {
             "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it).",
         }
       : {}),
-    ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}),
+    ...(locksNote(project)
+      ? {
+          locked: locksNote(project),
+          lockedNote: "Only the user unlocks these. Edits that change or move them are refused: work around them, or ask the user to unlock one.",
+        }
+      : {}),
+    ...(sequencesNote(project)
+      ? { sequences: sequencesNote(project), sequencesNote: "Sequence items on Main play these. Change what's in one with edit_sequence." }
+      : {}),
+    ...(reviewNotesTurnBlock(project) ? { reviewNotes: reviewNotesTurnBlock(project) } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.
@@ -116,7 +129,7 @@ function projectNotes(project: Project) {
 
 /** project_read's detail "full": project.json with the reviewers' text moved behind its warning. */
 export function fullProject(project: Project, revision: number) {
-  const { reviewNotes: _, ...rest } = project;
+  const { reviewNotes: _, ...rest } = withoutLutTables(project);
   return { revision, project: rest, ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}) };
 }
 
@@ -298,3 +311,7 @@ export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>
   }
   return { ops: out };
 }
+
+/** The project as project_read's full detail shows it: a LUT's table is about 290 KB of base64 the agent can't use. */
+export const withoutLutTables = (project: Project) =>
+  project.luts ? { ...project, luts: project.luts.map(({ id, name, size }) => ({ id, name, size })) } : project;

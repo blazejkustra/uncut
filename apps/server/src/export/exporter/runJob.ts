@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 
 import type { ExportJob } from "@uncut/contracts";
 import {
+  codecExtension,
   denoiseMediaIds,
   duckMediaIds,
   flattenCues,
@@ -16,12 +17,23 @@ import {
 } from "@uncut/core";
 
 import { shadeLayers } from "../shaderPass.ts";
-import { exportCommand, planLoudness, RASTER_CSS, graphFileArgs, hardwareEncoderFailed, usesHardware, silentFailure, type ExportPlan } from "../exportPlan.ts";
+import {
+  exportCommand,
+  planLoudness,
+  RASTER_CSS,
+  graphFileArgs,
+  hardwareEncoderFailed,
+  usesHardware,
+  softwareEncoder,
+  wantsSoftware,
+  silentFailure,
+  type ExportPlan,
+} from "../exportPlan.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasterizer.ts";
 import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeInto, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
 import { REVIEW_PAGE } from "./reviewPage.ts";
-import { Cancelled, capsOf, denoiseLagOf, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
+import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
@@ -46,6 +58,8 @@ export const stepReporter = (report: (step: ExportStep) => void, now: () => numb
     report({ kind, ...(done !== undefined ? { done } : {}), ...(total !== undefined ? { total } : {}) });
   };
 };
+
+const NO_SOFTWARE_ENCODER = "The software encoder needs a system ffmpeg (brew install ffmpeg), so the hardware encoder made the video.";
 
 export interface RunJobCtx {
   readonly patch: (id: string, change: Partial<ExportJob>) => void;
@@ -138,7 +152,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
             });
 
       stage = "encode";
-      const partial = join(temp, "export.mp4");
+      const partial = join(temp, `export.${codecExtension(job.codec ?? "h264")}`);
       // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
       const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
       let subtitles: { file: string; language: string; show: boolean } | undefined;
@@ -149,15 +163,18 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
       }
       const luts = await writeLuts(plan, temp);
-      const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps };
+      const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps, alpha: job.alpha };
       const total = plan.frames / plan.fps;
       const graphFile = join(temp, "graph.txt");
-      const encode = async (choice: typeof video) => {
-        const cmd = exportCommand(plan, {
+      const softwareBin = await ffmpegWith(bin, softwareEncoder(job.codec));
+      const encode = async (encoderBin: string, choice: typeof video) => {
+        const encoderCaps = await capsOf(encoderBin);
+        const encoderPlan = plan.denoiseLag === undefined ? plan : { ...plan, denoiseLag: await denoiseLagOf(encoderBin) };
+        const cmd = exportCommand(encoderPlan, {
           untagged,
           background,
           rasters,
-          caps,
+          caps: encoderCaps,
           quality: job.quality,
           video: choice,
           loudnorm,
@@ -171,7 +188,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         const renderStart = Date.now();
         patch(job.id, { phase: "rendering", progress: 0 });
         let lastPatch = 0;
-        return run(bin, encodeArgs(cmd, graphFileArgs(caps, graphFile)), signal, (line) => {
+        return run(encoderBin, encodeArgs(cmd, graphFileArgs(encoderCaps, graphFile)), signal, (line) => {
           const m = /^out_time_us=(\d+)/.exec(line);
           if (!m) return;
           const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
@@ -182,19 +199,23 @@ export const makeRunJob = (ctx: RunJobCtx) => {
           patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
         });
       };
-      const hardware = usesHardware(job.quality, caps, video);
+      const encoderBin = wantsSoftware(job.quality, video) ? (softwareBin ?? bin) : bin;
+      const hardware = usesHardware(job.quality, await capsOf(encoderBin), video);
       usedEncoder = hardware ? "hardware" : "software";
-      patch(job.id, { encoder: usedEncoder });
-      let r = await encode(video);
+      patch(job.id, {
+        encoder: usedEncoder,
+        ...(wantsSoftware(job.quality, video) && hardware ? { warnings: [...(plan.warnings ?? []), NO_SOFTWARE_ENCODER] } : {}),
+      });
+      let r = await encode(encoderBin, video);
       // D212: VideoToolbox can be listed and still refuse (no constant-quality mode on an Intel Mac,
       // no free hardware session): the same export again with the software encoder.
-      if (r.code !== 0 && !signal.aborted && hardware && hardwareEncoderFailed(r.stderr)) {
+      if (r.code !== 0 && !signal.aborted && hardware && softwareBin && hardwareEncoderFailed(r.stderr)) {
         patch(job.id, {
           encoder: "software",
           warnings: [...(plan.warnings ?? []), "The hardware encoder failed on this Mac, so the software one made the video."],
         });
         usedEncoder = "software";
-        r = await encode({ ...video, encoder: "software" });
+        r = await encode(softwareBin, { ...video, encoder: "software" });
       }
       if (r.code !== 0) throw new Error(`ffmpeg couldn't make the video: ${ffmpegError(r.stderr)}`);
       if (signal.aborted) throw new Cancelled();

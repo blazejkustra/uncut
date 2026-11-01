@@ -26,6 +26,7 @@
     "./slice": "./src/timeline/slice.ts",
     "./sections": "./src/timeline/sections.ts",
     "./review": "./src/timeline/review.ts",
+    "./nesting": "./src/timeline/nesting.ts",
     "./retime": "./src/timeline/retimeGraphics.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",

@@ -24,6 +24,9 @@ import {
   ENVIRONMENT_SWITCH_CHANNEL,
   ENVIRONMENT_TEST_CHANNEL,
   ENVIRONMENTS_CHANNEL,
+  MCP_RENEW_TOKEN_CHANNEL,
+  MCP_SET_CHANNEL,
+  MCP_STATE_CHANNEL,
   MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   OPEN_PRIVACY_SETTINGS_CHANNEL,
@@ -65,6 +68,7 @@ import { currentWindow, environments, setEnvironments, windowOf, windows, type A
 import { activeConnection, closeRelay, downloadExport, environmentOf } from "./app/remote.ts";
 import { showMini, mini, resendMini } from "./app/miniRecorder.ts";
 import { crypt } from "./app/crypt.ts";
+import { installMcp, mcpState, renewMcpToken, setMcpEnabled } from "./app/mcp.ts";
 import { appInfo, chooseFolder, chooseMedia, chooseSavePath } from "./app/dialogs.ts";
 import { mediaAccess, isMediaKind, askMediaAccess, captureSources } from "./app/mediaAccess.ts";
 import {
@@ -272,6 +276,9 @@ app.whenReady().then(() => {
       return c;
     }),
   );
+  handle(MCP_STATE_CHANNEL, () => mcpState());
+  handle(MCP_SET_CHANNEL, (_entry, enabled: unknown) => setMcpEnabled(enabled === true));
+  handle(MCP_RENEW_TOKEN_CHANNEL, () => renewMcpToken());
   handle(ENVIRONMENTS_CHANNEL, (entry) => ({ ...environments!.list(), active: environmentOf(entry).id }));
   handle(ENVIRONMENT_ADD_CHANNEL, (_entry, input: { name?: unknown; url?: unknown; token?: unknown }) => {
     if (typeof input?.url !== "string" || typeof input.token !== "string" || typeof input.name !== "string") throw new Error("not an environment");
@@ -423,6 +430,7 @@ app.whenReady().then(() => {
   });
   // The first window shows the environment the last one switched to; new ones start on Local.
   openWindow({ envId: environments!.active().id });
+  void installMcp({ openWindow, openProject });
   refreshMenu();
   openFile.ready();
   installUpdates();

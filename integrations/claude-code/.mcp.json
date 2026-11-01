@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "uncut": {
+      "type": "http",
+      "url": "http://127.0.0.1:47821/mcp",
+      "headersHelper": "${CLAUDE_PLUGIN_ROOT}/scripts/uncut-headers.sh"
+    }
+  }
+}

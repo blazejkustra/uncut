@@ -106,6 +106,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
               : "SRT";
       return typeof args.path === "string" ? `Saved the subtitles as ${shortName(args.path)}` : `Saved the subtitles as ${format}`;
     }
+    case "timeline_export":
+      return `Saved the timeline as ${typeof args.path === "string" ? shortName(args.path) : args.format === "edl" ? "EDL" : "FCPXML"}`;
     case "export_video":
       return typeof args.folder === "string" && args.folder.trim()
         ? `Exported the video to ${shortName(args.folder.trim().replace(/\/+$/, ""))}`

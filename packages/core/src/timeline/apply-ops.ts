@@ -4,7 +4,10 @@ import { keyDbAt } from "../audio/audio.ts";
 import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
 import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
+import { agentLockProblem, lockedItemProblem, lockedTrackProblem } from "./locks.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
+import { canUnnest, flattenSequences } from "./nesting.ts";
+import { gapOf } from "./rules.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
 import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
@@ -39,16 +42,20 @@ export function createSession(project: Project): Session {
 }
 
 /** What an op touches, for conflict checks. */
-function touches(op: Op): Array<string> {
-  if (op.op === "insert_item") return [op.item.id];
-  if ("item" in op && op.item) return [op.item];
-  if (op.op === "add_track") return [`track:${op.track.id}`];
-  if ("track" in op && op.track) return [`track:${op.track}`];
-  if (op.op === "add_media") return [`media:${op.media.id}`];
-  if (op.op === "update_media") return [`media:${op.media}`];
-  if (op.op === "delete_media") return [`media:${op.media}`];
-  return ["project"];
-}
+const touches =
+  (project: Project) =>
+  (op: Op): Array<string> => {
+    if (op.op === "nest_items") return [...op.items, op.item, `track:${project.tracks.find((t) => t.role === "main")?.id}`];
+    if (op.op === "insert_item") return [op.item.id];
+    if ("item" in op && op.item) return [op.item];
+    if (op.op === "add_track") return [`track:${op.track.id}`];
+    if ("track" in op && op.track) return [`track:${op.track}`];
+    if (op.op === "edit_sequence" || op.op === "delete_sequence") return [`sequence:${op.sequence}`];
+    if (op.op === "add_media") return [`media:${op.media.id}`];
+    if (op.op === "update_media") return [`media:${op.media}`];
+    if (op.op === "delete_media") return [`media:${op.media}`];
+    return ["project"];
+  };
 
 /** The items an op removes along with their track, as the project is now: a newer edit of any of them by someone else (an insert) refuses it. */
 function removedItems(project: Project, op: Op): Array<string> {
@@ -86,12 +93,13 @@ function merge(target: object, set: FieldSet) {
 }
 
 /**
- * Locked tracks and items can't be edited, by the user or the agent (D52). update_track stays
- * allowed, so a locked track can still be unlocked, hidden or muted.
+ * Locked tracks and items can't be edited, by the user or the agent (D52), until the user unlocks
+ * them. update_track and a lock change stay allowed here, for the user's hand; agentLockProblem
+ * refuses the agent's.
  */
 function guard(track: DraftTrack, item?: DraftItem) {
-  if (track.locked) throw new EditError(`Track "${track.name ?? track.id}" is locked: unlock it to edit it`);
-  if (item?.locked) throw new EditError(`"${item.id}" is locked: unlock it to edit it`);
+  if (track.locked) throw new EditError(`Track "${track.name ?? track.id}" is locked: unlock it to edit it`, [lockedTrackProblem(track)]);
+  if (item?.locked) throw new EditError(`"${item.id}" is locked: unlock it to edit it`, [lockedItemProblem(track, item)]);
 }
 
 /** The item an op works on, refused if it (or its track) is locked. */
@@ -104,7 +112,7 @@ function editable(project: Draft, itemId: Id) {
 /** Clips and audio play from a time in their media; still images and items without media don't. */
 function hasSourceTime(project: Draft, item: DraftItem) {
   // A graphic's time runs from its own start (D78): a trimmed start or a split's second half goes on from where it was.
-  if (item.type === "graphic") return true;
+  if (item.type === "graphic" || item.type === "sequence") return true;
   if (!item.media) return item.in !== undefined;
   return project.media.find((m) => m.id === item.media)?.kind !== "image";
 }
@@ -122,6 +130,182 @@ const skipsFrom = (skips: Skips, from: number): Skips => skips.filter((s) => s.a
 function setSkips(item: DraftItem, skips: Skips) {
   if (skips.length) item.skips = skips.map((s) => ({ ...s }));
   else delete item.skips;
+}
+
+function trimItem(project: Draft, item: DraftItem, edge: "start" | "end", frames: number) {
+  // Box keys (D75) keep their values at a cut: a key goes on the cut with each keyed property's value there.
+  if (item.duration - frames < 1) throw new EditError(`Trimming ${frames} frames would leave "${item.id}" empty`);
+  item.duration -= frames;
+  if (edge === "start") {
+    // The source moves with the start, at the clip's speed. A still image has no source time.
+    if (item.type === "graphic") {
+      // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
+      const at = frames > 0 ? graphicTime(item, frames) : Math.max(0, (item.in ?? 0) + Math.round(frames * (item.speed ?? 1)));
+      if (at > 0 || item.in !== undefined) item.in = at;
+      if (item.skips) setSkips(item, skipsFrom(item.skips, frames));
+    } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+    if (item.start !== undefined) item.start += frames;
+    if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
+    // Keys stay on their moment: they shift with the new start, and ones now before it go.
+    if (item.keys && frames > 0)
+      item.keys = withCutKey(item.keys, frames, project.canvas.fps, item.duration + frames)
+        .map((k) => ({ ...k, frame: k.frame - frames }))
+        .filter((k) => k.frame >= 0);
+    else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - frames }));
+    if (item.gainKeys?.length) {
+      // The envelope keeps its value at the new start: a key goes there when keys were cut off.
+      const at = keyDbAt(item.gainKeys, frames);
+      const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - frames })).filter((k) => k.frame >= 0);
+      item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
+    }
+  } else {
+    if (item.keys?.some((k) => k.frame > item.duration))
+      item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + frames).filter((k) => k.frame <= item.duration);
+    if (item.skips)
+      setSkips(
+        item,
+        item.skips.filter((s) => s.at < item.duration),
+      );
+  }
+  if (item.keys?.length === 0) delete item.keys;
+}
+
+/** The item that plays right after `index` on its track, when one does: the next on main with no gap, a free item starting at its end. */
+export function adjacentAfter<T extends Pick<Item, "start" | "duration" | "gap">>(
+  track: { readonly role?: "main" | undefined; readonly items: ReadonlyArray<T> },
+  index: number,
+): T | undefined {
+  const item = track.items[index]!;
+  if (track.role === "main") {
+    const next = track.items[index + 1];
+    return next && gapOf(next) === 0 ? next : undefined;
+  }
+  const end = (item.start ?? 0) + item.duration;
+  return track.items.find((other) => other.start === end);
+}
+
+/** A roll's other side: the item after the cut, which the op changes too. */
+function rolledItem(project: Project, op: Op): Array<string> {
+  if (op.op !== "roll_edit") return [];
+  for (const track of project.tracks) {
+    const index = track.items.findIndex((i) => i.id === op.item);
+    if (index === -1) continue;
+    const next = adjacentAfter(track, index) as Item | undefined;
+    return next ? [next.id] : [];
+  }
+  return [];
+}
+
+function slipItem(project: Draft, item: DraftItem, frames: number) {
+  const timed = (item.type === "clip" || item.type === "audio") && item.media && hasSourceTime(project, item);
+  if (!timed) throw new EditError(`"${item.id}" has no media time to slip: only clips and sounds with video or audio slip`);
+  const next = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+  if (next < 0)
+    throw new EditError(
+      `Slipping "${item.id}" by ${frames} would start before its media (it can go back ${Math.floor((item.in ?? 0) / (item.speed ?? 1))} frames)`,
+    );
+  item.in = next;
+}
+
+function rollEdit(project: Draft, itemId: Id, frames: number) {
+  const { track, index, item } = editable(project, itemId);
+  const adjacent = adjacentAfter(track, index);
+  if (!adjacent) throw new EditError(`Nothing plays right after "${item.id}", so there's no cut to roll: use trim_item`);
+  const next = editable(project, (adjacent as DraftItem).id).item;
+  trimItem(project, item, "end", -frames);
+  trimItem(project, next, "start", frames);
+}
+
+const allTracks = (project: Draft) => [...project.tracks, ...(project.sequences ?? []).flatMap((s) => s.tracks)];
+const allItems = (project: Draft) => allTracks(project).flatMap((t) => t.items);
+
+function findSequence(project: Draft, id: Id) {
+  const sequence = project.sequences?.find((s) => s.id === id);
+  if (!sequence) throw new EditError(`Sequence "${id}" does not exist`);
+  return sequence;
+}
+
+function withoutSequence(project: Draft, id: Id) {
+  project.sequences = project.sequences!.filter((s) => s.id !== id);
+  if (!project.sequences.length) delete project.sequences;
+}
+
+/** The items' place on Main, which must be one run of neighbours in order. */
+function mainRun(project: Draft, ids: ReadonlyArray<Id>) {
+  const main = project.tracks.find((t) => t.role === "main");
+  const first = main?.items.findIndex((i) => i.id === ids[0]) ?? -1;
+  if (!main || first === -1 || ids.some((id, i) => main.items[first + i]?.id !== id))
+    throw new EditError("Only neighbouring items on Main, in order, nest together");
+  return { main, first };
+}
+
+function nestItems(project: Draft, op: Extract<Op, { op: "nest_items" }>) {
+  const { main, first } = mainRun(project, op.items);
+  guard(main);
+  const items = main.items.slice(first, first + op.items.length);
+  for (const item of items) guard(main, item);
+  const follower = allItems(project).find((i) => i.linkedTo && op.items.includes(i.linkedTo));
+  if (follower) throw new EditError(`"${follower.id}" is linked to a clip going into the sequence: unlink it first`);
+  const gap = gapOf(items[0]!);
+  delete items[0]!.gap;
+  const duration = items.reduce((sum, item) => sum + gapOf(item) + item.duration, 0);
+  const nested = {
+    id: op.item,
+    type: "sequence",
+    sequence: op.sequence,
+    duration,
+    ...(gap ? { gap } : {}),
+    ...(op.name ? { name: op.name } : {}),
+  } as DraftItem;
+  main.items.splice(first, items.length, nested);
+  const track = { id: `${op.sequence}-main`, kind: "video", role: "main", name: "Main", items } as DraftTrack;
+  project.sequences = [...(project.sequences ?? []), { id: op.sequence, name: op.name ?? op.sequence, tracks: [track] }];
+}
+
+function unnestItem(project: Draft, itemId: Id) {
+  const { track, index, item } = editable(project, itemId);
+  if (item.type !== "sequence") throw new EditError(`"${item.id}" isn't a sequence item`);
+  if (track.role !== "main" || !canUnnest(project as Project, item as Item))
+    throw new EditError(`"${item.id}" can't be unnested: that needs the whole sequence, used once, with one track`);
+  const sequence = findSequence(project, item.sequence!);
+  const items = sequence.tracks[0]!.items;
+  const gap = gapOf(item) + gapOf(items[0]!);
+  if (gap) items[0]!.gap = gap;
+  track.items.splice(index, 1, ...items);
+  withoutSequence(project, sequence.id);
+}
+
+const SEQUENCE_OPS = new Set<Op["op"]>([
+  "insert_item",
+  "update_item",
+  "trim_item",
+  "split_item",
+  "slip_item",
+  "roll_edit",
+  "move_item",
+  "delete_item",
+  "set_transition",
+  "add_track",
+  "update_track",
+  "delete_track",
+]);
+
+function editSequence(project: Draft, op: Extract<Op, { op: "edit_sequence" }>) {
+  const sequence = findSequence(project, op.sequence);
+  for (const track of allTracks(project)) for (const item of track.items) if (item.sequence === op.sequence) guard(track, item);
+  const timeline = { ...project, tracks: sequence.tracks };
+  for (const each of op.ops) {
+    if (!SEQUENCE_OPS.has(each.op)) throw new EditError(`${each.op} can't run inside a sequence`);
+    applyOp(timeline, each);
+  }
+  sequence.tracks = timeline.tracks;
+}
+
+function deleteSequence(project: Draft, id: Id) {
+  findSequence(project, id);
+  const user = allItems(project).find((i) => i.sequence === id);
+  if (user) throw new EditError(`Sequence "${id}" is still used by "${user.id}"`);
+  withoutSequence(project, id);
 }
 
 function applyOp(project: Draft, op: Op) {
@@ -142,44 +326,15 @@ function applyOp(project: Draft, op: Op) {
       return;
     }
     case "trim_item": {
-      // Box keys (D75) keep their values at a cut: a key goes on the cut with each keyed property's value there.
-      const { item } = editable(project, op.item);
-      if (item.duration - op.frames < 1) throw new EditError(`Trimming ${op.frames} frames would leave "${item.id}" empty`);
-      item.duration -= op.frames;
-      if (op.edge === "start") {
-        // The source moves with the start, at the clip's speed. A still image has no source time.
-        if (item.type === "graphic") {
-          // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
-          const at = op.frames > 0 ? graphicTime(item, op.frames) : Math.max(0, (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1)));
-          if (at > 0 || item.in !== undefined) item.in = at;
-          if (item.skips) setSkips(item, skipsFrom(item.skips, op.frames));
-        } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
-        if (item.start !== undefined) item.start += op.frames;
-        if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
-        // Keys stay on their moment: they shift with the new start, and ones now before it go.
-        if (item.keys && op.frames > 0)
-          item.keys = withCutKey(item.keys, op.frames, project.canvas.fps, item.duration + op.frames)
-            .map((k) => ({ ...k, frame: k.frame - op.frames }))
-            .filter((k) => k.frame >= 0);
-        else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames }));
-        if (item.gainKeys?.length) {
-          // The envelope keeps its value at the new start: a key goes there when keys were cut off.
-          const at = keyDbAt(item.gainKeys, op.frames);
-          const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
-          item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
-        }
-      } else {
-        if (item.keys?.some((k) => k.frame > item.duration))
-          item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
-        if (item.skips)
-          setSkips(
-            item,
-            item.skips.filter((s) => s.at < item.duration),
-          );
-      }
-      if (item.keys?.length === 0) delete item.keys;
+      trimItem(project, editable(project, op.item).item, op.edge, op.frames);
       return;
     }
+    case "slip_item":
+      slipItem(project, editable(project, op.item).item, op.frames);
+      return;
+    case "roll_edit":
+      rollEdit(project, op.item, op.frames);
+      return;
     case "split_item": {
       const { track, index, item } = editable(project, op.item);
       if (op.at < 1 || op.at >= item.duration) throw new EditError(`Split point ${op.at} is outside "${item.id}"`);
@@ -263,6 +418,18 @@ function applyOp(project: Draft, op: Op) {
       else item.transitionIn = structuredClone(op.transition) as DraftItem["transitionIn"];
       return;
     }
+    case "nest_items":
+      nestItems(project, op);
+      return;
+    case "unnest_item":
+      unnestItem(project, op.item);
+      return;
+    case "edit_sequence":
+      editSequence(project, op);
+      return;
+    case "delete_sequence":
+      deleteSequence(project, op.sequence);
+      return;
     case "add_track":
       project.tracks.splice(op.index ?? project.tracks.length, 0, { items: [], ...(structuredClone(op.track) as Partial<DraftTrack>) } as DraftTrack);
       return;
@@ -295,7 +462,7 @@ function applyOp(project: Draft, op: Op) {
     case "delete_media": {
       // F8 (D167): only once nothing uses it (delete those items first, in the same edit). The file stays.
       if (!project.media.some((m) => m.id === op.media)) throw new EditError(`No media "${op.media}"`);
-      const user = project.tracks.flatMap((t) => t.items).find((i) => itemUsesMedia(i as Item, op.media));
+      const user = allItems(project).find((i) => itemUsesMedia(i as Item, op.media));
       if (user) throw new EditError(`Media "${op.media}" is still used by "${user.id}"`);
       project.media = project.media.filter((m) => m.id !== op.media);
       return;
@@ -333,6 +500,15 @@ function applyOp(project: Draft, op: Op) {
   }
 }
 
+function sectionProblem(before: Project, after: Project, actor: Actor) {
+  const [playedBefore, playedAfter] = [flattenSequences(before), flattenSequences(after)];
+  return (
+    (actor === "agent" ? unlockProblem(before, after) : undefined) ??
+    lockedSectionProblem(playedBefore, playedAfter) ??
+    (actor === "agent" ? lockedContextProblem(playedBefore, playedAfter) : undefined)
+  );
+}
+
 /**
  * Apply one edit (a list of ops) atomically. Returns a new session; the old one is untouched.
  * baseRevision is the revision the actor last saw. If the agent's ops touch something the
@@ -345,12 +521,15 @@ export function applyEdit(
 ): Session {
   if (!["user", "agent"].includes(actor)) throw new EditError(`Unknown actor "${actor}"`);
   if (baseRevision < session.revision) {
-    const mine = new Set([...ops.flatMap(touches), ...ops.flatMap((op) => removedItems(session.project, op))]);
+    const mine = new Set([
+      ...ops.flatMap(touches(session.project)),
+      ...ops.flatMap((op) => [...removedItems(session.project, op), ...rolledItem(session.project, op)]),
+    ]);
     const me = authorOf({ actor, agentId });
     const by = new Map<string, string>();
     for (const e of session.log) {
       if (e.revision <= baseRevision || authorOf(e) === me) continue;
-      for (const id of e.ops.flatMap(touches)) if (mine.has(id)) by.set(id, authorOf(e));
+      for (const id of e.ops.flatMap(touches(session.project))) if (mine.has(id)) by.set(id, authorOf(e));
     }
     if (by.size) throw new EditConflict([...by.keys()], by);
   }
@@ -358,12 +537,10 @@ export function applyEdit(
   for (const op of ops) applyOp(project, op);
   // Issue #118: what a locked section plays never changes (a ripple from before it included), whoever edits.
   // The agent also can't unlock one, or change its tracks, media files, canvas or master.
-  const locked = session.project.sections?.length
-    ? ((actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ??
-      lockedSectionProblem(session.project, project as Project) ??
-      (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
-    : undefined;
+  const locked = session.project.sections?.length ? sectionProblem(session.project, project as Project, actor) : undefined;
   if (locked) throw new EditError("The edit would change a locked section", [locked]);
+  const lockProblem = actor === "agent" ? agentLockProblem(session.project, project as Project) : undefined;
+  if (lockProblem) throw new EditError("The edit would change something the user locked", [lockProblem]);
   if (validate) {
     const errors = validate(project);
     if (errors.length) throw new EditError("The edit would make the project invalid", errors);
@@ -408,7 +585,7 @@ export function undoTurn(initialProject: Project, session: Session, turnId: stri
     kept.push(e);
   }
   // Issue #118: taking a turn back mustn't move what the user locked since (a clip it added before the section).
-  const locked = session.project.sections?.length ? lockedSectionProblem(session.project, s.project) : undefined;
+  const locked = session.project.sections?.length ? lockedSectionProblem(flattenSequences(session.project), flattenSequences(s.project)) : undefined;
   if (locked) throw new EditError("Undoing this turn would change a locked section", [locked]);
   return { project: s.project, revision: session.revision + 1, log: kept };
 }
@@ -428,8 +605,9 @@ export function redoTurn(
   const turnId = entries[0]?.turnId;
   if (!turnId) throw new EditError("The turn has no edits to redo");
   if (session.log.some((e) => e.turnId === turnId)) throw new EditError("The turn's edits are in the project already");
-  const mine = new Set(entries.flatMap((e) => e.ops.flatMap(touches)));
-  const later = session.log.filter((e) => e.revision > undoneAt).flatMap((e) => e.ops.flatMap(touches));
+  const touched = touches(session.project);
+  const mine = new Set(entries.flatMap((e) => e.ops.flatMap(touched)));
+  const later = session.log.filter((e) => e.revision > undoneAt).flatMap((e) => e.ops.flatMap(touched));
   const clash = [...new Set(later.filter((id) => mine.has(id)))];
   if (clash.length) throw new EditConflict(clash);
   const first = entries[0]!.summary ?? "the turn's edits";

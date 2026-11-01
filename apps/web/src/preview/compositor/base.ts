@@ -355,7 +355,7 @@ export abstract class CompositorBase {
     const key = item.effects?.length ? JSON.stringify(item.effects) : "";
     const known = this.fxOf.get(item.id);
     if (known && known.key === key) return known.fx;
-    const fx = key ? clipFx(item) : undefined;
+    const fx = key ? clipFx(item, this.project?.luts) : undefined;
     this.fxOf.set(item.id, { key, fx });
     return fx;
   }

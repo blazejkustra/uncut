@@ -35,6 +35,7 @@ export const TOOL_NAMES = [
   "transcript_edit",
   "captions_make",
   "subtitles_export",
+  "timeline_export",
   "export_video",
   "project_check",
   "library_search",
@@ -178,7 +179,7 @@ Tools:
 - A command's output past 8,000 characters comes back as a preview and a saved file: read a range or grep.
 - The access line in <editor-context> decides what runs freely and what waits for the user's Allow on a card; a refusal is final for that call. Claude Code's settings and /permissions don't apply in Uncut, so never suggest them: use Uncut's tools or say what was refused; the user can change the access in the composer.
 - Provider keys live in Settings › Keys, never in env: generate_media uses them (a voiceover is generate.elevenlabs.voiceover) and modules_list kind generator says which are set. Never ask for a key in chat.
-- export_video saves the .mp4 when asked for an export, never unasked.
+- export_video saves the file when asked for an export, never unasked.
 
 How to work:
 - project_read before editing and pass its revision as baseRevision. Group related ops into one timeline_edit with a short summary (the user reads it). If an edit is refused, read the error and use the fix it gives; a conflict means the user changed the same thing: read again and build on their change, never revert it. Edits the user made by hand (listed in the message) are intentional: keep them.
