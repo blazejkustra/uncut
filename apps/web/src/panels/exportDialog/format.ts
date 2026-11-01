@@ -46,7 +46,7 @@ export const RANGE_KINDS: ReadonlyArray<readonly [RangeKind, string]> = [
 export const ACTIVE = new Set(["queued", "preparing", "rendering"]);
 export const exportRunning = (job: ExportJob | undefined) => job !== undefined && ACTIVE.has(job.phase);
 
-/** A file name the Finder accepts, ending in .mp4. */
+/** A file name the Finder accepts, ending in the given extension. */
 export const fileName = (name: string, extension = "mp4") => {
   const clean = name.replace(/[/:]/g, "-").trim() || "Untitled";
   return clean.toLowerCase().endsWith(`.${extension}`) ? clean : `${clean.replace(VIDEO_EXTENSION, "")}.${extension}`;

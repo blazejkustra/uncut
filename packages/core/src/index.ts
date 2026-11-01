@@ -4,6 +4,7 @@ export { loadModules, lookProblems, validateModule, validateOps, validateProject
 export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
 export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
+export { agentLockProblem, locksNote } from "./timeline/locks.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
   byUser,

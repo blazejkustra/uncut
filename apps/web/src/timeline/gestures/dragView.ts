@@ -7,7 +7,7 @@ export const HEAD_WIDTH = 184;
 /** What the lanes draw while an item is dragged: the planned result, before it is sent. */
 export interface DragView {
   readonly itemId: string;
-  readonly mode: "move" | "start" | "end" | "fade" | "transition" | "group";
+  readonly mode: "move" | "start" | "end" | "fade" | "transition" | "group" | "slip" | "roll";
   /** The project with the planned ops applied (or as it is, when they would be refused). */
   readonly view: ProjectModel;
   /** Drawn at this start and length instead of where the view puts it (a main clip's left trim). */

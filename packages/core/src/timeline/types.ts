@@ -299,6 +299,10 @@ export type Op =
   | { readonly op: "insert_item"; readonly track: Id; readonly index?: number; readonly item: Item }
   | { readonly op: "update_item"; readonly item: Id; readonly set: FieldSet }
   | { readonly op: "trim_item"; readonly item: Id; readonly edge: "start" | "end"; readonly frames: number }
+  // Slip: the same frames of the timeline show other frames of the media (frames > 0: later ones).
+  | { readonly op: "slip_item"; readonly item: Id; readonly frames: number }
+  // Roll: the cut after `item` moves (frames > 0: later); the item after it gives up what `item` gains.
+  | { readonly op: "roll_edit"; readonly item: Id; readonly frames: number }
   | { readonly op: "split_item"; readonly item: Id; readonly at: Frame; readonly newId: Id }
   | { readonly op: "move_item"; readonly item: Id; readonly track?: Id; readonly index?: number; readonly start?: Frame }
   | { readonly op: "delete_item"; readonly item: Id }
