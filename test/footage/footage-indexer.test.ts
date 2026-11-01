@@ -2,7 +2,7 @@
 // progress, cancel stops it and keeps what's done, and started projects pick up new media.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -25,7 +25,7 @@ interface Pending {
   readonly job: AnalysisJob;
 }
 
-function setup() {
+function setup(refuse?: Error) {
   const root = mkdtempSync(join(tmpdir(), "uncut-footage-"));
   const dir = join(root, "demo.uncut");
   mkdirSync(dir);
@@ -47,6 +47,7 @@ function setup() {
     open: () => open && { ...open, media: [...media] },
     recentDirs: async () => [],
     request: async (target): Promise<Requested> => {
+      if (refuse) throw refuse;
       const job = {
         id: `job-${requests.length}`,
         mediaId: target.mediaId,
@@ -222,6 +223,79 @@ test("descriptions are searchable at once; a hit whose file is gone isn't shown"
     assert.equal(hit!.media, "drone");
     rmSync(path);
     assert.deepEqual(await search(t.indexer, "lighthouse"), []);
+  } finally {
+    await t.close();
+  }
+});
+
+test("an unplugged drive keeps places and passages: the hit is back when the file is", async () => {
+  const t = setup();
+  try {
+    const path = t.addClip("drone");
+    t.indexer.schedule();
+    await t.indexer.settled();
+    await t.indexer.describe(path, [{ start: 1, end: 3, text: "lighthouse at dusk" }]);
+    const fingerprint = t.store.search({ query: "lighthouse", limit: 1 })[0]!.fingerprint;
+
+    const unplugged = `${path}.away`;
+    renameSync(path, unplugged);
+    t.indexer.schedule();
+    await t.indexer.settled();
+    assert.equal(t.store.places(fingerprint).length, 1, "the file's place stays");
+    assert.equal(t.store.search({ query: "lighthouse", limit: 1 }).length, 1, "its passages stay");
+    assert.deepEqual(await search(t.indexer, "lighthouse"), [], "it isn't offered while it's away");
+
+    renameSync(unplugged, path);
+    t.indexer.schedule();
+    await t.indexer.settled();
+    assert.equal((await search(t.indexer, "lighthouse")).length, 1);
+  } finally {
+    await t.close();
+  }
+});
+
+test("a project folder that can't be reached keeps its clips; media taken out of a project goes", async () => {
+  const t = setup();
+  try {
+    const path = t.addClip("drone");
+    t.indexer.schedule();
+    await t.indexer.settled();
+    await t.indexer.describe(path, [{ start: 1, end: 3, text: "lighthouse at dusk" }]);
+    const fingerprint = t.store.search({ query: "lighthouse", limit: 1 })[0]!.fingerprint;
+
+    t.closeProject();
+    rmSync(t.dir, { recursive: true });
+    t.indexer.schedule();
+    await t.indexer.settled();
+    assert.equal(t.store.search({ query: "lighthouse", limit: 1 }).length, 1);
+    assert.equal(t.store.places(fingerprint).length, 1);
+  } finally {
+    await t.close();
+  }
+
+  const other = setup();
+  try {
+    const path = other.addClip("drone");
+    other.indexer.schedule();
+    await other.indexer.settled();
+    await other.indexer.describe(path, [{ start: 1, end: 3, text: "lighthouse at dusk" }]);
+    other.media.length = 0;
+    other.indexer.schedule();
+    await other.indexer.settled();
+    assert.deepEqual(other.store.search({ query: "lighthouse", limit: 1 }), []);
+  } finally {
+    await other.close();
+  }
+});
+
+test("a run whose job can't be started stops and can run again", async () => {
+  const t = setup(new Error("the queue is closed"));
+  try {
+    t.addClip("drone");
+    t.indexer.start();
+    await t.indexer.settled();
+    await until(() => t.indexer.status().phase === "idle" && t.statuses.some((s) => s.phase === "running"));
+    assert.equal(t.indexer.status().phase, "idle");
   } finally {
     await t.close();
   }

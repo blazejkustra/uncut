@@ -7,10 +7,10 @@
 import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 
-import type { ExportJob, ExportLoudness, ExportQuality } from "@uncut/contracts";
-import { choiceOfTarget, projectTargetLufs, type Project } from "@uncut/core";
+import { ExportCodec, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
+import { choiceOfTarget, codecExtension, projectTargetLufs, type Project, VIDEO_EXTENSION } from "@uncut/core";
 import * as Effect from "effect/Effect";
 
 import { defaultParentDir } from "../../app/files.ts";
@@ -60,18 +60,18 @@ const lexists = (p: string) => {
 };
 
 /**
- * A file name the Finder accepts, ending in .mp4 (the dialog's fileName): no slashes, colons or
- * control characters, not hidden (no leading dot), short enough for " 999.mp4" to fit in 255 bytes.
+ * A file name the Finder accepts, ending in .mp4 or .mov (the dialog's fileName): no slashes, colons
+ * or control characters, not hidden (no leading dot), short enough for " 999.mp4" to fit in 255 bytes.
  */
-export const exportFileName = (name: string) => {
+export const exportFileName = (name: string, extension = "mp4") => {
   const clean = name
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[/:\\]/g, "-")
     .trim()
     .replace(/^\.+/, "")
     .trim();
-  let stem = clean.replace(/\.mp4$/i, "").trim() || "Untitled";
-  const ext = /\.mp4$/i.test(clean) ? clean.slice(-4) : ".mp4";
+  let stem = clean.replace(VIDEO_EXTENSION, "").trim() || "Untitled";
+  const ext = clean.toLowerCase().endsWith(`.${extension}`) ? clean.slice(-4) : `.${extension}`;
   if (Buffer.byteLength(stem) > 200) {
     let out = "";
     for (const ch of stem) {
@@ -149,14 +149,15 @@ export function messageNamesFolder(text: string, dir: string, project: string, h
   return namedFolders(text, project, exists, home).some((f) => f.dir === dir);
 }
 
-/** The first of name.mp4, name 2.mp4, name 3.mp4… in `dir` that's free (no file, no running export to it). */
+/** The first of name.mp4, name 2.mp4, name 3.mp4… (or .mov) in `dir` that's free (no file, no running export to it). */
 export function freeOutput(dir: string, file: string, taken: (p: string) => boolean): string {
-  const stem = file.replace(/\.mp4$/i, "");
+  const extension = extname(file);
+  const stem = file.slice(0, -extension.length);
   for (let n = 1; n < 1000; n++) {
-    const p = join(dir, n === 1 ? file : `${stem} ${n}.mp4`);
+    const p = join(dir, n === 1 ? file : `${stem} ${n}${extension}`);
     if (!taken(p)) return p;
   }
-  return join(dir, `${stem} ${Date.now()}.mp4`);
+  return join(dir, `${stem} ${Date.now()}${extension}`);
 }
 
 const QUALITIES: ReadonlyArray<ExportQuality> = ["draft", "standard", "high"];
@@ -174,6 +175,10 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       const target = projectTargetLufs(project);
       const loudness = (args.loudness ?? choiceOfTarget(target)) as ExportLoudness;
       if (!LOUDNESS.includes(loudness)) return textResult(`loudness must be one of ${LOUDNESS.join(", ")}.`, true);
+      const codec = (args.codec ?? "h264") as ExportCodec;
+      if (!ExportCodec.literals.includes(codec)) return textResult(`codec must be one of ${ExportCodec.literals.join(", ")}.`, true);
+      if (args.transparent !== undefined && typeof args.transparent !== "boolean") return textResult("transparent must be true or false.", true);
+      if (args.transparent && codec !== "prores4444") return textResult('transparent needs codec "prores4444".', true);
       if (args.motionBlur !== undefined && typeof args.motionBlur !== "boolean") return textResult("motionBlur must be true or false.", true);
       for (const k of ["fps", "shortSide"] as const)
         if (args[k] !== undefined && typeof args[k] !== "number") return textResult(`${k} must be a number.`, true);
@@ -216,7 +221,7 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
         fallback: lastDir ?? defaultParentDir(),
       });
       if ("problem" in where) return textResult({ refused: where.problem }, true);
-      const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : project.name);
+      const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : project.name, codecExtension(codec));
       const busyOutputs = new Set(jobs.filter((j) => ACTIVE.has(j.phase)).map((j) => j.output));
       const output = freeOutput(where.dir, file, (p) => lexists(p) || busyOutputs.has(p));
 
@@ -239,6 +244,8 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       }
 
       const video = {
+        ...(codec !== "h264" ? { codec } : {}),
+        ...(args.transparent ? { alpha: true } : {}),
         ...(typeof args.fps === "number" ? { fps: args.fps } : {}),
         ...(typeof args.shortSide === "number" ? { shortSide: args.shortSide } : {}),
       };

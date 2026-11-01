@@ -1,4 +1,4 @@
-import { type ExportQuality, type ExportLoudness, type ExportSubtitles } from "@uncut/contracts";
+import { type ExportQuality, type ExportLoudness, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { bridge } from "../../bridge.ts";
 import { set, state, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
@@ -30,8 +30,9 @@ export const exportActions = {
     subtitles?: ExportSubtitles;
     burnCaptions?: boolean;
     range?: { from: number; to: number };
-    video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number };
+    video?: ExportVideo;
     motionBlur?: boolean;
+    review?: boolean;
   }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
@@ -40,6 +41,16 @@ export const exportActions = {
     return undefined;
   },
   cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
+  /** The timeline as a .fcpxml or .edl file; the saved file and what it lost, or the server's refusal. */
+  async exportTimeline(input: {
+    output: string;
+    overwrite?: boolean;
+  }): Promise<{ readonly path: string; readonly warnings: ReadonlyArray<string> } | { readonly reason?: string; readonly message: string }> {
+    const result = await call((c) => c["export.timeline"](input));
+    if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
+    set({ exportFolder: input.output.slice(0, input.output.lastIndexOf("/")) || "/" });
+    return result.value;
+  },
   /** D105: just the subtitles as a .srt / .vtt file; the saved file, or the server's refusal. */
   async exportSubtitles(input: {
     output: string;

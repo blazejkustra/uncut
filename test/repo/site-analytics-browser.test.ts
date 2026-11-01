@@ -33,6 +33,7 @@ const TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".webp": "image/webp",
+  ".mp4": "video/mp4",
   ".woff2": "font/woff2",
   ".svg": "image/svg+xml",
   ".xml": "application/xml",
@@ -233,6 +234,49 @@ test("Visitor outside the EEA/UK/CH: no banner, no settings link, gtag.js with c
   await v.page.browserContext().close();
 });
 
+const downloadEvents = (p: Page) => p.evaluate(() => window.dataLayer!.filter((a) => Array.from(a as ArrayLike<unknown>)[1] === "download_click").length);
+const clickDownload = (p: Page) => p.$eval(".btn-nav", (a) => a.addEventListener("click", (e) => e.preventDefault())).then(() => p.click(".btn-nav"));
+
+test("Download click: an event outside the EU and after Accept, none undecided or after Reject", { skip }, async () => {
+  const us = await visitor("US");
+  await us.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+  await clickDownload(us.page);
+  assert.equal(await downloadEvents(us.page), 1);
+  await us.page.browserContext().close();
+
+  const eu = await visitor("PL");
+  await eu.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+  await settle(eu.page);
+  await clickDownload(eu.page);
+  assert.equal(await downloadEvents(eu.page), 0, "undecided");
+  await eu.page.click(".consent-btn:first-child");
+  await clickDownload(eu.page);
+  assert.equal(await downloadEvents(eu.page), 0, "rejected");
+  await eu.page.click("footer [data-cookie-settings]");
+  await settle(eu.page);
+  await eu.page.click(".consent-btn:last-child");
+  await clickDownload(eu.page);
+  assert.equal(await downloadEvents(eu.page), 1, "accepted");
+  await eu.page.browserContext().close();
+});
+
+test("The launch film is requested under the CSP only once it's scrolled to", { skip }, async () => {
+  const v = await visitor("US", 1280, 800);
+  await v.page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
+  const isFilm = (r: { url(): string }) => r.url().endsWith("/assets/video/launch.mp4");
+  let early = false;
+  v.page.on("request", (r) => {
+    early ||= isFilm(r);
+  });
+  await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+  assert.equal(early, false, "nothing is fetched above the fold");
+  const requested = v.page.waitForRequest(isFilm, { timeout: 10_000 });
+  await v.page.$eval(".film video", (e) => e.scrollIntoView({ block: "center" }));
+  await requested;
+  assert.deepEqual(v.errors, []);
+  await v.page.browserContext().close();
+});
+
 test("Placeholder measurement ID: nothing loads and no banner, anywhere", { skip }, async () => {
   placeholder = true;
   try {
@@ -252,7 +296,7 @@ test("Placeholder measurement ID: nothing loads and no banner, anywhere", { skip
 });
 
 test("Every page: no CSP violation, no page error, no inline script without its hash; the nav fits at 360 px", { skip }, async () => {
-  for (const path of ["/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/"]) {
+  for (const path of ["/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/", "/vs/", "/vs/palmier/", "/guides/edit-video-with-claude-code/"]) {
     for (const w of [1440, 360]) {
       const v = await visitor("US", w, 800);
       await v.page.goto(`${base}${path}`, { waitUntil: "networkidle0" });

@@ -11,6 +11,7 @@ import { CONFIRM_OVER, needsKeyLine, TURN_CAP } from "../../generate/generate.ts
 import { providerName } from "../../generate/keys.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import { type Running, pushEdit } from "../session/types.ts";
+import { otherProjectsClosed } from "./access.ts";
 import type { AskCtx } from "./ask.ts";
 
 const MAX_NOTE_CHARS = 500;
@@ -74,9 +75,10 @@ export const makeGenerateTools = (ctx: AskCtx) => {
           true,
         );
       const dollars = (n: number) => `$${n.toFixed(2)}`;
-      const overCap = () => estimate > 0 && (r.turn.spend ?? 0) + estimate > TURN_CAP;
+      const spentSoFar = () => (r.priorSpend ?? 0) + (r.turn.spend ?? 0);
+      const overCap = () => estimate > 0 && spentSoFar() + estimate > TURN_CAP;
       const capNote = () =>
-        `That would take this turn past ${dollars(TURN_CAP)} of estimated spend (${dollars(r.turn.spend ?? 0)} so far). Nothing was generated; the user can generate more from the Generate tab.`;
+        `That would take this ${r.priorSpend === undefined ? "turn" : "session"} past ${dollars(TURN_CAP)} of estimated spend (${dollars(spentSoFar())} so far). Nothing was generated; the user can generate more from the Generate tab.`;
       if (overCap()) return textResult(capNote(), true);
       if (estimate > CONFIRM_OVER) {
         const what =
@@ -339,15 +341,16 @@ export const makeGenerateTools = (ctx: AskCtx) => {
    * on this Mac, newest first. media_import with a result's path brings it in (copied when it lives
    * inside another project, D12).
    */
-  const mediaSearch = (v: ProjectView, args: Record<string, unknown>) =>
+  const mediaSearch = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       const kind = typeof args.kind === "string" ? args.kind.toLowerCase() : undefined;
       if (kind && !["video", "image", "audio", "capture", "import", "generated"].includes(kind))
         return textResult("kind is video, image, audio, capture, import or generated.", true);
       if (args.scope !== undefined && args.scope !== "project" && args.scope !== "all") return textResult("scope is project or all.", true);
       const query = typeof args.query === "string" ? args.query.slice(0, 200) : "";
-      const found = yield* mediaIndex.search({ query, ...(kind ? { kind } : {}), limit: MAX_FOUND });
-      const hits = yield* footage.search({ query, thisProject: args.scope === "project", limit: MAX_FOOTAGE_HITS });
+      const closed = otherProjectsClosed(r);
+      const found = closed ? [] : yield* mediaIndex.search({ query, ...(kind ? { kind } : {}), limit: MAX_FOUND });
+      const hits = yield* footage.search({ query, thisProject: closed || args.scope === "project", limit: MAX_FOOTAGE_HITS });
       const fps = v.session.project.canvas.fps;
       const moments = hits.filter((hit) => !kind || hit.kind === kind || !["video", "image", "audio"].includes(kind)).map((hit) => momentOut(hit, fps));
       const status = yield* footage.current;
@@ -370,7 +373,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
       return textResult({
         moments,
         found: out,
-        note: `${out.length || moments.length ? place : nothing}${footageNote(status.clips, status.indexed)}`,
+        note: `${out.length || moments.length ? place : nothing}${footageNote(status.clips, status.indexed)}${closed ? " After web content this searched this project only." : ""}`,
       });
     });
 

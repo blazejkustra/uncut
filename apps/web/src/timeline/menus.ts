@@ -3,14 +3,16 @@
 // ⌘Z) or a UI step (rename in place, the Inspector's custom speed).
 import { soundMedia } from "@uncut/core/audio";
 import { SPEED_PRESETS, speedLabel } from "@uncut/core/arrange";
+import { planResolveReviewNote } from "@uncut/core/review";
 import { planLockRest, planMarkSection, planRemoveSection } from "@uncut/core/sections";
 
 import { clipboardItems, copySelection, deleteSelection, duplicate, paste } from "../editor/keys.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { itemLabel, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, isRemote } from "../state/store.ts";
+import type { ReviewNote } from "@uncut/core/types";
 import type { MenuItems } from "./ContextMenu.tsx";
-import { findItem, trackFlag } from "./edit.ts";
+import { findItem, planNest, planUnnest, trackFlag } from "./edit.ts";
 import { keysOf } from "../editor/keymap.ts";
 
 /** A menu row's key hint: the keymap's first key for the action (#78), so a rebinding shows. */
@@ -176,6 +178,24 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
       disabled: off || many || track.locked,
       run: () => void actions.toggleItem(item.id, "locked"),
     },
+    ...(track.role === "main"
+      ? [
+          "-" as const,
+          item.type === "sequence"
+            ? {
+                id: "unnest",
+                label: "Unnest",
+                disabled: off || "problem" in planUnnest(project, item.id),
+                run: () => void actions.timelineEdit(planUnnest(project, item.id)),
+              }
+            : {
+                id: "nest",
+                label: "Nest into a sequence",
+                disabled: off || "problem" in planNest(project, ids),
+                run: () => void actions.timelineEdit(planNest(project, ids)),
+              },
+        ]
+      : []),
     // D157: a kicker and its title (or any items grouped here) move, trim and delete together.
     ...(item.group
       ? ["-" as const, { id: "ungroup", label: "Ungroup", disabled: off || locked, run: () => void actions.grouping(ids, false) }]
@@ -333,6 +353,19 @@ export function sectionMenu(project: ProjectModel, id: string, online: boolean):
           },
         ]
       : []),
+  ];
+}
+
+export function reviewNoteMenu(note: ReviewNote, online: boolean): MenuItems {
+  return [
+    { id: "review-note-play", label: "Play from here", run: () => playback.playFrom(note.frame) },
+    "-",
+    {
+      id: "review-note-resolve",
+      label: note.resolved ? "Reopen" : "Resolve",
+      disabled: !online,
+      run: () => void actions.timelineEdit(planResolveReviewNote(note.id, !note.resolved)),
+    },
   ];
 }
 

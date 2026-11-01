@@ -497,7 +497,23 @@ export const makeTranscriptTools = (ctx: MediaCtx) => {
       });
     });
 
-  return { transcriptRead, transcriptEdit, captionsMake, subtitlesExport };
+  const timelineExport = (v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const format = args.format ?? "fcpxml";
+      if (format !== "fcpxml" && format !== "edl") return textResult('format must be "fcpxml" or "edl".', true);
+      if (args.overwrite !== undefined && typeof args.overwrite !== "boolean") return textResult("overwrite must be true or false.", true);
+      const project = v.session.project as Project;
+      const path = join(v.dir, `${project.name.replace(/[/:\\]/g, "-").trim() || "Timeline"}.${format}`);
+      const saved = yield* exporter.saveTimeline({ output: path, overwrite: args.overwrite === true }).pipe(
+        Effect.map((value) => ({ ok: true as const, value })),
+        Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+      );
+      if (!saved.ok)
+        return textResult({ refused: saved.error.message, ...(saved.error.reason === "exists" ? { note: "Pass overwrite: true to replace it." } : {}) }, true);
+      return textResult({ path: saved.value.path, lost: saved.value.warnings });
+    });
+
+  return { transcriptRead, transcriptEdit, captionsMake, subtitlesExport, timelineExport };
 };
 
 export type TranscriptCtx = MediaCtx & ReturnType<typeof makeTranscriptTools>;

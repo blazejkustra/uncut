@@ -17,6 +17,7 @@ import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
 import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 import { UsageDataSettings } from "./telemetry.tsx";
+import { OutsideAgentsSettings } from "./OutsideAgents.tsx";
 import { LabsSettings } from "./Labs.tsx";
 import { PluginsSettings } from "./plugins/PluginsSettings.tsx";
 import { LabsTip, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
@@ -153,6 +154,7 @@ function AppSettings() {
           <span data-testid="settings-autosave">Every change, to project.json</span>
         </div>
       </div>
+      <OutsideAgentsSettings />
       <UsageDataSettings />
       <div className="group">
         <div className="group-label">Agents, capture and plugins</div>

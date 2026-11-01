@@ -124,7 +124,7 @@ test(
       await page.click("[data-testid=rail-skills]");
       await waitFor("[data-testid=skills-group]");
       assert.match(await page.$eval("[data-testid=skills-group]", (el) => (el as HTMLElement).innerText), /^Uncut skills/i);
-      assert.equal((await page.$$("[data-testid=skills-group] [data-testid^=skill-]")).length, 11);
+      assert.equal((await page.$$("[data-testid=skills-group] [data-testid^=skill-]")).length, 15);
       await page.screenshot({ path: out("skills") });
 
       // One opens read-only; Duplicate makes the user's copy.
@@ -196,7 +196,6 @@ test(
       const review = "[data-testid=agent-card][data-type=review]";
       await waitFor(`${review}[data-passed]`, 30000);
       assert.equal(await page.$eval(review, (el) => el.getAttribute("data-passed")), "false");
-      await page.click(`${review} .card-head`);
       await waitFor(`${review} [data-testid=agent-review-blocker]`);
       const kinds = await page.$$eval(`${review} [data-testid=agent-review-blocker]`, (els) =>
         els.map((e) => [e.getAttribute("data-kind"), e.getAttribute("data-source")]),

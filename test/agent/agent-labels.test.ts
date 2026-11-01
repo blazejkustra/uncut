@@ -2,6 +2,7 @@
 // what a "Look only" chat may use, and what "Ask first" asks about.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { otherProjectsClosed } from "../../apps/server/src/agent/tools/access.ts";
 import { accessLine, bigChange, doingLabel, LOOK_TOOLS, partialFields, stepLabel, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 
 const project = {
@@ -70,4 +71,15 @@ test("access: Look only tools read and look; Ask first asks about removals, proj
     /^Access: Auto\. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first\.$/,
   );
   for (const a of ["look", "ask", "auto"] as const) assert.doesNotMatch(accessLine(a), /[·*•]|Edit freely|Ask before big changes/);
+});
+
+test("after web content other projects stay closed unless the turn runs on auto", () => {
+  assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "ask" }), true);
+  assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "readonly" }), true);
+  assert.equal(otherProjectsClosed({ owner: { webUsed: true }, access: "auto" }), false);
+  assert.equal(otherProjectsClosed({ owner: { webUsed: false }, access: "ask" }), false);
+});
+
+test("Look only leaves media_describe out: it writes to the footage index", () => {
+  assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes("media_describe"));
 });

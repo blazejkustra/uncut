@@ -149,6 +149,7 @@ const TYPE_NAMES: Readonly<Record<string, string>> = {
   text: "Text",
   captions: "Captions",
   audio: "Audio",
+  sequence: "Sequence",
 };
 
 /** The selected item: text and backgrounds get their editors (chunk 4), every item its basics (chunk 3). */

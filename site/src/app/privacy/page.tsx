@@ -65,14 +65,14 @@ export default function Privacy() {
           <p>Only when you use it:</p>
           <ul>
             <li>
-              <strong>The agent.</strong> Uncut runs your own Claude Code, which sends Anthropic what the agent works with: your prompts, frames from your
-              video, transcripts, file and project names, under your Claude Code account and Anthropic's terms. That includes search results from the footage
-              index when the agent searches it, and the frames it looks at to describe a clip. The index itself stays on your Mac, and indexing sends nothing
-              anywhere.
+              <strong>The agent.</strong> Uncut runs your own Claude Code or Codex, which sends Anthropic or OpenAI what the agent works with: your prompts,
+              frames from your video, transcripts, file and project names, under that account and its terms. That includes search results from the footage index
+              when the agent searches it, and the frames it looks at to describe a clip. Your footage files and the index stay on your Mac, and indexing sends
+              nothing anywhere.
             </li>
             <li>
-              <strong>Generators.</strong> Image, video and sound effect generators send your prompts (and any image you give them) to OpenAI, Google or
-              ElevenLabs with your own API keys, under their terms.
+              <strong>Generators.</strong> Image, video, sound effect, voiceover and music generators send your prompts (and any image you give them) to OpenAI,
+              Google or ElevenLabs with your own API keys, under their terms.
             </li>
             <li>
               <strong>Sound search.</strong> Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
@@ -82,16 +82,16 @@ export default function Privacy() {
               address and the app version.
             </li>
           </ul>
-          <p>Uncut is not made by or affiliated with Anthropic.</p>
+          <p>Uncut is not made by or affiliated with Anthropic or OpenAI.</p>
 
           <h2 id="website">Website</h2>
           <p>
             This website (uncut.video) uses Google Analytics 4 to see how visitors find and use it. Google Analytics is provided by Google Ireland Limited,
             which processes the data for us under Google's terms (Google is also a controller for some uses, as its terms describe). It collects the pages you
-            view, where you came from, your approximate location (country and city, from your IP address, which Google Analytics doesn't store), your device,
-            browser and screen size, and how long you stay. It sets the cookies <code>_ga</code> and <code>_ga_&lt;id&gt;</code>, which hold a random identifier
-            and last up to 2 years. Data in Google Analytics is kept for 14 months and then deleted. Google may process it outside the European Economic Area
-            under the EU-U.S. Data Privacy Framework or the European Commission's standard contractual clauses.
+            view, clicks on the download buttons, where you came from, your approximate location (country and city, from your IP address, which Google Analytics
+            doesn't store), your device, browser and screen size, and how long you stay. It sets the cookies <code>_ga</code> and <code>_ga_&lt;id&gt;</code>,
+            which hold a random identifier and last up to 2 years. Data in Google Analytics is kept for 14 months and then deleted. Google may process it
+            outside the European Economic Area under the EU-U.S. Data Privacy Framework or the European Commission's standard contractual clauses.
           </p>
           <p>
             If you visit from the European Economic Area, the United Kingdom or Switzerland (or we can't tell where you are), Google Analytics doesn't load at

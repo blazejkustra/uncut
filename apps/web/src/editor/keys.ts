@@ -83,7 +83,7 @@ export function agentTextSelected(): boolean {
   return !!sel && !sel.isCollapsed && sel.toString().trim() !== "" && inAgentThread(sel.anchorNode);
 }
 
-const TOOL_OF: Partial<Record<ActionId, Tool>> = { toolSelect: "select", toolBlade: "blade", toolHand: "hand" };
+const TOOL_OF: Partial<Record<ActionId, Tool>> = { toolSelect: "select", toolBlade: "blade", toolHand: "hand", toolSlip: "slip", toolRoll: "roll" };
 
 export function useEditorKeys(fps: number) {
   useEffect(() => {

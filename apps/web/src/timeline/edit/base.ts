@@ -34,6 +34,7 @@ export const TRACK_KINDS: Readonly<Record<Item["type"], Track["kind"]>> = {
   text: "text",
   captions: "text",
   audio: "audio",
+  sequence: "video",
 };
 export const homeKind = (item: Pick<Item, "type">): Track["kind"] => TRACK_KINDS[item.type];
 /** Whether an item may go on a track (the validator's rule, core rules.ts): D215, the main track takes any picture, text too. */

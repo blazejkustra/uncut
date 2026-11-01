@@ -103,6 +103,8 @@ export {
   CriticUsage,
   AGENT_BRIDGE_PATH,
   AGENT_TOKEN_HEADER,
+  EXTERNAL_MCP_PATH,
+  PROJECT_OPEN_TOOL,
   AgentItem,
   AGENT_PROVIDERS,
   AgentProvider,

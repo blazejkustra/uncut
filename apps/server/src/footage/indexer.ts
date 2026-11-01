@@ -200,6 +200,7 @@ export class FootageIndexer {
     this.store.setPlaces(
       project.dir,
       clips.map((clip) => clip.place),
+      project.media.filter((_, i) => !found[i]).map((media) => media.id),
     );
     for (const clip of clips) {
       const changed = this.changedMedia.delete(`${project.dir}\0${clip.target.mediaId}`);
@@ -210,10 +211,9 @@ export class FootageIndexer {
     return clips.filter((clip) => clip.place.kind !== "image");
   }
 
-  private async pruneGone() {
-    const dirs = this.store.projectDirs();
-    const present = await Promise.all(dirs.map(exists));
-    this.store.prune(dirs.filter((_, i) => !present[i]));
+  /** A project folder that can't be reached may be on an unplugged drive, so its clips stay. */
+  private async pruneUnplaced() {
+    this.store.prune([]);
     await this.deps.afterPrune?.();
   }
 
@@ -225,7 +225,7 @@ export class FootageIndexer {
       if (project) await this.syncProject(project);
     }
     this.clips = open ? await this.syncProject(open) : [];
-    await this.pruneGone();
+    await this.pruneUnplaced();
     this.publish(true);
     if (open && !this.running && this.store.isAuto(open.dir) && this.nextClip()) void this.run(open.dir);
   }
@@ -258,8 +258,12 @@ export class FootageIndexer {
     this.running = true;
     this.stopRequested = false;
     let go = true;
-    for (let clip = this.nextClip(); clip && go; clip = this.nextClip()) {
-      go = !this.stopRequested && this.deps.open()?.dir === dir && (await this.indexClip(clip));
+    try {
+      for (let clip = this.nextClip(); clip && go; clip = this.nextClip()) {
+        go = !this.stopRequested && this.deps.open()?.dir === dir && (await this.indexClip(clip));
+      }
+    } catch (error) {
+      console.error(`[uncut] the footage run stopped: ${(error as Error).message}`);
     }
     this.running = false;
     this.current = undefined;

@@ -156,6 +156,7 @@ export const makeCore = (ctx: AgentServices) => {
     r.stopReason = reason;
     r.abort.abort();
     const s = r.session;
+    if (s.endExternal) return s.endExternal();
     if (hard || !s.child || !s.child.stdin?.writable) return closeSession(s, "kill");
     // Issue #106: Codex's turn/interrupt (before its turn started there's nothing to interrupt: the session goes).
     if (s.provider === "codex" && !codexInterrupt(s)) return closeSession(s, "kill");
@@ -336,7 +337,7 @@ export const makeCore = (ctx: AgentServices) => {
       if (!s) continue;
       s.closed = true;
       if (s.child) killGroup(s.child, "SIGKILL");
-      rmSync(s.dir, { recursive: true, force: true });
+      if (s.dir) rmSync(s.dir, { recursive: true, force: true });
     }
   };
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://uncut.dev/schema/edit-ops/0.json",
   "title": "Uncut edit operations",
-  "description": "Every change to project.json, by the user or the agent, is a list of these ops. They are applied atomically, recorded in history.db with who made them, and are what the agent sees in the manual-edit log.",
+  "description": "Every change to project.json, by the user or the agent, is a list of these ops. They are applied atomically, recorded in history.db with who made them, and are what the agent sees in the manual-edit log. Ops on a locked item or track are refused for everyone; only the user may unlock, and the agent's whole edit is refused if it would change, move or unlock a locked item, track or section.",
   "type": "array",
   "minItems": 1,
   "items": { "$ref": "#/$defs/op" },
@@ -30,6 +30,20 @@
           "required": ["op", "item", "edge", "frames"],
           "additionalProperties": false,
           "properties": { "op": { "const": "trim_item" }, "item": { "$ref": "#/$defs/id" }, "edge": { "enum": ["start", "end"] }, "frames": { "type": "integer", "not": { "const": 0 } } }
+        },
+        {
+          "type": "object",
+          "description": "Slip a clip or sound: it stays where it is, as long as it is, and plays other frames of its media (frames > 0 later ones, at the item's speed). Refused past either end of the media or the handles a transition needs. Nothing else moves.",
+          "required": ["op", "item", "frames"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "slip_item" }, "item": { "$ref": "#/$defs/id" }, "frames": { "type": "integer", "not": { "const": 0 } } }
+        },
+        {
+          "type": "object",
+          "description": "Roll the cut after an item: the cut moves frames later (negative: earlier), the item gains what the one right after it loses, and nothing else moves, so the length and sync of the edit stay. The items must touch (no gap). Refused when either runs out of media.",
+          "required": ["op", "item", "frames"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "roll_edit" }, "item": { "$ref": "#/$defs/id" }, "frames": { "type": "integer", "not": { "const": 0 } } }
         },
         {
           "type": "object",
@@ -73,6 +87,44 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "description": "Put neighbouring main-track items (in order) into a new sequence, played by one new sequence item in their place. Nothing moves on the timeline. Clear transitions into the first item and after the last first; a clip with a linked sound can't nest until it's unlinked.",
+          "required": ["op", "items", "sequence", "item"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "nest_items" },
+            "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+            "sequence": { "$ref": "#/$defs/id" },
+            "item": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Put a sequence item's clips back on the main track and remove the sequence. It must play the whole sequence, be its only use, and the sequence must have one track.",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "unnest_item" }, "item": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
+          "description": "Run item and track ops on a sequence's own timeline (insert, update, trim, split, slip, roll, move or delete items, transitions, tracks); every item playing it changes. Shortening it past what an item plays is refused: trim that item in the same edit. To play a sequence again, insert_item {type:\"sequence\", sequence, in, duration} on the main track (no transform, effects or transition on it).",
+          "required": ["op", "sequence", "ops"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "edit_sequence" },
+            "sequence": { "$ref": "#/$defs/id" },
+            "ops": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/op" } }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Remove a sequence no item plays any more.",
+          "required": ["op", "sequence"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "delete_sequence" }, "sequence": { "$ref": "#/$defs/id" } }
         },
         {
           "type": "object",
@@ -127,9 +179,20 @@
             "set": {
               "type": "object",
               "minProperties": 1,
-              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "sections", "master", "checks", "motionBlur"] },
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "sections", "reviewNotes", "master", "checks", "motionBlur", "luts"] },
               "properties": { "motionBlur": { "type": ["object", "null"], "additionalProperties": false, "properties": { "on": { "type": ["boolean", "null"] }, "samples": { "type": ["integer", "null"], "minimum": 2, "maximum": 16 }, "shutter": { "type": ["number", "null"], "minimum": 1, "maximum": 360 } } } }
             }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Mark review notes as addressed (resolved false reopens them). notes are ids from the review notes in the message or project_read.",
+          "required": ["op", "notes"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "resolve_review_notes" },
+            "notes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+            "resolved": { "type": "boolean" }
           }
         }
       ]

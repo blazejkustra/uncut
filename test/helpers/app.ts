@@ -363,9 +363,11 @@ async function launchOnce({
   // screen, permission states from UNCUT_TEST_MEDIA_ACCESS: a test never opens a real device.
   // No preview proxies (D212) unless a test asks (UNCUT_PROXIES: "on"): no extra ffmpeg runs, original pixels.
   // No telemetry (D223) unless a test asks: a build made with the CI token must not report test runs.
+  // The shipped tools stay off unless a run asks (UNCUT_TEST_TOOLS_DIR): tests stub what's on PATH.
   const env: NodeJS.ProcessEnv = {
     ...(cleanEnv ? {} : process.env),
     ...background,
+    UNCUT_TOOLS_DIR: process.env.UNCUT_TEST_TOOLS_DIR ?? "",
     UNCUT_TELEMETRY: "off",
     UNCUT_PROXIES: "off",
     UNCUT_TEST_MEDIA: "fake",

@@ -68,7 +68,7 @@ export const makeMeasureTools = (ctx: CoreCtx) => {
       const path = isAbsolute(clip.path) ? clip.path : resolve(v.dir, clip.path);
       const pulled = yield* exporter.mediaFrames(path, seconds, COLOUR_WIDTH, project.canvas.fps);
       const images = yield* exporter.jpegPixels(pulled.map((p) => p.jpeg));
-      const spec = clipFx(clip.item)?.colour;
+      const spec = clipFx(clip.item, project.luts)?.colour;
       return mergeStats(images.map((image) => colourStats(graded(image, spec))));
     });
 

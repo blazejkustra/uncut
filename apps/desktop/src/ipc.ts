@@ -27,6 +27,19 @@ export const CLOSE_REQUEST_CHANNEL = "uncut:close-request";
 export const CLOSE_ANSWER_CHANNEL = "uncut:close-answer";
 export type CloseAnswer = "close" | "stay" | "asking";
 
+// Outside agents over MCP (Settings › App).
+export const MCP_STATE_CHANNEL = "uncut:mcp-state";
+export const MCP_SET_CHANNEL = "uncut:mcp-set";
+export const MCP_RENEW_TOKEN_CHANNEL = "uncut:mcp-renew-token";
+
+export interface McpState {
+  readonly enabled: boolean;
+  readonly listening: boolean;
+  readonly url: string;
+  readonly token: string;
+  readonly problem?: string;
+}
+
 // "brand" (D198): a file or a folder of logos and font files for a brand kit.
 export type FolderPurpose = "parent" | "project" | "plugin" | "brand" | "sounds";
 

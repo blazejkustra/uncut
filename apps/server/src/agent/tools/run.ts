@@ -31,6 +31,7 @@ import {
   MAX_RUN,
   modulesIndex,
   modulesList,
+  fullProject,
   projectSummary,
   docsRead,
 } from "../agentTools.ts";
@@ -40,6 +41,7 @@ import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote } from "../../capture/capture.ts";
 import { type Running, pushEdit } from "../session/types.ts";
+import { otherProjectsClosed } from "./access.ts";
 import { noteFor, noteShowsAll } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH, frameScale } from "./common.ts";
@@ -103,6 +105,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     transcriptEdit,
     captionsMake,
     subtitlesExport,
+    timelineExport,
     projects,
     persist,
     duckAnalysis,
@@ -196,7 +199,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return textResult(
             JSON.stringify(
               args.detail === "full"
-                ? { revision: v.session.revision, project: v.session.project }
+                ? fullProject(v.session.project, v.session.revision)
                 : projectSummary(v.session.project, v.session.revision, range, {
                     ...(args.detail === "items" ? { detail: "items" as const } : {}),
                     ...(items ? { items } : {}),
@@ -325,7 +328,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "brand_read":
           return yield* brandRead(v, args);
         case "project_peek": {
-          if (r.owner.webUsed && r.access !== "auto")
+          if (otherProjectsClosed(r))
             return textResult("Not done: after web content, other projects are read only on the user's say. Read the file with Read, which asks them.", true);
           const peeked = yield* Effect.promise(() =>
             peekProject({
@@ -452,7 +455,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "argent_boot":
           return yield* argentBoot(r, args);
         case "media_search":
-          return yield* mediaSearch(v, args);
+          return yield* mediaSearch(r, v, args);
         case "media_describe":
           return yield* mediaDescribe(v, args);
         case "media_analyze":
@@ -470,6 +473,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* captionsMake(r, v, args);
         case "subtitles_export":
           return yield* subtitlesExport(v, args);
+        case "timeline_export":
+          return yield* timelineExport(v, args);
         case "export_video":
           return yield* exportVideo(r, v, args);
         case "timeline_edit": {

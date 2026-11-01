@@ -250,13 +250,15 @@ export class FootageStore {
     return (known as { fingerprint: string } | undefined)?.fingerprint;
   }
 
-  /** What a project holds now, replacing what was known of it. */
-  setPlaces(dir: string, places: ReadonlyArray<Place>) {
+  /** What a project holds now, replacing what was known of it. `absent` media can't be reached now (an unplugged drive): what's known of it stays. */
+  setPlaces(dir: string, places: ReadonlyArray<Place>, absent: ReadonlyArray<string> = []) {
     const insert = this.db.prepare(
       "INSERT OR REPLACE INTO places (dir, media_id, fingerprint, project, path, stamp, name, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
     this.transaction(() => {
-      this.db.prepare("DELETE FROM places WHERE dir = ?").run(dir);
+      const stale = this.db.prepare("SELECT media_id FROM places WHERE dir = ?").all(dir) as unknown as ReadonlyArray<{ media_id: string }>;
+      const remove = this.db.prepare("DELETE FROM places WHERE dir = ? AND media_id = ?");
+      for (const { media_id } of stale) if (!absent.includes(media_id)) remove.run(dir, media_id);
       for (const p of places) insert.run(dir, p.mediaId, p.fingerprint, p.project, p.path, p.stamp, p.name, p.kind);
     });
   }
@@ -269,10 +271,6 @@ export class FootageStore {
       this.db.exec(`DELETE FROM passages WHERE fingerprint NOT IN (SELECT fingerprint FROM places);
                     DELETE FROM clips WHERE fingerprint NOT IN (SELECT fingerprint FROM places);`);
     });
-  }
-
-  projectDirs() {
-    return (this.db.prepare("SELECT DISTINCT dir FROM places").all() as unknown as ReadonlyArray<{ dir: string }>).map((row) => row.dir);
   }
 
   places(fingerprint: string) {

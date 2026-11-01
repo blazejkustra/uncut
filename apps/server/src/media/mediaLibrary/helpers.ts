@@ -2,7 +2,17 @@
 import { createHash } from "node:crypto";
 import { stat, readFile, realpath } from "node:fs/promises";
 import { basename, relative, isAbsolute, join } from "node:path";
-import { type ParsedCue, parseSubtitles, decodeSubtitleBytes, type Project, canvasForClip } from "@uncut/core";
+import {
+  type ParsedCue,
+  parseSubtitles,
+  decodeSubtitleBytes,
+  type Project,
+  canvasForClip,
+  parseCube,
+  type ProjectLut,
+  readFcpxml,
+  type TimelineFile,
+} from "@uncut/core";
 import type { ProbeInfo } from "../mediaCore.ts";
 import { MATCH_FIRST_CLIP } from "../../project/projects.ts";
 import type { MediaEntry } from "./service.ts";
@@ -23,6 +33,30 @@ export async function readSubtitleFile(path: string): Promise<{ readonly cues: R
   }
 }
 
+/** An .fcpxml file's timeline, or why it can't be imported (a sentence). */
+export async function readTimelineFile(path: string): Promise<TimelineFile | { readonly problem: string }> {
+  const name = basename(path);
+  try {
+    const s = await stat(path);
+    if (s.size > MAX_SUBTITLE_BYTES) return { problem: `${name} is too big for a timeline file (over ${MAX_SUBTITLE_BYTES / 1024 / 1024} MB).` };
+    return readFcpxml(await readFile(path, "utf8"));
+  } catch {
+    return { problem: `${name} couldn't be read.` };
+  }
+}
+
+/** A .cube file as a project LUT, or why it can't be imported (a sentence). */
+export async function readLutFile(path: string): Promise<ProjectLut | { readonly problem: string }> {
+  const name = basename(path);
+  try {
+    const s = await stat(path);
+    if (s.size > MAX_SUBTITLE_BYTES * 10) return { problem: `${name} is too big for a LUT.` };
+    return parseCube(await readFile(path, "utf8"), name);
+  } catch {
+    return { problem: `${name} couldn't be read.` };
+  }
+}
+
 /** A file inside the project folder is stored relative to it (media/captures/x.mp4, D12). */
 export const storedPath = (path: string, projectDir: string) => {
   const rel = relative(projectDir, path);
@@ -34,6 +68,7 @@ export type ProjectShape = {
   media: ReadonlyArray<{ id: string; path: string }>;
   tracks: ReadonlyArray<{ id: string; items: ReadonlyArray<{ id: string }> }>;
   scenes?: ReadonlyArray<{ id: string }>;
+  sequences?: ReadonlyArray<{ id: string; tracks: ReadonlyArray<{ id: string; items: ReadonlyArray<{ id: string }> }> }>;
 };
 
 export const thumbDir = (projectDir: string) => join(projectDir, ".cache", "thumbs");
@@ -59,6 +94,7 @@ export const allIds = (project: ProjectShape) =>
     ...project.media.map((m) => m.id),
     ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
     ...(project.scenes ?? []).map((s) => s.id),
+    ...(project.sequences ?? []).flatMap((s) => [s.id, ...s.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]),
   ]);
 
 export const realOr = (path: string) => realpath(path).catch(() => path);

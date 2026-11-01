@@ -34,6 +34,8 @@ export const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
     range: Schema.optional(ExportRange),
     video: Schema.optional(ExportVideo),
     motionBlur: Schema.optional(Schema.Boolean),
+    /** A review page: `output` names a folder beside it, holding the page and the video (H.264). */
+    review: Schema.optional(Schema.Boolean),
   }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
@@ -46,6 +48,13 @@ export const ExportCancelRpc = Rpc.make(RPC_METHODS.exportCancel, { payload: Sch
 export const ExportSubtitlesRpc = Rpc.make(RPC_METHODS.exportSubtitles, {
   payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ path: Schema.String, format: Schema.Literals(["srt", "vtt"]), cues: Schema.Number }),
+  error: ExportError,
+});
+
+/** The timeline for another editor, as a .fcpxml or .edl file (the format by its extension). warnings: what the file can't carry. */
+export const ExportTimelineRpc = Rpc.make(RPC_METHODS.exportTimeline, {
+  payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ path: Schema.String, warnings: Schema.Array(Schema.String) }),
   error: ExportError,
 });
 

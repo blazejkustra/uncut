@@ -79,7 +79,8 @@ export const Review = Schema.Struct({
   // D217: kind (a category or a blocker kind the rubric made a finding), source "check" (Uncut's own),
   // rule (a check's finding family, "sound:density"), to (where a check's range ends, seconds).
   // unresolved: the same finding came back unchanged after the editor claimed a fix for it; the
-  // user decides it (it no longer opens another round).
+  // user decides it (it no longer opens another round). frame: the timeline frame of at; still: that
+  // frame as rendered for the scorecard (an image name in .cache/agent-images/).
   defects: Schema.Array(
     Schema.Struct({
       at: Schema.Number,
@@ -91,6 +92,8 @@ export const Review = Schema.Struct({
       rule: Schema.optional(Schema.String),
       to: Schema.optional(Schema.Number),
       unresolved: Schema.optional(Schema.Boolean),
+      frame: Schema.optional(Schema.Number),
+      still: Schema.optional(Schema.String),
     }),
   ),
   notes: Schema.optional(Schema.String),
@@ -110,6 +113,8 @@ export const Review = Schema.Struct({
         to: Schema.optional(Schema.Number),
         fix: Schema.optional(Schema.String),
         unresolved: Schema.optional(Schema.Boolean),
+        frame: Schema.optional(Schema.Number),
+        still: Schema.optional(Schema.String),
       }),
     ),
   ),
@@ -216,6 +221,24 @@ export type AgentCard = typeof AgentCard.Type;
 // POST <path>/call with { name, args }.
 export const AGENT_BRIDGE_PATH = "/agent";
 export const AGENT_TOKEN_HEADER = "x-uncut-agent-token";
+
+// Outside agents (Claude Code in a terminal, Cursor, ...): the desktop's loopback gateway forwards
+// JSON-RPC messages to a window's server here.
+export const EXTERNAL_MCP_PATH = "/external-mcp";
+export const PROJECT_OPEN_TOOL = {
+  name: "project_open",
+  description:
+    "Open something in Uncut when no project is open. Pass path: a .uncut project opens as it is; a footage folder becomes a new project named after it, in the user's Movies folder, with the folder's media files imported (not its subfolders; media_import adds those).",
+  inputSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["path"],
+    properties: {
+      path: { type: "string", minLength: 1, description: "The absolute path (or ~/...) of a footage folder or a .uncut project." },
+      name: { type: "string", minLength: 1, description: "The new project's name, for a footage folder. Defaults to the folder's name." },
+    },
+  },
+} as const;
 
 /** One thing in a turn, in order: a piece of the agent's reply, its thinking (a summary), or a tool it used. */
 export const AgentItem = Schema.Struct({

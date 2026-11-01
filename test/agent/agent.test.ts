@@ -198,6 +198,7 @@ test("edits are atomic: an invalid edit leaves the project untouched", () => {
 
 test("every op type works and keeps the promo valid", () => {
   let s = createSession(promo);
+  const mainId = (promo as Project).tracks.find((t) => t.role === "main")!.id;
   const steps: Array<Array<Op>> = [
     [
       {
@@ -207,6 +208,8 @@ test("every op type works and keeps the promo valid", () => {
       },
     ],
     [{ op: "split_item", item: "sim-login", at: 180, newId: "sim-login-b" }],
+    [{ op: "roll_edit", item: "sim-login", frames: -5 }],
+    [{ op: "slip_item", item: "aud-music", frames: 5 }],
     [{ op: "move_item", item: "cmp-tap", start: 430 }],
     [{ op: "delete_item", item: "result-bg" }],
     [{ op: "set_transition", item: "sim-login", transition: null }],
@@ -217,8 +220,19 @@ test("every op type works and keeps the promo valid", () => {
     [{ op: "update_media", media: "m-new", set: { path: "media/badge-2.png", source: { module: "argent.capture", device: "SIM-1" } } }],
     [{ op: "delete_media", media: "m-new" }],
     [{ op: "update_project", set: { name: "Close the loop v2" } }],
+    [{ op: "update_project", set: { reviewNotes: [{ id: "rn-a-b", frame: 10, text: "Hold this" }] } }],
+    [{ op: "resolve_review_notes", notes: ["rn-a-b"] }],
     [{ op: "update_item", item: "txt-taps", set: { animation: null } }],
     [{ op: "trim_item", item: "terminal", edge: "start", frames: 30 }],
+    [{ op: "insert_item", track: mainId, item: { id: "extra", type: "text", text: "Extra", duration: 30 } }],
+    [{ op: "nest_items", items: ["extra"], sequence: "extra-seq", item: "extra-nest" }],
+    [{ op: "edit_sequence", sequence: "extra-seq", ops: [{ op: "update_item", item: "extra", set: { name: "Inside" } }] }],
+    [{ op: "unnest_item", item: "extra-nest" }],
+    [{ op: "nest_items", items: ["extra"], sequence: "extra-seq", item: "extra-nest" }],
+    [
+      { op: "delete_item", item: "extra-nest" },
+      { op: "delete_sequence", sequence: "extra-seq" },
+    ],
   ];
   for (const ops of steps) s = applyEdit(s, { actor: "user", ops }, validate);
   assert.deepEqual(validate(s.project), []);
