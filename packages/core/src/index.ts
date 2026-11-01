@@ -4,6 +4,22 @@ export { loadModules, lookProblems, validateModule, validateOps, validateProject
 export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
 export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
+export {
+  REVIEW_AUTHOR_MAX,
+  REVIEW_NOTES_FORMAT,
+  REVIEW_TEXT_MAX,
+  inertJson,
+  openReviewNotes,
+  parseReviewNotes,
+  planRemoveReviewNote,
+  planResolveReviewNote,
+  planReviewImport,
+  reviewCut,
+  reviewNotesBlock,
+  reviewNotesTurnBlock,
+  type ReviewExchange,
+  type ReviewImport,
+} from "./timeline/review.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
   byUser,

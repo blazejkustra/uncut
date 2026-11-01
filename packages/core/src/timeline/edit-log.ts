@@ -403,7 +403,12 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         ].filter(Boolean);
         return parts.length ? `Set motion blur: ${parts.join(", ")}` : "Changed motion blur";
       }
+      if (keys.length === 1 && keys[0] === "reviewNotes") return "Changed the review notes";
       return `Changed project ${keys.join(", ")}`;
+    }
+    case "resolve_review_notes": {
+      const n = op.notes.length;
+      return `${op.resolved === false ? "Reopened" : "Resolved"} ${n} review note${n === 1 ? "" : "s"}`;
     }
     default:
       // Every op is handled above; this is for ops from a newer format.

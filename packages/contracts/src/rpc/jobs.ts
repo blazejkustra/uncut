@@ -33,6 +33,8 @@ export const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
     range: Schema.optional(ExportRange),
     video: Schema.optional(ExportVideo),
     motionBlur: Schema.optional(Schema.Boolean),
+    /** A review page: `output` names a folder beside it, holding the page and the video (H.264). */
+    review: Schema.optional(Schema.Boolean),
   }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,

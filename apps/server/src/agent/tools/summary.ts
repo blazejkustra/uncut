@@ -10,6 +10,7 @@ import {
   createSession,
   type Op,
   planCaptionEdit,
+  reviewNotesBlock,
   sectionsNote,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
@@ -103,6 +104,7 @@ function projectNotes(project: Project) {
             "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it).",
         }
       : {}),
+    ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.
@@ -110,6 +112,12 @@ function projectNotes(project: Project) {
     // D135: the library sounds' credits (CC BY ones need them in the video's description).
     ...(creditsText(project) ? { credits: creditsSummary(project) } : {}),
   };
+}
+
+/** project_read's detail "full": project.json with the reviewers' text moved behind its warning. */
+export function fullProject(project: Project, revision: number) {
+  const { reviewNotes: _, ...rest } = project;
+  return { revision, project: rest, ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}) };
 }
 
 /**

@@ -65,6 +65,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const [encoder, setEncoder] = useState<ExportEncoder | undefined>();
   const [shortSide, setShortSide] = useState<number | undefined>();
   const [outFps, setOutFps] = useState<number | undefined>();
+  const [reviewPage, setReviewPage] = useState(false);
   const [copied, setCopied] = useState(false);
   // The default comes from the project's loudness target (D87: master.loudness.targetLufs, −14 when unset).
   const target = projectTargetLufs(project);
@@ -129,7 +130,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     const subtitles: ExportSubtitles | undefined =
       cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
     const video = {
-      ...(codec !== "h264" ? { codec } : {}),
+      ...(codec !== "h264" && !reviewPage ? { codec } : {}),
       ...(encoder !== undefined ? { encoder } : {}),
       ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}),
       ...(shortSide !== undefined ? { shortSide } : {}),
@@ -146,6 +147,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
       ...(cueCount && !burn ? { burnCaptions: false } : {}),
       ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}),
       ...(hasGraphics ? { motionBlur: blurOn } : {}),
+      ...(reviewPage ? { review: true } : {}),
     });
     setBusy(false);
     if (refused) {
@@ -222,6 +224,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s
           {job.motionBlur && hasGraphics ? ", motion blur" : ""}
         </p>
+        {job.reviewFolder && (
+          <p className="wiz-meta" data-testid="export-job-review" data-folder={job.reviewFolder}>
+            Review page in {baseName(job.reviewFolder)}: open index.html or host the folder anywhere. Reviewers send their comments back as a file or block;
+            there is no live sync.
+          </p>
+        )}
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
           <p className="wiz-meta" data-testid="export-job-subtitles">
             {[
@@ -540,6 +548,26 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         {masterDb > SILENCE_DB && masterDb !== 0 && loudness !== "off" && (
           <p className="wiz-meta" data-testid="export-master-note">
             The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
+          </p>
+        )}
+        <div className="group-label export-label">Share</div>
+        <div className="export-subs" data-testid="export-review">
+          <label className="export-sub-row">
+            <input
+              type="checkbox"
+              data-testid="export-review-page"
+              checked={reviewPage}
+              disabled={remote}
+              onChange={(e) => (setReviewPage(e.target.checked), setError(undefined))}
+            />
+            <span>Review page</span>
+            <span className="muted">{remote ? "Only for exports on this Mac" : "A folder with one page and the video, H.264"}</span>
+          </label>
+        </div>
+        {reviewPage && (
+          <p className="wiz-meta" data-testid="export-review-note">
+            Open it locally or host it anywhere; no Uncut account or service is involved. Reviewers pin comments to a timecode and send you a file or block to
+            import in the Review tab. There is no live multiplayer or automatic sync.
           </p>
         )}
         {hasGraphics && (

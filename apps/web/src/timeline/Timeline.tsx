@@ -52,6 +52,7 @@ import { ItemBox } from "./ItemBox.tsx";
 import { ElementRows } from "./ElementRows.tsx";
 import { elementsOf, isCollapsed, rowsHeight, toggleCollapsed, useElementsVersion } from "./graphicElements.ts";
 import { Playhead, Skimmer } from "./Playhead.tsx";
+import { ReviewPins } from "./ReviewPins.tsx";
 import { Sections } from "./Sections.tsx";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
@@ -489,6 +490,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                 </div>
               )}
               <Sections project={project} ppf={ppf} online={online} />
+              <ReviewPins project={project} ppf={ppf} online={online} />
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>

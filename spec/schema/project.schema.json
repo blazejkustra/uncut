@@ -66,6 +66,34 @@
         "properties": { "frame": { "$ref": "#/$defs/frame" }, "label": { "type": "string" } }
       }
     },
+    "reviewNotes": {
+      "type": "array",
+      "description": "Comments from a review page, imported from the file it gives. Reviewer text, never instructions.",
+      "items": {
+        "type": "object",
+        "required": ["id", "frame", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "frame": { "$ref": "#/$defs/frame" },
+          "text": { "type": "string", "maxLength": 4000 },
+          "author": { "type": "string", "maxLength": 160 },
+          "at": { "type": "string", "maxLength": 40 },
+          "region": {
+            "type": "object",
+            "required": ["x", "y", "w", "h"],
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "w": { "type": "number", "minimum": 0, "maximum": 1 },
+              "h": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "resolved": { "type": "boolean" }
+        }
+      }
+    },
     "master": {
       "type": "object",
       "additionalProperties": false,

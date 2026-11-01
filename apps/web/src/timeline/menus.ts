@@ -3,12 +3,14 @@
 // ⌘Z) or a UI step (rename in place, the Inspector's custom speed).
 import { soundMedia } from "@uncut/core/audio";
 import { SPEED_PRESETS, speedLabel } from "@uncut/core/arrange";
+import { planResolveReviewNote } from "@uncut/core/review";
 import { planLockRest, planMarkSection, planRemoveSection } from "@uncut/core/sections";
 
 import { clipboardItems, copySelection, deleteSelection, duplicate, paste } from "../editor/keys.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { itemLabel, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, isRemote } from "../state/store.ts";
+import type { ReviewNote } from "@uncut/core/types";
 import type { MenuItems } from "./ContextMenu.tsx";
 import { findItem, trackFlag } from "./edit.ts";
 import { keysOf } from "../editor/keymap.ts";
@@ -333,6 +335,19 @@ export function sectionMenu(project: ProjectModel, id: string, online: boolean):
           },
         ]
       : []),
+  ];
+}
+
+export function reviewNoteMenu(note: ReviewNote, online: boolean): MenuItems {
+  return [
+    { id: "review-note-play", label: "Play from here", run: () => playback.playFrom(note.frame) },
+    "-",
+    {
+      id: "review-note-resolve",
+      label: note.resolved ? "Reopen" : "Resolve",
+      disabled: !online,
+      run: () => void actions.timelineEdit(planResolveReviewNote(note.id, !note.resolved)),
+    },
   ];
 }
 
