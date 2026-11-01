@@ -5,12 +5,17 @@
 // before stop the loop at any round. And the critic's row in the thread (criticRow, critic.tsx).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Review } from "../../packages/contracts/src/index.ts";
 import { criticReview, criticText, parseCritic, reviewNext, reviewOutlook, sameFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
 import { asksLoop, motionIntent, motionLines, motionScan } from "../../apps/server/src/agent/criticMotion.ts";
 import { requestedTypePx, textFloorPct, underFloor, legibilityFindings } from "../../apps/server/src/agent/agentLegibility.ts";
 import { criticRow, criticStatus } from "../../apps/server/src/agent/tools/criticRow.ts";
-import { criticLabel, elapsedText } from "../../apps/web/src/panels/agent/criticWords.ts";
+import { criticLabel, elapsedText, momentText, roundTrail, roundVerdict } from "../../apps/web/src/panels/agent/criticWords.ts";
+import { findingFrames, FINDING_STILLS, withFrames } from "../../apps/server/src/agent/criticStills.ts";
+import { readPlan, writeReview } from "../../apps/server/src/brand/store.ts";
 import type { Running } from "../../apps/server/src/agent/session/types.ts";
 
 const ev = (score: number) => ({ score, evidence: "f 0, f 30: fine" });
@@ -239,4 +244,82 @@ test("the row's words: status and elapsed time", () => {
   assert.equal(criticLabel("error", undefined), "Didn't run");
   assert.equal(elapsedText(250_000), "4m 10s");
   assert.equal(elapsedText(38_400), "38s");
+});
+
+test("the scorecard's verdict: a failed round, a first pass, and the turn from failed to passed", () => {
+  const round = (n: number, passed: boolean, blockers: number, scores: Review["scores"]) =>
+    ({
+      round: n,
+      scores,
+      defects: [],
+      passed,
+      blockers: Array.from({ length: blockers }, () => ({ kind: "font", what: "x", source: "critic" })),
+    }) as unknown as Review;
+  const failed = round(1, false, 2, { hook: 5, motion: 8 });
+  const passed = round(2, true, 0, { hook: 9, motion: 8 });
+  assert.deepEqual(roundVerdict(failed, undefined), { title: "Failed round 1", detail: "2 blockers to fix", turned: false });
+  assert.equal(roundVerdict(round(1, false, 0, {}), undefined).detail, "Scores under the bar");
+  assert.deepEqual(roundVerdict(round(1, true, 0, {}), undefined), { title: "Passed on round 1", turned: false });
+  assert.deepEqual(roundVerdict(passed, failed), { title: "Passed on round 2", detail: "2 blockers cleared, hook 5 to 9", turned: true });
+  assert.equal(roundVerdict(round(3, true, 0, {}), passed).turned, false, "a pass after a pass is no turn");
+  const stuck = { ...failed, blockers: failed.blockers!.map((b) => ({ ...b, unresolved: true })) } as Review;
+  assert.deepEqual(roundVerdict(stuck, undefined), { title: "Stopped on round 1", detail: "2 unresolved, your call", turned: false });
+  assert.deepEqual(
+    roundTrail([failed, passed, round(3, false, 1, {})], 2).map((r) => r.round),
+    [1, 2],
+  );
+  assert.equal(momentText(3.21, 96), "f 96, 3.2 s");
+  assert.equal(momentText(3.21, undefined), "3.2 s");
+});
+
+test("a round's findings carry their frame and, once kept, its still", () => {
+  const review = {
+    round: 2,
+    turnId: "t1",
+    scores: {},
+    passed: false,
+    at: "",
+    blockers: [
+      { kind: "font", what: "x", source: "critic", at: 1 },
+      { kind: "other", what: "no moment", source: "critic" },
+    ],
+    defects: [
+      { at: 1, what: "same moment" },
+      { at: 99, what: "past the end" },
+    ],
+  } as unknown as Review;
+  assert.deepEqual(findingFrames(review, 30, 89), [30, 89]);
+  const framed = withFrames(review, 30, 89, new Map([[30, "t1-c2-30.jpg"]]));
+  assert.deepEqual(framed.blockers![0], { kind: "font", what: "x", source: "critic", at: 1, frame: 30, still: "t1-c2-30.jpg" });
+  assert.equal(framed.blockers![1]!.frame, undefined);
+  assert.deepEqual(framed.defects[1], { at: 99, what: "past the end", frame: 89 });
+  const many = { ...review, blockers: [], defects: Array.from({ length: 9 }, (_, i) => ({ at: i, what: "x" })) } as unknown as Review;
+  assert.equal(findingFrames(many, 30, 900).length, FINDING_STILLS);
+});
+
+test("a finding's frame and still survive saving and reopening; a still that isn't an agent image is dropped", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "uncut-review-stills-"));
+  try {
+    const still = "turn-abc-123abc-c1-96.jpg";
+    const review = {
+      round: 1,
+      at: "2026-11-01T00:00:00.000Z",
+      scores: {},
+      passed: false,
+      defects: [{ at: 3.2, what: "soft", frame: 96, still }],
+      blockers: [
+        { kind: "font", what: "small", source: "critic", frame: 96, still },
+        { kind: "font", what: "wrong", source: "critic", frame: 12, still: "../../secret.png" },
+      ],
+    } as unknown as Review;
+    await writeReview(dir, review);
+    const [reopened] = (await readPlan(dir)).reviews;
+    assert.equal(reopened!.defects[0]!.frame, 96);
+    assert.equal(reopened!.defects[0]!.still, still);
+    assert.equal(reopened!.blockers![0]!.still, still);
+    assert.equal(reopened!.blockers![1]!.frame, 12);
+    assert.equal(reopened!.blockers![1]!.still, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
