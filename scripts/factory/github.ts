@@ -72,11 +72,11 @@ export async function listOpenIssues(client: GhClient, label?: string) {
   return issues.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-/** Who applied the label most recently: an older approval doesn't survive a relabel by someone else. */
-export function lastLabelActor(events: ReadonlyArray<TimelineEvent>, label: string) {
+/** The newest application decides: an older approval doesn't survive a relabel by someone else. */
+export function lastLabelEvent(events: ReadonlyArray<TimelineEvent>, label: string) {
   const applied = events.filter((event) => event.event === "labeled" && event.label?.name === label);
   const newestLast = applied.toSorted((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
-  return newestLast.at(-1)?.actor?.login;
+  return newestLast.at(-1);
 }
 
 async function issueTimeline(client: GhClient, issue: number) {
@@ -84,8 +84,9 @@ async function issueTimeline(client: GhClient, issue: number) {
   return (JSON.parse(stdout) as Array<Array<TimelineEvent>>).flat();
 }
 
-export async function ownerAppliedLabel(client: GhClient, issue: number, label: string) {
-  return lastLabelActor(await issueTimeline(client, issue), label) === OWNER;
+export async function ownerLabelTime(client: GhClient, issue: number, label: string) {
+  const event = lastLabelEvent(await issueTimeline(client, issue), label);
+  return event?.actor?.login === OWNER ? (event.created_at ?? "") : undefined;
 }
 
 export async function commentOnIssue(client: GhClient, issue: number, body: string) {

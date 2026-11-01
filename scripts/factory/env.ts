@@ -56,7 +56,7 @@ export function gateEnv(env: NodeJS.ProcessEnv, paths: FactoryPaths): NodeJS.Pro
   };
 }
 
-/** CLAUDE_CODE_OAUTH_TOKEN is the subscription's own token, so `claude` alone may see it. */
+/** The scrub flag keeps the subscription's token away from what the agent itself launches. */
 export function agentEnv(env: NodeJS.ProcessEnv, paths: FactoryPaths): NodeJS.ProcessEnv {
-  return { ...gateEnv(env, paths), ...picked(env, ["CLAUDE_CODE_OAUTH_TOKEN"]) };
+  return { ...gateEnv(env, paths), ...picked(env, ["CLAUDE_CODE_OAUTH_TOKEN"]), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1" };
 }

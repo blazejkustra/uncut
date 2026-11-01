@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { claudeArgs, DISALLOWED_TOOLS, IMPLEMENTER, isUsageLimitFailure, NO_TOOLS, parseClaudeOutput, READ_ONLY } from "../../scripts/factory/claude.ts";
 import { API_AUTH_VARS } from "../../scripts/factory/env.ts";
-import { isAllowedGhCall, lastLabelActor } from "../../scripts/factory/github.ts";
+import { isAllowedGhCall, lastLabelEvent } from "../../scripts/factory/github.ts";
 import { runOnce } from "../../scripts/factory/orchestrator.ts";
 import { findAttribution } from "../../scripts/factory/pr.ts";
+import { runChild } from "../../scripts/factory/process.ts";
 import { dataBlock, HOUSE_RULES } from "../../scripts/factory/prompts.ts";
 import { riskyFiles } from "../../scripts/factory/risk.ts";
 import { acquireLock, pausedUntil, releaseLock } from "../../scripts/factory/state.ts";
@@ -28,8 +29,8 @@ test("lastLabelActor reads the newest application of the label", () => {
     { event: "labeled", created_at: "2026-01-03", actor: { login: "stranger" }, label: { name: "factory" } },
     { event: "labeled", created_at: "2026-01-04", actor: { login: "blazejkustra" }, label: { name: "bug" } },
   ];
-  assert.equal(lastLabelActor(events, "factory"), "stranger");
-  assert.equal(lastLabelActor([], "factory"), undefined);
+  assert.equal(lastLabelEvent(events, "factory")?.actor?.login, "stranger");
+  assert.equal(lastLabelEvent([], "factory"), undefined);
 });
 
 test("the lock admits one holder, and a dead holder's lock is reclaimed", () => {
@@ -119,12 +120,26 @@ for (const name of API_AUTH_VARS) {
   });
 }
 
+test("a checkout without the private docs refuses before touching an issue", async () => {
+  const box = makeSandbox();
+  try {
+    rmSync(join(box.repoDir, "AGENTS.md"));
+    const result = await runOnce(box.cfg);
+    assert.equal(result.outcome, "refused");
+    assert.match(result.detail ?? "", /AGENTS\.md/);
+    assert.deepEqual(box.calls(), []);
+  } finally {
+    box.cleanup();
+  }
+});
+
 test("a subscription token does not refuse the run", async () => {
   const box = makeSandbox({ PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_CODE_OAUTH_TOKEN: "oauth" });
   try {
     assert.equal((await runOnce(box.cfg)).outcome, "pr-opened");
     const agent = box.calls().find((call) => call.kind === "claude");
     assert.equal(agent?.env.CLAUDE_CODE_OAUTH_TOKEN, "oauth");
+    assert.equal(agent?.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "1");
     const gate = box.calls().find((call) => call.kind === "pnpm");
     assert.equal(gate?.env.CLAUDE_CODE_OAUTH_TOKEN, undefined);
   } finally {
@@ -190,6 +205,13 @@ test("a usage-limit message stops for the day without touching the issue", async
   } finally {
     box.cleanup();
   }
+});
+
+test("a descendant holding the pipes can't outlast the child", async () => {
+  const started = Date.now();
+  const child = await runChild("/bin/sh", ["-c", "nohup sleep 20 & exit 3"], { env: { PATH: process.env.PATH }, timeoutMs: 60_000 });
+  assert.equal(child.code, 3);
+  assert.ok(Date.now() - started < 15_000);
 });
 
 test("a pause ends the next day", () => {
@@ -316,6 +338,12 @@ test("read-only steps can't write, and triage has no tools at all", () => {
   assert.ok(!claudeArgs(NO_TOOLS, 5).includes("--allowedTools"));
 });
 
+test("no deny rule covers the worktree agents work in", () => {
+  assert.ok(!DISALLOWED_TOOLS.some((rule) => rule.includes(".uncut-factory")));
+  assert.ok(IMPLEMENTER.allowed.includes("Edit(./**)"));
+  assert.ok(!IMPLEMENTER.allowed.includes("Write"));
+});
+
 test("house rules travel with the agent prompts", () => {
   for (const rule of ["erasable syntax", "zero comments", "em dashes", "Co-Authored-By", "scope creep", "git push"])
     assert.ok(HOUSE_RULES.includes(rule), rule);
@@ -347,6 +375,7 @@ test("risky paths match by glob", () => {
 
 test("posted text can't mention, link or render", () => {
   assert.equal(plainLine("hi @you <b> ![x](http://a.b/c) ok", 100), "hi you b x((link removed) ok");
+  assert.equal(plainLine("see https:<//evil.example/x now", 100), "see (link removed) now");
   assert.equal(plainLine(`a ${String.fromCodePoint(0x2014)} b`, 100), "a, b");
   assert.ok(plainLine("x".repeat(50), 10).length <= 10);
   assert.equal(slugOf("Fix: the $(rm -rf) THING!"), "fix-the-rm-rf-thing");

@@ -1,70 +1,104 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 import { Escalation } from "./errors.ts";
+import { gateEnv } from "./env.ts";
 import { runChild } from "./process.ts";
-import type { FactoryConfig } from "./config.ts";
+import type { FactoryConfig, FactoryPaths } from "./config.ts";
 
 const GIT_TIMEOUT_MS = 10 * 60 * 1000;
 const PRIVATE_DOCS = ["AGENTS.md", "planning/DECISIONS.md"];
 const FORBIDDEN_PATHS: ReadonlyArray<RegExp> = [/\.md$/i, /\.(mp4|mov)$/i, /(^|\/)fixtures\//, /^\.github\//, /^scripts\/factory\//];
 
-/** Agent code ran in this checkout, so its hooks and fsmonitor never run with the owner's credentials. */
-function hardened(args: ReadonlyArray<string>) {
-  return ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args];
+export interface GitScope {
+  readonly cwd: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly config: ReadonlyArray<string>;
 }
 
-export async function git(cfg: FactoryConfig, cwd: string, args: ReadonlyArray<string>) {
-  const result = await runChild("git", hardened(args), { cwd, env: cfg.env, timeoutMs: GIT_TIMEOUT_MS });
+const PINNED_CONFIG = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+
+export function ownerScope(cfg: FactoryConfig): GitScope {
+  return { cwd: cfg.repoDir, env: cfg.env, config: PINNED_CONFIG };
+}
+
+/** The worktree's .git is agent-writable and can redirect git anywhere, so this scope holds no owner credentials. */
+export async function worktreeScope(cfg: FactoryConfig, paths: FactoryPaths, worktree: string): Promise<GitScope> {
+  const owner = ownerScope(cfg);
+  const name = await git(owner, ["config", "user.name"]);
+  const email = await git(owner, ["config", "user.email"]);
+  return { cwd: worktree, env: gateEnv(cfg.env, paths), config: [...PINNED_CONFIG, "-c", `user.name=${name}`, "-c", `user.email=${email}`] };
+}
+
+function runGit(scope: GitScope, args: ReadonlyArray<string>) {
+  return runChild("git", [...scope.config, ...args], { cwd: scope.cwd, env: scope.env, timeoutMs: GIT_TIMEOUT_MS });
+}
+
+export async function git(scope: GitScope, args: ReadonlyArray<string>) {
+  const result = await runGit(scope, args);
   if (result.code !== 0) throw new Error(`git ${args[0]} failed: ${result.stderr.slice(-500)}`);
   return result.stdout.trim();
 }
 
-async function gitSucceeds(cfg: FactoryConfig, cwd: string, args: ReadonlyArray<string>) {
-  const result = await runChild("git", hardened(args), { cwd, env: cfg.env, timeoutMs: GIT_TIMEOUT_MS });
-  return result.code === 0;
+async function gitSucceeds(scope: GitScope, args: ReadonlyArray<string>) {
+  return (await runGit(scope, args)).code === 0;
 }
 
 export async function fetchBase(cfg: FactoryConfig) {
-  await git(cfg, cfg.repoDir, ["fetch", "origin", "main"]);
-  return git(cfg, cfg.repoDir, ["rev-parse", "origin/main"]);
+  const owner = ownerScope(cfg);
+  await git(owner, ["fetch", "origin", "main"]);
+  return git(owner, ["rev-parse", "origin/main"]);
 }
 
 export async function createWorktree(cfg: FactoryConfig, worktree: string, base: string) {
   mkdirSync(dirname(worktree), { recursive: true });
-  await git(cfg, cfg.repoDir, ["worktree", "add", "--detach", worktree, base]);
+  await git(ownerScope(cfg), ["worktree", "add", "--detach", worktree, base]);
 }
 
 export async function removeWorktree(cfg: FactoryConfig, worktree: string) {
-  if (existsSync(worktree)) await git(cfg, cfg.repoDir, ["worktree", "remove", "--force", worktree]);
-  await git(cfg, cfg.repoDir, ["worktree", "prune"]);
+  rmSync(worktree, { recursive: true, force: true });
+  await git(ownerScope(cfg), ["worktree", "prune"]);
 }
 
-export async function copyPrivateDocs(cfg: FactoryConfig, worktree: string) {
+export async function sweepWorktrees(cfg: FactoryConfig, worktreesDir: string) {
+  if (!existsSync(worktreesDir)) return;
+  for (const name of readdirSync(worktreesDir)) await removeWorktree(cfg, join(worktreesDir, name));
+}
+
+export function missingPrivateDocs(cfg: FactoryConfig) {
+  return PRIVATE_DOCS.filter((doc) => !existsSync(join(cfg.repoDir, doc)));
+}
+
+export async function copyPrivateDocs(cfg: FactoryConfig, scope: GitScope) {
   for (const doc of PRIVATE_DOCS) {
-    const source = join(cfg.repoDir, doc);
-    if (!existsSync(source)) throw new Escalation("setup", `${doc} is missing from the local checkout`);
-    if (!(await gitSucceeds(cfg, worktree, ["check-ignore", "-q", doc]))) throw new Escalation("setup", `${doc} would not stay ignored`);
-    mkdirSync(dirname(join(worktree, doc)), { recursive: true });
-    copyFileSync(source, join(worktree, doc));
+    if (!(await gitSucceeds(scope, ["check-ignore", "-q", doc]))) throw new Escalation("setup", `${doc} would not stay ignored`);
+    mkdirSync(dirname(join(scope.cwd, doc)), { recursive: true });
+    copyFileSync(join(cfg.repoDir, doc), join(scope.cwd, doc));
   }
 }
 
-export async function commitWork(cfg: FactoryConfig, worktree: string, message: string) {
-  await git(cfg, worktree, ["add", "--all"]);
-  if (await gitSucceeds(cfg, worktree, ["diff", "--cached", "--quiet"])) return;
-  await git(cfg, worktree, ["commit", "--no-verify", "--message", message]);
+export async function commitWork(scope: GitScope, message: string) {
+  await git(scope, ["add", "--all"]);
+  if (await gitSucceeds(scope, ["diff", "--cached", "--quiet"])) return;
+  await git(scope, ["commit", "--no-verify", "--message", message]);
 }
 
-export async function changedFiles(cfg: FactoryConfig, worktree: string, base: string) {
-  const stdout = await git(cfg, worktree, ["diff", "--name-only", "--no-renames", `${base}..HEAD`]);
-  return stdout.split("\n").filter(Boolean);
+export async function changedFiles(scope: GitScope, base: string, head: string) {
+  const stdout = await git(scope, ["diff", "-z", "--name-only", "--no-renames", `${base}..${head}`]);
+  return stdout.split("\0").filter(Boolean);
 }
 
 export function forbiddenFiles(files: ReadonlyArray<string>) {
   return files.filter((file) => FORBIDDEN_PATHS.some((pattern) => pattern.test(file)));
 }
 
-export async function pushBranch(cfg: FactoryConfig, worktree: string, branch: string) {
-  await git(cfg, worktree, ["push", "--no-verify", "origin", `HEAD:refs/heads/${branch}`]);
+export async function repoConfigFingerprint(cfg: FactoryConfig) {
+  const commonDir = await git(ownerScope(cfg), ["rev-parse", "--git-common-dir"]);
+  const config = readFileSync(join(resolve(cfg.repoDir, commonDir), "config"));
+  return createHash("sha256").update(config).digest("hex");
+}
+
+export async function pushCommit(cfg: FactoryConfig, sha: string, branch: string) {
+  await git(ownerScope(cfg), ["push", "--no-verify", "origin", `${sha}:refs/heads/${branch}`]);
 }

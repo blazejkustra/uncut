@@ -9,7 +9,7 @@ function clamp(text: string, max: number) {
 
 /** One line of untrusted text that can be posted without mentioning anyone or rendering markup. */
 export function plainLine(text: string, max: number) {
-  const flat = text.replace(WEB_LINK, "(link removed)").replace(MARKUP, "").replace(EM_DASH, ", ").replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
+  const flat = text.replace(CONTROL_CHARS, " ").replace(MARKUP, "").replace(WEB_LINK, "(link removed)").replace(EM_DASH, ", ").replace(/\s+/g, " ").trim();
   return clamp(flat, max);
 }
 

@@ -17,8 +17,8 @@ export const IMPLEMENTER: ToolProfile = {
   tools: [...READ_TOOLS, "Edit", "Write", "Bash"],
   allowed: [
     ...READ_TOOLS,
-    "Edit",
-    "Write",
+    "Edit(./**)",
+    "Write(./**)",
     "Bash(pnpm build)",
     "Bash(pnpm format)",
     "Bash(pnpm format:check)",
@@ -59,7 +59,8 @@ export const DISALLOWED_TOOLS: ReadonlyArray<string> = [
   "Read(~/.config/gh/**)",
   "Read(~/.gitconfig)",
   "Read(~/.ssh/**)",
-  "Read(~/.uncut-factory/**)",
+  "Edit(./.git)",
+  "Write(./.git)",
 ];
 
 export function claudeArgs(profile: ToolProfile, maxTurns: number): Array<string> {

@@ -19,6 +19,8 @@ export interface RunContext {
   readonly runDir: string;
   readonly deadline: number;
   readonly steps: Array<StepRecord>;
+  branch?: string;
+  prUrl?: string;
 }
 
 export function newRunContext(cfg: FactoryConfig, kind: string): RunContext {

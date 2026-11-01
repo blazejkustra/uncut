@@ -12,6 +12,7 @@ interface FakeAgentReply {
   exit?: number;
   writes?: Record<string, string>;
   touch?: string;
+  append?: { path: string; text: string };
 }
 
 interface Scenario {
@@ -20,6 +21,7 @@ interface Scenario {
   replies?: Record<string, Array<FakeAgentReply>>;
   gateFailures?: Record<string, number>;
   failGh?: string;
+  touchOnGh?: { command: string; path: string };
 }
 
 const scenario = JSON.parse(readFileSync(join(sandbox, "scenario.json"), "utf8")) as Scenario;
@@ -51,6 +53,7 @@ function fakeClaude() {
     writeFileSync(join(process.cwd(), path), content);
   }
   if (reply.touch !== undefined) writeFileSync(reply.touch, "");
+  if (reply.append !== undefined) appendFileSync(reply.append.path, reply.append.text);
   const isError = reply.isError ?? false;
   console.log(JSON.stringify({ type: "result", subtype: reply.subtype ?? "success", is_error: isError, result: reply.result ?? "", num_turns: 3 }));
   process.exit(reply.exit ?? 0);
@@ -58,6 +61,7 @@ function fakeClaude() {
 
 function fakeGh() {
   const command = args.slice(0, 2).join(" ");
+  if (args.join(" ").startsWith(scenario.touchOnGh?.command ?? "\0")) writeFileSync(scenario.touchOnGh?.path ?? "", "");
   if (scenario.failGh === command) {
     console.error("fake gh failure");
     process.exit(1);

@@ -5,6 +5,7 @@ import { Escalation, Halt } from "./errors.ts";
 import { commentOnIssue, listOpenIssues, type Issue } from "./github.ts";
 import { startRefusal } from "./orchestrator.ts";
 import { assertNoAttribution } from "./pr.ts";
+import { killChildrenOnSignals } from "./process.ts";
 import { triagePrompt } from "./prompts.ts";
 import { newRunContext, step, type RunContext } from "./run-context.ts";
 import { acquireLock, appendJsonl, readJsonl, releaseLock } from "./state.ts";
@@ -82,6 +83,7 @@ export async function runTriage(cfg: FactoryConfig): Promise<TriageResult> {
 }
 
 if (import.meta.main) {
+  killChildrenOnSignals();
   const result = await runTriage(defaultConfig());
   console.log(JSON.stringify(result));
   if (result.outcome === "refused") process.exitCode = 1;

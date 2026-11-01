@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { runOnce } from "../../scripts/factory/orchestrator.ts";
@@ -230,4 +230,109 @@ withBox("a failed issue comment never hides the outcome", async (box) => {
   const [entry] = readJsonl<{ runId: string }>(box.paths.ledger);
   const report = JSON.parse(readFileSync(join(box.paths.runs, entry?.runId ?? "", "report.json"), "utf8")) as { notes: Array<string> };
   assert.ok(report.notes.some((note) => note.includes("issue comment failed")));
+  assert.equal(ghCalls(box, "issue edit").length, 1);
+});
+
+withBox("a blocked issue whose label swap failed waits for the owner to relabel it", async (box) => {
+  box.setScenario({ issues: [issue(1)], timelines: { 1: ownerTimeline }, gateFailures: { lint: 99 }, failGh: "issue edit" });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  const stepsBefore = box.claudeSteps().length;
+  assert.equal((await runOnce(box.cfg)).outcome, "idle");
+  assert.equal(box.claudeSteps().length, stepsBefore);
+  const relabelled = [{ ...ownerTimeline[0], created_at: "2099-01-01T00:00:00Z" }];
+  box.setScenario({ issues: [issue(1)], timelines: { 1: relabelled } });
+  assert.equal((await runOnce(box.cfg)).outcome, "pr-opened");
+});
+
+withBox("a failed comment after the PR exists still records the PR", async (box) => {
+  box.setScenario({ issues: [issue(1)], timelines: { 1: ownerTimeline }, failGh: "issue comment" });
+  const result = await runOnce(box.cfg);
+  assert.equal(result.outcome, "pr-opened");
+  assert.match(result.prUrl ?? "", /pull\/999/);
+  assert.equal(ghCalls(box, "issue edit").length, 0);
+});
+
+withBox("STOP after the push records the branch, and the issue isn't redone", async (box) => {
+  box.writeVerify(0);
+  writeFileSync(box.cfg.riskyPathsFile, JSON.stringify(["src/**"]));
+  box.setScenario({
+    issues: [issue(1)],
+    timelines: { 1: ownerTimeline },
+    touchOnGh: { command: "api repos/blazejkustra/uncut/statuses", path: box.paths.stop },
+  });
+  assert.equal((await runOnce(box.cfg)).outcome, "stopped");
+  const [entry] = readJsonl<{ branch: string }>(box.paths.ledger);
+  assert.equal(entry?.branch, "factory/1-fix-the-thing-1");
+  rmSync(box.paths.stop);
+  assert.equal((await runOnce(box.cfg)).outcome, "idle");
+});
+
+withBox("a failed PR create names the pushed branch", async (box) => {
+  box.setScenario({ issues: [issue(1)], timelines: { 1: ownerTimeline }, failGh: "pr create" });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  assert.match(ghCalls(box, "issue comment")[0]?.stdin ?? "", /Branch factory\/1-fix-the-thing-1 is on the remote/);
+});
+
+withBox("a non-ASCII path can't slip past the forbidden paths", async (box) => {
+  box.setScenario({
+    issues: [issue(1)],
+    timelines: { 1: ownerTimeline },
+    replies: { implement: [{ result: "done", writes: { ".github/workflows/\u00e9.yml": "on: push\n" } }] },
+  });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  assertBlocked(box, /paths the factory may not publish/);
+});
+
+withBox("a non-ASCII risky path still needs verify.ts", async (box) => {
+  box.setScenario({
+    issues: [issue(1)],
+    timelines: { 1: ownerTimeline },
+    replies: { implement: [{ result: "done", writes: { "native/\u00e9.rs": "fn x() {}\n" } }] },
+  });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  assertBlocked(box, /verify\.ts blocked/);
+});
+
+withBox("worktree git runs without owner credentials, and a swapped .git can't reach the push", async (box) => {
+  const hooked = join(box.dir, "owner-saw-it");
+  const script = join(box.dir, "gpg.sh");
+  writeFileSync(script, `#!/bin/sh\n[ -n "$GH_TOKEN" ] && touch ${hooked}\nexit 1\n`, { mode: 0o755 });
+  const fakeGit = join(box.dir, "fake-gitdir");
+  execFileSync("git", ["init", "-q", fakeGit]);
+  writeFileSync(join(fakeGit, ".git/config"), `[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = ${script}\n`);
+  const cfg = { ...box.cfg, env: { ...box.cfg.env, GH_TOKEN: "owner" } };
+  box.setScenario({
+    issues: [issue(1)],
+    timelines: { 1: ownerTimeline },
+    replies: { implement: [{ result: "done", writes: { "src/a.ts": "1\n", ".git": `gitdir: ${fakeGit}/.git\n` } }] },
+  });
+  assert.equal((await runOnce(cfg)).outcome, "blocked");
+  assert.ok(!existsSync(hooked));
+  assert.deepEqual(box.remoteBranches(), ["main"]);
+  assert.deepEqual(readdirSync(box.paths.worktrees), []);
+});
+
+withBox("a repository config changed during the run stops the push", async (box) => {
+  const config = join(box.repoDir, ".git/config");
+  box.setScenario({
+    issues: [issue(1)],
+    timelines: { 1: ownerTimeline },
+    replies: { implement: [{ result: "done", writes: { "src/a.ts": "1\n" }, append: { path: config, text: "[core]\n\tsshCommand = /tmp/evil\n" } }] },
+  });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  assertBlocked(box, /git config changed/);
+});
+
+withBox("a diff over the limit is never reviewed in part", async (box) => {
+  const big = "x".repeat(210_000);
+  box.setScenario({ issues: [issue(1)], timelines: { 1: ownerTimeline }, replies: { implement: [{ result: "done", writes: { "src/big.ts": big } }] } });
+  assert.equal((await runOnce(box.cfg)).outcome, "blocked");
+  assert.ok(!box.claudeSteps().includes("review"));
+  assertBlocked(box, /too large/);
+});
+
+withBox("leftover worktrees are swept at the start of a run", async (box) => {
+  mkdirSync(join(box.paths.worktrees, "old-run"), { recursive: true });
+  await runOnce(box.cfg);
+  assert.deepEqual(readdirSync(box.paths.worktrees), []);
 });
