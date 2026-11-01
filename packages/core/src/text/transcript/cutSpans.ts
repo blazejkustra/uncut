@@ -1,4 +1,5 @@
 import { keyDbAt } from "../../audio/audio.ts";
+import { takenIds } from "../../timeline/arrange/place.ts";
 import type { Project, Item, Op, TimedModule } from "../../timeline/types.ts";
 import { type Pause, tailFrames, handleFrames } from "./fillers.ts";
 
@@ -28,12 +29,7 @@ export const wordIds = (ids: ReadonlyArray<number>) => `w${ids[0]}${ids.length >
 
 /** An id nothing in the project (or `taken`) uses yet: base-1, base-2, … */
 export function freeId(project: Project, base: string, taken: Set<string>) {
-  const ids = new Set([
-    ...taken,
-    ...project.media.map((m) => m.id),
-    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-    ...(project.scenes ?? []).map((s) => s.id),
-  ]);
+  const ids = new Set([...taken, ...takenIds(project)]);
   for (let n = 1; ; n++) {
     const id = `${base}-${n}`;
     if (!ids.has(id)) {

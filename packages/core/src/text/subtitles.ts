@@ -10,6 +10,7 @@ import { lookItem } from "./textPlan.ts";
 import { captionBox, captionCards, CAPTION_DEFAULTS } from "./captions.ts";
 import { layout } from "../timeline/timeline.ts";
 import { mainEnd } from "../timeline/rules.ts";
+import { takenIds } from "../timeline/arrange/place.ts";
 import type { Item, Op, Project, Track } from "../timeline/types.ts";
 
 export type SubtitleFormat = "srt" | "vtt";
@@ -343,7 +344,7 @@ export function planImportSubtitles(
     frames.push({ from, to, text });
   }
   if (!frames.length) return { problem: `Every cue in ${name} starts after the end of the edit (${(mainLength / fps).toFixed(1)} s).` };
-  const ids = new Set([...taken, ...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)])]);
+  const ids = new Set([...taken, ...takenIds(project)]);
   const fresh = (base: string) => {
     for (let n = 1; ; n++) {
       const id = `${base}-${n}`;
