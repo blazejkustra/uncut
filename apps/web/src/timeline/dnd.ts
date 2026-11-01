@@ -5,6 +5,8 @@ import { useSyncExternalStore } from "react";
 
 /** The drag type a media tile carries when it's dragged onto the timeline. */
 export const MEDIA_DRAG_TYPE = "application/x-uncut-media";
+/** With MEDIA_DRAG_TYPE: only this stretch of the file, as JSON { in, frames } in project frames. */
+export const MEDIA_RANGE_DRAG_TYPE = "application/x-uncut-media-range";
 /** The drag type a transition tile carries (its module id); the data can't be read while dragging over, so the module is kept here too. */
 export const TRANSITION_DRAG_TYPE = "application/x-uncut-transition";
 let draggedTransition: string | undefined;

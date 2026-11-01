@@ -151,8 +151,10 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return typeof args.device === "string" && args.device.trim() ? `Asked to boot ${args.device.trim().slice(0, 60)}` : "Looked for simulators to boot";
     case "media_search":
       return typeof args.query === "string" && args.query.trim()
-        ? `Searched other projects for "${args.query.trim().slice(0, 60)}"`
+        ? `Searched the footage for "${args.query.trim().slice(0, 60)}"`
         : "Looked through other projects' media";
+    case "media_describe":
+      return typeof args.media === "string" ? `Described ${args.media.slice(0, 60)} for search` : "Described footage for search";
     case "project_check":
       return "Checked the video against the taste checks";
     case "measure":

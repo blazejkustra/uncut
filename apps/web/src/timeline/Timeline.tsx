@@ -74,7 +74,7 @@ import { Tooltip } from "../ui/Tooltip.tsx";
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand };
 
 export { BottomTabs } from "./BottomTabs.tsx";
-export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";
+export { MEDIA_DRAG_TYPE, MEDIA_RANGE_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";
 
 // "Fit" shows the whole project, but never less than this, so an empty or short project has room.
 const MIN_FIT_SECONDS = 10;

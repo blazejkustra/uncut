@@ -95,6 +95,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     screenRecord,
     argentBoot,
     mediaSearch,
+    mediaDescribe,
     mediaAnalyze,
     measure,
     mediaRank,
@@ -451,7 +452,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "argent_boot":
           return yield* argentBoot(r, args);
         case "media_search":
-          return yield* mediaSearch(args);
+          return yield* mediaSearch(v, args);
+        case "media_describe":
+          return yield* mediaDescribe(v, args);
         case "media_analyze":
           return yield* mediaAnalyze(v, args);
         case "measure":

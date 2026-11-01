@@ -13,6 +13,7 @@ export const LOOK_TOOLS = [
   "project_check",
   "library_search",
   "media_search",
+  "media_describe",
   "contact_sheet",
   "ui_show",
   "ask_user",

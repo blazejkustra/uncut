@@ -22,6 +22,7 @@ export {
   Canvas,
   RecentProject,
 } from "./server.ts";
+export { FOOTAGE_THUMB_PATH, FootageHit, FootageStatus } from "./footage.ts";
 export {
   THUMB_PATH,
   RECENT_THUMB_PATH,

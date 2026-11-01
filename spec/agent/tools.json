@@ -169,7 +169,7 @@
         "properties": {
           "media": {
             "type": "string",
-            "description": "A media id from project_read."
+            "description": "A media id."
           },
           "analyzers": {
             "type": "array",
@@ -953,7 +953,7 @@
     },
     {
       "name": "media_search",
-      "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and date. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
+      "description": "Search the user's footage on this Mac. moments: what's said in indexed clips and what media_describe stored, across projects, best first, with clip and time range (in this project: media and frames usable as in; else its path). found: media from other projects by name: captures, imports and generations, newest first. Bring one in with media_import {path} (a file inside another project is copied into media/imports; others are referenced). Search here before drawing a placeholder for product footage. \"in quotes\" is an exact phrase.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -961,8 +961,9 @@
           "query": {
             "type": "string",
             "maxLength": 200,
-            "description": "Words to match in the name, file, project, device or app, e.g. \"argent demo\"; empty lists the newest."
+            "description": "Words to match in speech, descriptions, name, file, project, device or app; empty lists the newest."
           },
+          "scope": {"enum": ["project", "all"], "description": "Moments from this project or all (default)."},
           "kind": {
             "enum": [
               "video",
@@ -976,7 +977,57 @@
           }
         }
       },
-      "returns": "found: [{ path, name, kind, origin, seconds, size, project, device, app, created, import }]"
+      "returns": "moments: [{ media?, start?, end?, path?, project?, name, source: speech | visual, startSeconds, endSeconds, text }], found: [{ path, name, kind, origin, seconds, size, project, device, app, created, import }], note"
+    },
+    {
+      "name": "media_describe",
+      "description": "Store what's on screen in a media file so media_search finds it: one entry per shot, in plain words. Kept on this Mac; replaces entries it overlaps; changes nothing in the project.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "media",
+          "moments"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read."
+          },
+          "moments": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "end",
+                "text"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Project frames of the media."
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "description": "What's on screen."
+                }
+              }
+            }
+          }
+        }
+      },
+      "returns": "{ media, stored, note }"
     },
     {
       "name": "ask_user",

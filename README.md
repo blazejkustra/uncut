@@ -28,6 +28,7 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
 - **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
+- **Search across your footage.** A local index of every clip's speech, with word timecodes, in one project or all of them. Find a moment in the Media panel and drag it onto the timeline; the agent searches the same index with `media_search`. Pictures are searchable once the agent has described them.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
 - **Sound.** The Uncut sounds pack, your own sound folders, your Music library, and online search on Openverse or Freesound (with your own key). A mixer with ducking under speech and loudness targets for export.
@@ -82,7 +83,7 @@ Never your footage, frames, transcripts, prompts, file names, paths or error mes
 
 What else leaves your Mac, and only when you use it:
 
-- **The agent.** Uncut runs your own Claude Code, which sends Anthropic (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and its terms.
+- **The agent.** Uncut runs your own Claude Code, which sends Anthropic (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and its terms. That includes search results from the footage index when the agent searches it, and the frames it looks at to describe a clip. The index itself stays on your Mac, in Uncut's data folder, and indexing sends nothing anywhere.
 - **Generators.** Image, video and sound effect generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
 - **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
 - **Downloads.** The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.

@@ -7,6 +7,7 @@ import { type Project, useApp, activeJobs, type MediaItem, actions, isRemote } f
 import { useMediaView, sortMedia, setMediaSort, type MediaSort, MEDIA_SORTS, setMediaMode } from "../mediaView.ts";
 import { generatedMedia, GeneratedSection } from "../Generate.tsx";
 import { RecentSection } from "../RecentMedia.tsx";
+import { FootageSearch } from "./FootageSearch.tsx";
 import { Empty, MediaTile } from "./MediaTile.tsx";
 import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { call } from "../../state/store/server.ts";
@@ -150,6 +151,7 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
         </div>
       )}
       <ImportReport />
+      <FootageSearch project={project} />
       {media.length === 0 && generated.size === 0 ? (
         <Empty icon={<Film />} title="No media yet" testId="media-empty">
           <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>

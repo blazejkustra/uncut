@@ -27,6 +27,8 @@ import * as LinkImport from "../media/linkImport.ts";
 import * as Proxies from "../media/proxies.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
 import * as MediaIndex from "../media/mediaIndex.ts";
+import * as FootageIndex from "../footage/footageIndex.ts";
+import * as FootageThumbs from "../footage/footageThumbs.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
 import * as GraphicMedia from "../export/graphicMediaRoute.ts";
 import * as GraphicElementsRoute from "../export/graphicElementsRoute.ts";
@@ -101,6 +103,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
       Ws.layer,
       Thumbs.layer,
       Thumbs.recentLayer,
+      FootageThumbs.layer,
       MediaFiles.layer,
       GraphicFiles.layer,
       GraphicMedia.layer,
@@ -117,7 +120,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provide(Agent.layer),
     Layer.provide(Capture.layer),
     // D205: the user's media index across projects (media_search, Media › Recent from other projects).
-    Layer.provideMerge(MediaIndex.layer),
+    // The footage index: local search across the speech and descriptions of every clip.
+    Layer.provideMerge(Layer.merge(MediaIndex.layer, FootageIndex.layer)),
     // Generators (D99): the Generate tab and generate_media; keys through the desktop's safeStorage.
     Layer.provideMerge(Generate.layer),
     // The sound library (D134): Openverse and Freesound search, previews and downloads.

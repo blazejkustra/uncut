@@ -1,0 +1,15 @@
+.footage-search { padding-bottom: 4px; }
+.footage-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.footage-bar .recent-search { flex: 1; min-width: 0; margin: 0; }
+.footage-bar .media-sort { flex: none; max-width: 96px; }
+.footage-progress { margin: 0 0 8px; grid-template-columns: auto 1fr auto; }
+.footage-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-bottom: 8px; font-size: 11px; color: var(--dim); }
+.footage-error { flex-basis: 100%; color: var(--muted); overflow-wrap: anywhere; }
+.footage-hit[draggable="false"] { cursor: default; }
+.footage-thumb { position: relative; width: 88px; height: 56px; }
+.footage-time { position: absolute; right: 3px; bottom: 3px; padding: 0 3px; border-radius: 3px; background: rgb(0 0 0 / 70%); color: #fff; font-size: 10px; font-variant-numeric: tabular-nums; line-height: 14px; }
+.footage-text { font-size: 11px; line-height: 15px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.footage-text svg.lucide { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+.footage-text mark { background: none; color: var(--fg); font-weight: 600; }
+.footage-progress > .ellipsis { text-align: left; }
+.footage-progress > .link-cancel { grid-column: 3; grid-row: 1; margin: 0; padding: 0; width: auto; }

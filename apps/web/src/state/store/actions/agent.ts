@@ -13,6 +13,7 @@ import {
   takeUploadName,
   type ProjectSnapshot,
   type MediaRecentEntry,
+  type FootageHit,
 } from "@uncut/contracts";
 import { type Result } from "../../connection.ts";
 import { playback, getPlayback } from "../../../preview/playback.ts";
@@ -302,5 +303,12 @@ export const agentActions = {
     const result = await call((c) => c["media.recentImport"]({ id }));
     return result.ok ? { ok: true, copied: result.value.copied, name: result.value.name } : { ok: false, message: plainError(result.error) };
   },
+  /** Moments in the footage index. */
+  async footageSearch(query: string, thisProject: boolean): Promise<ReadonlyArray<FootageHit>> {
+    const result = await call((c) => c["footage.search"]({ query, thisProject }));
+    return result.ok ? result.value.hits : [];
+  },
+  footageStart: () => call((c) => c["footage.start"]({})),
+  footageCancel: () => call((c) => c["footage.cancel"]({})),
   dismissAgentError: () => set({ agentError: undefined }),
 };
