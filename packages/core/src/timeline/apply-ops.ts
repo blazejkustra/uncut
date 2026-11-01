@@ -4,6 +4,7 @@ import { keyDbAt } from "../audio/audio.ts";
 import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
 import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
+import { agentLockProblem, lockedItemProblem, lockedTrackProblem } from "./locks.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
 import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
@@ -86,12 +87,13 @@ function merge(target: object, set: FieldSet) {
 }
 
 /**
- * Locked tracks and items can't be edited, by the user or the agent (D52). update_track stays
- * allowed, so a locked track can still be unlocked, hidden or muted.
+ * Locked tracks and items can't be edited, by the user or the agent (D52), until the user unlocks
+ * them. update_track and a lock change stay allowed here, for the user's hand; agentLockProblem
+ * refuses the agent's.
  */
 function guard(track: DraftTrack, item?: DraftItem) {
-  if (track.locked) throw new EditError(`Track "${track.name ?? track.id}" is locked: unlock it to edit it`);
-  if (item?.locked) throw new EditError(`"${item.id}" is locked: unlock it to edit it`);
+  if (track.locked) throw new EditError(`Track "${track.name ?? track.id}" is locked: unlock it to edit it`, [lockedTrackProblem(track)]);
+  if (item?.locked) throw new EditError(`"${item.id}" is locked: unlock it to edit it`, [lockedItemProblem(track, item)]);
 }
 
 /** The item an op works on, refused if it (or its track) is locked. */
@@ -352,6 +354,8 @@ export function applyEdit(
       (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
     : undefined;
   if (locked) throw new EditError("The edit would change a locked section", [locked]);
+  const lockProblem = actor === "agent" ? agentLockProblem(session.project, project as Project) : undefined;
+  if (lockProblem) throw new EditError("The edit would change something the user locked", [lockProblem]);
   if (validate) {
     const errors = validate(project);
     if (errors.length) throw new EditError("The edit would make the project invalid", errors);

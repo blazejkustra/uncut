@@ -10,6 +10,7 @@ import {
   createSession,
   type Op,
   planCaptionEdit,
+  locksNote,
   sectionsNote,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
@@ -101,6 +102,12 @@ function projectNotes(project: Project) {
           sections: sectionsNote(project),
           sectionsNote:
             "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it).",
+        }
+      : {}),
+    ...(locksNote(project)
+      ? {
+          locked: locksNote(project),
+          lockedNote: "Only the user unlocks these. Edits that change or move them are refused: work around them, or ask the user to unlock one.",
         }
       : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
