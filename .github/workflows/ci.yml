@@ -30,11 +30,11 @@ permissions:
   contents: read
 
 # A new push to a PR replaces its running check; every push to main finishes (D253), so a broken
-# commit on main is always pinned down. queue: max because a group otherwise keeps a single pending
-# run: each new push to main would cancel the one waiting, and a burst of merges would never be tested.
+# commit on main is always pinned down. So each commit outside a PR is its own group: a group keeps a
+# single pending run, and a shared one would let each new push cancel the run waiting. queue: max can't
+# help: GitHub rejects it next to a cancel-in-progress expression.
 concurrency:
-  group: ci-${{ github.ref }}
-  queue: max
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
