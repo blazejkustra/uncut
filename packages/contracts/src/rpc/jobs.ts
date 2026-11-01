@@ -48,6 +48,13 @@ export const ExportSubtitlesRpc = Rpc.make(RPC_METHODS.exportSubtitles, {
   error: ExportError,
 });
 
+/** The timeline for another editor, as a .fcpxml or .edl file (the format by its extension). warnings: what the file can't carry. */
+export const ExportTimelineRpc = Rpc.make(RPC_METHODS.exportTimeline, {
+  payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ path: Schema.String, warnings: Schema.Array(Schema.String) }),
+  error: ExportError,
+});
+
 /**
  * D246: the loudness gain the export would use for `targetLufs` on the open project as it is now
  * (its own measuring passes: one gain before the limiter, checked through it), so the preview can

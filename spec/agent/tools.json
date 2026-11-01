@@ -418,6 +418,19 @@
       "returns": "{ media, item, remade, mode, words, cards: [{ from, to, words: 'w12–w18', text }] (the first 40; frames of the edit), cardCount, revision, notes? }"
     },
     {
+      "name": "timeline_export",
+      "description": "Save the timeline for Final Cut or Resolve next to project.json. media_import of a .fcpxml in an empty project builds one.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "format": { "enum": ["fcpxml", "edl"], "description": "fcpxml (default); edl is the main track only" },
+          "overwrite": { "type": "boolean" }
+        }
+      },
+      "returns": "{ path, lost }"
+    },
+    {
       "name": "subtitles_export",
       "description": "Subtitles as a file: the cards every captions item draws (corrections applied, hidden words and fillers left out, word and single modes as whole cards) and the text items of \"Subtitles\" tracks (an imported .srt / .vtt), merged by time, at the edit's times after cuts. Writes .srt or .vtt; no video is rendered. Refused when there are no captions or subtitles, or when the file exists (pass overwrite).",
       "inputSchema": {

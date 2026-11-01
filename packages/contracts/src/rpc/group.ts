@@ -42,6 +42,7 @@ import {
   ExportJobsRpc,
   ExportCancelRpc,
   ExportSubtitlesRpc,
+  ExportTimelineRpc,
   ExportLoudnessRpc,
   AgentScreenTakeRpc,
 } from "./jobs.ts";
@@ -141,6 +142,7 @@ export const WsRpcGroup = RpcGroup.make(
   ExportJobsRpc,
   ExportCancelRpc,
   ExportSubtitlesRpc,
+  ExportTimelineRpc,
   ExportLoudnessRpc,
   AgentSubscribeRpc,
   AgentSendRpc,

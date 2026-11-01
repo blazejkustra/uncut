@@ -40,10 +40,71 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
 - **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects, voiceover and music with ElevenLabs, with a cost estimate before you send.
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
-- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles.
+- **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles. Timelines go to Final Cut Pro and DaVinci Resolve as FCPXML or an EDL, and FCPXML comes back in ([what maps and what's lost](#timeline-interchange)).
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon).
+
+## Timeline interchange
+
+Uncut writes a timeline as FCPXML 1.10 for Final Cut Pro and DaVinci Resolve, or as a CMX 3600 EDL. It reads FCPXML back in. Source files are referenced where they are: nothing is copied or rendered.
+
+Every export lists what it left out, in the Export dialog and in the tool's reply.
+
+### FCPXML export
+
+| Uncut | FCPXML |
+| --- | --- |
+| Main track | The spine |
+| Other video and text tracks | Connected clips in lanes above the spine |
+| Audio tracks | Connected clips in lanes below the spine |
+| Clips and sounds | `asset-clip`, stills as `video` |
+| Plain text | `title` on Basic Title |
+| Gaps | `gap` |
+| Crossfades | `Cross Dissolve` transitions |
+| Clip gain | `adjust-volume` |
+| Canvas size and rate | The sequence's `format`, with exact frame fractions |
+
+Left out, each with a warning:
+
+- Effects, colour looks and LUTs
+- Keyframes, position, size and opacity
+- Speed changes, animations and loops
+- Hidden tracks
+- Graphics, shapes and anything else with no plain file or text
+- Transitions other than a crossfade, which are written as a dissolve
+
+An item on the main track that can't be written leaves a gap of the same length, so everything after it stays in place.
+
+### EDL export
+
+An EDL holds one picture track. Uncut writes the main track's clips as cuts and dissolves with non-drop timecode, and adds each clip's name and source path as comments.
+
+Left out, each with a warning:
+
+- Every other track, including text and sound
+- Items on the main track with no source file
+- Everything FCPXML leaves out of a clip
+
+### FCPXML import
+
+Import a `.fcpxml` file into an empty project. In any other project the import is refused and nothing changes: no media, no canvas.
+
+The project takes the file's size and rate. The rates are 23.976, 24, 25, 29.97, 30, 50, 59.94 and 60. A timeline at another rate is timed at the nearest of those, with a warning.
+
+| FCPXML | Uncut |
+| --- | --- |
+| The first sequence's spine | The main track |
+| Connected clips | Video and text tracks by lane, sound tracks for negative lanes |
+| `asset-clip`, `clip`, `video`, `audio` | Clips and sounds; their files are imported |
+| `title` | Text in the title style |
+| Dissolves | Crossfades |
+| `adjust-volume` | Clip gain |
+| `tcStart` and an asset's `start` | Accounted for: the timeline starts at frame 0 and a clip's in point counts from the start of its file |
+
+Only `file:` URLs are read. A clip with any other source, or with no file, is left out with a warning.
+
+Compound, sync and multicam clips and auditions are left out with a warning.
 
 ## Linux server
 

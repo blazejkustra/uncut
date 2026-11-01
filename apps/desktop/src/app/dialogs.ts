@@ -31,6 +31,7 @@ const MEDIA_EXTENSIONS = [
   "webp",
   "srt",
   "vtt",
+  "fcpxml",
   "cube",
 ];
 
@@ -46,7 +47,7 @@ export async function chooseMedia(win: BrowserWindow): Promise<Array<string>> {
     defaultPath: appInfo.defaultParentDir,
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Video, audio, images, subtitles and LUTs", extensions: MEDIA_EXTENSIONS },
+      { name: "Video, audio, images, subtitles, timelines and LUTs", extensions: MEDIA_EXTENSIONS },
       { name: "All files", extensions: ["*"] },
     ],
   });

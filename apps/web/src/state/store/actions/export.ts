@@ -40,6 +40,16 @@ export const exportActions = {
     return undefined;
   },
   cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
+  /** The timeline as a .fcpxml or .edl file; the saved file and what it lost, or the server's refusal. */
+  async exportTimeline(input: {
+    output: string;
+    overwrite?: boolean;
+  }): Promise<{ readonly path: string; readonly warnings: ReadonlyArray<string> } | { readonly reason?: string; readonly message: string }> {
+    const result = await call((c) => c["export.timeline"](input));
+    if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
+    set({ exportFolder: input.output.slice(0, input.output.lastIndexOf("/")) || "/" });
+    return result.value;
+  },
   /** D105: just the subtitles as a .srt / .vtt file; the saved file, or the server's refusal. */
   async exportSubtitles(input: {
     output: string;
