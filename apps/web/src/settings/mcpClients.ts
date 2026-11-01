@@ -1,7 +1,7 @@
 // What each outside client needs to reach Uncut's MCP gateway. No React, so tests read it.
 
 /** Stands in for the token on screen; Copy always copies the real one. */
-export const TOKEN_MASK = "••••••••••••••••";
+export const TOKEN_MASK = "<hidden token>";
 
 export interface McpClient {
   readonly id: string;
