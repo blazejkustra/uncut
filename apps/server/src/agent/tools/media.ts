@@ -90,19 +90,23 @@ export const makeMediaTools = (ctx: CoreCtx) => {
             Effect.map((value) => {
               const { snapshot, entries } = value;
               const subs = value.subtitles ?? [];
+              const lutCount = value.luts?.length ?? 0;
               if (snapshot) {
                 const lines = [
                   ...entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)),
                   ...subs.map((s) => `Imported ${s.cues} subtitle cue${s.cues === 1 ? "" : "s"} from ${basename(s.path)} as track ${s.track}`),
+                  ...(value.luts ?? []).map((l) => `Imported LUT ${l.name}`),
                 ];
-                const count = entries.length + subs.length;
+                const count = entries.length + subs.length + lutCount;
                 pushEdit(r, {
                   revision: snapshot.revision,
                   summary:
                     count === 1
                       ? entries.length
                         ? `Imported ${entries[0]!.name}`
-                        : `Imported subtitles ${basename(subs[0]!.path)}`
+                        : lutCount
+                          ? `Imported LUT ${value.luts![0]!.name}`
+                          : `Imported subtitles ${basename(subs[0]!.path)}`
                       : `Imported ${count} files`,
                   lines,
                   ...(entries.length ? { media: entries.map((e) => e.id) } : {}),
@@ -138,6 +142,12 @@ export const makeMediaTools = (ctx: CoreCtx) => {
                 ...s,
                 note: `Text items on track ${s.track}, one per cue; subtitles_export writes them (with any captions) as .srt or .vtt.`,
               })),
+            }
+          : {}),
+        ...(outcome.value.luts?.length
+          ? {
+              luts: outcome.value.luts,
+              lutNote: 'To grade a clip, timeline_edit its effects with {"module":"effect.look","params":{"look":"<the LUT\'s id>","intensity":1}}.',
             }
           : {}),
         ...capSkipped(skippedOut),
