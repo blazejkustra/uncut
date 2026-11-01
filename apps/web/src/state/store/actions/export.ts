@@ -32,6 +32,7 @@ export const exportActions = {
     range?: { from: number; to: number };
     video?: ExportVideo;
     motionBlur?: boolean;
+    review?: boolean;
   }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };

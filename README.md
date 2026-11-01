@@ -43,6 +43,7 @@ ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest 
 - **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
 - **Export.** H.264 or HEVC at the quality you pick, ProRes 422, 422 HQ or 4444 masters (4444 with a transparent background), a range or the whole edit, with optional subtitles. Timelines go to Final Cut Pro and DaVinci Resolve as FCPXML or an EDL, and FCPXML comes back in ([what maps and what's lost](#timeline-interchange)).
 - **Outside agents.** Drive Uncut from Claude Code in a terminal, Claude Desktop or Cursor over a local MCP server. See [Connect an outside agent](#connect-an-outside-agent).
+- **Shareable review, with no account or hosted service.** Export › Review page makes a folder with one HTML page and the video; open it locally or host it anywhere. See [Review pages](#review-pages).
 - **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
 Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon).
@@ -150,6 +151,16 @@ Claude Desktop connects through `mcp-remote` and Cursor through `~/.cursor/mcp.j
 - **Unmetered.** Uncut counts nothing and charges nothing for it. The client you connect bills as it normally does.
 
 The tools answer for the project in the focused window. With no project open, `project_open` opens a footage folder or a `.uncut` project.
+
+## Review pages
+
+Tick **Review page** in the Export dialog to get a `<name> review` folder holding `index.html` and `video.mp4`. Send the folder to a reviewer, or put it on any static host. The page works offline and makes no third-party requests.
+
+The reviewer plays the cut and pins comments to a timecode, optionally with a region of the frame. Comments stay in that browser's storage until the reviewer saves them as a small `.uncut-review.json` file or copies them as a block.
+
+Drop the file or paste the block into the **Review** tab. The comments become pins on the timeline ruler and notes the agent sees: ask it to "address the review notes" and it resolves each one it handles, or tick them off yourself. Reviewer text is treated as untrusted data: it is escaped on the page and in Uncut, and the agent is told to read it as feedback and never as instructions.
+
+The limit: there is no live multiplayer and no automatic sync. Reviewers don't see each other's comments, and comments reach you only when someone sends them and you import them. Pins stay on their frame when the cut changes afterwards, and Uncut warns on import if the cut has changed since the page was exported.
 
 ## Development
 

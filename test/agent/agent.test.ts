@@ -220,6 +220,8 @@ test("every op type works and keeps the promo valid", () => {
     [{ op: "update_media", media: "m-new", set: { path: "media/badge-2.png", source: { module: "argent.capture", device: "SIM-1" } } }],
     [{ op: "delete_media", media: "m-new" }],
     [{ op: "update_project", set: { name: "Close the loop v2" } }],
+    [{ op: "update_project", set: { reviewNotes: [{ id: "rn-a-b", frame: 10, text: "Hold this" }] } }],
+    [{ op: "resolve_review_notes", notes: ["rn-a-b"] }],
     [{ op: "update_item", item: "txt-taps", set: { animation: null } }],
     [{ op: "trim_item", item: "terminal", edge: "start", frames: 30 }],
     [{ op: "insert_item", track: mainId, item: { id: "extra", type: "text", text: "Extra", duration: 30 } }],

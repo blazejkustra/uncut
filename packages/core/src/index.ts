@@ -6,6 +6,22 @@ export { EditError, EditConflict, TurnDependency, authorOf, createSession, apply
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
 export { agentLockProblem, locksNote } from "./timeline/locks.ts";
 export { canUnnest, flattenSequences, sequenceLength, sequencesNote } from "./timeline/nesting.ts";
+export {
+  REVIEW_AUTHOR_MAX,
+  REVIEW_NOTES_FORMAT,
+  REVIEW_TEXT_MAX,
+  inertJson,
+  openReviewNotes,
+  parseReviewNotes,
+  planRemoveReviewNote,
+  planResolveReviewNote,
+  planReviewImport,
+  reviewCut,
+  reviewNotesBlock,
+  reviewNotesTurnBlock,
+  type ReviewExchange,
+  type ReviewImport,
+} from "./timeline/review.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
   byUser,

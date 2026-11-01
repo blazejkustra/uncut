@@ -277,6 +277,25 @@ export interface Marker {
   readonly label?: string;
 }
 
+/** A part of the frame, as fractions of its width and height. */
+export interface ReviewRegion {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** A comment from a review page, imported from its file (core review.ts). The text is the reviewer's, never trusted. */
+export interface ReviewNote {
+  readonly id: Id;
+  readonly frame: Frame;
+  readonly text: string;
+  readonly author?: string;
+  readonly at?: string;
+  readonly region?: ReviewRegion;
+  readonly resolved?: boolean;
+}
+
 /** A timeline of its own (same canvas and media), played by sequence items on Main (nesting.ts). */
 export interface Sequence {
   readonly id: Id;
@@ -296,6 +315,7 @@ export interface Project {
   readonly sequences?: ReadonlyArray<Sequence>;
   readonly scenes?: ReadonlyArray<Scene>;
   readonly markers?: ReadonlyArray<Marker>;
+  readonly reviewNotes?: ReadonlyArray<ReviewNote>;
   /** Issue #118: locked stretches and ones flagged for the agent to redo. */
   readonly sections?: ReadonlyArray<Section>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
@@ -343,7 +363,8 @@ export type Op =
   | { readonly op: "update_media"; readonly media: Id; readonly set: FieldSet }
   // F8 (D167): a media entry out of the project (no item may still use it; its file stays on disk).
   | { readonly op: "delete_media"; readonly media: Id }
-  | { readonly op: "update_project"; readonly set: FieldSet };
+  | { readonly op: "update_project"; readonly set: FieldSet }
+  | { readonly op: "resolve_review_notes"; readonly notes: ReadonlyArray<Id>; readonly resolved?: boolean };
 
 export type OpName = Op["op"];
 export type Actor = "user" | "agent";

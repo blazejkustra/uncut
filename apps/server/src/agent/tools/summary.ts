@@ -11,6 +11,8 @@ import {
   type Op,
   planCaptionEdit,
   locksNote,
+  reviewNotesBlock,
+  reviewNotesTurnBlock,
   sectionsNote,
   sequencesNote,
 } from "@uncut/core";
@@ -115,6 +117,7 @@ function projectNotes(project: Project) {
     ...(sequencesNote(project)
       ? { sequences: sequencesNote(project), sequencesNote: "Sequence items on Main play these. Change what's in one with edit_sequence." }
       : {}),
+    ...(reviewNotesTurnBlock(project) ? { reviewNotes: reviewNotesTurnBlock(project) } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
     // D105: what a subtitles file would hold, when there's anything.
@@ -122,6 +125,12 @@ function projectNotes(project: Project) {
     // D135: the library sounds' credits (CC BY ones need them in the video's description).
     ...(creditsText(project) ? { credits: creditsSummary(project) } : {}),
   };
+}
+
+/** project_read's detail "full": project.json with the reviewers' text moved behind its warning. */
+export function fullProject(project: Project, revision: number) {
+  const { reviewNotes: _, ...rest } = withoutLutTables(project);
+  return { revision, project: rest, ...(reviewNotesBlock(project) ? { reviewNotes: reviewNotesBlock(project) } : {}) };
 }
 
 /**

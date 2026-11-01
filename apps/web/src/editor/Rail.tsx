@@ -17,6 +17,7 @@ import {
   SwatchBook,
   Type,
   type LucideIcon,
+  MessageSquareText,
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -44,6 +45,7 @@ const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; rea
   { id: "brand", label: "Brand", title: "Brand kits", icon: SwatchBook },
   // D232 (issue #60): skills from plugins, used with / in the chat or by the agent when they fit.
   { id: "skills", label: "Skills", title: "Skills", icon: BookOpen },
+  { id: "review", label: "Review", title: "Review notes", icon: MessageSquareText },
 ];
 const IDS = TABS.map((t) => t.id);
 const info = (id: LibraryTab) => TABS.find((t) => t.id === id)!;

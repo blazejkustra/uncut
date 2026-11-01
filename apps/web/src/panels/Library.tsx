@@ -11,6 +11,7 @@ import { GenerateLibrary } from "./Generate.tsx";
 import { TranscriptPanel } from "./Transcript.tsx";
 import { BrandLibrary } from "./Brand.tsx";
 import { SkillsLibrary } from "./Skills.tsx";
+import { ReviewPanel } from "./Review.tsx";
 import { TextLibrary } from "./library/TextLibrary.tsx";
 import { ElementsLibrary } from "./library/ElementsLibrary.tsx";
 import { MediaLibrary } from "./library/MediaLibrary.tsx";
@@ -28,13 +29,16 @@ export type LibraryTab =
   | "capture"
   | "generate"
   | "brand"
-  | "skills";
+  | "skills"
+  | "review";
 
 export function Library({ project, dir, tab, onTab }: { project: Project; dir: string; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
   return tab === "brand" ? (
     <BrandLibrary />
   ) : tab === "skills" ? (
     <SkillsLibrary />
+  ) : tab === "review" ? (
+    <ReviewPanel project={project} />
   ) : tab === "transcript" ? (
     <TranscriptPanel project={project} dir={dir} />
   ) : tab === "text" ? (

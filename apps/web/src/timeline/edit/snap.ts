@@ -107,11 +107,11 @@ export function snapPlayhead(project: ProjectModel, frame: number, snap: BeatSna
   return best === undefined ? { frame } : { frame: best, snapAt: best };
 }
 
-/** Snap targets in frames: 0, the playhead, markers, every other item's start and end, and the beats of other items (D70). `exclude`: one id or several (a group move). */
+/** Snap targets in frames: 0, the playhead, markers, review notes, every other item's start and end, and the beats of other items (D70). `exclude`: one id or several (a group move). */
 export function snapTargets(project: ProjectModel, playhead: number, exclude: string | ReadonlySet<string>, beats?: BeatSnap): Array<number> {
   const { starts } = layoutOf(project);
   const skip = typeof exclude === "string" ? new Set([exclude]) : exclude;
-  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame)]);
+  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame), ...(project.reviewNotes ?? []).map((n) => n.frame)]);
   for (const track of project.tracks) {
     for (const item of track.items) {
       if (skip.has(item.id)) continue;
@@ -137,7 +137,7 @@ export function trimSnapTargets(project: ProjectModel, playhead: number, itemId:
   if (!placed) return [];
   const own = edge === "start" ? placed.start : placed.start + placed.item.duration;
   const { starts } = layoutOf(project);
-  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame)]);
+  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame), ...(project.reviewNotes ?? []).map((n) => n.frame)]);
   const ripples = (track: Track, index: number) => track.role === "main" && placed.track.role === "main" && index > placed.index;
   for (const track of project.tracks) {
     track.items.forEach((item, index) => {

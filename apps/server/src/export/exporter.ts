@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import {
@@ -51,6 +51,7 @@ import { capsOf, withPictureSizes } from "./exporter/ffmpeg.ts";
 import { projectGraphics } from "./exporter/graphics.ts";
 import { makeDuckEnvelopes } from "./exporter/duckEnvelopes.ts";
 import { makeRunJob } from "./exporter/runJob.ts";
+import { REVIEW_VIDEO, reviewFolderFor, reviewManifest, reviewPageHtml } from "./exporter/reviewPage.ts";
 import { makePreviewLoudness } from "./exporter/previewLoudness.ts";
 import { makeMixMeasure, type MixTraces } from "./exporter/mixMeasure.ts";
 import { jpegPixels, type RgbImage } from "./exporter/framePixels.ts";
@@ -78,6 +79,8 @@ export interface ExportInput {
   readonly video?: ExportVideo | undefined;
   /** D291: motion blur on graphics; absent = the project's default (core motionBlurDefault: on unless Draft). */
   readonly motionBlur?: boolean | undefined;
+  /** A review page: a folder named after `output` with the page and the video (exporter/reviewPage.ts). */
+  readonly review?: boolean | undefined;
   /** The agent's export_video started it (ExportJob.agent): the editor shows it like its own. */
   readonly agent?: boolean | undefined;
 }
@@ -197,26 +200,29 @@ export const layer = Layer.effect(
         if ("problem" in sliced) return yield* new ExportError({ reason: "empty", message: sliced.problem });
         const project = sliced;
         const range = input.range ? clampRange(whole, input.range) : undefined;
-        const output = input.output.trim();
+        const chosen = input.output.trim();
         const video = input.video ?? {};
-        const codec = video.codec ?? "h264";
+        const codec = input.review ? "h264" : (video.codec ?? "h264");
         const extension = codecExtension(codec);
-        if (!isAbsolute(output) || !output.toLowerCase().endsWith(`.${extension}`))
+        if (!isAbsolute(chosen) || !chosen.toLowerCase().endsWith(`.${extension}`))
           return yield* new ExportError({ reason: "invalid-path", message: `Choose where to save the video: a .${extension} file.` });
+        const reviewFolder = input.review ? reviewFolderFor(chosen) : undefined;
+        const output = reviewFolder ? join(reviewFolder, REVIEW_VIDEO) : chosen;
+        const parent = dirname(chosen);
         const folder = yield* Effect.promise(() =>
-          stat(dirname(output)).then(
+          stat(parent).then(
             (s) => s.isDirectory(),
             () => false,
           ),
         );
-        if (!folder) return yield* new ExportError({ reason: "invalid-path", message: `The folder ${dirname(output)} doesn't exist.` });
+        if (!folder) return yield* new ExportError({ reason: "invalid-path", message: `The folder ${parent} doesn't exist.` });
         const writable = yield* Effect.promise(() =>
-          access(dirname(output), constants.W_OK).then(
+          access(parent, constants.W_OK).then(
             () => undefined,
             (error: unknown) => error,
           ),
         );
-        if (writable) return yield* new ExportError({ reason: "invalid-path", message: plainFsError(writable, dirname(output)) });
+        if (writable) return yield* new ExportError({ reason: "invalid-path", message: plainFsError(writable, parent) });
         const target = yield* Effect.promise(() => canonical(output));
         const media = yield* Effect.promise(() => Promise.all(project.media.map((m) => canonical(mediaPath(m)))));
         if (media.includes(target))
@@ -234,8 +240,9 @@ export const layer = Layer.effect(
             reason: "busy",
             message: `Another export is already saving to ${basename(output)}. Wait for it, or choose another name.`,
           });
-        if (!input.overwrite && (yield* Effect.promise(() => exists(output))))
-          return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
+        const destination = reviewFolder ?? output;
+        if (!input.overwrite && (yield* Effect.promise(() => exists(destination))))
+          return yield* new ExportError({ reason: "exists", message: `${basename(destination)} already exists in that folder.` });
         // Subtitles (D105): a file next to the video (same name, .srt / .vtt) and / or a soft track.
         const subtitlesFile = input.subtitles?.file ? output.replace(VIDEO_EXTENSION, `.${input.subtitles.file}`) : undefined;
         if ((subtitlesFile || input.subtitles?.track) && !subtitleCues(project).length)
@@ -313,8 +320,10 @@ export const layer = Layer.effect(
           ...(burnCaptions ? {} : { burnCaptions: false }),
           ...(range ? { range } : {}),
           motionBlur,
+          ...(reviewFolder ? { reviewFolder } : {}),
           ...(input.agent ? { agent: true } : {}),
         };
+        const reviewPage = reviewFolder ? reviewPageHtml(reviewManifest(whole, range?.from ?? 0, size)) : undefined;
         const controller = new AbortController();
         controllers.set(id, controller);
         yield* SubscriptionRef.update(jobsRef, (jobs) => {
@@ -327,7 +336,18 @@ export const layer = Layer.effect(
             if (controller.signal.aborted) return; // cancelled while queued: already marked
             // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
             patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
-            running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes, RASTER_CSS + fonts.kitCss);
+            running = runJob(
+              job,
+              plan,
+              sized,
+              mediaPath,
+              input.overwrite === true,
+              controller.signal,
+              replan,
+              envelopes,
+              RASTER_CSS + fonts.kitCss,
+              reviewPage,
+            );
             await running;
             running = undefined;
           })

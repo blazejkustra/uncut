@@ -179,9 +179,20 @@
             "set": {
               "type": "object",
               "minProperties": 1,
-              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "sections", "master", "checks", "motionBlur", "luts"] },
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "sections", "reviewNotes", "master", "checks", "motionBlur", "luts"] },
               "properties": { "motionBlur": { "type": ["object", "null"], "additionalProperties": false, "properties": { "on": { "type": ["boolean", "null"] }, "samples": { "type": ["integer", "null"], "minimum": 2, "maximum": 16 }, "shutter": { "type": ["number", "null"], "minimum": 1, "maximum": 360 } } } }
             }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Mark review notes as addressed (resolved false reopens them). notes are ids from the review notes in the message or project_read.",
+          "required": ["op", "notes"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "resolve_review_notes" },
+            "notes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+            "resolved": { "type": "boolean" }
           }
         }
       ]

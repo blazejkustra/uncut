@@ -483,6 +483,18 @@ function applyOp(project: Draft, op: Op) {
       merge(project, set as FieldSet);
       return;
     }
+    case "resolve_review_notes": {
+      const notes = project.reviewNotes ?? [];
+      const missing = op.notes.find((id) => !notes.some((n) => n.id === id));
+      if (missing !== undefined) throw new EditError(`No review note "${missing}"`);
+      const resolved = op.resolved !== false;
+      project.reviewNotes = notes.map((n) => {
+        if (!op.notes.includes(n.id)) return n;
+        const { resolved: _, ...open } = n;
+        return resolved ? { ...open, resolved } : open;
+      });
+      return;
+    }
     default:
       throw new EditError(`Unknown op "${(op as { op: unknown }).op}"`);
   }
