@@ -2,6 +2,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { Ajv2020 } from "ajv/dist/2020.js";
+
+import projectSchema from "../../spec/schema/project.schema.json" with { type: "json" };
+import { withoutLutTables } from "../../apps/server/src/agent/tools/summary.ts";
 import { LUT_SIZE } from "../../packages/core/src/visual/fx/defs.ts";
 import { colourFn, colourLut, cubeText, lutAt } from "../../packages/core/src/visual/fx/colour.ts";
 import { lutTable, parseCube } from "../../packages/core/src/visual/fx/cube.ts";
@@ -97,4 +101,26 @@ test("planSetLook takes a project's LUT by id, with its name, and an intensity c
   const op = plan.ops[0] as unknown as { set: { effects: ReadonlyArray<{ params: Record<string, unknown> }> } };
   assert.deepEqual(op.set.effects[0]!.params, { look: lut.id, intensity: 1, label: "Teal" });
   assert.ok("problem" in planSetLook({ ...project, luts: [] }, "c", lut.id));
+});
+
+test("a .cube saved with a UTF-8 BOM reads like any other", () => {
+  const plain = parsed(cube(2, swap));
+  assert.equal(parsed(`\uFEFF${cube(2, swap)}`).data, plain.data);
+});
+
+test("the schema takes a table of exactly LUT_SIZE³ and refuses any other length", () => {
+  const validLut = new Ajv2020({ strict: false }).compile({ ...projectSchema.properties.luts.items, $defs: projectSchema.$defs });
+  const lut = parsed(cube(2, swap));
+  assert.ok(validLut(lut), JSON.stringify(validLut.errors));
+  assert.ok(!validLut({ ...lut, data: lut.data.slice(4) }));
+  assert.ok(!validLut({ ...lut, size: 2 }));
+  assert.ok(!validLut({ ...lut, data: `*${lut.data.slice(1)}` }));
+});
+
+test("project_read's full project names a LUT and leaves its table out", () => {
+  const lut = parsed(cube(2, swap));
+  const project = { tracks: [], luts: [lut] } as unknown as Project;
+  assert.deepEqual(withoutLutTables(project).luts, [{ id: lut.id, name: lut.name, size: lut.size }]);
+  const noLuts = { tracks: [] } as unknown as Project;
+  assert.equal(withoutLutTables(noLuts), noLuts);
 });

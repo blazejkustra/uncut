@@ -165,7 +165,7 @@ export function planSetSpeed(
 /** Ops that move, cut or retime an item itself (a linked sound touched like this goes its own way). */
 const RETIME_KEYS = new Set(["start", "in", "duration", "speed", "media", "loop"]);
 const retimes = (op: Op): string | undefined => {
-  if (op.op === "move_item" || op.op === "trim_item" || op.op === "split_item") return op.item;
+  if (op.op === "move_item" || op.op === "trim_item" || op.op === "split_item" || op.op === "slip_item" || op.op === "roll_edit") return op.item;
   if (op.op === "update_item" && Object.keys(op.set).some((k) => RETIME_KEYS.has(k))) return op.item;
   return undefined;
 };

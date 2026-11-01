@@ -1,6 +1,6 @@
 // One item on a timeline lane (its box, name, length, trim and fade handles) and the volume line
 // of items with sound (D83). Split out of Timeline.tsx.
-import { VolumeX } from "lucide-react";
+import { Lock, VolumeX } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { speedLabel } from "@uncut/core/arrange";
 import { type CaptionCard } from "@uncut/core/captions";
@@ -120,8 +120,9 @@ function ItemBoxView({
       className={`clip ${kind} ${className}`}
       data-type={item.type}
       {...data}
-      title={label}
+      title={item.locked ? `${label}, locked: right-click to unlock` : label}
       data-muted={item.mute ? "true" : undefined}
+      data-locked={item.locked ? "true" : undefined}
       data-speed={item.speed !== undefined && item.speed !== 1 ? item.speed : undefined}
       style={{ left: start * ppf, width: px }}
       onPointerDown={onPointerDown}
@@ -209,10 +210,11 @@ function ItemBoxView({
         )}
       </span>
       {elementsBar}
-      {(item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
+      {(item.locked || item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
         <span className="clip-badge" data-testid="clip-badge">
           {item.speed !== undefined && item.speed !== 1 && speedLabel(item.speed)}
           {item.mute && <VolumeX />}
+          {item.locked && <Lock data-testid="clip-lock" aria-label="Locked: right-click to unlock" />}
         </span>
       )}
       <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>

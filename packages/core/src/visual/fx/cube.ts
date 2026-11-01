@@ -33,7 +33,7 @@ function readCube(text: string): CubeFile | { readonly problem: string } {
   let min: Triple = [0, 0, 0];
   let max: Triple = [1, 1, 1];
   const rows: Array<number> = [];
-  for (const raw of text.split(/\r?\n/)) {
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const [word, ...rest] = line.split(/\s+/);

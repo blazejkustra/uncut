@@ -63,7 +63,7 @@ export async function chooseSavePath(win: BrowserWindow, defaultPath: string, ti
     title,
     buttonLabel: "Choose",
     defaultPath: typeof defaultPath === "string" && path.isAbsolute(defaultPath) ? defaultPath : path.join(appInfo.defaultParentDir, "Untitled.mp4"),
-    filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+    filters: [{ name: "Video", extensions: [path.extname(defaultPath).slice(1) || "mp4"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   });
   return result.canceled || !result.filePath ? null : result.filePath;

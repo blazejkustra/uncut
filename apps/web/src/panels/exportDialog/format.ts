@@ -1,5 +1,5 @@
 import type { ExportQuality, ExportLoudness, ExportJob } from "@uncut/contracts";
-import type { ExportEncoder } from "@uncut/core/export";
+import { VIDEO_EXTENSION, type ExportEncoder } from "@uncut/core/export";
 import { LOUDNESS_PRESETS, choiceOfTarget, targetWords } from "@uncut/core/effects";
 import type { RangeKind } from "../exportRange.ts";
 
@@ -46,10 +46,10 @@ export const RANGE_KINDS: ReadonlyArray<readonly [RangeKind, string]> = [
 export const ACTIVE = new Set(["queued", "preparing", "rendering"]);
 export const exportRunning = (job: ExportJob | undefined) => job !== undefined && ACTIVE.has(job.phase);
 
-/** A file name the Finder accepts, ending in .mp4. */
-export const fileName = (name: string) => {
+/** A file name the Finder accepts, ending in the given extension. */
+export const fileName = (name: string, extension = "mp4") => {
   const clean = name.replace(/[/:]/g, "-").trim() || "Untitled";
-  return /\.mp4$/i.test(clean) ? clean : `${clean}.mp4`;
+  return clean.toLowerCase().endsWith(`.${extension}`) ? clean : `${clean.replace(VIDEO_EXTENSION, "")}.${extension}`;
 };
 export const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 export const dirName = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";

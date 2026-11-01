@@ -3,20 +3,24 @@
 import type { Metadata } from "next";
 import DownloadButtons from "../components/DownloadButtons.tsx";
 import HeroFx from "../components/HeroFx.tsx";
+import JsonLd from "../components/JsonLd.tsx";
+import LaunchFilm from "../components/LaunchFilm.tsx";
 import { ClaudeMark, CodexMark } from "../components/Icons.tsx";
 import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
 import ZoomShot from "../components/ZoomShot.tsx";
-import { alternates, SITE_URL } from "../lib/site.ts";
+import { alternates, DOWNLOAD_URL, REPO_URL, SITE_NAME, SITE_URL } from "../lib/site.ts";
+
+const DESCRIPTION =
+  "Uncut is an AI-first video editor for the Mac. It runs your installed Claude Code or Codex, which edits with you on a real timeline. Free and open source.";
 
 export const metadata: Metadata = {
   title: { absolute: "Uncut: edit videos by talking to an agent" },
-  description:
-    "Uncut is an AI-first video editor for the Mac. It runs your installed Claude Code, which edits with you on a real timeline. Free and open source.",
+  description: DESCRIPTION,
   alternates: alternates("/"),
   openGraph: {
     type: "website",
-    title: "Uncut",
+    title: "Uncut, the open-source AI video editor",
     description: "Edit videos by talking to an agent. An AI-first video editor for the Mac.",
     url: `${SITE_URL}/`,
     images: [`${SITE_URL}/assets/img/og.jpg`],
@@ -27,6 +31,21 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: SITE_NAME,
+          description: DESCRIPTION,
+          url: `${SITE_URL}/`,
+          applicationCategory: "MultimediaApplication",
+          operatingSystem: "macOS",
+          downloadUrl: DOWNLOAD_URL,
+          codeRepository: REPO_URL,
+          license: `${REPO_URL}/blob/main/LICENSE`,
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        }}
+      />
       <SiteHeader />
 
       <main>
@@ -39,26 +58,42 @@ export default function Home() {
               <span className="who">
                 <ClaudeMark />
                 Claude{"\u00a0"}Code
-              </span>
-              , with{" "}
+              </span>{" "}
+              or{" "}
               <span className="who">
                 <CodexMark />
                 Codex
-              </span>{" "}
-              coming soon. The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
+              </span>
+              . The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
             </p>
             <DownloadButtons />
-            <p className="req">For Apple silicon Macs. Free and open source.</p>
+            <p className="req">
+              For Apple silicon Macs. Free and open source. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
+              <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>.
+            </p>
             <ZoomShot
               className="shot"
               src="/assets/img/editor.webp"
               width={1600}
               height={1000}
               fetchPriority="high"
-              alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with text, graphics, six clips with transitions and music, and the agent panel with its brief, an approved storyboard and a passed review."
+              alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with text, graphics, six clips with transitions and music, and the agent panel with its brief, a storyboard and a passed review."
             />
           </div>
         </div>
+
+        <section id="film">
+          <div className="wrap film">
+            <div>
+              <h2>The launch film, made in Uncut</h2>
+              <p className="sub">
+                28 seconds, cut in Uncut itself. A prompt goes in, the agent builds the timeline, a critic scores the cut, and one clip changes on request. Turn
+                the sound on in the player.
+              </p>
+            </div>
+            <LaunchFilm />
+          </div>
+        </section>
 
         <section id="features">
           <div className="wrap agent">
@@ -70,10 +105,11 @@ export default function Home() {
               </p>
               <ul>
                 <li>
-                  <strong>Plans before it cuts.</strong> A brief and a storyboard come first, for you to approve or change.
+                  <strong>Plans before it cuts.</strong> A brief and a shot-by-shot storyboard come first, shown in the thread as it builds.
                 </li>
                 <li>
-                  <strong>Reviewed by a critic.</strong> An independent pass checks the edit against the plan and sends it back when it falls short.
+                  <strong>Reviewed by a critic.</strong> A separate agent that never saw the conversation scores rendered frames against the plan and sends the
+                  edit back when it falls short.
                 </li>
                 <li>
                   <strong>Every turn is one undo.</strong> Keep what works, undo the rest, or keep editing by hand on the same timeline.
@@ -178,7 +214,7 @@ export default function Home() {
               </div>
               <div className="fact">
                 <h3>Export</h3>
-                <p>H.264 at the quality you pick, with loudness for social or broadcast and optional subtitles.</p>
+                <p>H.264 or HEVC at the quality you pick, with loudness for social or broadcast and optional subtitles.</p>
               </div>
             </div>
           </div>
@@ -186,10 +222,11 @@ export default function Home() {
 
         <section>
           <div className="wrap">
-            <h2>Your footage stays with you</h2>
+            <h2>No Uncut account, no Uncut quotas</h2>
             <p className="sub">
-              Uncut runs on your Mac, and so does transcription. The agent is your own Claude Code, with whatever sign-in it already uses, billed to you as your
-              Claude Code usage normally is. Usage data is anonymous, and you can turn it off.
+              Uncut runs on your Mac, and so does transcription, so your footage files stay there. The agent is your own Claude Code or Codex, with whatever
+              sign-in it already uses, billed the way that agent normally is. Frames, transcripts and prompts go to that agent's provider. Usage data is
+              anonymous, and you can turn it off.
             </p>
             <p className="sub">
               <a href="/privacy/">Read the privacy notice</a>
@@ -200,9 +237,12 @@ export default function Home() {
         <section className="cta">
           <div className="wrap">
             <h2>Start your next cut</h2>
-            <p className="sub">Install Claude Code and sign in, then open Uncut and tell it what to make.</p>
+            <p className="sub">Install Claude Code or Codex and sign in, then open Uncut and tell it what to make.</p>
             <DownloadButtons />
-            <p className="req">For Apple silicon Macs.</p>
+            <p className="req">
+              For Apple silicon Macs. Uses code of FFmpeg licensed under the LGPLv2.1, <a href={`${REPO_URL}/releases/latest`}>its source is on each release</a>
+              .
+            </p>
           </div>
         </section>
       </main>

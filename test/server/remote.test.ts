@@ -76,6 +76,18 @@ test("it refuses to listen beyond loopback with a weak token, and a bad --port",
   await assert.rejects(headless("badport", ["--port", "http"]), /exited \(2\)/);
 });
 
+test("UNCUT_PUBLIC_URL is the address the pairing line names, and https drops the warning", T, async () => {
+  const published = await headless("public", ["--host", "0.0.0.0", "--port", "0"], { UNCUT_PUBLIC_URL: "http://studio.local:8790" });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.match(published.stderr(), /uncut:\/\/pair\?url=http%3A%2F%2Fstudio\.local%3A8790&token=/);
+  assert.match(published.stderr(), /Warning: plain http/);
+  await published.stop();
+  const proxied = await headless("proxied", ["--host", "0.0.0.0", "--port", "0"], { UNCUT_PUBLIC_URL: "https://studio.example" });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.doesNotMatch(proxied.stderr(), /Warning: plain http/);
+  await proxied.stop();
+});
+
 test("the gate: token by query or Bearer, 401 without, 403 for a web origin, file:// and none allowed; WebSocket too", T, async () => {
   const s = await headless("gate", ["--port", "0"]);
   const { port, token } = s.ready;

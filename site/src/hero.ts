@@ -1,6 +1,6 @@
 // The site's two small browser behaviours, run after hydration by their client components
 // (components/StarButton.tsx, components/HeroFx.tsx):
-//   - the nav's GitHub star count (shown from 10 stars), fetched once per session and cached in
+//   - the nav's GitHub star count (shown from 200 stars), fetched once per session and cached in
 //     sessionStorage;
 //   - the hero background, a WebGPU shader (heroGpu.ts, a separate chunk loaded only where
 //     navigator.gpu exists). Without WebGPU, or if anything fails, the static CSS gradient under
@@ -9,7 +9,7 @@
 export const REPO = "blazejkustra/uncut";
 const STARS_KEY = "uncut-stars";
 /** Below this the count reads as a sad number, so the button says "Star" instead. */
-export const MIN_STARS = 10;
+export const MIN_STARS = 200;
 
 /** 1234 → "1.2k", 999 → "999", 12500 → "12.5k". */
 export function formatStars(n: number): string {

@@ -17,6 +17,8 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import { FFMPEG_CONFIGURE, TOOL_SOURCES } from "../native/tools/sources.ts";
+
 const ROOT = resolve(import.meta.dirname, "..");
 const OUT = join(ROOT, "THIRD_PARTY_NOTICES");
 type Pkg = { name: string; version: string; license: string; repository: string; dir: string };
@@ -342,12 +344,25 @@ export async function render(): Promise<string> {
   s += "for Chromium, MIT for Node.js, among others). Their full texts ship inside the app, in\n";
   s += "Uncut.app/Contents/Resources/licenses (LICENSE.electron.txt and LICENSES.chromium.html).\n";
 
+  s += section("Media tools: FFmpeg (LGPL 2.1 or later), dav1d (BSD 2-Clause), whisper.cpp (MIT)");
+  s += "Shipped in Uncut.app/Contents/Resources/tools and run as separate programs. Their licence texts\n";
+  s += "are in tools/licenses. This software uses libraries from the FFmpeg project under the LGPLv2.1.\n";
+  s += "FFmpeg is not owned by Uncut's authors; dav1d is linked into its libavcodec.\n\n";
+  for (const t of TOOL_SOURCES) s += `${t.name} ${t.version}, unmodified: ${t.url}\n  SHA-256 ${t.sha256}\n`;
+  s += `\nFFmpeg is built without GPL or nonfree parts, with: ${FFMPEG_CONFIGURE.join(" ")}\n\n`;
+  s += "Source: each archive above is attached to the GitHub release of every Uncut version that ships it\n";
+  s += "(https://github.com/blazejkustra/uncut/releases), and the build recipe is native/tools in Uncut's\n";
+  s += "repository. For three years after a release, the same archives are also available on request from\n";
+  s += "the contact in the README, for no more than the cost of sending them.\n\n";
+  s += "Relinking: tools/lib holds FFmpeg's shared libraries, which ffmpeg and ffprobe load through @rpath.\n";
+  s += "Build your own with native/tools, replace them in a copy of the app and re-sign it.\n";
+  s += "macOS's VideoToolbox does the H.264 and HEVC encoding; a user's own ffmpeg, when installed, adds\n";
+  s += "libx264 and libx265 under its own licence. Those are not shipped.\n";
+
   s += section("Not shipped: programs Uncut uses when they're installed");
-  s += "ffmpeg and ffprobe: not bundled. The user installs them (for example brew install ffmpeg) and\n";
-  s += "Uncut runs them as separate programs. Their licence (LGPL 2.1 or later, or GPL when built with\n";
-  s += "GPL parts, as Homebrew's build is) applies to those programs, not to Uncut. https://ffmpeg.org\n\n";
-  s += "whisper.cpp (whisper-cli): not bundled. The user installs it (brew install whisper-cpp); MIT,\n";
-  s += "https://github.com/ggml-org/whisper.cpp. Speech models are not in the app or the repository:\n";
+  s += "A system ffmpeg, when Uncut needs an encoder its own lacks: the user installs it (for example brew\n";
+  s += "install ffmpeg) and Uncut runs it as a separate program, under that build's licence.\n\n";
+  s += "Speech models are not in the app or the repository:\n";
   s += "Uncut downloads the one the user picks from huggingface.co/ggerganov/whisper.cpp into its data\n";
   s += "folder and checks its SHA-256. The Whisper model weights are OpenAI's, released under MIT.\n\n";
   s += "Argent (the capture plugin's recorder): not bundled. The user installs it with npx\n";

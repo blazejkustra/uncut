@@ -7,6 +7,7 @@ import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { installedToolsFirst } from "./bundledTools.ts";
 import { runProbe } from "../media/probe.ts";
 
 const SHELL_TIMEOUT_MS = 4000;
@@ -261,6 +262,7 @@ export const agentEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
     if (isKeyName(k) || looksSecret(k) || k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) continue;
     out[k] = v;
   }
+  if (out.PATH) out.PATH = installedToolsFirst(out.PATH, env);
   return out;
 };
 

@@ -41,6 +41,8 @@ export const ACTION_IDS = [
   "toolSelect",
   "toolBlade",
   "toolHand",
+  "toolSlip",
+  "toolRoll",
   "addToChat",
   "shortcuts",
 ] as const;
@@ -113,6 +115,8 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   { id: "toolSelect", group: "Timeline", keys: ["V"], does: "Select tool (held down: only until you let go)" },
   { id: "toolBlade", group: "Timeline", keys: ["C"], does: "Blade tool: a click cuts there (held down: only until you let go)" },
   { id: "toolHand", group: "Timeline", keys: ["H"], does: "Hand tool (held down: only until you let go)" },
+  { id: "toolSlip", group: "Timeline", keys: ["Y"], does: "Slip tool: drag a clip to play other frames in the same place (held down: only until you let go)" },
+  { id: "toolRoll", group: "Timeline", keys: ["N"], does: "Roll tool: drag near a cut to move it, nothing else shifts (held down: only until you let go)" },
   { id: "zoomPointer", group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer", fixed: "pointer" },
   { id: "scrollSideways", group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways", fixed: "pointer" },
   { id: "clickSelect", group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item", fixed: "pointer" },
@@ -169,6 +173,9 @@ export const PRESETS: ReadonlyArray<{ readonly id: PresetId; readonly label: str
       toolSelect: ["V"],
       toolBlade: ["C"],
       toolHand: ["H"],
+      // Slip Tool (Y), Rolling Edit Tool (N).
+      toolSlip: ["Y"],
+      toolRoll: ["N"],
     },
   },
   {
@@ -182,6 +189,9 @@ export const PRESETS: ReadonlyArray<{ readonly id: PresetId; readonly label: str
       rippleDelete: ["⇧⌫"],
       toolSelect: ["A"],
       toolBlade: ["B"],
+      // Trim Edit Mode (T) does both by where it's dragged; Uncut has two tools, so roll is ⇧T.
+      toolSlip: ["T"],
+      toolRoll: ["⇧T"],
       zoomIn: ["⌘="],
       zoomOut: ["⌘−"],
       fit: ["⇧Z"],
@@ -203,6 +213,9 @@ export const PRESETS: ReadonlyArray<{ readonly id: PresetId; readonly label: str
       toolSelect: ["A"],
       toolBlade: ["B"],
       toolHand: ["H"],
+      // The Trim tool (T) does both by where it's dragged; Uncut has two tools, so roll is ⇧T.
+      toolSlip: ["T"],
+      toolRoll: ["⇧T"],
       zoomIn: ["⌘="],
       zoomOut: ["⌘−"],
       fit: ["⇧Z"],
