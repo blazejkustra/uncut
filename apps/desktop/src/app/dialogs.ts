@@ -32,6 +32,7 @@ const MEDIA_EXTENSIONS = [
   "srt",
   "vtt",
   "fcpxml",
+  "cube",
 ];
 
 /** Native multi-select for footage, music and images; [] when cancelled. */
@@ -46,7 +47,7 @@ export async function chooseMedia(win: BrowserWindow): Promise<Array<string>> {
     defaultPath: appInfo.defaultParentDir,
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Video, audio, images, subtitles and timelines", extensions: MEDIA_EXTENSIONS },
+      { name: "Video, audio, images, subtitles, timelines and LUTs", extensions: MEDIA_EXTENSIONS },
       { name: "All files", extensions: ["*"] },
     ],
   });
@@ -63,7 +64,7 @@ export async function chooseSavePath(win: BrowserWindow, defaultPath: string, ti
     title,
     buttonLabel: "Choose",
     defaultPath: typeof defaultPath === "string" && path.isAbsolute(defaultPath) ? defaultPath : path.join(appInfo.defaultParentDir, "Untitled.mp4"),
-    filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+    filters: [{ name: "Video", extensions: [path.extname(defaultPath).slice(1) || "mp4"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   });
   return result.canceled || !result.filePath ? null : result.filePath;

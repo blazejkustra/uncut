@@ -110,6 +110,8 @@ export interface AgentImport {
   readonly failed: ReadonlyArray<{ readonly path: string; readonly message: string }>;
   /** D105: .srt / .vtt files read into a Subtitles text track. */
   readonly subtitles?: ReadonlyArray<ImportedSubtitles>;
+  /** .cube files added to the project: an effect.look with one of these ids as its look draws it. */
+  readonly luts?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   /** D114: the timeline item a placed take got. */
   readonly placed?: { readonly itemId: string; readonly trackId: string; readonly start: number };
   /** D211: a multi-source take's items and group. */

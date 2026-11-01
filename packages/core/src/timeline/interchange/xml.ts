@@ -23,8 +23,14 @@ export const escapeXml = (text: string) => text.replace(/&/g, "&amp;").replace(/
 
 const attributesOf = (source: string) => Object.fromEntries([...source.matchAll(ATTRIBUTE)].map((m) => [m[1]!, unescapeXml(m[2] ?? m[3] ?? "")]));
 
+const unclosedComment = (source: string) => {
+  const last = source.lastIndexOf("<!--");
+  return last !== -1 && !source.includes("-->", last);
+};
+
 /** The document's root element, or undefined when it isn't well formed. */
 export function parseXml(source: string): XmlNode | undefined {
+  if (unclosedComment(source)) return undefined;
   const root: XmlNode = { name: "", attributes: {}, children: [], text: "" };
   const open = [root];
   for (const [, closing, name, attributes, selfClosed, text] of source.matchAll(TOKEN)) {

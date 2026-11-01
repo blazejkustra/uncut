@@ -66,6 +66,21 @@
         "properties": { "frame": { "$ref": "#/$defs/frame" }, "label": { "type": "string" } }
       }
     },
+    "luts": {
+      "type": "array",
+      "description": "User LUTs imported from .cube files: an effect.look whose look is a LUT's id draws it. data is size³ RGB triples as little-endian 16-bit words in base64, red changing fastest; every table is 33³, which is 287496 characters.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "size", "data"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "type": "string" },
+          "size": { "const": 33 },
+          "data": { "type": "string", "minLength": 287496, "maxLength": 287496, "pattern": "^[A-Za-z0-9+/]+$" }
+        }
+      }
+    },
     "master": {
       "type": "object",
       "additionalProperties": false,

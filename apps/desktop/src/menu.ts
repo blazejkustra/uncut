@@ -175,7 +175,7 @@ export function setAppMenu(state: AppState, actions: MenuActions) {
     applicationName: app.name, // Uncut, or Uncut Nightly (src/channel.ts)
     applicationVersion: app.getVersion(),
     copyright: "Copyright 2026 Błażej Kustra and Uncut contributors. MIT licence.",
-    credits: "github.com/blazejkustra/uncut",
+    credits: "github.com/blazejkustra/uncut\nThis software uses libraries from the FFmpeg project under the LGPLv2.1.",
     website: REPO_URL,
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

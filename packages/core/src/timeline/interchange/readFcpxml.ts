@@ -31,12 +31,14 @@ const FPS: ReadonlyArray<CanvasFps> = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60]
 /** "3003/30000s", "12s" as seconds; absent is 0. */
 export function seconds(value: string | undefined): number {
   const m = /^(-?[\d.]+)(?:\/(\d+))?s$/.exec(value ?? "");
-  return m ? Number(m[1]) / Number(m[2] ?? 1) : 0;
+  const time = m ? Number(m[1]) / Number(m[2] ?? 1) : 0;
+  return Number.isFinite(time) ? time : 0;
 }
 
 const pathOfUrl = (url: string) => {
   try {
-    return decodeURIComponent(new URL(url).pathname);
+    const parsed = new URL(url);
+    return parsed.protocol === "file:" ? decodeURIComponent(parsed.pathname) : undefined;
   } catch {
     return undefined;
   }
@@ -69,9 +71,12 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
   const width = Number(format?.attributes.width);
   const height = Number(format?.attributes.height);
   const canvas = width > 0 && height > 0 ? { width, height, fps: rate } : undefined;
-  const frames = (s: number) => Math.round(s / frame);
+  const listedRate = Math.abs(rate - 1 / frame) < 0.01;
+  const perSecond = listedRate ? 1 / frame : rate;
+  const frames = (s: number) => Math.round(s * perSecond);
 
   const warnings = new Set<string>();
+  if (!listedRate) warnings.add(`The file runs at ${Math.round((100 * 1) / frame) / 100} fps, which a project can't, so it's timed at ${rate} fps.`);
   const clips: Array<TimelineClip> = [];
 
   const assetPath = (node: XmlNode) => {
@@ -79,6 +84,8 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
     const url = asset?.attributes.src ?? asset?.children.find((c) => c.name === "media-rep")?.attributes.src;
     return url ? pathOfUrl(url) : undefined;
   };
+  /** Where an asset's own timecode begins: a clip's start counts from there. */
+  const assetStart = (node: XmlNode) => seconds(byId.get(node.attributes.ref ?? "")?.attributes.start);
   /** A `clip` wraps its video or audio: the media is theirs, the timing its own. */
   const mediaNode = (node: XmlNode) => (node.name === "clip" ? (node.children.find((c) => c.name === "video" || c.name === "audio") ?? node) : node);
 
@@ -93,7 +100,7 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
     }
     const path = assetPath(mediaNode(node));
     if (!path) {
-      warnings.add(`${name ?? "A clip"} is left out: it names no file.`);
+      warnings.add(`${name ?? "A clip"} is left out: it names no local file.`);
       return;
     }
     const volume = /^(-?[\d.]+)dB$/.exec(node.children.find((c) => c.name === "adjust-volume")?.attributes.amount ?? "");
@@ -102,7 +109,7 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
       path,
       lane,
       start,
-      in: frames(seconds(node.attributes.start ?? mediaNode(node).attributes.start)),
+      in: frames(Math.max(0, seconds(node.attributes.start ?? mediaNode(node).attributes.start) - assetStart(mediaNode(node)))),
       duration,
       ...(name ? { name } : {}),
       ...(volume ? { gainDb: Number(volume[1]) } : {}),
@@ -119,6 +126,7 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
     }
   };
 
+  const tcStart = seconds(sequence.attributes.tcStart);
   let cursor = 0;
   let dissolve: number | undefined;
   for (const node of spine.children) {
@@ -126,7 +134,7 @@ export function readFcpxml(source: string): TimelineFile | { readonly problem: s
       dissolve = frames(seconds(node.attributes.duration));
       continue;
     }
-    const offset = node.attributes.offset === undefined ? cursor : seconds(node.attributes.offset);
+    const offset = node.attributes.offset === undefined ? cursor : Math.max(0, seconds(node.attributes.offset) - tcStart);
     if (CLIPS.has(node.name)) add(node, offset, 0, dissolve);
     else if (NESTED.has(node.name)) warnings.add(`${node.attributes.name ?? node.name} is left out: compound, sync and multicam clips don't carry over.`);
     dissolve = undefined;

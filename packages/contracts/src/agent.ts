@@ -79,7 +79,8 @@ export const Review = Schema.Struct({
   // D217: kind (a category or a blocker kind the rubric made a finding), source "check" (Uncut's own),
   // rule (a check's finding family, "sound:density"), to (where a check's range ends, seconds).
   // unresolved: the same finding came back unchanged after the editor claimed a fix for it; the
-  // user decides it (it no longer opens another round).
+  // user decides it (it no longer opens another round). frame: the timeline frame of at; still: that
+  // frame as rendered for the scorecard (an image name in .cache/agent-images/).
   defects: Schema.Array(
     Schema.Struct({
       at: Schema.Number,
@@ -91,6 +92,8 @@ export const Review = Schema.Struct({
       rule: Schema.optional(Schema.String),
       to: Schema.optional(Schema.Number),
       unresolved: Schema.optional(Schema.Boolean),
+      frame: Schema.optional(Schema.Number),
+      still: Schema.optional(Schema.String),
     }),
   ),
   notes: Schema.optional(Schema.String),
@@ -110,6 +113,8 @@ export const Review = Schema.Struct({
         to: Schema.optional(Schema.Number),
         fix: Schema.optional(Schema.String),
         unresolved: Schema.optional(Schema.Boolean),
+        frame: Schema.optional(Schema.Number),
+        still: Schema.optional(Schema.String),
       }),
     ),
   ),

@@ -1,4 +1,4 @@
-import { type ExportQuality, type ExportLoudness, type ExportSubtitles } from "@uncut/contracts";
+import { type ExportQuality, type ExportLoudness, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { bridge } from "../../bridge.ts";
 import { set, state, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
@@ -30,7 +30,7 @@ export const exportActions = {
     subtitles?: ExportSubtitles;
     burnCaptions?: boolean;
     range?: { from: number; to: number };
-    video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number };
+    video?: ExportVideo;
     motionBlur?: boolean;
   }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));

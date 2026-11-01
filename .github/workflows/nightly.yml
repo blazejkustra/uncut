@@ -95,6 +95,8 @@ jobs:
           xcrun notarytool store-credentials uncut-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$KC"
           echo "UNCUT_NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
 
+      - uses: ./.github/actions/bundled-tools
+
       # release/Uncut-Nightly-<version>-arm64.dmg and the nightly's update feed (zip, blockmaps, nightly-mac.yml).
       - name: pnpm dist:signed
         env:
@@ -113,7 +115,7 @@ jobs:
           PREV="$(gh release list --limit 100 --json tagName --jq '[.[].tagName | select(test("^v[0-9.]+-nightly\\."))][0] // ""')"
           NOTES="Uncut Nightly, built from \`$GITHUB_REF_NAME\` at $GITHUB_SHA. Not a release: it installs as a separate app (Uncut Nightly) next to Uncut, with its own data, and updates itself to newer nightlies."
           gh release create "$TAG" \
-            release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/nightly-mac.yml \
+            native/tools/out/sources/* release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/nightly-mac.yml \
             --prerelease --latest=false --target "$GITHUB_SHA" \
             --title "Uncut Nightly $VERSION" --notes "$NOTES" \
             --generate-notes ${PREV:+--notes-start-tag "$PREV"}

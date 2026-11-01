@@ -7,7 +7,17 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
-import { planImportSubtitles, planImportTimeline, planReshoot, subtitleFormatOf, type ParsedCue, type Project, type TimelineFile } from "@uncut/core";
+import {
+  MAX_PROJECT_LUTS,
+  planImportSubtitles,
+  planImportTimeline,
+  planReshoot,
+  subtitleFormatOf,
+  type ParsedCue,
+  type Project,
+  type ProjectLut,
+  type TimelineFile,
+} from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
 import { planPlaceMulti, planPlaceTake, type MultiKind, type MultiLayoutName, type PlacedMulti, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
@@ -45,6 +55,7 @@ import {
   thumbDir,
   posterName,
   realOr,
+  readLutFile,
   readSubtitleFile,
   readTimelineFile,
   PROBE_ERRORS,
@@ -192,6 +203,8 @@ export const layer = Layer.effect(
         const subtitleFiles: Array<{ path: string; at: number; cues: ReadonlyArray<ParsedCue> }> = [];
         const subtitles: Array<ImportedSubtitles & { at: number }> = [];
         const timelines: Array<{ path: string; at: number; file: TimelineFile }> = [];
+        const timelineAssets = new Set<string>();
+        const lutFiles: Array<{ path: string; at: number; lut: ProjectLut }> = [];
         const seen = new Set<string>();
         for (const [at, path] of paths.entries()) {
           const problem = yield* precheck(path);
@@ -226,9 +239,17 @@ export const layer = Layer.effect(
               if (assetProblem) failed.push({ path: asset, message: assetProblem, at });
               else if (!seen.has(assetReal)) {
                 seen.add(assetReal);
+                timelineAssets.add(assetReal);
                 todo.push({ path: asset, real: assetReal, at });
               }
             }
+            continue;
+          }
+          // A LUT isn't media either: its table joins the project's in the same edit.
+          if (/\.cube$/i.test(path)) {
+            const read = yield* Effect.promise(() => readLutFile(path));
+            if ("problem" in read) failed.push({ path, message: read.problem, at });
+            else lutFiles.push({ path, at, lut: read });
             continue;
           }
           todo.push({ path, real, at });
@@ -275,6 +296,7 @@ export const layer = Layer.effect(
         let placed: AgentImport["placed"];
         let multiPlaced: PlacedMulti | undefined;
         let matchedDir: string | undefined;
+        let addedLuts: ReadonlyArray<{ id: string; name: string }> = [];
         const snapshot = yield* projects.editIn(
           openId,
           (raw, projectDir) =>
@@ -291,7 +313,8 @@ export const layer = Layer.effect(
               const taken = allIds(project);
               // D209: "Match first clip": the first video brought into an empty project sets the canvas
               // (size and rate) in this edit, before its length in frames is counted at that rate.
-              const fileCanvas = timelines.find((t) => t.file.canvas)?.file.canvas;
+              const timelineFits = project.tracks.every((t) => !t.items.length);
+              const fileCanvas = timelineFits ? timelines.find((t) => t.file.canvas)?.file.canvas : undefined;
               const matched =
                 fileCanvas ?? ((yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined);
               const fps = matched?.fps ?? project.canvas.fps;
@@ -300,6 +323,7 @@ export const layer = Layer.effect(
               // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
               const toPlace: Array<PlaceMedia> = [];
               for (const p of probed) {
+                if (!timelineFits && timelineAssets.has(p.real)) continue;
                 if (known.has(p.real)) {
                   const there = existing.get(p.real);
                   if (options.drop && there) {
@@ -360,7 +384,19 @@ export const layer = Layer.effect(
                 timelineOps.push(...plan.ops);
                 for (const warning of plan.warnings) failed.push({ path: t.path, message: warning, at: t.at });
               }
-              const count = entries.length + subtitles.length;
+              const luts = [...((raw as Project).luts ?? [])];
+              const added: Array<ProjectLut> = [];
+              for (const f of lutFiles) {
+                if (luts.some((l) => l.id === f.lut.id)) skipped.push({ path: f.path, reason: "Already in the project.", at: f.at });
+                else if (luts.length >= MAX_PROJECT_LUTS) failed.push({ path: f.path, message: `A project holds at most ${MAX_PROJECT_LUTS} LUTs.`, at: f.at });
+                else {
+                  luts.push(f.lut);
+                  added.push(f.lut);
+                }
+              }
+              addedLuts = added.map(({ id, name }) => ({ id, name }));
+              const lutOps = added.length ? [{ op: "update_project", set: { luts } }] : [];
+              const count = entries.length + subtitles.length + added.length;
               if (count === 0 && !toPlace.length && !timelineOps.length) return undefined;
               const canvasOps = matched ? [{ op: "update_project", set: { canvas: matched } }] : [];
               if (matched) {
@@ -410,7 +446,7 @@ export const layer = Layer.effect(
                 }
               }
               return {
-                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...timelineOps, ...placeOps],
+                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...lutOps, ...timelineOps, ...placeOps],
                 summary: timelineOps.length
                   ? `Import timeline ${basename(timelines[0]!.path)}`
                   : options.multi
@@ -425,7 +461,9 @@ export const layer = Layer.effect(
                           ? `Import ${count} files`
                           : entries.length === 1
                             ? `Import ${entries[0]!.entry.name}`
-                            : `Import subtitles ${basename(subtitles[0]!.path)}`,
+                            : added.length
+                              ? `Import LUT ${added[0]!.name}`
+                              : `Import subtitles ${basename(subtitles[0]!.path)}`,
               };
             }),
           options.agent,
@@ -449,6 +487,7 @@ export const layer = Layer.effect(
             skipped: inOrder(skipped),
             failed: inOrder(failed),
             ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}),
+            ...(addedLuts.length ? { luts: addedLuts } : {}),
             ...(snapshot && placed ? { placed } : {}),
             ...(snapshot && multiPlaced ? { multi: multiPlaced } : {}),
           });

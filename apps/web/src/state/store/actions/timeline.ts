@@ -158,7 +158,7 @@ export const timelineActions = {
             : planEffect(p, target, id);
       if (targets.length <= 1) return one(project, targets[0] ?? "");
       if (shader) return planForAll(project, targets, one, (n) => `${shader.name} on ${n} clips`);
-      const look = lookInfo(id)?.name ?? custom?.name ?? id;
+      const look = lookInfo(id)?.name ?? custom?.name ?? project.luts?.find((l) => l.id === id)?.name ?? id;
       const effect = effectInfo(id)?.name.toLowerCase() ?? id;
       return planForAll(project, targets, one, (n) =>
         kind !== "look" ? `Add ${effect} to ${n} clips` : id ? `Filter ${look} on ${n} clips` : `Remove the filter from ${n} clips`,

@@ -136,6 +136,52 @@ test("FCPXML from Final Cut's own shapes: clip with video inside, connected titl
   assert.ok("problem" in readFcpxml("not xml at all <fcpxml>"));
 });
 
+const fcpxml = (frameDuration: string, sequence: string, spine: string, asset = 'src="file:///x/one.mov" start="0s"') =>
+  `<fcpxml version="1.10"><resources><format id="f" frameDuration="${frameDuration}" width="1920" height="1080"/><asset id="a1" ${asset} duration="100s"/></resources><library><event><project name="P"><sequence format="f" ${sequence}><spine>${spine}</spine></sequence></project></event></library></fcpxml>`;
+
+test("FCPXML import: the sequence's tcStart and an asset's start are where the file counts from", () => {
+  const file = readFcpxml(
+    fcpxml(
+      "1/25s",
+      'tcStart="3600s"',
+      '<asset-clip ref="a1" name="One" offset="3600s" start="110s" duration="4s"/><asset-clip ref="a1" name="Two" offset="3604s" start="120s" duration="2s"/>',
+      'src="file:///x/one.mov" start="100s"',
+    ),
+  ) as TimelineFile;
+  assert.deepEqual(
+    file.clips.map((c) => [c.start, c.in, c.duration]),
+    [
+      [0, 250, 100],
+      [100, 500, 50],
+    ],
+  );
+});
+
+test("FCPXML import: only file: URLs are media, and a broken time counts as none", () => {
+  const remote = readFcpxml(
+    fcpxml("1/25s", "", '<asset-clip ref="a1" name="One" offset="0s" duration="4s"/>', 'src="https://evil.example/one.mov" start="0s"'),
+  ) as TimelineFile;
+  assert.equal(remote.clips.length, 0);
+  assert.match(remote.warnings[0]!, /One is left out/);
+  assert.equal(seconds("1/0s"), 0);
+  assert.equal(seconds("1.2.3s"), 0);
+});
+
+test("FCPXML import: a rate a project can't hold is timed at the canvas's rate, so lengths in seconds stay", () => {
+  const file = readFcpxml(fcpxml("1/120s", "", '<asset-clip ref="a1" name="One" offset="0s" start="2s" duration="4s"/>')) as TimelineFile;
+  assert.equal(file.canvas!.fps, 60);
+  assert.deepEqual([file.clips[0]!.in, file.clips[0]!.duration], [120, 240]);
+  assert.match(file.warnings[0]!, /120 fps.*60 fps/);
+  const ntsc = readFcpxml(fcpxml("1001/30000s", "", '<asset-clip ref="a1" name="One" offset="0s" start="0s" duration="100100/30000s"/>')) as TimelineFile;
+  assert.equal(ntsc.clips[0]!.duration, 100);
+  assert.deepEqual(ntsc.warnings, []);
+});
+
+test("an XML comment with no end is not well formed", () => {
+  assert.equal(parseXml("<a><!-- open</a>"), undefined);
+  assert.equal(parseXml("<a><!-- closed --></a>")?.name, "a");
+});
+
 test("what a file can't carry comes back as warnings", () => {
   const p = project();
   const main = p.tracks.find((t) => t.role === "main")!;

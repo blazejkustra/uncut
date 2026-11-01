@@ -318,6 +318,10 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
   switch (op.op) {
     case "trim_item":
       return `${op.frames > 0 ? "Trimmed" : "Extended"} ${it(op.item)} by ${secs(op.frames, fps)} at the ${op.edge}`;
+    case "slip_item":
+      return `Slipped ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"} in its media`;
+    case "roll_edit":
+      return `Rolled the cut after ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"}`;
     case "update_item":
       return describeUpdate(op.item, op.set, project, it, fps);
     case "split_item":

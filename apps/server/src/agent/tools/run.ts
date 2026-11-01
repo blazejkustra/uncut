@@ -34,6 +34,7 @@ import {
   projectSummary,
   docsRead,
 } from "../agentTools.ts";
+import { withoutLutTables } from "./summary.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { loadGraphicLibs } from "../../export/graphicLibs.ts";
 import { writeProjectShader } from "../agentShaders.ts";
@@ -196,7 +197,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return textResult(
             JSON.stringify(
               args.detail === "full"
-                ? { revision: v.session.revision, project: v.session.project }
+                ? { revision: v.session.revision, project: withoutLutTables(v.session.project) }
                 : projectSummary(v.session.project, v.session.revision, range, {
                     ...(args.detail === "items" ? { detail: "items" as const } : {}),
                     ...(items ? { items } : {}),

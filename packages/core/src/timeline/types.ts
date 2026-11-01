@@ -51,6 +51,14 @@ export interface Media {
   readonly probe?: MediaProbe;
 }
 
+/** A user LUT (a .cube file) kept in the project: `size`³ RGB triples as little-endian 16-bit words in base64. */
+export interface ProjectLut {
+  readonly id: Id;
+  readonly name: string;
+  readonly size: number;
+  readonly data: string;
+}
+
 export interface Transform {
   readonly x?: number;
   readonly y?: number;
@@ -281,6 +289,7 @@ export interface Project {
   /** Issue #118: locked stretches and ones flagged for the agent to redo. */
   readonly sections?: ReadonlyArray<Section>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
+  readonly luts?: ReadonlyArray<ProjectLut>;
   readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
   /**
    * D291: motion blur in the export (graphics): `on` its default (absent: on for Standard and High,
@@ -299,6 +308,10 @@ export type Op =
   | { readonly op: "insert_item"; readonly track: Id; readonly index?: number; readonly item: Item }
   | { readonly op: "update_item"; readonly item: Id; readonly set: FieldSet }
   | { readonly op: "trim_item"; readonly item: Id; readonly edge: "start" | "end"; readonly frames: number }
+  // Slip: the same frames of the timeline show other frames of the media (frames > 0: later ones).
+  | { readonly op: "slip_item"; readonly item: Id; readonly frames: number }
+  // Roll: the cut after `item` moves (frames > 0: later); the item after it gives up what `item` gains.
+  | { readonly op: "roll_edit"; readonly item: Id; readonly frames: number }
   | { readonly op: "split_item"; readonly item: Id; readonly at: Frame; readonly newId: Id }
   | { readonly op: "move_item"; readonly item: Id; readonly track?: Id; readonly index?: number; readonly start?: Frame }
   | { readonly op: "delete_item"; readonly item: Id }

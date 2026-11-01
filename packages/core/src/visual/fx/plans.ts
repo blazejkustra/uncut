@@ -10,6 +10,7 @@ type Plan =
   | { readonly problem: string };
 
 interface Target {
+  readonly luts?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly tracks: ReadonlyArray<{
     readonly kind: string;
     readonly locked?: boolean;
@@ -55,19 +56,21 @@ export function planSetLook(
     return setEffects(itemId, list, `Remove the filter from ${c.name}`);
   }
   const info = lookInfo(look);
-  if (!info && !opts.custom) return { problem: `There's no filter called ${look}.` };
+  const lut = project.luts?.find((l) => l.id === look);
+  if (!info && !opts.custom && !lut) return { problem: `There's no filter called ${look}.` };
   const before = at >= 0 ? ((list[at]!.params ?? {}) as Record<string, unknown>) : undefined;
   const intensity = num(opts.intensity ?? (before?.look === look ? before?.intensity : undefined), 0, 1, 1);
   const params: Record<string, unknown> = {
     look,
     intensity: Math.round(intensity * 100) / 100,
     ...(opts.custom ? { custom: opts.custom, label: opts.label ?? look } : {}),
+    ...(lut ? { label: lut.name } : {}),
   };
   // An off filter (bypass, F18) stays off while its intensity changes; a new filter is on.
   const entry = { module: LOOK, params, ...(at >= 0 && list[at]!.bypass && before?.look === look ? { bypass: true } : {}) };
   if (at >= 0) list[at] = entry;
   else list.unshift(entry);
-  const name = info?.name ?? opts.label ?? look;
+  const name = info?.name ?? lut?.name ?? opts.label ?? look;
   return setEffects(
     itemId,
     list,

@@ -11,11 +11,15 @@ import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import {
   CODEC_NAMES,
+  codecExtension,
   defaultEncoder,
   exportFrameRates,
   exportShortSides,
+  isProRes,
   outputSize,
   presetBitrateMbps,
+  PRORES_CODECS,
+  VIDEO_EXTENSION,
   type ExportCodec,
   type ExportEncoder,
 } from "@uncut/core/export";
@@ -60,6 +64,10 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   // F4 (D171): the Advanced row (collapsed): codec, bitrate, size, frame rate; undefined = the preset's.
   const [advanced, setAdvanced] = useState(false);
   const [codec, setCodec] = useState<ExportCodec>("h264");
+  const proRes = isProRes(codec);
+  const extension = codecExtension(codec);
+  const [transparent, setTransparent] = useState(false);
+  const alpha = codec === "prores4444" && transparent;
   const [bitrate, setBitrate] = useState<number | undefined>();
   // D212: undefined = the preset's (High software, Draft and Standard hardware).
   const [encoder, setEncoder] = useState<ExportEncoder | undefined>();
@@ -124,7 +132,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const range = effective.range;
   const rangeOk = !range || range.to > range.from;
 
-  const output = `${folder.replace(/\/$/, "")}/${fileName(name)}`;
+  const chooseCodec = (next: ExportCodec) => {
+    setCodec(next);
+    setName(fileName(name, codecExtension(next)));
+    setConfirmed(undefined);
+    setError(undefined);
+  };
+  const output = `${folder.replace(/\/$/, "")}/${fileName(name, extension)}`;
   const start = async (overwrite = false) => {
     setBusy(true);
     setError(undefined);
@@ -132,10 +146,11 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
       cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
     const video = {
       ...(codec !== "h264" ? { codec } : {}),
-      ...(encoder !== undefined ? { encoder } : {}),
-      ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}),
+      ...(encoder !== undefined && !proRes ? { encoder } : {}),
+      ...(bitrate !== undefined && !proRes ? { bitrateMbps: bitrate } : {}),
       ...(shortSide !== undefined ? { shortSide } : {}),
       ...(outFps !== undefined ? { fps: outFps } : {}),
+      ...(alpha ? { alpha } : {}),
     };
     const refused = await actions.startExport({
       output,
@@ -160,7 +175,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setBusy(true);
     setError(undefined);
     setSavedSubs(undefined);
-    const path = output.replace(/\.mp4$/i, `.${subFormat}`);
+    const path = output.replace(VIDEO_EXTENSION, `.${subFormat}`);
     const result = await actions.exportSubtitles({ output: path, overwrite });
     setBusy(false);
     if ("message" in result) setError({ ...result, subtitles: true });
@@ -171,7 +186,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setBusy(true);
     setError(undefined);
     setSavedTimeline(undefined);
-    const result = await actions.exportTimeline({ output: output.replace(/\.mp4$/i, `.${timelineFormat}`), overwrite });
+    const result = await actions.exportTimeline({ output: output.replace(VIDEO_EXTENSION, `.${timelineFormat}`), overwrite });
     setBusy(false);
     if ("message" in result) setError({ ...result, timeline: true });
     else setSavedTimeline({ name: baseName(result.path), lost: result.warnings });
@@ -180,8 +195,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     const chosen = await actions.chooseExportPath(output);
     if (!chosen) return;
     setFolder(dirName(chosen));
-    setName(fileName(baseName(chosen)));
-    setConfirmed(`${dirName(chosen).replace(/\/$/, "")}/${fileName(baseName(chosen))}`);
+    setName(fileName(baseName(chosen), extension));
+    setConfirmed(`${dirName(chosen).replace(/\/$/, "")}/${fileName(baseName(chosen), extension)}`);
     setError(undefined);
   };
 
@@ -232,6 +247,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             {folderName(job.output)}
           </b>
           , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s
+          {job.alpha ? ", transparent" : ""}
           {job.motionBlur && hasGraphics ? ", motion blur" : ""}
         </p>
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
@@ -330,7 +346,11 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           {QUALITIES.map((q) => {
             const size = outputSize(project.canvas, q.id, shortSide);
             const mbps =
-              q.id === quality && bitrate !== undefined ? bitrate : codec === "hevc" ? presetBitrateMbps(q.id, codec, size, outFps ?? fps) : undefined;
+              q.id === quality && bitrate !== undefined && !proRes
+                ? bitrate
+                : codec !== "h264"
+                  ? presetBitrateMbps(q.id, codec, size, outFps ?? fps)
+                  : undefined;
             const enc = q.id === quality && encoder !== undefined ? encoder : defaultEncoder(q.id);
             return (
               <button
@@ -384,7 +404,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                     aria-checked={codec === c}
                     className={codec === c ? "active" : ""}
                     data-testid={`export-codec-${c}`}
-                    onClick={() => setCodec(c)}
+                    onClick={() => chooseCodec(c)}
                   >
                     {c === "h264" ? "H.264" : "HEVC (smaller, Apple devices)"}
                   </button>
@@ -392,23 +412,50 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               </div>
             </div>
             <div className="export-adv-row">
-              <span className="muted">Encoder</span>
-              <div className="seg" data-testid="export-encoder" role="radiogroup" aria-label="Encoder">
-                {(["hardware", "software"] as const).map((e) => (
+              <span className="muted">Master</span>
+              <div className="seg" data-testid="export-master" role="radiogroup" aria-label="Master codec">
+                {PRORES_CODECS.map((c) => (
                   <button
                     type="button"
-                    key={e}
+                    key={c}
                     role="radio"
-                    aria-checked={(encoder ?? defaultEncoder(quality)) === e}
-                    className={(encoder ?? defaultEncoder(quality)) === e ? "active" : ""}
-                    data-testid={`export-encoder-${e}`}
-                    onClick={() => setEncoder(e === defaultEncoder(quality) ? undefined : e)}
+                    aria-checked={codec === c}
+                    className={codec === c ? "active" : ""}
+                    data-testid={`export-codec-${c}`}
+                    onClick={() => chooseCodec(c)}
                   >
-                    {e === "hardware" ? "Hardware (faster)" : "Software (smaller)"}
+                    {CODEC_NAMES[c]}
                   </button>
                 ))}
               </div>
             </div>
+            {codec === "prores4444" && (
+              <label className="export-sub-row" data-testid="export-alpha-row">
+                <input type="checkbox" data-testid="export-alpha" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} />
+                <span>Transparent background</span>
+                <span className="muted">Leaves out the canvas colour</span>
+              </label>
+            )}
+            {!proRes && (
+              <div className="export-adv-row">
+                <span className="muted">Encoder</span>
+                <div className="seg" data-testid="export-encoder" role="radiogroup" aria-label="Encoder">
+                  {(["hardware", "software"] as const).map((e) => (
+                    <button
+                      type="button"
+                      key={e}
+                      role="radio"
+                      aria-checked={(encoder ?? defaultEncoder(quality)) === e}
+                      className={(encoder ?? defaultEncoder(quality)) === e ? "active" : ""}
+                      data-testid={`export-encoder-${e}`}
+                      onClick={() => setEncoder(e === defaultEncoder(quality) ? undefined : e)}
+                    >
+                      {e === "hardware" ? "Hardware (faster)" : "Software (smaller)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="export-adv-row">
               <span className="muted">Size</span>
               <select
@@ -438,19 +485,23 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 ))}
               </select>
             </div>
-            <div className="export-adv-row">
-              <span className="muted">Bitrate</span>
-              <NumberField
-                label="Mb/s"
-                testId="export-bitrate"
-                value={bitrate}
-                placeholder={codec === "hevc" ? `${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}` : "Auto"}
-                step={1}
-                min={0.1}
-                max={500}
-                onCommit={(v) => setBitrate(v)}
-              />
-            </div>
+            {!proRes && (
+              <div className="export-adv-row">
+                <span className="muted">Bitrate</span>
+                <NumberField
+                  label="Mb/s"
+                  testId="export-bitrate"
+                  value={bitrate}
+                  placeholder={
+                    codec === "hevc" ? `${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}` : "Auto"
+                  }
+                  step={1}
+                  min={0.1}
+                  max={500}
+                  onCommit={(v) => setBitrate(v)}
+                />
+              </div>
+            )}
           </div>
         )}
         <div className="wiz-list form-fields export-fields">
@@ -461,7 +512,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               value={name}
               spellCheck={false}
               onChange={(e) => (setName(e.target.value), setError(undefined), setConfirmed(undefined))}
-              onBlur={() => setName(fileName(name))}
+              onBlur={() => setName(fileName(name, extension))}
             />
           </label>
           <div className="wiz-field">
