@@ -13,7 +13,8 @@
 # runner's 1024×674, the user's footage (UNCUT_FOOTAGE_DIR) and the real claude/argent CLIs.
 #
 # An app test file that fails is run once more (--retries 1). A pass on the retry still shows as a
-# ::warning:: and as "flaky" in the job summary, so a flake is seen and fixed, never hidden.
+# ::warning:: and as "flaky" in the job summary, so a flake is seen and fixed, never hidden. A file in
+# test/quarantine.json still runs and shows in the summary, but can't fail the run.
 name: CI
 
 on:
@@ -29,9 +30,11 @@ permissions:
   contents: read
 
 # A new push to a PR replaces its running check; every push to main finishes (D253), so a broken
-# commit on main is always pinned down.
+# commit on main is always pinned down. queue: max because a group otherwise keeps a single pending
+# run: each new push to main would cancel the one waiting, and a burst of merges would never be tested.
 concurrency:
   group: ci-${{ github.ref }}
+  queue: max
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -47,9 +50,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Needs Mac verification?
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: node scripts/mac-verification.ts
       - run: corepack enable
       - name: Find the pnpm store
         run: echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
