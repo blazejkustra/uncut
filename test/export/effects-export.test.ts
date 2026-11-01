@@ -449,12 +449,12 @@ const MAX_LAG = 2400;
 /** How many samples `b` runs after `a` around the moment `t`: the peak of their correlation within ±50 ms. */
 function lagAt(a: Float32Array, b: Float32Array, t: number): number {
   const from = Math.round((t - 0.03) * 48000);
-  const to = Math.min(Math.round((t + 0.02) * 48000), a.length - MAX_LAG, b.length - MAX_LAG);
+  const to = Math.min(Math.round((t + 0.02) * 48000), a.length);
   let best = -Infinity;
   let at = 0;
   for (let lag = -MAX_LAG; lag <= MAX_LAG; lag++) {
     let sum = 0;
-    for (let i = from; i < to; i++) sum += a[i]! * b[i + lag]!;
+    for (let i = from; i < to; i++) sum += a[i]! * (b[i + lag] ?? 0);
     if (sum > best) {
       best = sum;
       at = lag;
@@ -497,7 +497,11 @@ test(
     const partOff = pcmOf(await exportFile(part(), "off", "tick-part-off"));
     const partOn = pcmOf(await exportFile(part([denoise]), "off", "tick-part-on", measured));
     assert.equal(partOn.length, partOff.length);
-    for (const t of [0.5, 2, 3.95]) assert.ok(Math.abs(lagAt(partOff, partOn, t)) < 48, `part range, click at ${t} s`);
+    for (const t of [0.5, 2, 3.95]) {
+      const lag = lagAt(partOff, partOn, t);
+      console.log(`part range, click at ${t} s: denoised lag ${((lag / 48000) * 1000).toFixed(2)} ms`);
+      assert.ok(Math.abs(lag) < 48, `part range, click at ${t} s is ${lag} samples late`);
+    }
     within(dB(peakIn(partOn, 3.95)), dB(peakIn(partOff, 3.95)), 6, "the click just before the part's end");
   },
 );
