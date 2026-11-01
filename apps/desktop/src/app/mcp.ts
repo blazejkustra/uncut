@@ -84,9 +84,13 @@ const realPath = (path: string) => {
   }
 };
 
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const untilOpen = async (dir: string) => {
-  for (const started = Date.now(); Date.now() - started < START_WAIT_MS; await new Promise((r) => setTimeout(r, POLL_MS))) {
+  const deadline = Date.now() + START_WAIT_MS;
+  while (Date.now() < deadline) {
     if (windows.some((w) => w.projectDir === dir)) return true;
+    await pause(POLL_MS);
   }
   return false;
 };
@@ -160,6 +164,7 @@ export async function setMcpEnabled(enabled: boolean) {
 
 /** Every client set up with the old token stops working. */
 export async function renewMcpToken() {
+  if (!readEnabled(dataDir())) return mcpState();
   newToken(dataDir());
   await stop();
   await start();

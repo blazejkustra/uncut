@@ -59,6 +59,14 @@ const standIn = (owner: Loaded, endExternal: () => void): ClaudeSession => ({
   toolsChars: undefined,
 });
 
+/** What outside turns spent per opening of a project: idling ends a turn, so a cap per turn would reset every 30 s. */
+export const makeSpendLedger = () => {
+  const spent = new Map<number, number>();
+  const of = (openId: number) => spent.get(openId) ?? 0;
+  const add = (openId: number, amount = 0) => void spent.set(openId, of(openId) + amount);
+  return { of, add };
+};
+
 interface Link {
   readonly r: Running;
   calls: number;
@@ -92,9 +100,11 @@ export const makeExternal = (
 
   let link: Link | undefined;
   let stoppedByUser = false;
+  const spend = makeSpendLedger();
 
   const endTurn = (ended: Link) => {
     if (link === ended) link = undefined;
+    spend.add(ended.r.openId, ended.r.turn.spend);
     return Effect.runPromise(turnCleanup(ended.r))
       .catch((error) => console.error(`[uncut] turn clean-up failed: ${(error as Error).message}`))
       .finally(() => finish(ended.r, { status: "done" }));
@@ -117,6 +127,7 @@ export const makeExternal = (
 
   const onStop = (r: Running) => {
     stoppedByUser = r.stopReason === undefined;
+    spend.add(r.openId, r.turn.spend);
     if (link?.r === r) {
       clearTimeout(link.timer);
       link = undefined;
@@ -149,6 +160,7 @@ export const makeExternal = (
       noteRevision: v.session.revision,
       access: "ask",
       images: [],
+      priorSpend: spend.of(owner.openId),
     };
     r.session.turn = r;
     owner.running = r;

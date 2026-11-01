@@ -10,6 +10,7 @@ import type { ErrorObject, ValidateFunction } from "ajv";
 import projectSchemaJson from "../../../../spec/schema/project.schema.json" with { type: "json" };
 import moduleSchemaJson from "../../../../spec/schema/module.schema.json" with { type: "json" };
 import editOpsSchemaJson from "../../../../spec/schema/edit-ops.schema.json" with { type: "json" };
+import { sequenceProblems } from "./nesting.ts";
 import { projectDuration, resolveStarts, timelineProblems } from "./rules.ts";
 import { SHADER, shaderDefProblems, shaderValueProblems, type ShaderParam } from "../visual/shaders.ts";
 import type { Media, ModuleKind, ModuleManifest, Modules, Problem, Project } from "./types.ts";
@@ -97,7 +98,7 @@ function err(code: string, path: string, message: string): Problem {
   return { code, path, message };
 }
 
-export function validateProject(input: unknown, modules: Modules): Array<Problem> {
+export function validateProject(input: unknown, modules: Modules, inSequence = false): Array<Problem> {
   if (!projectSchema(input)) {
     return projectSchema.errors!.map((e) =>
       err("schema", e.instancePath || "/", `${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`),
@@ -116,6 +117,7 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     ...project.tracks.map((t): [string, string] => [t.id, `/tracks/${t.id}`]),
     ...project.tracks.flatMap((t) => t.items.map((i): [string, string] => [i.id, `/tracks/${t.id}/items/${i.id}`])),
     ...(project.scenes ?? []).map((s): [string, string] => [s.id, `/scenes/${s.id}`]),
+    ...(project.sequences ?? []).map((s): [string, string] => [s.id, `/sequences/${s.id}`]),
   ];
   for (const [id, path] of ids) {
     if (seen.has(id)) errors.push(err("duplicate-id", path, `id "${id}" is used more than once`));
@@ -219,6 +221,7 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     });
   }
   errors.push(...timelineProblems(project));
+  if (!inSequence) errors.push(...sequenceProblems(project, (timeline) => validateProject(timeline, modules, true)));
 
   // Scenes and markers sit inside the video, scenes don't overlap.
   const scenes = [...(project.scenes ?? [])].sort((a, b) => a.start - b.start);

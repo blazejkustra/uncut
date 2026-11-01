@@ -205,6 +205,7 @@ const handlersLayer = ({
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
     [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
     [RPC_METHODS.exportSubtitles]: (input) => exporter.saveSubtitles(input),
+    [RPC_METHODS.exportTimeline]: (input) => exporter.saveTimeline(input),
     [RPC_METHODS.exportLoudness]: ({ targetLufs }) => exporter.previewLoudness(targetLufs),
     [RPC_METHODS.analysisStart]: ({ mediaId, analyzers }) => analysis.start(mediaId, analyzers),
     [RPC_METHODS.analysisJobs]: () => analysis.jobs,

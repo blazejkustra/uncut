@@ -186,6 +186,7 @@ test("Add to chat: the menu part is the app's item menu on a Main clip (Add to c
     "Show in Media",
     "Reveal in Finder",
     "Lock",
+    "Nest into a sequence",
   ]);
   assert.match(menu.html, /data-testid="menu-add-to-chat" class="ctx-item active ?"[^>]*>.*?class="ctx-key">⌘L</);
   assert.doesNotMatch(menu.html.slice(0, menu.html.indexOf(">")), /left:|top:/, "no pointer position of its own");

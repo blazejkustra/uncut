@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 
 import { bridge, type McpState } from "../state/bridge.ts";
-import { MCP_CLIENTS } from "./mcpClients.ts";
+import { MCP_CLIENTS, TOKEN_MASK } from "./mcpClients.ts";
 import "./outsideAgents.css";
 
 function ClientSetup({ state }: { readonly state: McpState }) {
   const [clientId, setClientId] = useState(MCP_CLIENTS[0]!.id);
   const [copied, setCopied] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const client = MCP_CLIENTS.find((c) => c.id === clientId)!;
   const snippet = client.snippet?.(state.url, state.token);
+  const shown = revealed ? snippet : client.snippet?.(state.url, TOKEN_MASK);
   const choose = (id: string) => {
     setClientId(id);
     setCopied(false);
@@ -33,11 +35,16 @@ function ClientSetup({ state }: { readonly state: McpState }) {
       {snippet && (
         <>
           <pre className="mcp-snippet" data-testid="mcp-snippet">
-            {snippet}
+            {shown}
           </pre>
-          <button className="btn" data-testid="mcp-copy" onClick={copy}>
-            {copied ? "Copied" : "Copy"}
-          </button>
+          <div className="mcp-actions">
+            <button className="btn" data-testid="mcp-copy" onClick={copy}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button className="btn" data-testid="mcp-reveal" onClick={() => setRevealed(!revealed)}>
+              {revealed ? "Hide token" : "Show token"}
+            </button>
+          </div>
         </>
       )}
     </div>

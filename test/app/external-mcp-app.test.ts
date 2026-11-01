@@ -44,14 +44,19 @@ test("turned on in Settings, a real client edits the open project", T, async () 
   await clickWhenReady(page, "[data-testid=settings-nav-app]");
   await clickWhenReady(page, "[data-testid=settings-mcp]");
   await page.waitForSelector("[data-testid=mcp-snippet]");
-  const command = await page.$eval("[data-testid=mcp-snippet]", (el) => el.textContent ?? "");
-  assert.match(command, new RegExp(`^claude mcp add --transport http --scope user uncut http://127\\.0\\.0\\.1:${port}/mcp --header "Authorization: Bearer `));
+  const snippet = () => page.$eval("[data-testid=mcp-snippet]", (el) => el.textContent ?? "");
+  const masked = await snippet();
+  assert.match(masked, new RegExp(`^claude mcp add --transport http --scope user uncut http://127\\.0\\.0\\.1:${port}/mcp --header "Authorization: Bearer `));
   const token = readFileSync(join(data, "external-mcp-token"), "utf8").trim();
-  assert.ok(command.includes(token));
+  assert.ok(!masked.includes(token), "the token is masked until asked for");
   assert.equal(statSync(join(data, "external-mcp-token")).mode & 0o777, 0o600);
   await page.$eval("[data-testid=mcp-new-token]", (el) => el.scrollIntoView({ block: "center" }));
   mkdirSync("test-output", { recursive: true });
   await page.screenshot({ path: "test-output/external-mcp.png" });
+  await page.click("[data-testid=mcp-reveal]");
+  assert.ok((await snippet()).includes(token));
+  await page.click("[data-testid=mcp-reveal]");
+  assert.ok(!(await snippet()).includes(token));
 
   const unauthorized = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", body: "{}" });
   assert.equal(unauthorized.status, 401);

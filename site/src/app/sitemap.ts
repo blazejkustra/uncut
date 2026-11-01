@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { COMPARISONS, GUIDE_PATH, pathOf } from "../lib/compare.ts";
 import { getPublishedPosts } from "../lib/posts.ts";
 import { SITE_URL } from "../lib/site.ts";
 
@@ -16,6 +17,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "yearly" as const,
       priority: 0.6,
     })),
+    { url: `${SITE_URL}/vs/`, changeFrequency: "monthly", priority: 0.7 },
+    ...COMPARISONS.map((c) => ({
+      url: `${SITE_URL}${pathOf(c)}`,
+      lastModified: new Date(c.checked),
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    })),
+    { url: `${SITE_URL}${GUIDE_PATH}`, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/privacy/`, changeFrequency: "yearly", priority: 0.3 },
   ];
 }

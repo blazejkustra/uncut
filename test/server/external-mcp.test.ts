@@ -24,6 +24,7 @@ import {
 } from "../../apps/desktop/src/mcpGateway.ts";
 import { EXTERNAL_MCP_PATH as CONTRACT_PATH, PROJECT_OPEN_TOOL } from "../../packages/contracts/src/index.ts";
 import { MCP_CLIENTS } from "../../apps/web/src/settings/mcpClients.ts";
+import { makeSpendLedger } from "../../apps/server/src/agent/session/external.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 
 const skip = existsSync(BUNDLE) && existsSync(MEDIA) ? false : "server bundle or media core not built (run pnpm build)";
@@ -292,6 +293,20 @@ test("pickWindow prefers the focused window with a project", () => {
   assert.equal(pickWindow([w(1), w(2, "/a")], 1)?.id, 2);
   assert.equal(pickWindow([w(1), w(2)], 2)?.id, 2);
   assert.equal(pickWindow([], undefined), undefined);
+});
+
+test("outside spend adds up across turns of one opening, and a new opening starts at zero", () => {
+  const spend = makeSpendLedger();
+  spend.add(1, 2.5);
+  spend.add(1, undefined);
+  spend.add(1, 1);
+  assert.equal(spend.of(1), 3.5);
+  assert.equal(spend.of(2), 0);
+});
+
+test("Claude Desktop's setup pins mcp-remote", () => {
+  const desktop = MCP_CLIENTS.find((c) => c.id === "claude-desktop")!;
+  assert.match(desktop.snippet!("http://127.0.0.1:1/mcp", TOKEN), /mcp-remote@\d+\.\d+\.\d+/);
 });
 
 test("each client's setup carries the url and token; the port matches the plugin's", () => {

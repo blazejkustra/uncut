@@ -4,7 +4,7 @@ import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IMAGE_MAX, AGENT_IMAGES_MAX, AGENTS_RUNNING_MAX, AgentError, type AgentFolder } from "@uncut/contracts";
-import { type Project, sectionsNote } from "@uncut/core";
+import { locksNote, type Project, sectionsNote } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
@@ -193,12 +193,14 @@ export const makeSend = (ctx: SpawnCtx) => {
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
       // Issue #118: the sections the user locked and flagged "not OK", with every message.
       const sections = sectionsNote(project);
+      const locks = locksNote(project);
       const teammate = (a: Loaded) => ({ agentId: a.agentId, name: a.name, focus: a.focus, working: !!a.running || st.starting.has(a) });
       const team = compacting ? "" : teamBlock(teammate(owner), st.agents.filter((a) => a !== owner).map(teammate));
       const context = [
         frame !== undefined ? playheadLine(project, frame) : "",
         selected ? `Selected item: ${selected}.` : "",
         sections ? `Marked sections (redo the NOT OK ones; a LOCKED one must not change, edits that would are refused):\n${sections}` : "",
+        locks ? `Locked by the user (edits that change or move these are refused, only the user unlocks): ${locks}.` : "",
         accessLine(access, provider),
         capNote(note),
       ].filter(Boolean);

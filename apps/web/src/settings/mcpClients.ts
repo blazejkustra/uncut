@@ -1,5 +1,8 @@
 // What each outside client needs to reach Uncut's MCP gateway. No React, so tests read it.
 
+/** Stands in for the token on screen; Copy always copies the real one. */
+export const TOKEN_MASK = "••••••••••••••••";
+
 export interface McpClient {
   readonly id: string;
   readonly label: string;
@@ -27,7 +30,7 @@ export const MCP_CLIENTS: ReadonlyArray<McpClient> = [
         mcpServers: {
           uncut: {
             command: "npx",
-            args: ["-y", "mcp-remote", url, "--header", "Authorization:${UNCUT_AUTH}"],
+            args: ["-y", "mcp-remote@0.15.2", url, "--header", "Authorization:${UNCUT_AUTH}"],
             env: { UNCUT_AUTH: `Bearer ${token}` },
           },
         },

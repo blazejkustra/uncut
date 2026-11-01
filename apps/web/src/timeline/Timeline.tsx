@@ -25,6 +25,8 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronsLeftRight,
+  Columns2,
+  MoveHorizontal,
   Hand,
   Link2,
   Magnet,
@@ -71,7 +73,7 @@ import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
 import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 
-const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand };
+const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand, slip: MoveHorizontal, roll: Columns2 };
 
 export { BottomTabs } from "./BottomTabs.tsx";
 export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";

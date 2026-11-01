@@ -221,9 +221,19 @@ test(
       assert.match(await text(page, `${review} [data-testid=critic-time]`), /^\d+s$/);
       await page.$eval(review, (el) => el.scrollIntoView({ block: "center" }));
       await shot(page, "critic-done");
-      await page.click(`${review} .card-head`);
       await waitFor(`${review} [data-testid=agent-review-blocker]`);
       await shot(page, "critic-open");
+      assert.equal(await text(page, `${review} [data-testid=agent-review-verdict]`), "Failed round 1\n2 blockers to fix");
+      const blockerFrame = `${review} [data-testid=agent-review-blocker][data-kind=placeholder] [data-testid=agent-review-frame]`;
+      assert.match(await text(page, blockerFrame), /^f \d+, 0\.8 s$/);
+      await page.waitForFunction((sel) => (document.querySelector(sel) as HTMLImageElement | null)?.naturalWidth, { timeout: 15000 }, `${blockerFrame} img`);
+      await page.click(blockerFrame);
+      const seeked = await page.$eval(blockerFrame, (el) => el.getAttribute("data-frame"));
+      await page.waitForFunction(
+        (want) => document.querySelector("[data-testid=timecode]")?.textContent?.includes(want),
+        { timeout: 5000 },
+        `00:00:${String(Math.floor(Number(seeked) / 30)).padStart(2, "0")}`,
+      );
       assert.deepEqual(
         await page.$$eval(`${review} [data-testid=agent-review-blocker]`, (els) =>
           els.map((e) => [e.getAttribute("data-kind"), e.getAttribute("data-source")]),
@@ -310,8 +320,18 @@ test(
         await page.$$eval("[data-testid=agent-card][data-type=review]", (els) => els.map((e) => e.getAttribute("data-passed")).join()),
         "false,true",
       );
-      await page.click(`${passed} .card-head`);
       await waitFor(`${passed} [data-testid=agent-review-fix]`);
+      assert.equal(await page.$eval(passed, (el) => el.querySelector("[data-testid=agent-review-verdict]")?.getAttribute("data-turned")), "true");
+      assert.match(await text(page, `${passed} [data-testid=agent-review-verdict]`), /Passed on round 2\n2 blockers cleared/);
+      assert.deepEqual(await page.$$eval(`${passed} [data-testid=agent-review-round]`, (els) => els.map((e) => e.getAttribute("data-passed"))), [
+        "false",
+        "true",
+      ]);
+      assert.equal(
+        await page.$("[data-testid=agent-card][data-type=review][data-passed=false] [data-testid=agent-review-scores]"),
+        null,
+        "the earlier round folds",
+      );
       assert.deepEqual(await page.$$eval(`${passed} [data-testid=agent-review-fix]`, (els) => els.map((e) => e.getAttribute("data-verified"))), [
         "true",
         "true",

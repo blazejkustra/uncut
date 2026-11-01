@@ -42,6 +42,7 @@ export const RPC_METHODS = {
   exportJobs: "export.jobs",
   exportCancel: "export.cancel",
   exportSubtitles: "export.subtitles",
+  exportTimeline: "export.timeline",
   exportLoudness: "export.loudness",
   analysisStart: "analysis.start",
   analysisJobs: "analysis.jobs",

@@ -1,0 +1,6 @@
+#!/bin/sh
+# The server reads the first of each flag, so what you pass wins over these defaults.
+set -eu
+root="$(dirname "$(readlink -f "$0")")"
+export UNCUT_RENDER_ENTRY="${UNCUT_RENDER_ENTRY:-$root/render/main.cjs}"
+exec node "$root/server/server.mjs" "$@" --port "${UNCUT_PORT:-8790}" --data-dir "${UNCUT_DATA_DIR:-$HOME/.uncut-server}"

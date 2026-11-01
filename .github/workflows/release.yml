@@ -91,6 +91,8 @@ jobs:
             exit 1
           fi
 
+      - uses: ./.github/actions/bundled-tools
+
       # Build, sign every binary, notarize and staple the app and the DMG, check them with stapler
       # and spctl, copy to release/Uncut-<version>-<YYYYMMDD>-arm64.dmg, with the auto-update feed
       # (Uncut-<version>-arm64-mac.zip, the .blockmap files, latest-mac.yml).
@@ -128,7 +130,7 @@ jobs:
         # button can link releases/latest/download/Uncut-arm64.dmg and start the download directly.
         run: |
           cp release/Uncut-*-*-arm64.dmg release/Uncut-arm64.dmg
-          gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+          gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml native/tools/out/sources/* --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
       - name: Remove the signing keychain
         if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
         run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"

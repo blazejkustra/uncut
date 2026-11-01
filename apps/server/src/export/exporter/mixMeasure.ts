@@ -3,6 +3,7 @@
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { flattenSequences } from "@uncut/core/nesting";
 import { SOUND_ROLES, soundRoles, type Media, type Project, type SoundRole, type SpeechEnvelope } from "@uncut/core";
 
 import { graphFileArgs, planExport } from "../exportPlan.ts";
@@ -24,11 +25,12 @@ export function makeMixMeasure() {
   let last: { readonly key: string; readonly traces: MixTraces } | undefined;
   return async (
     bin: string,
-    project: Project,
+    edited: Project,
     mediaPath: (m: Media) => string,
     envelopes: ReadonlyMap<string, SpeechEnvelope | null>,
     signal?: AbortSignal,
   ): Promise<MixTraces | { readonly problem: string } | undefined> => {
+    const project = flattenSequences(edited);
     const plan = planExport(project, { mediaPath, width: 320, height: 180, envelopes });
     if ("problem" in plan) return { problem: plan.problem };
     const roles = soundRoles(project);

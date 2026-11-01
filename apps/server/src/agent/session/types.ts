@@ -286,6 +286,8 @@ export interface Running {
   readonly turnRefusals: Map<string, string>;
   // D194: tool_use id → tool name in this turn (to tell web results from file data).
   readonly toolNames: Map<string, string>;
+  // An outside agent: what its earlier turns spent in this opening of the project, towards TURN_CAP.
+  priorSpend?: number;
   // D194: media_download's spending in this turn.
   downloads: { bytes: number; count: number };
   // Uncut tools the model called by their bare name (graphic_write, not mcp__uncut__graphic_write):

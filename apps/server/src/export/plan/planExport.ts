@@ -234,7 +234,7 @@ export function planExport(
           return moveBox(fxBox(item, clipBox(item, project.canvas, media.probe, f0 + k - start), f0 + k - start, fps), fx.shift, fx.zoom, fx.shiftY);
         });
         // Picture effects (D136) run before the box, so a clip with them always has one.
-        const effects = clipFx(item);
+        const effects = clipFx(item, project.luts);
         // A shader effect (D213) is a picture pass too (SVG stills take none, D138).
         const shader = fxSkips(media) ? undefined : clipShader(item);
         const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
