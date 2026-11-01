@@ -292,9 +292,12 @@ export class FootageIndexer {
     };
   }
 
-  /** Stores what's on screen in a file; it's searchable at once. */
+  /** Stores what's on screen in a file; it's searchable at once. The scan first: a clip without a place isn't found, and its notes would be pruned. */
   async describe(path: string, notes: ReadonlyArray<VisualNote>) {
-    this.store.putNotes(await fingerprint(path), notes);
+    const fp = await fingerprint(path);
+    this.schedule();
+    await this.settled();
+    this.store.putNotes(fp, notes);
     this.publish(true);
   }
 
