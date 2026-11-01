@@ -267,6 +267,24 @@ footer a:hover { color: var(--fg); }
 .post-cta .sub { margin-left: auto; margin-right: auto; }
 .post-cta .actions { margin-top: 24px; }
 
+/* Pricing: plain rows, the two plans as sections of one column. */
+.pricing .plan { padding: 44px 0 0; }
+.plan > p { color: #c8c8c8; }
+.plan-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 12px; }
+.plan-head h2 { font-size: 28px; }
+.plan-price { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.plan-price span { color: var(--muted); font-size: 15px; font-weight: 400; letter-spacing: 0; }
+.plan .actions { justify-content: flex-start; margin-top: 24px; }
+.pro-rows { list-style: none; margin: 16px 0 0; padding: 0; }
+.pro-rows li { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; padding: 22px 0; border-bottom: 1px solid var(--border); }
+.pro-rows h3 { margin-bottom: 4px; }
+.pro-rows li > div:first-child p { color: var(--muted); font-size: 15px; }
+.pro-action { flex: none; width: 190px; }
+.pro-btn { width: 100%; height: 40px; padding: 0 16px; border-radius: 10px; font-size: 14px; cursor: pointer; }
+.pro-btn[aria-disabled="true"], .pro-btn[aria-disabled="true"]:hover { color: var(--muted); background: none; border-color: var(--border); cursor: not-allowed; }
+.pro-note, .plan > .pro-note { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.plan > .pro-email { margin-top: 12px; max-width: 520px; }
+
 @media (max-width: 980px) {
   .agent, .film { grid-template-columns: 1fr; gap: 40px; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -280,6 +298,8 @@ footer a:hover { color: var(--fg); }
 }
 @media (max-width: 560px) {
   .post-cta { padding: 24px 16px; }
+  .pro-rows li { flex-direction: column; gap: 14px; }
+  .pro-action { width: 100%; }
   .cards { grid-template-columns: 1fr; }
   .card .crop { height: 240px; }
   .card .crop img { max-width: 280px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
@@ -287,16 +307,17 @@ footer a:hover { color: var(--fg); }
   .panels { gap: 10px; }
   .panels img:last-child { margin-top: 24px; }
 }
-/* The nav on the narrowest phones (360 px): logo, Blog, Star and Download still fit on one line. */
+/* The nav on the narrowest phones (360 px): logo, Pricing, Blog, the GitHub mark and Download still fit on one line. */
 @media (max-width: 400px) {
   .top .wrap { gap: 8px; }
   .top nav { gap: 6px; }
   .top nav .nav-link { padding: 0 4px; }
-  .top nav .nav-stars { min-width: 78px; padding: 0 9px; gap: 6px; }
+  .top nav .nav-stars { min-width: 0; padding: 0 9px; }
+  .nav-stars .label, .nav-stars .count { display: none; }
   .top nav .btn-nav { padding: 0 10px 0 9px; gap: 6px; }
 }
 @media (max-width: 340px) {
-  .top nav .nav-stars { min-width: 0; padding: 0 8px; }
+  .top nav .nav-stars { display: none; }
   .top nav .btn-nav { padding: 0 8px; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,5 @@
-// The top bar on every page: the wordmark on the left; Blog, the GitHub star button and Download on
-// the right.
+// The top bar on every page: the wordmark on the left; Pricing, Blog, the GitHub star button and
+// Download on the right.
 import { AppleMark, CutU } from "./Icons.tsx";
 import StarButton from "./StarButton.tsx";
 import { DOWNLOAD_URL } from "../lib/site.ts";
@@ -13,6 +13,9 @@ export default function SiteHeader() {
           <span>Uncut</span>
         </a>
         <nav aria-label="Main">
+          <a className="nav-link" href="/pricing/">
+            Pricing
+          </a>
           <a className="nav-link" href="/blog/">
             Blog
           </a>

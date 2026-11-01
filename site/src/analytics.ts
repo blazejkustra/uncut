@@ -124,11 +124,19 @@ export function openSettings(): void {
   openBanner(true);
 }
 
-/** Only with consent, so a click never reaches gtag while it's denied or undecided. */
+/** Events go through here, so a click never reaches gtag while consent is denied or undecided. */
+function trackEvent(name: string, params: Record<string, string>): void {
+  if (!decide(regionFromCookies(document.cookie), readStored(), id).load) return;
+  window.gtag?.("event", name, params);
+}
+
 function trackDownload(event: MouseEvent): void {
   const onDownload = event.target instanceof Element && event.target.closest(`a[href="${DOWNLOAD_URL}"]`);
-  if (!onDownload || !decide(regionFromCookies(document.cookie), readStored(), id).load) return;
-  window.gtag?.("event", "download_click", { link_url: DOWNLOAD_URL, file_extension: "dmg" });
+  if (onDownload) trackEvent("download_click", { link_url: DOWNLOAD_URL, file_extension: "dmg" });
+}
+
+export function trackProInterest(feature: string): void {
+  trackEvent("pro_interest", { feature });
 }
 
 let started = false;

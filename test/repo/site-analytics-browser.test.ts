@@ -260,6 +260,56 @@ test("Download click: an event outside the EU and after Accept, none undecided o
   await eu.page.browserContext().close();
 });
 
+const proInterest = (p: Page) =>
+  p.evaluate(() =>
+    window
+      .dataLayer!.map((a) => Array.from(a as ArrayLike<unknown>))
+      .filter((a) => a[1] === "pro_interest")
+      .map((a) => (a[2] as { feature: string }).feature),
+  );
+const clickIdea = (p: Page, index: number) => p.$$eval(".pro-btn", (buttons, i) => (buttons[i] as HTMLElement).click(), index);
+const clickEmail = (p: Page) =>
+  p.$eval('a[href^="mailto:"]', (a) => {
+    a.addEventListener("click", (e) => e.preventDefault());
+    (a as HTMLElement).click();
+  });
+const notedCount = (p: Page) => p.$$eval('.pro-btn[aria-disabled="true"]', (buttons) => buttons.length);
+
+test("Pro interest: events outside the EU and after Accept, none undecided or after Reject; the buttons confirm either way", { skip }, async () => {
+  const us = await visitor("US");
+  await us.page.goto(`${base}/pricing/`, { waitUntil: "networkidle0" });
+  assert.equal(
+    await us.page.$eval('a[href^="mailto:"]', (a) => (a as HTMLAnchorElement).href),
+    "mailto:kustrablazej@gmail.com?subject=Email%20me%20when%20Uncut%20Pro%20exists",
+  );
+  await clickIdea(us.page, 0);
+  await clickIdea(us.page, 0);
+  await clickEmail(us.page);
+  assert.deepEqual(await proInterest(us.page), ["review_links", "email"]);
+  await us.page.evaluate(() => delete window.gtag);
+  await clickIdea(us.page, 1);
+  assert.equal(await notedCount(us.page), 2, "confirms with gtag blocked");
+  await us.page.browserContext().close();
+
+  const eu = await visitor("PL");
+  await eu.page.goto(`${base}/pricing/`, { waitUntil: "networkidle0" });
+  await settle(eu.page);
+  await clickIdea(eu.page, 0);
+  await clickEmail(eu.page);
+  assert.deepEqual(await proInterest(eu.page), [], "undecided");
+  await eu.page.click(".consent-btn:first-child");
+  await clickIdea(eu.page, 1);
+  await clickEmail(eu.page);
+  assert.deepEqual(await proInterest(eu.page), [], "rejected");
+  assert.equal(await notedCount(eu.page), 2, "confirms without consent");
+  await eu.page.click("footer [data-cookie-settings]");
+  await settle(eu.page);
+  await eu.page.click(".consent-btn:last-child");
+  await clickIdea(eu.page, 2);
+  assert.deepEqual(await proInterest(eu.page), ["visual_search"], "accepted");
+  await eu.page.browserContext().close();
+});
+
 test("The launch film is requested under the CSP only once it's scrolled to", { skip }, async () => {
   const v = await visitor("US", 1280, 800);
   await v.page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
@@ -296,7 +346,7 @@ test("Placeholder measurement ID: nothing loads and no banner, anywhere", { skip
 });
 
 test("Every page: no CSP violation, no page error, no inline script without its hash; the nav fits at 360 px", { skip }, async () => {
-  for (const path of ["/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/", "/vs/", "/vs/palmier/", "/guides/edit-video-with-claude-code/"]) {
+  for (const path of ["/", "/pricing/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/", "/vs/", "/vs/palmier/", "/guides/edit-video-with-claude-code/"]) {
     for (const w of [1440, 360]) {
       const v = await visitor("US", w, 800);
       await v.page.goto(`${base}${path}`, { waitUntil: "networkidle0" });
