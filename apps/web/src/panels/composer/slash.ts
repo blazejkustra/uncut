@@ -25,7 +25,7 @@ export interface SlashClaudeSkill {
 export type SlashItem = SlashSkill | SlashTemplate | SlashClaudeSkill;
 
 /** Templates at most, then skills at most, in the menu. */
-export const SLASH_SKILLS_MAX = 12;
+export const SLASH_SKILLS_MAX = 20;
 export const SLASH_TEMPLATES_MAX = 8;
 export const SLASH_CLAUDE_MAX = 12;
 
