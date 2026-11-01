@@ -76,6 +76,44 @@
         },
         {
           "type": "object",
+          "description": "Put neighbouring main-track items (in order) into a new sequence, played by one new sequence item in their place. Nothing moves on the timeline. Clear transitions into the first item and after the last first; a clip with a linked sound can't nest until it's unlinked.",
+          "required": ["op", "items", "sequence", "item"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "nest_items" },
+            "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+            "sequence": { "$ref": "#/$defs/id" },
+            "item": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Put a sequence item's clips back on the main track and remove the sequence. It must play the whole sequence, be its only use, and the sequence must have one track.",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "unnest_item" }, "item": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
+          "description": "Run item and track ops on a sequence's own timeline (insert, update, trim, split, move or delete items, transitions, tracks); every item playing it changes. Shortening it past what an item plays is refused: trim that item in the same edit. To play a sequence again, insert_item {type:\"sequence\", sequence, in, duration} on the main track (no transform, effects or transition on it).",
+          "required": ["op", "sequence", "ops"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "edit_sequence" },
+            "sequence": { "$ref": "#/$defs/id" },
+            "ops": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/op" } }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Remove a sequence no item plays any more.",
+          "required": ["op", "sequence"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "delete_sequence" }, "sequence": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
           "required": ["op", "track"],
           "additionalProperties": false,
           "properties": { "op": { "const": "add_track" }, "track": { "type": "object" }, "index": { "type": "integer", "minimum": 0 } }

@@ -126,7 +126,7 @@ export interface GraphicElementEdit {
   readonly opacity?: number;
 }
 
-export type ItemType = "clip" | "component" | "graphic" | "text" | "captions" | "audio";
+export type ItemType = "clip" | "component" | "graphic" | "text" | "captions" | "audio" | "sequence";
 
 export interface Item {
   readonly id: Id;
@@ -157,6 +157,8 @@ export interface Item {
   readonly transitionIn?: TimedModule;
   readonly animation?: { readonly in?: TimedModule; readonly out?: TimedModule; readonly loop?: TimedModule };
   readonly effects?: ReadonlyArray<ModuleUse>;
+  /** Sequence items: the sequence it plays, from its frame `in`. Main track only. */
+  readonly sequence?: Id;
   // clip, component, audio
   readonly media?: Id;
   readonly in?: Frame;
@@ -267,6 +269,13 @@ export interface Marker {
   readonly label?: string;
 }
 
+/** A timeline of its own (same canvas and media), played by sequence items on Main (nesting.ts). */
+export interface Sequence {
+  readonly id: Id;
+  readonly name: string;
+  readonly tracks: ReadonlyArray<Track>;
+}
+
 export interface Project {
   readonly format: string;
   readonly name: string;
@@ -276,6 +285,7 @@ export interface Project {
   readonly textLooks?: number;
   readonly media: ReadonlyArray<Media>;
   readonly tracks: ReadonlyArray<Track>;
+  readonly sequences?: ReadonlyArray<Sequence>;
   readonly scenes?: ReadonlyArray<Scene>;
   readonly markers?: ReadonlyArray<Marker>;
   /** Issue #118: locked stretches and ones flagged for the agent to redo. */
@@ -306,6 +316,12 @@ export type Op =
   // The schema only says "an object" for the new track (the project validator checks the result),
   // so every field is optional here. insert_item's item and add_media's media are also plain
   // objects in the schema but are typed as Item and Media: the engine reads their id and type.
+  // Neighbouring Main items into a new sequence, played from one new item in their place.
+  | { readonly op: "nest_items"; readonly items: ReadonlyArray<Id>; readonly sequence: Id; readonly item: Id; readonly name?: string }
+  | { readonly op: "unnest_item"; readonly item: Id }
+  // Item and track ops run on a sequence's own timeline.
+  | { readonly op: "edit_sequence"; readonly sequence: Id; readonly ops: ReadonlyArray<Op> }
+  | { readonly op: "delete_sequence"; readonly sequence: Id }
   | { readonly op: "add_track"; readonly track: Partial<Track> & { readonly [key: string]: unknown }; readonly index?: number }
   | { readonly op: "update_track"; readonly track: Id; readonly set: FieldSet }
   | { readonly op: "delete_track"; readonly track: Id }

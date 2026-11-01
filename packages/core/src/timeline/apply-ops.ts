@@ -5,6 +5,8 @@ import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../vis
 import { graphicTime } from "../visual/graphics.ts";
 import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
+import { canUnnest, flattenSequences } from "./nesting.ts";
+import { gapOf } from "./rules.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
 import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
@@ -44,6 +46,8 @@ function touches(op: Op): Array<string> {
   if ("item" in op && op.item) return [op.item];
   if (op.op === "add_track") return [`track:${op.track.id}`];
   if ("track" in op && op.track) return [`track:${op.track}`];
+  if (op.op === "nest_items") return [...op.items, `track:main`];
+  if (op.op === "edit_sequence" || op.op === "delete_sequence") return [`sequence:${op.sequence}`];
   if (op.op === "add_media") return [`media:${op.media.id}`];
   if (op.op === "update_media") return [`media:${op.media}`];
   if (op.op === "delete_media") return [`media:${op.media}`];
@@ -104,7 +108,7 @@ function editable(project: Draft, itemId: Id) {
 /** Clips and audio play from a time in their media; still images and items without media don't. */
 function hasSourceTime(project: Draft, item: DraftItem) {
   // A graphic's time runs from its own start (D78): a trimmed start or a split's second half goes on from where it was.
-  if (item.type === "graphic") return true;
+  if (item.type === "graphic" || item.type === "sequence") return true;
   if (!item.media) return item.in !== undefined;
   return project.media.find((m) => m.id === item.media)?.kind !== "image";
 }
@@ -122,6 +126,96 @@ const skipsFrom = (skips: Skips, from: number): Skips => skips.filter((s) => s.a
 function setSkips(item: DraftItem, skips: Skips) {
   if (skips.length) item.skips = skips.map((s) => ({ ...s }));
   else delete item.skips;
+}
+
+const allItems = (project: Draft) => [...project.tracks, ...(project.sequences ?? []).flatMap((s) => s.tracks)].flatMap((t) => t.items);
+
+function findSequence(project: Draft, id: Id) {
+  const sequence = project.sequences?.find((s) => s.id === id);
+  if (!sequence) throw new EditError(`Sequence "${id}" does not exist`);
+  return sequence;
+}
+
+function withoutSequence(project: Draft, id: Id) {
+  project.sequences = project.sequences!.filter((s) => s.id !== id);
+  if (!project.sequences.length) delete project.sequences;
+}
+
+/** The items' place on Main, which must be one run of neighbours in order. */
+function mainRun(project: Draft, ids: ReadonlyArray<Id>) {
+  const main = project.tracks.find((t) => t.role === "main");
+  const first = main?.items.findIndex((i) => i.id === ids[0]) ?? -1;
+  if (!main || first === -1 || ids.some((id, i) => main.items[first + i]?.id !== id))
+    throw new EditError("Only neighbouring items on Main, in order, nest together");
+  return { main, first };
+}
+
+function nestItems(project: Draft, op: Extract<Op, { op: "nest_items" }>) {
+  const { main, first } = mainRun(project, op.items);
+  guard(main);
+  const items = main.items.slice(first, first + op.items.length);
+  for (const item of items) guard(main, item);
+  const follower = allItems(project).find((i) => i.linkedTo && op.items.includes(i.linkedTo));
+  if (follower) throw new EditError(`"${follower.id}" is linked to a clip going into the sequence: unlink it first`);
+  const gap = gapOf(items[0]!);
+  delete items[0]!.gap;
+  const duration = items.reduce((sum, item) => sum + gapOf(item) + item.duration, 0);
+  const nested = {
+    id: op.item,
+    type: "sequence",
+    sequence: op.sequence,
+    duration,
+    ...(gap ? { gap } : {}),
+    ...(op.name ? { name: op.name } : {}),
+  } as DraftItem;
+  main.items.splice(first, items.length, nested);
+  const track = { id: `${op.sequence}-main`, kind: "video", role: "main", name: "Main", items } as DraftTrack;
+  project.sequences = [...(project.sequences ?? []), { id: op.sequence, name: op.name ?? op.sequence, tracks: [track] }];
+}
+
+function unnestItem(project: Draft, itemId: Id) {
+  const { track, index, item } = editable(project, itemId);
+  if (item.type !== "sequence") throw new EditError(`"${item.id}" isn't a sequence item`);
+  if (track.role !== "main" || !canUnnest(project as Project, item as Item))
+    throw new EditError(`"${item.id}" can't be unnested: that needs the whole sequence, used once, with one track`);
+  const sequence = findSequence(project, item.sequence!);
+  const items = sequence.tracks[0]!.items;
+  const gap = gapOf(item) + gapOf(items[0]!);
+  if (gap) items[0]!.gap = gap;
+  track.items.splice(index, 1, ...items);
+  withoutSequence(project, sequence.id);
+}
+
+const SEQUENCE_OPS = new Set<Op["op"]>([
+  "insert_item",
+  "update_item",
+  "trim_item",
+  "split_item",
+  "move_item",
+  "delete_item",
+  "set_transition",
+  "add_track",
+  "update_track",
+  "delete_track",
+]);
+
+function editSequence(project: Draft, op: Extract<Op, { op: "edit_sequence" }>) {
+  const sequence = findSequence(project, op.sequence);
+  const locked = allItems(project).find((i) => i.sequence === op.sequence && i.locked);
+  if (locked) throw new EditError(`"${locked.id}" is locked: unlock it to edit its sequence`);
+  const timeline = { ...project, tracks: sequence.tracks };
+  for (const each of op.ops) {
+    if (!SEQUENCE_OPS.has(each.op)) throw new EditError(`${each.op} can't run inside a sequence`);
+    applyOp(timeline, each);
+  }
+  sequence.tracks = timeline.tracks;
+}
+
+function deleteSequence(project: Draft, id: Id) {
+  findSequence(project, id);
+  const user = allItems(project).find((i) => i.sequence === id);
+  if (user) throw new EditError(`Sequence "${id}" is still used by "${user.id}"`);
+  withoutSequence(project, id);
 }
 
 function applyOp(project: Draft, op: Op) {
@@ -263,6 +357,18 @@ function applyOp(project: Draft, op: Op) {
       else item.transitionIn = structuredClone(op.transition) as DraftItem["transitionIn"];
       return;
     }
+    case "nest_items":
+      nestItems(project, op);
+      return;
+    case "unnest_item":
+      unnestItem(project, op.item);
+      return;
+    case "edit_sequence":
+      editSequence(project, op);
+      return;
+    case "delete_sequence":
+      deleteSequence(project, op.sequence);
+      return;
     case "add_track":
       project.tracks.splice(op.index ?? project.tracks.length, 0, { items: [], ...(structuredClone(op.track) as Partial<DraftTrack>) } as DraftTrack);
       return;
@@ -295,7 +401,7 @@ function applyOp(project: Draft, op: Op) {
     case "delete_media": {
       // F8 (D167): only once nothing uses it (delete those items first, in the same edit). The file stays.
       if (!project.media.some((m) => m.id === op.media)) throw new EditError(`No media "${op.media}"`);
-      const user = project.tracks.flatMap((t) => t.items).find((i) => itemUsesMedia(i as Item, op.media));
+      const user = allItems(project).find((i) => itemUsesMedia(i as Item, op.media));
       if (user) throw new EditError(`Media "${op.media}" is still used by "${user.id}"`);
       project.media = project.media.filter((m) => m.id !== op.media);
       return;
@@ -319,6 +425,15 @@ function applyOp(project: Draft, op: Op) {
     default:
       throw new EditError(`Unknown op "${(op as { op: unknown }).op}"`);
   }
+}
+
+function sectionProblem(before: Project, after: Project, actor: Actor) {
+  const [playedBefore, playedAfter] = [flattenSequences(before), flattenSequences(after)];
+  return (
+    (actor === "agent" ? unlockProblem(before, after) : undefined) ??
+    lockedSectionProblem(playedBefore, playedAfter) ??
+    (actor === "agent" ? lockedContextProblem(playedBefore, playedAfter) : undefined)
+  );
 }
 
 /**
@@ -346,11 +461,7 @@ export function applyEdit(
   for (const op of ops) applyOp(project, op);
   // Issue #118: what a locked section plays never changes (a ripple from before it included), whoever edits.
   // The agent also can't unlock one, or change its tracks, media files, canvas or master.
-  const locked = session.project.sections?.length
-    ? ((actor === "agent" ? unlockProblem(session.project, project as Project) : undefined) ??
-      lockedSectionProblem(session.project, project as Project) ??
-      (actor === "agent" ? lockedContextProblem(session.project, project as Project) : undefined))
-    : undefined;
+  const locked = session.project.sections?.length ? sectionProblem(session.project, project as Project, actor) : undefined;
   if (locked) throw new EditError("The edit would change a locked section", [locked]);
   if (validate) {
     const errors = validate(project);

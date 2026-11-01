@@ -12,6 +12,7 @@ import {
   resolveGraphicFonts,
   type Media,
 } from "@uncut/core";
+import { flattenSequences } from "@uncut/core/nesting";
 import { loadGraphicLibs } from "../graphicLibs.ts";
 import { type ProjectFonts, projectFonts } from "../fonts.ts";
 import { MEDIA_TOKEN } from "../exportPlan.ts";
@@ -32,8 +33,8 @@ export async function readGraphics(
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const srcs = new Set(
-    project.tracks
-      .flatMap((t) => t.items)
+    flattenSequences(project)
+      .tracks.flatMap((t) => t.items)
       .filter((i) => i.type === "graphic" && typeof i.src === "string")
       .map((i) => i.src!),
   );

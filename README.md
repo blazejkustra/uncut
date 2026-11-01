@@ -27,6 +27,7 @@ On first launch Uncut checks what it needs and shows how to install anything mis
 
 - **An agent that plans before it cuts.** It runs your installed Claude Code or Codex, with its own sign-in. It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
 - **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Nested sequences.** Fold neighbouring clips on Main into a sequence, play it from one clip, and it previews and exports as if it were on the timeline.
 - **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
 - **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
 - **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.

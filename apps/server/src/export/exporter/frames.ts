@@ -1,3 +1,4 @@
+import { flattenSequences } from "@uncut/core/nesting";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -144,7 +145,7 @@ export async function openFrameSession(
   css: string = RASTER_CSS,
   options: FrameSessionOptions = {},
 ): Promise<FrameSession> {
-  const project = await withPictureSizes(bin, unsized, mediaPath, signal);
+  const project = await withPictureSizes(bin, flattenSequences(unsized), mediaPath, signal);
   const { starts, duration } = layout(project);
   const caps = await capsOf(bin);
   const command = rasterizerCommand();

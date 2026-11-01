@@ -318,6 +318,14 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
   switch (op.op) {
     case "trim_item":
       return `${op.frames > 0 ? "Trimmed" : "Extended"} ${it(op.item)} by ${secs(op.frames, fps)} at the ${op.edge}`;
+    case "nest_items":
+      return `Nested ${op.items.length === 1 ? it(op.items[0]!) : `${op.items.length} items`} into sequence ${op.name ?? op.sequence}`;
+    case "unnest_item":
+      return `Put ${it(op.item)} back on Main`;
+    case "edit_sequence":
+      return `In sequence ${op.sequence}: ${op.ops.map((inner) => describeOp(inner, project, hint)).join("; ")}`;
+    case "delete_sequence":
+      return `Deleted sequence ${op.sequence}`;
     case "update_item":
       return describeUpdate(op.item, op.set, project, it, fps);
     case "split_item":

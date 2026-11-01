@@ -17,6 +17,7 @@ import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { motionBlurDefault, subtitleCues, subtitleLanguageTag, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
 import { type Media, type Project } from "@uncut/core";
+import { flattenSequences } from "@uncut/core/nesting";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -176,7 +177,8 @@ export const layer = Layer.effect(
 
     const start = (input: ExportInput) =>
       Effect.gen(function* () {
-        const { dir, project: whole, mediaPath } = yield* current;
+        const { dir, project: edited, mediaPath } = yield* current;
+        const whole = flattenSequences(edited);
         // A part of the timeline (D127): the project cut to it, so the picture, the sound, captions
         // and the subtitles file all start at its first frame.
         const sliced = input.range ? sliceProject(whole, input.range) : whole;

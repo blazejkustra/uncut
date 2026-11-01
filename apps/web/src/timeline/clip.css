@@ -3,3 +3,5 @@
 @container clip (max-width: 22px) { .clip .nm { display: none; } }
 .clip:not(.selected):hover { border-color: rgb(255 255 255 / 28%); }
 .clip:has(.key-marks) .meta { padding-left: 8px; }
+
+.clip.sequence { background: repeating-linear-gradient(90deg, rgb(255 255 255 / 12%) 0 2px, transparent 2px 28px), rgb(70 86 120); }
