@@ -9,3 +9,6 @@ release
 site
 test
 test-output
+native/tools/out
+native/tools/work
+.env*

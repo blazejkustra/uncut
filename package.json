@@ -19,6 +19,7 @@
     "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && node native/media/build-release.ts",
     "dist": "pnpm build && pnpm --filter @uncut/desktop dist",
     "dist:signed": "node apps/desktop/scripts/dist-signed.ts",
+    "tools:build": "node native/tools/build.ts",
     "server:image": "docker build -f infra/server/Dockerfile -t uncut-server .",
     "server:tarball": "docker build -f infra/server/Dockerfile --target tarball -o release .",
     "server:check": "node scripts/server-image-check.ts",

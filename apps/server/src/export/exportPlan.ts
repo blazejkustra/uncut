@@ -61,7 +61,7 @@ export { gainAt, constantGain, AUDIO_BLOCK, gainExpr, pwlExpr } from "./plan/gai
 export { planExport } from "./plan/planExport.ts";
 export type { PlanOptions } from "./plan/planExport.ts";
 export { CAPTION_GAP_HTML, MAX_CAPTION_LAYERS, CAPTION_LOOKS_WARN, captionLayers, subtitleLayers, mergeableCues } from "./plan/captions.ts";
-export { graphFileArgs, canHevc, canProRes, usesHardware, videoCodec, hardwareEncoderFailed } from "./plan/codec.ts";
+export { graphFileArgs, canHevc, canProRes, usesHardware, videoCodec, hardwareEncoderFailed, softwareEncoder, wantsSoftware } from "./plan/codec.ts";
 export type { RasterOutput, Caps, VideoChoice } from "./plan/codec.ts";
 export { LIMITER_MARGIN_DB, LIMITER_ATTACK_MS, LIMITER_RELEASE_MS, DENOISE_LAG_SAMPLES, limiterFilter, stageFilter, audioGraph } from "./plan/audio.ts";
 export type { AudioGraph, AudioOptions } from "./plan/audio.ts";

@@ -97,6 +97,19 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm server:check
 
+  # The LGPL ffmpeg, ffprobe and whisper-cli the app ships, built from their pinned sources (cached).
+  bundled-tools:
+    name: bundled tools
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: ./.github/actions/bundled-tools
+      - run: node --test test/media/bundled-tools.test.ts
+
   test:
     name: tests ${{ matrix.shard }}/5
     runs-on: macos-latest
@@ -128,7 +141,7 @@ jobs:
             native/media/target
           key: app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'native/media/Cargo.lock') }}
           restore-keys: app-${{ runner.os }}-${{ runner.arch }}-
-      # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
+      # The tests use Homebrew's ffmpeg, with the software encoders; the bundled-tools job checks the LGPL one the app ships.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
       # The fast tests start the bundled server and media core (pnpm build, part of dist); the app

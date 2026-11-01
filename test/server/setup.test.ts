@@ -238,6 +238,17 @@ const launchdEnv = (extra: NodeJS.ProcessEnv) => ({
   ...extra,
 });
 const HAS_CLAUDE = existsSync(join(homedir(), ".local/bin/claude"));
+test("the tools Uncut ships come first on PATH and say so", T, async () => {
+  const tools = join(root, "tools");
+  const bin = stubs("tools/bin", { ...FFMPEG, "whisper-cli": `echo "whisper.cpp version: 1.9.5"` });
+  const system = stubs("system", { ffmpeg: `echo "ffmpeg version 7.0 Copyright"`, ffprobe: `echo "ffprobe version 7.0"` });
+  const { byId } = await check({ PATH: `${system}:/usr/bin:/bin`, UNCUT_TOOLS_DIR: tools, UNCUT_SHELL_ENV: "off" });
+  assert.deepEqual([byId.ffmpeg.status, byId.ffmpeg.path, byId.ffmpeg.version], ["ready", join(bin, "ffmpeg"), "8.1.1"]);
+  assert.match(byId.ffmpeg.detail, /^Included with Uncut/);
+  assert.deepEqual([byId.whisper.status, byId.whisper.path], ["ready", join(bin, "whisper-cli")]);
+  assert.match(byId.whisper.detail, /^Included with Uncut/);
+});
+
 const HAS_FFMPEG = existsSync("/opt/homebrew/bin/ffmpeg");
 
 // startServer merges process.env; these runs need a clean slate, so spawn through `env -i`.

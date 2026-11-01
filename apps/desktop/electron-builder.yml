@@ -29,6 +29,11 @@ extraResources:
     to: server/mcp.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
+  # ffmpeg, ffprobe and whisper-cli with their licences (node native/tools/build.ts). A plain `pnpm dist`
+  # without them leaves them out and uses what's installed; `pnpm dist:signed` refuses to.
+  - from: ../../native/tools/out
+    to: tools
+    filter: ["bin/*", "lib/*", "licenses/*"]
   # The bundled DM Sans / DM Mono are inlined in the renderer and rasteriser (D77); graphics load the files (D198); their licence ships with them.
   - from: ../../assets/fonts
     to: fonts

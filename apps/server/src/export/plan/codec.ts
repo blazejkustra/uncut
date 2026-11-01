@@ -62,6 +62,15 @@ export const canProRes = (caps: Pick<Caps, "encoders">) => caps.encoders.has("pr
 
 const PRORES_PROFILES: Readonly<Record<string, string>> = { prores422: "standard", prores422hq: "hq", prores4444: "4444" };
 
+/** D212: the encoder a preset or the Advanced row asks for is the software one. */
+export const wantsSoftware = (quality: Quality, choice: VideoChoice = {}) => (choice.encoder ?? defaultEncoder(quality)) === "software";
+
+/** The software encoder of a codec. The LGPL ffmpeg Uncut ships has prores_ks but not libx264 or libx265. */
+export function softwareEncoder(codec: ExportCodec = "h264") {
+  if (isProRes(codec)) return "prores_ks";
+  return codec === "hevc" ? "libx265" : "libx264";
+}
+
 /** D212: whether an export with these choices encodes with VideoToolbox on this ffmpeg. */
 export function usesHardware(quality: Quality, caps: Pick<Caps, "encoders">, choice: VideoChoice = {}): boolean {
   const codec = choice.codec ?? "h264";
@@ -71,7 +80,7 @@ export function usesHardware(quality: Quality, caps: Pick<Caps, "encoders">, cho
   // HEVC without libx265 has only VideoToolbox, whatever was asked.
   if (codec === "hevc" && !caps.encoders.has("libx265")) return true;
   if (codec === "h264" && !caps.encoders.has("libx264")) return true;
-  return (choice.encoder ?? defaultEncoder(quality)) === "hardware";
+  return !wantsSoftware(quality, choice);
 }
 
 /**

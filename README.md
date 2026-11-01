@@ -16,11 +16,9 @@ brew install --cask blazejkustra/tap/uncut
 
 The cask lives in the [blazejkustra/homebrew-tap](https://github.com/blazejkustra/homebrew-tap) tap and is updated by the release workflow when a release is published. The app updates itself after that, so there's no need for `brew upgrade` (`brew uninstall --zap --cask uncut` also removes its data).
 
-On first launch Uncut checks what it needs and shows how to install anything missing:
+ffmpeg and whisper.cpp come with the app. On first launch Uncut checks the rest and shows how to install anything missing:
 
 - **[Claude Code](https://claude.com/claude-code)**, installed and signed in. Uncut uses whatever sign-in Claude Code has: a Claude subscription, an API key, or Bedrock, Vertex AI or Foundry. Usage is billed the way your Claude Code usage normally is.
-- **ffmpeg**: `brew install ffmpeg`.
-- **whisper.cpp** (optional, for transcripts): `brew install whisper-cpp`.
 - **[Argent](https://www.npmjs.com/package/@swmansion/argent)** (optional, to record simulators, emulators and apps): `npx @swmansion/argent@latest init -y`.
 
 ## What it does
@@ -62,7 +60,7 @@ The server speaks plain http, so keep the port on loopback and reach it through 
 
 ## Development
 
-You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg.
+You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg. A build from source uses the ffmpeg and whisper-cli on your PATH, unless you run `pnpm tools:build` first (it needs cmake, meson and ninja).
 
 ```sh
 git clone https://github.com/blazejkustra/uncut
@@ -76,7 +74,8 @@ pnpm dev            # builds the media core, server and shell, opens the app
 pnpm test:fast      # typecheck and every test outside test/app
 pnpm test           # everything, including the packaged-app tests (run pnpm dist first)
 pnpm dist           # an ad-hoc signed .app and dmg in dist/
-pnpm dist:signed    # a Developer ID signed, notarized dmg in release/
+pnpm tools:build    # the LGPL ffmpeg, ffprobe and whisper-cli the app ships, in native/tools/out
+pnpm dist:signed    # a Developer ID signed, notarized dmg in release/ (needs pnpm tools:build)
 pnpm site:dev       # the website (site/, Next.js) at localhost:3000
 pnpm site:build     # its static export in site/out, ready for Cloudflare Pages (site/DEPLOY.txt)
 ```
@@ -115,4 +114,8 @@ Bug reports, fixes and plugins are welcome. See [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Not affiliated with Anthropic or OpenAI.
+MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons, tools and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Not affiliated with Anthropic or OpenAI.
+
+This software uses code of [FFmpeg](https://ffmpeg.org) licensed under the LGPLv2.1. Its source is attached to every [release](https://github.com/blazejkustra/uncut/releases), and `native/tools` is the recipe that builds it. Uncut's authors don't own FFmpeg.
+
+The app's own ffmpeg encodes with VideoToolbox. For the software encoders (libx264, libx265), which are GPL and can't ship with it, install a system ffmpeg (`brew install ffmpeg`) and Uncut uses it when an export asks for them.
