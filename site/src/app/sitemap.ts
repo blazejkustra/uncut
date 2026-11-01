@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const latest = posts[0] ? new Date(posts[0].updated ?? posts[0].date) : undefined;
   return [
     { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/pricing/`, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/blog/`, ...(latest ? { lastModified: latest } : {}), changeFrequency: "weekly", priority: 0.8 },
     ...posts.map((p) => ({
       url: `${SITE_URL}/blog/${p.slug}/`,
