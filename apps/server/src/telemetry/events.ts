@@ -60,7 +60,7 @@ export const EVENTS = {
     duration_ms: durationMs,
     output_ms: count(24 * 3600 * 1000),
     quality: oneOf("draft", "standard", "high"),
-    codec: oneOf("h264", "hevc"),
+    codec: oneOf("h264", "hevc", "prores422", "prores422hq", "prores4444"),
     encoder: oneOf("hardware", "software"),
     width: count(16384),
     height: count(16384),

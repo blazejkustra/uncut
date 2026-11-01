@@ -352,15 +352,18 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         Math.min(canvas.width, STILL_WIDTH),
       );
       const folder = join(v.dir, ".cache", "agent-images");
-      return yield* Effect.promise(async () => {
-        await mkdir(folder, { recursive: true });
-        const kept = new Map<number, string>();
-        for (const [i, shot] of shots.entries()) {
-          const name = stillName(review, frames[i]!);
-          await writeFile(join(folder, name), shot.jpeg);
-          kept.set(frames[i]!, name);
-        }
-        return kept;
+      return yield* Effect.tryPromise({
+        try: async () => {
+          await mkdir(folder, { recursive: true });
+          const kept = new Map<number, string>();
+          for (const [i, shot] of shots.entries()) {
+            const name = stillName(review, frames[i]!);
+            await writeFile(join(folder, name), shot.jpeg);
+            kept.set(frames[i]!, name);
+          }
+          return kept;
+        },
+        catch: (e) => e as Error,
       });
     }).pipe(
       Effect.catch((error) => {

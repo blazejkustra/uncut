@@ -43,8 +43,10 @@ export interface RoundVerdict {
 
 /** The scorecard's headline: what this round decided, and what changed since the last one. */
 export function roundVerdict(review: Review, previous: Review | undefined): RoundVerdict {
+  const status = statusOf(review);
+  if (status === "unresolved") return { title: `Stopped on round ${review.round}`, detail: criticLabel(status, review), turned: false };
   const blockers = review.blockers?.length ?? 0;
-  if (!review.passed) {
+  if (status !== "passed") {
     const open = blockers === 1 ? "1 blocker to fix" : blockers ? `${blockers} blockers to fix` : "Scores under the bar";
     return { title: `Failed round ${review.round}`, detail: open, turned: false };
   }

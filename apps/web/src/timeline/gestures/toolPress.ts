@@ -75,7 +75,7 @@ export function makeToolPress(ctx: ToolPressCtx) {
   /** Capture phase: under Blade a press on an item cuts it; under Hand any press (but the ruler's) drags the view. */
   const onPointerDownCapture = (e: React.PointerEvent) => {
     const tool = getTool();
-    if (e.button !== 0 || tool === "select" || onRuler(e.target)) return;
+    if (e.button !== 0 || tool === "select" || tool === "slip" || tool === "roll" || onRuler(e.target)) return;
     if (tool === "blade") {
       const at = bladeAt(e);
       const onItem = e.target instanceof Element && e.target.closest("[data-testid=timeline-item]");

@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 import { join, dirname } from "node:path";
 import type { Project, Media } from "@uncut/core";
 import { DENOISE_LAG_SAMPLES, stageFilter, type Caps, type ExportPlan } from "../exportPlan.ts";
+import { systemPath } from "../../app/bundledTools.ts";
+import { which } from "../../app/setup.ts";
 import { withoutApiKey } from "../../app/shellEnv.ts";
 import { localInputs } from "../../media/localInputs.ts";
 
@@ -85,6 +87,13 @@ export const denoiseLagOf = (bin: string) => {
   }
   return lag;
 };
+
+/** `bin` when it has `encoder`, else a system ffmpeg that does (the ffmpeg Uncut ships has no libx264 or libx265). */
+export async function ffmpegWith(bin: string, encoder: string) {
+  if ((await capsOf(bin)).encoders.has(encoder)) return bin;
+  const system = await which("ffmpeg", systemPath(process.env.PATH ?? ""));
+  return system && (await capsOf(system)).encoders.has(encoder) ? system : undefined;
+}
 
 /**
  * How much less CPU an export's helpers (ffmpeg, the rasteriser) get than the app (a nice value):
