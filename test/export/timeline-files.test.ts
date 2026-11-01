@@ -92,10 +92,7 @@ test("FCPXML into a project with items is refused and changes neither its media 
 
   const jobs = client.subscribe("media.jobs");
   const { jobId } = await client.ok("media.import", { paths: [other] });
-  await jobs.until(
-    (l: ReadonlyArray<{ id: string; phase: string }>) => l.some((j) => j.id === jobId && ["done", "failed"].includes(j.phase)),
-    60000,
-  );
+  await jobs.until((l: ReadonlyArray<{ id: string; phase: string }>) => l.some((j) => j.id === jobId && ["done", "failed"].includes(j.phase)), 60000);
   assert.match(JSON.stringify(jobs.values.at(-1)), /empty project/);
 
   const after = (await client.ok("project.open", { dir })).project as Project;
