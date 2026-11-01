@@ -326,6 +326,10 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       return `In sequence ${op.sequence}: ${op.ops.map((inner) => describeOp(inner, project, hint)).join("; ")}`;
     case "delete_sequence":
       return `Deleted sequence ${op.sequence}`;
+    case "slip_item":
+      return `Slipped ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"} in its media`;
+    case "roll_edit":
+      return `Rolled the cut after ${it(op.item)} ${secs(Math.abs(op.frames), fps)} ${op.frames > 0 ? "later" : "earlier"}`;
     case "update_item":
       return describeUpdate(op.item, op.set, project, it, fps);
     case "split_item":

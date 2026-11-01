@@ -4,6 +4,7 @@ export { loadModules, lookProblems, validateModule, validateOps, validateProject
 export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
 export { EditError, EditConflict, TurnDependency, authorOf, createSession, applyEdit, undoTurn, redoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, itemLabel, manualEditsNote } from "./timeline/edit-log.ts";
+export { agentLockProblem, locksNote } from "./timeline/locks.ts";
 export { canUnnest, flattenSequences, sequenceLength, sequencesNote } from "./timeline/nesting.ts";
 export { lockedSectionProblem, planLockRest, planMarkSection, planRemoveSection, sectionContent, sectionsNote, unlockProblem } from "./timeline/sections.ts";
 export {
@@ -180,6 +181,9 @@ export {
   clipFx,
   colourFn,
   colourLut,
+  lutTable,
+  MAX_PROJECT_LUTS,
+  parseCube,
   cubeText,
   DRAWN_FX,
   EFFECTS,
@@ -413,16 +417,23 @@ export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
 export {
   CODEC_NAMES,
+  codecExtension,
   defaultEncoder,
   exportFrameRates,
   exportShortSides,
   HARDWARE_H264_QUALITY,
+  isProRes,
   outputSize,
   presetBitrateMbps,
+  PRORES_CODECS,
   SOFTWARE_H264_CRF,
+  VIDEO_EXTENSION,
   type ExportEncoder,
 } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
+export { writeEdl } from "./timeline/interchange/edl.ts";
+export { writeFcpxml } from "./timeline/interchange/fcpxml.ts";
+export { planImportTimeline, readFcpxml, type TimelineFile } from "./timeline/interchange/readFcpxml.ts";
 export {
   decodeEnvelope,
   DEFAULT_PAUSE_MIN_S,

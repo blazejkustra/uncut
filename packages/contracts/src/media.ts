@@ -92,7 +92,7 @@ export const AGENT_IMAGE_PATH = "/media/agent-image";
 export const BRAND_FILE_PATH = "/media/brand";
 /** An attached image's file name in .cache/agent-images/: <turn id>-<n>.<ext>. */
 // D295: a storyboard still is <turn>-s<proposal>-<n>.jpg.
-export const AGENT_IMAGE_NAME = /^turn-[a-z0-9]+-[a-f0-9]{6}-(\d|s\d{1,2}-\d)\.(png|jpg|gif|webp)$/;
+export const AGENT_IMAGE_NAME = /^turn-[a-z0-9]+-[a-f0-9]{6}-(\d|s\d{1,2}-\d|c\d{1,4}-\d{1,7})\.(png|jpg|gif|webp)$/;
 // GET /media/sfx/<file>?token=…: a sound of the bundled sound-effects pack (D134), for the Sound
 // effects tab's preview; only the files core SFX_SOUNDS lists.
 export const SFX_FILE_PATH = "/media/sfx";

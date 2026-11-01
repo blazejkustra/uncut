@@ -40,14 +40,14 @@ export function reachableHost(host: string): string {
 
 export const urlHost = (host: string) => (host.includes(":") && !host.startsWith("[") ? `[${host}]` : host);
 
-/** What a headless server prints (on stderr) once it listens: where it is and how to pair with it. */
-export function pairingText(host: string, port: number, token: string, file: string | undefined): string {
-  const url = `http://${urlHost(reachableHost(host))}:${port}`;
+/** What a headless server prints (on stderr) once it listens. `publicUrl`: its address from outside, when a container or proxy hides the real one. */
+export function pairingText(host: string, port: number, token: string, file: string | undefined, publicUrl?: string): string {
+  const url = publicUrl || `http://${urlHost(reachableHost(host))}:${port}`;
   const link = `uncut://pair?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
   const loopback = host === "127.0.0.1" || host === "::1" || host === "localhost" || host.startsWith("127.");
   return [
     `Uncut server listening on ${url}`,
-    ...(loopback
+    ...(loopback || url.startsWith("https:")
       ? []
       : ["Warning: plain http, not encrypted. The token and your footage travel in clear on this network: use an SSH tunnel, Tailscale or an https proxy."]),
     `Token: ${token}${file ? ` (kept in ${file})` : ""}`,

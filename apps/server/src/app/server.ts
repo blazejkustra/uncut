@@ -58,7 +58,7 @@ const layerReadyLine = Layer.effectDiscard(
     };
     process.stdout.write(`${JSON.stringify(line)}\n`);
     // A headless server (D106) says where it is and how to pair, for whoever started it.
-    if (config.headless) process.stderr.write(pairingText(config.host, port, config.token, config.tokenFile));
+    if (config.headless) process.stderr.write(pairingText(config.host, port, config.token, config.tokenFile, config.publicUrl));
   }),
 );
 

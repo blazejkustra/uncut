@@ -4,6 +4,7 @@
 // only then injects gtag.js, so the CSP needs no 'unsafe-inline'.
 // The visitor's region comes from the uncut_region cookie the Pages Function sets
 // (site/functions/_middleware.ts); without it (local preview, function not deployed) they count as EU.
+import { DOWNLOAD_URL } from "./lib/site.ts";
 import { CONSENT_KEY, type ConsentChoice, GA_MEASUREMENT_ID, decide, parseConsent, regionFromCookies } from "./consent.ts";
 
 type Gtag = (...args: Array<unknown>) => void;
@@ -123,6 +124,13 @@ export function openSettings(): void {
   openBanner(true);
 }
 
+/** Only with consent, so a click never reaches gtag while it's denied or undecided. */
+function trackDownload(event: MouseEvent): void {
+  const onDownload = event.target instanceof Element && event.target.closest(`a[href="${DOWNLOAD_URL}"]`);
+  if (!onDownload || !decide(regionFromCookies(document.cookie), readStored(), id).load) return;
+  window.gtag?.("event", "download_click", { link_url: DOWNLOAD_URL, file_extension: "dmg" });
+}
+
 let started = false;
 export function start(): void {
   if (started) return;
@@ -143,6 +151,7 @@ export function start(): void {
   window.gtag("js", new Date());
   window.gtag("config", id);
 
+  document.addEventListener("click", trackDownload);
   if (d.load) loadTag();
   if (d.ask) openBanner(false);
 }

@@ -405,7 +405,7 @@ function blankReview(card: Element) {
   card.removeAttribute("data-passed");
   setText(card.querySelector(".card-head .grow"), "Review");
   setText(card.querySelector(".critic-name"), "Critic");
-  for (const el of card.querySelectorAll(".critic-line, .critic-time")) el.remove();
+  for (const el of card.querySelectorAll(".critic-line, .critic-time, .critic-verdict, .critic-rounds")) el.remove();
   const out = card.querySelector(".card-outcome");
   if (out) Object.assign(out, { className: "card-outcome", textContent: "Reviewing" });
   for (const row of card.querySelectorAll(".score")) {

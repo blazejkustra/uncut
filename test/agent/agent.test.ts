@@ -208,6 +208,8 @@ test("every op type works and keeps the promo valid", () => {
       },
     ],
     [{ op: "split_item", item: "sim-login", at: 180, newId: "sim-login-b" }],
+    [{ op: "roll_edit", item: "sim-login", frames: -5 }],
+    [{ op: "slip_item", item: "aud-music", frames: 5 }],
     [{ op: "move_item", item: "cmp-tap", start: 430 }],
     [{ op: "delete_item", item: "result-bg" }],
     [{ op: "set_transition", item: "sim-login", transition: null }],

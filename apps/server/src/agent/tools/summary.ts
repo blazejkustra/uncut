@@ -10,6 +10,7 @@ import {
   createSession,
   type Op,
   planCaptionEdit,
+  locksNote,
   sectionsNote,
   sequencesNote,
 } from "@uncut/core";
@@ -103,6 +104,12 @@ function projectNotes(project: Project) {
           sections: sectionsNote(project),
           sectionsNote:
             "Redo the NOT OK sections. A LOCKED section's picture and sound must stay exactly as they are: change things around it only without shifting it (replace_range or update_item, never a ripple trim, delete or insert on Main before it).",
+        }
+      : {}),
+    ...(locksNote(project)
+      ? {
+          locked: locksNote(project),
+          lockedNote: "Only the user unlocks these. Edits that change or move them are refused: work around them, or ask the user to unlock one.",
         }
       : {}),
     ...(sequencesNote(project)
@@ -295,3 +302,7 @@ export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>
   }
   return { ops: out };
 }
+
+/** The project as project_read's full detail shows it: a LUT's table is about 290 KB of base64 the agent can't use. */
+export const withoutLutTables = (project: Project) =>
+  project.luts ? { ...project, luts: project.luts.map(({ id, name, size }) => ({ id, name, size })) } : project;

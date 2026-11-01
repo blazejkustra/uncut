@@ -17,6 +17,7 @@ import { graphicDocument } from "@uncut/core";
 
 import { claudeEnv, shellAuthReady } from "../app/shellEnv.ts";
 import { which } from "../app/setup.ts";
+import { capsOf } from "../export/exporter/ffmpeg.ts";
 import { rasterizerCommand, startRasterizer } from "../export/rasterizer.ts";
 import { svgSize } from "../export/svg.ts";
 import { localInputs } from "../media/localInputs.ts";
@@ -103,6 +104,10 @@ const run = (bin: string, args: ReadonlyArray<string>, signal: AbortSignal) =>
       else reject(new Error(`ffmpeg failed: ${stderr.trim().split("\n").at(-1) ?? `code ${code}`}`));
     });
   });
+
+/** The ffmpeg Uncut ships has no libx264: VideoToolbox then. */
+const svgEncoder = async (ffmpeg: string) =>
+  (await capsOf(ffmpeg)).encoders.has("libx264") ? ["-c:v", "libx264", "-crf", "18"] : ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-q:v", "75"];
 
 /**
  * Turns markup into a file at outBase.{svg,png,mp4}: an SVG still is kept as it is; an HTML still
@@ -196,10 +201,7 @@ export async function renderMarkup(
         join(temp, "f%05d.png"),
         "-vf",
         `scale=${W}:${H},format=yuv420p`,
-        "-c:v",
-        "libx264",
-        "-crf",
-        "18",
+        ...(await svgEncoder(ffmpeg!)),
         "-movflags",
         "+faststart",
         path,

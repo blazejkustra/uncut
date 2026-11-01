@@ -7,6 +7,8 @@ imageAlt: "Uncut editing a travel film from drone footage: the title Day four ov
 ogImage: "/assets/img/blog/uncut-0-0-1-og.jpg"
 ---
 
+**Update, November 1, 2026:** Uncut has changed since this post. The storyboard is no longer approved: the agent plans the shots and carries on. Footage files stay on your Mac, while frames, transcripts and prompts go to your agent's provider.
+
 Today I'm releasing Uncut 0.0.1, the first public version. It's a video editor for the Mac with an agent built in. It's free, and the code is MIT licensed.
 
 I make a lot of short launch videos and devrel clips, and most of the work is the same every time: find the good takes, cut the pauses, add titles and captions, put music under it and make it fit. I wanted to describe the video once and watch the edit happen on a timeline I can still change by hand. That's Uncut.

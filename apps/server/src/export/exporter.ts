@@ -15,7 +15,16 @@ import { access, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
-import { motionBlurDefault, subtitleCues, subtitleLanguageTag, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
+import {
+  codecExtension,
+  isProRes,
+  motionBlurDefault,
+  subtitleCues,
+  subtitleLanguageTag,
+  targetOfChoice,
+  VIDEO_EXTENSION,
+  type SpeechEnvelope,
+} from "@uncut/core";
 import { type Media, type Project } from "@uncut/core";
 import { flattenSequences } from "@uncut/core/nesting";
 import { clampRange, sliceProject } from "@uncut/core/slice";
@@ -28,7 +37,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { type SheetLayout } from "../agent/agentFootage.ts";
 import { ServerConfig } from "../app/config.ts";
-import { outputSize, planExport, RASTER_CSS, canHevc, type ExportPlan } from "./exportPlan.ts";
+import { outputSize, planExport, RASTER_CSS, canHevc, canProRes, type ExportPlan } from "./exportPlan.ts";
 import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { overwritesImported } from "./subtitleSources.ts";
@@ -36,6 +45,7 @@ import { type RenderedFrame, type FrameSessionOptions, openFrameSession, renderF
 import type { Rehearsal } from "./exporter/rehearse.ts";
 import { type MediaFrame, mediaFramesWith, drawSheet } from "./exporter/sheets.ts";
 import { type SavedSubtitles, NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
+import { type SavedTimeline, saveTimelineFile } from "./exporter/timelineFile.ts";
 import { sweepStaleTemp, exists, plainFsError, canonical } from "./exporter/files.ts";
 import { capsOf, withPictureSizes } from "./exporter/ffmpeg.ts";
 import { projectGraphics } from "./exporter/graphics.ts";
@@ -111,6 +121,8 @@ export interface ExporterShape {
   readonly sheetImage: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
   /** D105: the open project's subtitles as a .srt or .vtt file (the format by the extension), no video. */
   readonly saveSubtitles: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedSubtitles, ExportError>;
+  /** The open project's timeline as a .fcpxml or .edl file (the format by the extension). */
+  readonly saveTimeline: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedTimeline, ExportError>;
   /** D246: the loudness gain the export would use for `targetLufs` (the preview's At target). */
   readonly previewLoudness: (targetLufs: number) => Effect.Effect<{ gainDb?: number; lufs?: number; cancelled?: boolean }, ExportError>;
   /** The open project's mix as the export plays it, measured whole and by role (undefined: nothing sounds). */
@@ -186,8 +198,11 @@ export const layer = Layer.effect(
         const project = sliced;
         const range = input.range ? clampRange(whole, input.range) : undefined;
         const output = input.output.trim();
-        if (!isAbsolute(output) || !/\.mp4$/i.test(output))
-          return yield* new ExportError({ reason: "invalid-path", message: "Choose where to save the video: a .mp4 file." });
+        const video = input.video ?? {};
+        const codec = video.codec ?? "h264";
+        const extension = codecExtension(codec);
+        if (!isAbsolute(output) || !output.toLowerCase().endsWith(`.${extension}`))
+          return yield* new ExportError({ reason: "invalid-path", message: `Choose where to save the video: a .${extension} file.` });
         const folder = yield* Effect.promise(() =>
           stat(dirname(output)).then(
             (s) => s.isDirectory(),
@@ -222,7 +237,7 @@ export const layer = Layer.effect(
         if (!input.overwrite && (yield* Effect.promise(() => exists(output))))
           return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
         // Subtitles (D105): a file next to the video (same name, .srt / .vtt) and / or a soft track.
-        const subtitlesFile = input.subtitles?.file ? output.replace(/\.mp4$/i, `.${input.subtitles.file}`) : undefined;
+        const subtitlesFile = input.subtitles?.file ? output.replace(VIDEO_EXTENSION, `.${input.subtitles.file}`) : undefined;
         if ((subtitlesFile || input.subtitles?.track) && !subtitleCues(project).length)
           return yield* new ExportError({ reason: "empty", message: NO_SUBTITLES });
         if (subtitlesFile) {
@@ -240,18 +255,23 @@ export const layer = Layer.effect(
         if (!(yield* Effect.promise(ffmpegBin)))
           return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
         // F4 (D171): H.264 unless HEVC is asked for; the Advanced size, rate and bitrate when given.
-        const video = input.video ?? {};
-        const codec = video.codec ?? "h264";
         const bad = (x: number | undefined, lo: number, hi: number) => x !== undefined && !(Number.isFinite(x) && x >= lo && x <= hi);
         if (bad(video.bitrateMbps, 0.1, 500) || bad(video.shortSide, 16, 8192) || bad(video.fps, 1, 120))
           return yield* new ExportError({
             reason: "invalid-settings",
             message: "Those video settings can't be used: a bitrate of 0.1 to 500 Mb/s, a size of 16 to 8192 px and 1 to 120 fps.",
           });
+        if (video.alpha && codec !== "prores4444")
+          return yield* new ExportError({
+            reason: "invalid-settings",
+            message: "A transparent background needs ProRes 4444. Choose it, or turn transparency off.",
+          });
         const size = outputSize(project.canvas, input.quality, video.shortSide);
         const bin = (yield* Effect.promise(ffmpegBin))!;
         if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin))))
           return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
+        if (isProRes(codec) && !canProRes(yield* Effect.promise(() => capsOf(bin))))
+          return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make ProRes videos. Choose H.264." });
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
         // D198: graphics with the fonts and logos they name; the kit's faces for texts and components.
         const { graphics, fonts } = yield* Effect.promise(() => projectGraphics(config, dir, project));
@@ -277,6 +297,7 @@ export const layer = Layer.effect(
           codec,
           ...(video.encoder !== undefined ? { encoder: video.encoder } : {}),
           ...(video.bitrateMbps !== undefined ? { bitrateMbps: video.bitrateMbps } : {}),
+          ...(video.alpha ? { alpha: true } : {}),
           loudness: input.loudness,
           ...(targetLufs !== undefined ? { targetLufs } : {}),
           phase: "queued",
@@ -404,6 +425,14 @@ export const layer = Layer.effect(
         return saved;
       });
 
+    const saveTimeline = ({ output, overwrite }: { readonly output: string; readonly overwrite?: boolean | undefined }) =>
+      Effect.gen(function* () {
+        const { project, mediaPath } = yield* current;
+        const saved = yield* Effect.promise(() => saveTimelineFile(project, mediaPath, output, overwrite === true));
+        if ("reason" in saved) return yield* new ExportError({ reason: saved.reason, message: saved.message });
+        return saved;
+      });
+
     const measureLoudness = makePreviewLoudness();
     const previewLoudness = (targetLufs: number) =>
       Effect.gen(function* () {
@@ -451,6 +480,7 @@ export const layer = Layer.effect(
       mediaFrames,
       sheetImage,
       saveSubtitles,
+      saveTimeline,
       previewLoudness,
       measureMix,
       jpegPixels: pixelsOf,

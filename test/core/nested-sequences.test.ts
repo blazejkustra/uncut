@@ -7,6 +7,7 @@ import {
   applyEdit,
   canUnnest,
   createSession,
+  EditConflict,
   EditError,
   flattenSequences,
   layout,
@@ -18,6 +19,7 @@ import {
   type Op,
   type Project,
 } from "../../packages/core/src/index.ts";
+import { takenIds } from "../../packages/core/src/timeline/arrange/place.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const probe = { frames: 900, fps: 30, width: 1280, height: 720, hasAudio: true };
@@ -188,4 +190,89 @@ test("trimming a sequence item from the start plays on from where it was", () =>
   const nested = edit([{ op: "trim_item", item: "n1", edge: "start", frames: 30 }], edit([nest]));
   assert.equal(nested.tracks[0]!.items[1]!.in, 30);
   assert.equal(flattenSequences(nested).tracks[0]!.items.find((i) => i.id === "n1--c2")!.in, 230);
+});
+
+const lockCode = (run: () => unknown) => {
+  try {
+    run();
+  } catch (error) {
+    assert.ok(error instanceof EditError);
+    return (error.details[0] as { code?: string } | undefined)?.code;
+  }
+  return "no refusal";
+};
+const inSequence: Op = { op: "edit_sequence", sequence: "seq", ops: [{ op: "trim_item", item: "c2", edge: "end", frames: 5 }] };
+const nested = edit([nest]);
+const withLock = (project: Project, set: (main: Project["tracks"][number]) => Project["tracks"][number]) => ({
+  ...project,
+  tracks: project.tracks.map((t) => (t.role === "main" ? set(t) : t)),
+});
+const lockItem = (project: Project, id: string) => withLock(project, (t) => ({ ...t, items: t.items.map((i) => (i.id === id ? { ...i, locked: true } : i)) }));
+
+test("edit_sequence is refused with the locked code when the item playing it or its track is locked", () => {
+  assert.equal(
+    lockCode(() => edit([inSequence], lockItem(nested, "n1"))),
+    "locked",
+  );
+  assert.equal(
+    lockCode(() =>
+      edit(
+        [inSequence],
+        withLock(nested, (t) => ({ ...t, locked: true })),
+      ),
+    ),
+    "locked",
+  );
+  assert.doesNotThrow(() => edit([inSequence, { op: "trim_item", item: "n1", edge: "end", frames: 5 }], nested));
+  assert.throws(() => applyEdit(createSession(lockItem(nested, "n1")), { actor: "user", ops: [inSequence] }), EditError);
+});
+
+test("a locked sequence item keeps what it plays: a relink of a file inside it is refused", () => {
+  const relink: Op = { op: "update_media", media: "m-a", set: { path: "/x/other.mp4" } };
+  assert.equal(
+    lockCode(() => edit([relink], lockItem(nested, "n1"))),
+    "locked",
+  );
+  assert.doesNotThrow(() => edit([relink], nested));
+});
+
+test("a locked sequence item keeps what it plays through a sequence nested in it", () => {
+  const [seq] = nested.sequences!;
+  const [c2, c3] = seq!.tracks[0]!.items;
+  const two: Project = {
+    ...nested,
+    sequences: [
+      { ...seq!, tracks: [{ ...seq!.tracks[0]!, items: [c2!, { id: "n2", type: "sequence", sequence: "deep", duration: c3!.duration }] }] },
+      { id: "deep", name: "Deep", tracks: [{ id: "deep-main", kind: "video", role: "main", name: "Main", items: [{ ...c3!, gap: undefined }] }] },
+    ],
+  };
+  const deep: Op = { op: "edit_sequence", sequence: "deep", ops: [{ op: "trim_item", item: "c3", edge: "end", frames: 5 }] };
+  assert.equal(
+    lockCode(() => edit([deep], lockItem(two, "n1"))),
+    "locked",
+  );
+});
+
+test("edit_sequence takes slip_item and roll_edit", () => {
+  const slipped = edit([{ op: "edit_sequence", sequence: "seq", ops: [{ op: "slip_item", item: "c3", frames: 10 }] }], nested);
+  assert.equal(slipped.sequences![0]!.tracks[0]!.items.find((i) => i.id === "c3")!.in, 410);
+  const rolled = edit([{ op: "edit_sequence", sequence: "seq", ops: [{ op: "roll_edit", item: "c2", frames: 5 }] }], nested);
+  assert.deepEqual(
+    rolled.sequences![0]!.tracks[0]!.items.map((i) => i.duration),
+    [105, 95],
+  );
+});
+
+test("nest_items conflicts with a newer edit of Main by its real track id", () => {
+  const session = createSession({ ...base, tracks: base.tracks.map((t) => (t.role === "main" ? { ...t, id: "spine" } : t)) });
+  const after = applyEdit(session, { actor: "user", ops: [{ op: "update_track", track: "spine", set: { name: "Spine" } }] });
+  assert.throws(
+    () => applyEdit(after, { actor: "agent", baseRevision: 0, ops: [nest] }),
+    (error: Error) => error instanceof EditConflict && [...error.by.keys()].includes("track:spine"),
+  );
+});
+
+test("the id helpers see into sequences", () => {
+  const ids = takenIds(nested);
+  for (const id of ["seq", "seq-main", "c2", "c3", "n1"]) assert.ok(ids.has(id), id);
 });

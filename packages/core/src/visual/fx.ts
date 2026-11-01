@@ -37,6 +37,7 @@ export {
 } from "./fx/defs.ts";
 export type { AdjustKey, Adjust, AdjustInfo, Rgb3, Curve, LookDef, LookInfo, EffectParam, EffectGroup, EffectInfo } from "./fx/defs.ts";
 export { colourFn, colourLut, cubeText, lutAt, posterize } from "./fx/colour.ts";
+export { lutTable, MAX_PROJECT_LUTS, parseCube } from "./fx/cube.ts";
 export type { ColourSpec, ColourLut } from "./fx/colour.ts";
 export {
   lookDefOf,

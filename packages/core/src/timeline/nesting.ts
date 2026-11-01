@@ -43,6 +43,13 @@ function instance(project: Project, item: Item, through: ReadonlySet<Id>): Proje
   return "problem" in sliced ? undefined : sliced;
 }
 
+/** What a sequence item plays through every level, with each clip's file, in a form two versions can be compared in. */
+export function sequenceContent(project: Project, item: Item): string {
+  const played = instance(project, item, new Set());
+  const fileOf = (id: Id | undefined) => project.media.find((m) => m.id === id)?.path;
+  return JSON.stringify(played?.tracks.map((t) => ({ ...t, items: t.items.map((i) => ({ ...i, file: fileOf(i.media) })) })));
+}
+
 /** The project with every sequence item played out on the timeline: its main items in Main's place, its other tracks next to Main. */
 export function flattenSequences(project: Project, through: ReadonlySet<Id> = new Set()): Project {
   if (project.sequences === undefined) return project;
