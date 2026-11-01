@@ -123,7 +123,8 @@ test("export_video's tricks: symlinked and case-varied folders, `..`, odd file n
   assert.equal(exportFileName("../../Library/x"), "-..-Library-x.mp4");
   assert.equal(exportFileName("a\nb\u0000c"), "abc.mp4");
   assert.equal(exportFileName("Clip.app"), "Clip.app.mp4");
-  assert.equal(exportFileName("Clip.mov"), "Clip.mov.mp4");
+  assert.equal(exportFileName("Clip.mov"), "Clip.mp4");
+  assert.equal(exportFileName("Clip.mp4", "mov"), "Clip.mov");
   const long = exportFileName("é".repeat(300));
   assert.ok(Buffer.byteLength(long) <= 204 && long.endsWith(".mp4"), "clamped on a character, not a byte");
   // A dangling symlink at the target counts as taken: the export never goes through it.
@@ -381,10 +382,22 @@ test('export_video: a dangling link at the target gets " 2", at most a few expor
   assert.deepEqual(cancelled, ["j"]);
 });
 
+test("export_video: a ProRes codec saves a .mov, and transparency needs ProRes 4444", async () => {
+  process.env.HOME = home;
+  const h = harness({ prompt: "lets export to desktop" });
+  const out = await h.call({ folder: "Desktop", name: "Master", codec: "prores4444", transparent: true });
+  assert.equal(out.isError, false, out.text);
+  assert.equal(h.started.at(-1)!.output, join(home, "Desktop", "Master.mov"));
+  assert.deepEqual(h.started.at(-1)!.video, { codec: "prores4444", alpha: true });
+  assert.equal((await h.call({ folder: "Desktop", codec: "prores" })).isError, true);
+  assert.equal((await h.call({ folder: "Desktop", codec: "prores422", transparent: true })).isError, true);
+});
+
 test("export_video: the tool, its labels and the prompt line", () => {
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("export_video"));
   const tool = mcpTools().find((t) => t.name === "export_video")!;
   assert.deepEqual(Object.keys((tool.inputSchema as any).properties).sort(), [
+    "codec",
     "folder",
     "fps",
     "loudness",
@@ -393,11 +406,12 @@ test("export_video: the tool, its labels and the prompt line", () => {
     "preset",
     "range",
     "shortSide",
+    "transparent",
   ]);
   assert.match(tool.description, /only when the user asks/);
   assert.equal(stepLabel("export_video", { folder: "Desktop" }), "Exported the video to Desktop");
   assert.equal(doingLabel("export_video", {}), "Exporting the video");
-  assert.match(SYSTEM_PROMPT, /export_video saves the \.mp4 when asked for an export, never unasked/);
+  assert.match(SYSTEM_PROMPT, /export_video saves the video when asked for an export, never unasked/);
 });
 
 // ---- the bundled server ----
