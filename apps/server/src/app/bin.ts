@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import { resolve } from "node:path";
 
 import { isLoopbackHost } from "./auth.ts";
+import { bundledToolsBin } from "./bundledTools.ts";
 import { dataDirOf, readConfig, readLaunchOptions, type LaunchOptions } from "./config.ts";
 import { loadOrCreateToken } from "./pairing.ts";
 import { makeServerLayer, openSockets } from "./server.ts";
@@ -42,6 +43,10 @@ holdClaudeAuth("launch", { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, ANT
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 
+// The tools the app ships come first on PATH, whatever PATH turns out to be.
+const toolsBin = bundledToolsBin();
+process.env.PATH = mergePath(toolsBin, process.env.PATH);
+
 // A Finder-launched app has launchd's bare PATH. Asking the login shell for the real one takes
 // a second or more with a heavy rc file, so don't wait for it: start with the usual install
 // folders added, and swap in the shell's PATH when it arrives. Detection (setup.check) waits
@@ -56,7 +61,7 @@ const shellReady =
         // rejected promise can never be cached or go unhandled.
         return resolveShellEnvironment(original)
           .then((shell) => {
-            process.env.PATH = shell.path;
+            process.env.PATH = mergePath(toolsBin, shell.path);
             holdClaudeAuth("shell", shell.auth);
             return shell;
           })

@@ -50,7 +50,6 @@ const OWN = [
   "make-brand-kit",
   "loudness-rules",
   "echo-cleanup",
-  "vertical-reframe",
   "broll-over-dialogue",
   "cut-takes",
   "motion-film",

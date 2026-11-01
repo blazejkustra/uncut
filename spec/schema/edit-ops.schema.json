@@ -33,6 +33,20 @@
         },
         {
           "type": "object",
+          "description": "Slip a clip or sound: it stays where it is, as long as it is, and plays other frames of its media (frames > 0 later ones, at the item's speed). Refused past either end of the media or the handles a transition needs. Nothing else moves.",
+          "required": ["op", "item", "frames"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "slip_item" }, "item": { "$ref": "#/$defs/id" }, "frames": { "type": "integer", "not": { "const": 0 } } }
+        },
+        {
+          "type": "object",
+          "description": "Roll the cut after an item: the cut moves frames later (negative: earlier), the item gains what the one right after it loses, and nothing else moves, so the length and sync of the edit stay. The items must touch (no gap). Refused when either runs out of media.",
+          "required": ["op", "item", "frames"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "roll_edit" }, "item": { "$ref": "#/$defs/id" }, "frames": { "type": "integer", "not": { "const": 0 } } }
+        },
+        {
+          "type": "object",
           "description": "Split an item at a frame counted from the item's start. The second half gets newId.",
           "required": ["op", "item", "at", "newId"],
           "additionalProperties": false,

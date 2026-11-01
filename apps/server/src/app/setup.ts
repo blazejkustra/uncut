@@ -13,6 +13,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { isBundledTool } from "./bundledTools.ts";
 import { ServerConfig } from "./config.ts";
 import { runProbe, type ProbeResult } from "../media/probe.ts";
 import { apiKeySource, claudeEnv, codexEnv, withoutApiKey } from "./shellEnv.ts";
@@ -21,6 +22,7 @@ import { apiKeySource, claudeEnv, codexEnv, withoutApiKey } from "./shellEnv.ts"
 // binary) can take seconds; a hung one still gives up quickly enough to show an error.
 const PROBE_TIMEOUT_MS = 6000;
 const AUTH_TIMEOUT_MS = 5000;
+const FFMPEG_INCLUDED = "Included with Uncut. It encodes with VideoToolbox; a Homebrew ffmpeg adds the software encoders.";
 
 export interface SetupShape {
   readonly check: Effect.Effect<ReadonlyArray<SetupCheck>>;
@@ -284,10 +286,11 @@ export const layer = Layer.effect(
       const versionRun = await run(ffmpegPath, ["-version"]);
       if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(ffmpegPath, versionRun), ffmpegPath);
       const version = versionToken(/ffmpeg version \S+/.exec(versionRun.stdout)?.[0] ?? "");
-      return { ...base, status: "ready", path: ffmpegPath, ...(version ? { version } : {}), detail: "ffmpeg and ffprobe found." };
+      const detail = isBundledTool(ffmpegPath) ? FFMPEG_INCLUDED : "ffmpeg and ffprobe found.";
+      return { ...base, status: "ready", path: ffmpegPath, ...(version ? { version } : {}), detail };
     });
 
-    // whisper.cpp (Homebrew's whisper-cpp) transcribes speech on this Mac (D68). Its model is
+    // whisper.cpp transcribes speech on this Mac (D68): the app's own, else Homebrew's whisper-cpp. Its model is
     // shown and downloaded beside this row (transcription.state), not checked here.
     const whisper = isolated({ id: "whisper", name: "whisper.cpp", optional: true }, async () => {
       const base = { id: "whisper", name: "whisper.cpp", optional: true } as const;
@@ -303,7 +306,8 @@ export const layer = Layer.effect(
       const versionRun = await run(bin, ["--version"]);
       if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(bin, versionRun), bin);
       const version = versionToken(versionRun.stdout);
-      return { ...base, status: "ready", path: bin, ...(version ? { version } : {}), detail: "Transcribes speech on this Mac." };
+      const detail = isBundledTool(bin) ? "Included with Uncut. Transcribes speech on this Mac." : "Transcribes speech on this Mac.";
+      return { ...base, status: "ready", path: bin, ...(version ? { version } : {}), detail };
     });
 
     return Setup.of({

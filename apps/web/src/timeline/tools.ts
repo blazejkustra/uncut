@@ -2,18 +2,20 @@
 // select/move/trim; Blade (C) cuts the item under the pointer where it's pressed (snapped like a
 // move); Hand (H) drags the timeline's view. A tool key pressed and let go picks that tool; held
 // down (longer than HOLD_MS, or used while down) it picks it only until it's let go, then the
-// tool before it comes back. Not remembered between launches: the app always opens on Select.
+// tool before it comes back. Slip and Roll drag an item's media or the cut nearest the press. Not remembered between launches: the app always opens on Select.
 import { useSyncExternalStore } from "react";
 
 import { keysOf, type ActionId } from "../editor/keymap.ts";
 
-export type Tool = "select" | "blade" | "hand";
+export type Tool = "select" | "blade" | "hand" | "slip" | "roll";
 
 // Their keys are the keymap's (#78, D257: V, C, H by default; a preset or the user can change them).
 export const TOOLS: ReadonlyArray<{ readonly id: Tool; readonly action: ActionId; readonly label: string }> = [
   { id: "select", action: "toolSelect", label: "Select: click to select, drag to move or trim" },
   { id: "blade", action: "toolBlade", label: "Blade: click an item to cut it there" },
   { id: "hand", action: "toolHand", label: "Hand: drag to scroll the timeline" },
+  { id: "slip", action: "toolSlip", label: "Slip: drag a clip to play other frames in the same place" },
+  { id: "roll", action: "toolRoll", label: "Roll: drag near a cut to move it, nothing else shifts" },
 ];
 
 /** The tool a single key (e.key, any case) picks under the current keymap, if any. */
