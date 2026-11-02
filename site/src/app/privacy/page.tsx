@@ -88,14 +88,14 @@ export default function Privacy() {
           <p>
             This website (uncut.video) uses Google Analytics 4 to see how visitors find and use it. Google Analytics is provided by Google Ireland Limited,
             which processes the data for us under Google's terms (Google is also a controller for some uses, as its terms describe). It collects the pages you
-            view, clicks on the download buttons, clicks on the interest buttons and the email link on the pricing page (which planned feature you clicked, or
-            that it was the email link), where you came from, your approximate location (country and city, from your IP address, which Google Analytics doesn't
-            store), your device, browser and screen size, and how long you stay. It sets the cookies <code>_ga</code> and <code>_ga_&lt;id&gt;</code>, which
-            hold a random identifier and last up to 2 years. Data in Google Analytics is kept for 14 months and then deleted. Google may process it outside the
-            European Economic Area under the EU-U.S. Data Privacy Framework or the European Commission's standard contractual clauses.
+            view, clicks on the download buttons, clicks on the pricing page's Get Pro button, on a feature you pick in its dialog (which one) and on its email
+            link, where you came from, your approximate location (country and city, from your IP address, which Google Analytics doesn't store), your device,
+            browser and screen size, and how long you stay. It sets the cookies <code>_ga</code> and <code>_ga_&lt;id&gt;</code>, which hold a random identifier
+            and last up to 2 years. Data in Google Analytics is kept for 14 months and then deleted. Google may process it outside the European Economic Area
+            under the EU-U.S. Data Privacy Framework or the European Commission's standard contractual clauses.
           </p>
           <p>
-            If you email us from the pricing page, we see your address and your message and use them only to answer you and to tell you when Uncut Pro exists.
+            If you email us from the pricing page, we see your address and your message and use them only to answer you and to tell you when Uncut Pro launches.
           </p>
           <p>
             If you visit from the European Economic Area, the United Kingdom or Switzerland (or we can't tell where you are), Google Analytics doesn't load at

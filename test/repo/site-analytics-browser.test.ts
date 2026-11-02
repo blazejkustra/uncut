@@ -267,51 +267,60 @@ const proInterest = (p: Page) =>
       .filter((a) => a[1] === "pro_interest")
       .map((a) => (a[2] as { feature: string }).feature),
   );
-const clickIdea = (p: Page, index: number) => p.$$eval(".pro-btn", (buttons, i) => (buttons[i] as HTMLElement).click(), index);
+const openGetPro = (p: Page) => p.$eval(".get-pro", (b) => (b as HTMLElement).click());
+const pickFeature = (p: Page, index: number) => p.$$eval(".pro-chip", (chips, i) => (chips[i] as HTMLElement).click(), index);
 const clickEmail = (p: Page) =>
-  p.$eval('a[href^="mailto:"]', (a) => {
+  p.$eval('.pro-dialog a[href^="mailto:"]', (a) => {
     a.addEventListener("click", (e) => e.preventDefault());
     (a as HTMLElement).click();
   });
-const notedCount = (p: Page) => p.$$eval('.pro-btn[aria-disabled="true"]', (buttons) => buttons.length);
-const pointedToEmail = (p: Page) => p.$$eval(".pro-action .pro-note", (notes) => notes.filter((n) => n.textContent?.includes("email link")).length);
+const dialogOpen = (p: Page) => p.$eval(".pro-dialog", (d) => (d as HTMLDialogElement).open);
+const focusedIsGetPro = (p: Page) => p.evaluate(() => document.activeElement?.classList.contains("get-pro") ?? false);
+const mailto = (p: Page) => p.$eval('.pro-dialog a[href^="mailto:"]', (a) => (a as HTMLAnchorElement).href);
 const CONTACT = ["kustrablazej", "gmail.com"].join("@");
+const SUBJECT = "subject=Email%20me%20when%20Uncut%20Pro%20launches";
 
-test("Pro interest: events outside the EU and after Accept, none undecided or after Reject; a button confirms only what was sent", { skip }, async () => {
+test("Get Pro: the dialog opens, takes a pick, closes on Escape and returns focus; events only with consent", { skip }, async () => {
   const us = await visitor("US");
   await us.page.goto(`${base}/pricing/`, { waitUntil: "networkidle0" });
-  assert.equal(
-    await us.page.$eval('a[href^="mailto:"]', (a) => (a as HTMLAnchorElement).href),
-    `mailto:${CONTACT}?subject=Email%20me%20when%20Uncut%20Pro%20exists`,
-  );
-  await clickIdea(us.page, 0);
-  await clickIdea(us.page, 0);
+  assert.equal(await us.page.$$eval(".pricing .pro-note, .pricing [role=status]", (n) => n.length), 0, "no notes under the buttons");
+  await openGetPro(us.page);
+  assert.equal(await dialogOpen(us.page), true);
+  assert.equal(await mailto(us.page), `mailto:${CONTACT}?${SUBJECT}`);
+  await pickFeature(us.page, 0);
+  await pickFeature(us.page, 0);
+  assert.equal(await mailto(us.page), `mailto:${CONTACT}?${SUBJECT}&body=The%20feature%20I%20would%20use%20most%3A%20Review%20links`);
+  assert.equal(await us.page.$$eval('.pro-chip[aria-pressed="true"]', (c) => c.length), 1);
   await clickEmail(us.page);
-  assert.deepEqual(await proInterest(us.page), ["review_links", "email"]);
-  await us.page.evaluate(() => delete window.gtag);
-  await clickIdea(us.page, 1);
-  assert.equal(await notedCount(us.page), 1, "no confirmation with gtag blocked");
-  assert.equal(await pointedToEmail(us.page), 1, "the email link instead");
+  assert.deepEqual(await proInterest(us.page), ["cta", "review_links", "email"]);
+  assert.equal(await us.page.$$eval(".pro-dialog", (d) => d[0]!.textContent?.includes("Noted")), false, "no confirmation text");
+  await us.page.keyboard.press("Escape");
+  assert.equal(await dialogOpen(us.page), false, "Escape closes it");
+  await settle(us.page);
+  assert.equal(await focusedIsGetPro(us.page), true, "focus returns to Get Pro");
   await us.page.browserContext().close();
 
   const eu = await visitor("PL");
   await eu.page.goto(`${base}/pricing/`, { waitUntil: "networkidle0" });
   await settle(eu.page);
-  await clickIdea(eu.page, 0);
+  await openGetPro(eu.page);
+  await pickFeature(eu.page, 1);
   await clickEmail(eu.page);
   assert.deepEqual(await proInterest(eu.page), [], "undecided");
+  await eu.page.keyboard.press("Escape");
   await eu.page.click(".consent-btn:first-child");
-  await clickIdea(eu.page, 1);
-  await clickEmail(eu.page);
+  await openGetPro(eu.page);
+  await pickFeature(eu.page, 2);
+  assert.equal(await dialogOpen(eu.page), true, "the dialog works without consent");
   assert.deepEqual(await proInterest(eu.page), [], "rejected");
-  assert.equal(await notedCount(eu.page), 0, "no confirmation without consent");
-  assert.equal(await pointedToEmail(eu.page), 2, "the email link instead");
+  await eu.page.click(".pro-dialog-actions button");
+  assert.equal(await dialogOpen(eu.page), false, "Close closes it");
   await eu.page.click("footer [data-cookie-settings]");
   await settle(eu.page);
   await eu.page.click(".consent-btn:last-child");
-  await clickIdea(eu.page, 2);
-  assert.deepEqual(await proInterest(eu.page), ["visual_search"], "accepted");
-  assert.equal(await notedCount(eu.page), 1, "confirms what was sent");
+  await openGetPro(eu.page);
+  await pickFeature(eu.page, 3);
+  assert.deepEqual(await proInterest(eu.page), ["cta", "cloud_render"], "accepted");
   await eu.page.browserContext().close();
 });
 

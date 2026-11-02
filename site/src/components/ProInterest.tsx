@@ -1,38 +1,68 @@
 "use client";
-import { useState } from "react";
+import { type MouseEvent, useRef, useState } from "react";
 import { trackProInterest } from "../analytics.ts";
 
-const NOTES = {
-  idle: "Not built yet. No charge: a click only tells us what to build.",
-  noted: "Nothing was charged. This helps us decide what to build.",
-  unsent: "Analytics are off, so this click wasn't recorded. Use the email link below to tell us.",
-};
+export type ProFeature = { feature: string; title: string };
 
-export function InterestButton({ feature, name }: { feature: string; name: string }) {
-  const [state, setState] = useState<keyof typeof NOTES>("idle");
-  const noted = state === "noted";
+function mailtoFor(email: string, choice: ProFeature | undefined): string {
+  const params = [`subject=${encodeURIComponent("Email me when Uncut Pro launches")}`];
+  if (choice) params.push(`body=${encodeURIComponent(`The feature I would use most: ${choice.title}`)}`);
+  return `mailto:${email}?${params.join("&")}`;
+}
 
-  function register() {
-    if (noted) return;
-    setState(trackProInterest(feature) ? "noted" : "unsent");
+export function GetPro({ email, features }: { email: string; features: Array<ProFeature> }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [choice, setChoice] = useState<ProFeature>();
+
+  function open() {
+    trackProInterest("cta");
+    dialog.current?.showModal();
+  }
+
+  function close() {
+    dialog.current?.close();
+  }
+
+  function choose(feature: ProFeature) {
+    if (feature === choice) return;
+    setChoice(feature);
+    trackProInterest(feature.feature);
+  }
+
+  function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
+    if (event.target === dialog.current) close();
   }
 
   return (
-    <div className="pro-action">
-      <button type="button" className="btn pro-btn" aria-disabled={noted} aria-label={noted ? undefined : `I'd pay for ${name}`} onClick={register}>
-        {noted ? "Noted, thanks" : "I'd pay for this"}
+    <>
+      <button ref={trigger} type="button" className="btn primary get-pro" aria-haspopup="dialog" onClick={open}>
+        Get Pro
       </button>
-      <p className="pro-note" role="status">
-        {NOTES[state]}
-      </p>
-    </div>
-  );
-}
-
-export function EmailLink({ href }: { href: string }) {
-  return (
-    <a className="btn primary" href={href} onClick={() => trackProInterest("email")}>
-      Email me when Pro exists
-    </a>
+      <dialog ref={dialog} className="pro-dialog" aria-labelledby="pro-dialog-title" onClose={() => trigger.current?.focus()} onClick={closeOnBackdrop}>
+        <div className="pro-dialog-body">
+          <h2 id="pro-dialog-title">Uncut Pro is coming soon</h2>
+          <p>Pro is not available yet. We are building it now and can email you the day it launches.</p>
+          <p className="pro-pick-label" id="pro-pick-label">
+            Which feature would you use most?
+          </p>
+          <div className="pro-pick" role="group" aria-labelledby="pro-pick-label">
+            {features.map((f) => (
+              <button key={f.feature} type="button" className="pro-chip" aria-pressed={f === choice} onClick={() => choose(f)}>
+                {f.title}
+              </button>
+            ))}
+          </div>
+          <div className="pro-dialog-actions">
+            <a className="btn primary" href={mailtoFor(email, choice)} onClick={() => trackProInterest("email")}>
+              Email me when it launches
+            </a>
+            <button type="button" className="btn" onClick={close}>
+              Close
+            </button>
+          </div>
+        </div>
+      </dialog>
+    </>
   );
 }
