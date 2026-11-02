@@ -69,7 +69,9 @@ export { untaggedFilter, sourceFramePick, frameLookup, cornerMask, boxGraph, vid
 export type { CommandOptions } from "./plan/video.ts";
 export { planLuts, fxGraph } from "./plan/fx.ts";
 export { keyGraph, maskGraph, blendGraph } from "./plan/matte.ts";
-export { exportCommand, silentFailure } from "./plan/command.ts";
+export { exportCommand, muxCommand, silentFailure } from "./plan/command.ts";
+export { CHUNK_LAYERS, chunkLayers, chunkRanges, planInRange } from "./plan/chunks.ts";
+export type { FrameRange } from "./plan/chunks.ts";
 export {
   loudnessCommand,
   parseEbur128,
