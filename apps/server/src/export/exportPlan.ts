@@ -68,7 +68,9 @@ export type { AudioGraph, AudioOptions } from "./plan/audio.ts";
 export { untaggedFilter, sourceFramePick, frameLookup, cornerMask, boxGraph, videoSource, shaderSourceArgs } from "./plan/video.ts";
 export type { CommandOptions } from "./plan/video.ts";
 export { planLuts, fxGraph } from "./plan/fx.ts";
-export { exportCommand, silentFailure } from "./plan/command.ts";
+export { exportCommand, muxCommand, silentFailure } from "./plan/command.ts";
+export { CHUNK_LAYERS, chunkLayers, chunkRanges, planInRange } from "./plan/chunks.ts";
+export type { FrameRange } from "./plan/chunks.ts";
 export {
   loudnessCommand,
   parseEbur128,

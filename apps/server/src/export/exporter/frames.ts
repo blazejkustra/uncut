@@ -51,7 +51,7 @@ import {
   boxGraph,
 } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
-import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
+import { withPictureSizes, capsOf, untaggedFiles, run, guardedRun, ffmpegError, boundedDecoders, capHardwareDecodes } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
 import { graphicMediaSource } from "../graphicMedia.ts";
@@ -456,7 +456,7 @@ export async function openFrameSession(
       }
       graph.push(`[${base}]format=yuvj420p[out]`);
       const file = join(temp, `w${W}-frame-${f}.jpg`);
-      const r = await run(
+      const r = await guardedRun(
         bin,
         [
           "-hide_banner",
@@ -464,7 +464,7 @@ export async function openFrameSession(
           "-y",
           "-v",
           "error",
-          ...inputs,
+          ...boundedDecoders(capHardwareDecodes(inputs)),
           "-filter_complex",
           graph.join(";"),
           "-map",

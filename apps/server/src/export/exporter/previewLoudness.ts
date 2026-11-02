@@ -8,7 +8,7 @@ import type { Media, Project, SpeechEnvelope } from "@uncut/core";
 import { flattenSequences } from "@uncut/core/nesting";
 
 import { graphFileArgs, loudnessGain, planExport } from "../exportPlan.ts";
-import { capsOf, run, ffmpegError, Cancelled } from "./ffmpeg.ts";
+import { capsOf, guardedRun, ffmpegError, Cancelled } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 
 export function makePreviewLoudness() {
@@ -32,7 +32,7 @@ export function makePreviewLoudness() {
       return await loudnessGain(plan, targetLufs, async (pass, name) => {
         const graphFile = join(temp, name);
         await writeFile(graphFile, pass.graph);
-        const r = await run(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], controller.signal);
+        const r = await guardedRun(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], controller.signal);
         if (controller.signal.aborted) throw new Cancelled();
         if (r.code !== 0) throw new Error(`Measuring the loudness failed: ${ffmpegError(r.stderr)}`);
         return r.stderr;
