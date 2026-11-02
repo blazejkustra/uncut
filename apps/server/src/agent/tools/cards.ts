@@ -87,6 +87,9 @@ import {
   scanRenderWidth,
   STILL_MAX_S,
   type ScanFrame,
+  seamFrames,
+  seamLabel,
+  SEAM_CELL,
   stripLayout,
   stripPlan,
   type FlatStrip,
@@ -575,6 +578,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             r.owner.turns.map((t) => t.prompt),
             r.turn.prompt,
           ),
+          loop: r.owner.plan.brief?.loop,
         });
         const anchors = motionAnchors(sb?.beats, fps, duration);
         const strips = stripPlan(anchors, fps, duration);
@@ -785,6 +789,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                       if (xs.length)
                         flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
                     }
+                  }
+                  if (intent.loop) {
+                    const seam = yield* seamStrip(session, duration, fps, aspect);
+                    if (seam) stripImages.push(seam);
                   }
                   const jitter = ffmpeg ? yield* fineJitter(session, ffmpeg, anchors, project.canvas, fps, duration, r.abort.signal) : [];
                   return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut, jitter };
@@ -1080,6 +1088,23 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         });
       }).pipe(Effect.ensuring(Effect.sync(row.settle)));
     });
+
+  /** A loop's wrap as one strip for the critic: the edit's last frames, then its first ones. */
+  const seamStrip = (session: FrameSessionShape, duration: number, fps: number, aspect: number) =>
+    Effect.gen(function* () {
+      const shot = yield* session.render(seamFrames(duration), SEAM_CELL);
+      const jpeg = yield* session.sheet(
+        shot.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}` })),
+        stripLayout(shot.length, aspect, SEAM_CELL),
+      );
+      return {
+        label: seamLabel(
+          shot.map((f) => f.frame),
+          fps,
+        ),
+        jpeg,
+      } satisfies CriticImage;
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
   /** D198: the fonts rule for the open project (the fonts its graphics' own HTML names, the kit's and the installed ones). */
   const fontsRule = (v: ProjectView) =>

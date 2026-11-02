@@ -600,8 +600,8 @@ export interface MotionScan {
    * changed over about OPEN_WINDOW_S, if any within the first 2 s, and the biggest such change before OPEN_MAX_S.
    */
   readonly open?: { readonly frame?: number; readonly peak: number; readonly typing?: number };
-  /** The loop seam: the last frame against frame 0, and the typical frame-to-frame difference. */
-  readonly seam?: { readonly diff: number; readonly typical: number };
+  /** The loop seam: the last frame against frame 0, the last frame's number and the typical frame-to-frame difference. */
+  readonly seam?: { readonly diff: number; readonly typical: number; readonly frame: number };
   readonly typical: number;
 }
 
@@ -808,7 +808,8 @@ export function motionScan(
   const open = openMove(fr, fps, fineW);
   const first = fr[0];
   const last = fr.at(-1);
-  const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
+  const seam =
+    first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical), frame: last.frame } : undefined;
   return {
     frames: fr.length,
     pops,
@@ -886,7 +887,7 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
  * The scan as review findings (rule "motion"): pops always; one-frame jumps and holds over a second
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
  * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard from EMPTY_HARD_S), low-information runs (from THIN_HARD_S) and fast moves (never blockers) when one take.
- * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
+ * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops and jumps are blockers; a broken seam always is (the brief marks the loop).
  * D306: a cut between two footage shots (footageCut, or `clipCuts`: the timeline's own straight cuts
  * from one clip to the next) is never one, one take or not; `cutsHard` (default `hard`) says whether
  * the other cuts block.
@@ -1056,17 +1057,18 @@ export function motionFindings(
       message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame (listed from ${Math.round(FAST_STEP * 100)} %). The export's motion blur smears each frame over how far things move during its shutter; sub-frames only decide whether that shows as stacked copies (few) or one smooth smear (many), so more sub-frames only smooth the copies into a smear (render_frames draws no blur; the critic sees it drawn with the project's blur). If text smears or doubles there, slow the move's fastest frames (the ease's peak speed counts, not its length: a gentler curve or a shorter travel), keep the words still while it moves, or shorten the shutter. A smooth blur that keeps the words readable is fine as it is.`,
     });
   }
-  if (o.loop && seamBroken(scan))
-    out.push({
-      rule: "motion",
-      key: "motion:seam:0",
-      frame: 0,
-      hard,
-      message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.`,
-    });
+  if (o.loop && seamBroken(scan)) out.push(seamFinding(scan.seam!, fps));
   // The blockers first, so the cap never drops one (the seam came last) for a soft finding.
   return [...out.filter((f) => f.hard), ...out.filter((f) => !f.hard)].slice(0, 12);
 }
+
+const seamFinding = (seam: NonNullable<MotionScan["seam"]>, fps: number): CriticFinding => ({
+  rule: "motion",
+  key: `motion:seam:${seam.frame}`,
+  frame: seam.frame,
+  hard: true,
+  message: `The loop seam at the end of the edit (f ${seam.frame}, ${secs(seam.frame, fps)}): the last frame differs from frame 0 by ${(seam.diff * 100).toFixed(1)} % (a typical frame step is ${(seam.typical * 100).toFixed(2)} %), so the loop jumps when it wraps. Make the last state match the first: the same elements at the same positions, sizes, colours and text as frame 0 (the cursor too), with each move easing into that state at the speed frame 0 continues with, not stopping dead.`,
+});
 
 /**
  * D306: whether a jump is a cut between footage shots: the picture says so (footageCut), or it lands
@@ -1258,6 +1260,16 @@ export const scanSize = (canvas: { readonly width: number; readonly height: numb
   h: Math.max(2, Math.round((SCAN_WIDTH * canvas.height) / canvas.width / 2) * 2),
 });
 
+/** The frames around a loop's wrap as it plays: the last 3, then the first 3 (fewer in a film under 6 frames). */
+export function seamFrames(duration: number): Array<number> {
+  const tail = [duration - 3, duration - 2, duration - 1].filter((f) => f >= 0);
+  const head = [0, 1, 2].filter((f) => f < duration && !tail.includes(f));
+  return [...tail, ...head];
+}
+export const SEAM_CELL = 360;
+export const seamLabel = (frames: ReadonlyArray<number>, fps: number) =>
+  `the loop seam: frames ${frames.join(", ")} left to right as they play when the film loops (the edit's last frame, f ${Math.max(...frames)} at ${secs(Math.max(...frames), fps)}, wraps to frame 0); the wrap must look like any other frame step`;
+
 /** A strip's sheet: one row of `count` cells `cell` px wide (STRIP_CELL) with their captions (a downscaled image per strip). */
 export function stripLayout(count: number, aspect: number, cell = STRIP_CELL): SheetLayout {
   const a = aspect > 0 && Number.isFinite(aspect) ? aspect : 16 / 9;
@@ -1280,7 +1292,7 @@ export function blurPicks(
   return fast.slice(0, max).map((m) => ({ start: m.start, end: m.end, frames: [...new Set([m.start, Math.round((m.start + m.end) / 2), m.end])] }));
 }
 
-export { NEGATED, clauses, asksOneTake, asksFootageCuts, asksLoop, motionIntent } from "./criticIntent.ts";
+export { NEGATED, clauses, asksOneTake, asksFootageCuts, motionIntent } from "./criticIntent.ts";
 
 // ---- D296: scale (how much of the frame is flat background) and the storyboard's words ----
 

@@ -40,6 +40,7 @@ export function BriefBody({ brief, live }: { brief: Brief; live?: CardLive | und
     ["Never", brief.hardLines.join("; ")],
     ["Deliver", brief.deliverables.join(", ")],
     ["Notes", brief.notes ?? ""],
+    ["Loops", brief.loop ? "Yes, the last frame meets the first" : ""],
   ];
   // The latest card follows the project's skills (the agent or the Brand tab may have changed them).
   useEffect(() => {
@@ -72,6 +73,8 @@ export interface CardLive {
   readonly online: boolean;
   readonly busy: boolean;
 }
+
+const withLoop = ({ loop: _loop, ...rest }: Brief, on: boolean): Brief => (on ? { ...rest, loop: true } : rest);
 
 const lines = (v: string) =>
   v
@@ -138,6 +141,13 @@ export function BriefForm({ brief, onDone }: { brief: Brief; onDone: () => void 
       {list("hardLines", "Never")}
       {list("deliverables", "Deliver")}
       {field("notes", "Notes", 2)}
+      <label className="brief-field brief-loop">
+        <span className="brief-key">Loops</span>
+        <span className="brief-loop-choice">
+          <input type="checkbox" data-testid="plan-brief-loop" checked={b.loop === true} onChange={(e) => setB(withLoop(b, e.target.checked))} />
+          The last frame meets the first
+        </span>
+      </label>
       <div className="approval-btns">
         <button className="btn ghost" data-testid="plan-brief-cancel" onClick={onDone}>
           Cancel

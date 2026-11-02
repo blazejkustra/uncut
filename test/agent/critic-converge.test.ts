@@ -1,6 +1,6 @@
 // The critic loop converges (user, 2026-10-27; argent-100s ran 9 rounds on the same defects): the
 // user's own text size wins over the critic's 3.5 % (agentLegibility requestedTypePx, <sizes>); the
-// loop seam only when the user asked for a loop (not "the loop diagram's style"); a finding back
+// loop seam only when the brief marks the film as a loop (not "the loop diagram's style"); a finding back
 // unchanged after a claimed fix is unresolved (the user decides it); the same blockers as the round
 // before stop the loop at any round. And the critic's row in the thread (criticRow, critic.tsx).
 import { test } from "node:test";
@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Review } from "../../packages/contracts/src/index.ts";
 import { criticReview, criticText, parseCritic, reviewNext, reviewOutlook, sameFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { asksLoop, motionIntent, motionLines, motionScan } from "../../apps/server/src/agent/criticMotion.ts";
+import { motionIntent, motionLines, motionScan } from "../../apps/server/src/agent/criticMotion.ts";
 import { requestedTypePx, textFloorPct, underFloor, legibilityFindings } from "../../apps/server/src/agent/agentLegibility.ts";
 import { criticRow, criticStatus } from "../../apps/server/src/agent/tools/criticRow.ts";
 import { criticLabel, elapsedText, momentText, roundTrail, roundVerdict } from "../../apps/web/src/panels/agent/criticWords.ts";
@@ -31,30 +31,15 @@ const ctx = {
   fps: 30,
 };
 
-test("asksLoop: the user's words asking for a loop, never a loop the film shows or mentions", () => {
-  for (const yes of [
-    "Make it a seamless loop for the site header.",
-    "It should loop forever.",
-    "A looping background video, 10 s.",
-    "make it loop",
-    "the last frame equals the first",
-  ])
-    assert.equal(asksLoop(yes), true, yes);
-  for (const no of [
-    "Use the loop diagram's style from the blog.",
-    "Show the feedback loop: test, fix, ship.",
-    "Keep me in the loop",
-    "seamless transitions between scenes",
-    "Don't make it loop.",
-  ])
-    assert.equal(asksLoop(no), false, no);
+test("the loop seam: only the brief's loop mark makes a loop, never the request's or the brief's words", () => {
   const e2e = motionIntent({
     skills: [],
     words: "assets: the loop diagram's style (the blog's e2e-loop diagram)",
     request: "A 60 s explainer for X in the loop diagram's style",
   });
   assert.equal(e2e.loop, false, "argent-e2e: the brief's 'loop diagram' isn't a loop");
-  assert.equal(motionIntent({ skills: [], words: "", request: "a seamless loop" }).loop, true);
+  assert.equal(motionIntent({ skills: [], words: "", request: "a seamless loop" }).loop, false);
+  assert.equal(motionIntent({ skills: [], words: "", request: "a seamless loop", loop: true }).loop, true);
 });
 
 test("motionLines: the seam line only for a film meant to loop", () => {

@@ -21,6 +21,7 @@ export const Brief = Schema.Struct({
   type: Schema.optional(Schema.String),
   // D217: the skills brief_write suggested for it (ids); only the ones the user picked are on.
   skills: Schema.optional(Schema.Array(Schema.String)),
+  loop: Schema.optional(Schema.Boolean),
 });
 export type Brief = typeof Brief.Type;
 /** One beat of the storyboard / shot list (U9, U15): times in seconds. */
