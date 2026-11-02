@@ -1,45 +1,29 @@
 import type { Metadata } from "next";
 import DownloadButtons from "../../components/DownloadButtons.tsx";
-import { EmailLink, InterestButton } from "../../components/ProInterest.tsx";
+import { GetPro } from "../../components/ProInterest.tsx";
 import SiteFooter from "../../components/SiteFooter.tsx";
 import SiteHeader from "../../components/SiteHeader.tsx";
 import { alternates, SITE_URL } from "../../lib/site.ts";
 
-const DESCRIPTION = "Uncut is free and open source. Uncut Pro is a planned set of hosted features at $15 per editor per month. It does not exist yet.";
+const DESCRIPTION =
+  "Uncut is free and open source. Uncut Pro adds review links, team projects, visual search, cloud render and hosted proxies for $15 per editor per month.";
 const EMAIL = "kustrablazej@gmail.com";
-const MAILTO = `mailto:${EMAIL}?subject=${encodeURIComponent("Email me when Uncut Pro exists")}`;
 
-const PRO_IDEAS = [
-  {
-    feature: "review_links",
-    name: "hosted review links",
-    title: "Hosted review links",
-    benefit: "Send a client a link. They comment on the exact frame in a browser with no install, and the notes appear on your timeline as they write.",
-  },
-  {
-    feature: "team_projects",
-    name: "team projects",
-    title: "Team projects",
-    benefit: "Editors on a team open the same project and the same footage, with no drives to post and no folders to keep in step.",
-  },
-  {
-    feature: "visual_search",
-    name: "visual search",
-    title: "Visual search across all your footage",
-    benefit: "Every shot is indexed when it comes in, so you can type what you remember seeing and jump to it, without spending your agent's usage.",
-  },
-  {
-    feature: "cloud_render",
-    name: "cloud render",
-    title: "Cloud render",
-    benefit: "Send the export to our machines and keep working while it renders.",
-  },
-  {
-    feature: "hosted_proxies",
-    name: "hosted proxies",
-    title: "Hosted proxies",
-    benefit: "Light copies of your footage follow the project, so you can pick up the edit on another machine with the originals left at home.",
-  },
+const FREE_FEATURES = [
+  "The agent, with your own Claude Code or Codex sign-in",
+  "A real timeline you can edit by hand",
+  "Local transcription, captions and titles",
+  "Sound library, effects, transitions and plugins",
+  "Export in H.264 or HEVC",
+  "MIT licensed, no Uncut account",
+];
+
+const PRO_FEATURES = [
+  { feature: "review_links", title: "Review links", line: "Clients comment on the exact frame in a browser, and the notes land on your timeline." },
+  { feature: "team_projects", title: "Team projects", line: "Your whole team opens the same project and footage." },
+  { feature: "visual_search", title: "Visual search", line: "Type what you remember seeing and jump to the shot, across all your footage." },
+  { feature: "cloud_render", title: "Cloud render", line: "Exports render on our machines while you keep editing." },
+  { feature: "hosted_proxies", title: "Hosted proxies", line: "Pick up the edit on another Mac without copying the originals." },
 ];
 
 export const metadata: Metadata = {
@@ -57,50 +41,40 @@ export default function Pricing() {
       <main className="wrap">
         <div className="blog pricing">
           <h1>Pricing</h1>
-          <p className="sub">
-            Uncut is free and stays free. Uncut Pro does not exist yet: nothing here charges you, and clicking a button only tells us what to build.
-          </p>
+          <p className="sub">Uncut is free and open source. Pro adds hosted features for client review and teams.</p>
 
           <section className="plan" aria-labelledby="plan-free">
             <div className="plan-head">
               <h2 id="plan-free">Free</h2>
               <p className="plan-price">$0</p>
             </div>
-            <p>
-              Everything Uncut does today, and it stays free: the agent, the timeline, local transcription, captions, sound, effects, plugins and export. MIT
-              licensed, with no Uncut account. You bring your own Claude Code or Codex sign-in, and your agent's usage is billed the way it normally is.
-            </p>
+            <p>Everything Uncut does today. Your agent's usage is billed the way it normally is.</p>
+            <ul className="plan-list">
+              {FREE_FEATURES.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
             <DownloadButtons />
           </section>
 
           <section className="plan" aria-labelledby="plan-pro">
             <div className="plan-head">
-              <h2 id="plan-pro">Uncut Pro (planned)</h2>
+              <h2 id="plan-pro">Pro</h2>
               <p className="plan-price">
                 $15 <span>per editor per month</span>
               </p>
             </div>
-            <p>
-              Not built yet. These ideas need servers, so they would be paid. The price is what we expect to ask, and it is here so you can tell us whether it
-              is worth it. There is no checkout and no signup.
-            </p>
-            <ul className="pro-rows">
-              {PRO_IDEAS.map((idea) => (
-                <li key={idea.feature}>
-                  <div>
-                    <h3>{idea.title}</h3>
-                    <p>{idea.benefit}</p>
-                  </div>
-                  <InterestButton feature={idea.feature} name={idea.name} />
+            <p>Everything in Free, plus:</p>
+            <ul className="plan-list">
+              {PRO_FEATURES.map((f) => (
+                <li key={f.feature}>
+                  <strong>{f.title}.</strong> {f.line}
                 </li>
               ))}
             </ul>
             <div className="actions">
-              <EmailLink href={MAILTO} />
+              <GetPro email={EMAIL} features={PRO_FEATURES.map(({ feature, title }) => ({ feature, title }))} />
             </div>
-            <p className="pro-note pro-email">
-              Pro does not exist yet and nothing is charged. This opens your mail app, addressed to {EMAIL}, and tells us you would like to hear when it does.
-            </p>
           </section>
         </div>
       </main>

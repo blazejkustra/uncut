@@ -143,7 +143,7 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 .btn .apple { margin-top: -3px; }
 .btn.primary { background: #f5f5f5; color: #0a0a0a; border-color: #f5f5f5; padding: 0 28px 0 24px; }
 .btn.primary:hover { background: #ffffff; border-color: #ffffff; }
-.req { margin-top: 14px; color: var(--dim); font: 400 13px/1.5 var(--mono); }
+.req { margin: 14px auto 0; max-width: 620px; color: var(--dim); font: 400 12px/1.6 var(--mono); }
 
 .shot {
   margin: 56px auto 0;
@@ -267,23 +267,33 @@ footer a:hover { color: var(--fg); }
 .post-cta .sub { margin-left: auto; margin-right: auto; }
 .post-cta .actions { margin-top: 24px; }
 
-/* Pricing: plain rows, the two plans as sections of one column. */
+/* Pricing: the two plans as sections of one column, and the Get Pro dialog. */
 .pricing .plan { padding: 44px 0 0; }
+.pricing .plan + .plan { margin-top: 48px; border-top: 1px solid var(--border); }
 .plan > p { color: #c8c8c8; }
 .plan-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 12px; }
 .plan-head h2 { font-size: 28px; }
 .plan-price { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .plan-price span { color: var(--muted); font-size: 15px; font-weight: 400; letter-spacing: 0; }
-.plan .actions { justify-content: flex-start; margin-top: 24px; }
-.pro-rows { list-style: none; margin: 16px 0 0; padding: 0; }
-.pro-rows li { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; padding: 22px 0; border-bottom: 1px solid var(--border); }
-.pro-rows h3 { margin-bottom: 4px; }
-.pro-rows li > div:first-child p { color: var(--muted); font-size: 15px; }
-.pro-action { flex: none; width: 190px; }
-.pro-btn { width: 100%; height: 40px; padding: 0 16px; border-radius: 10px; font-size: 14px; cursor: pointer; }
-.pro-btn[aria-disabled="true"], .pro-btn[aria-disabled="true"]:hover { color: var(--muted); background: none; border-color: var(--border); cursor: not-allowed; }
-.pro-note, .plan > .pro-note { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.plan > .pro-email { margin-top: 12px; max-width: 520px; }
+.plan .actions { justify-content: flex-start; margin-top: 28px; }
+.plan-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+.plan-list li { position: relative; padding-left: 22px; color: var(--muted); }
+.plan-list li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 2px; background: var(--select); }
+.plan-list strong { color: var(--fg); font-weight: 600; }
+button.btn { cursor: pointer; }
+.pro-dialog { width: min(480px, calc(100% - 32px)); padding: 0; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--panel); color: var(--fg); box-shadow: 0 30px 80px rgb(0 0 0 / 60%); }
+.pro-dialog::backdrop { background: rgb(5 5 8 / 72%); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.pro-dialog-body { padding: 28px; }
+.pro-dialog h2 { font-size: 22px; letter-spacing: -0.02em; }
+.pro-dialog p { margin-top: 10px; color: #c8c8c8; }
+.pro-dialog .pro-pick-label { margin-top: 22px; color: var(--muted); font-size: 14px; }
+.pro-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pro-chip { height: 34px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: rgb(255 255 255 / 3%); color: var(--fg); font: 500 14px/1 var(--font); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.pro-chip:hover { background: rgb(255 255 255 / 7%); border-color: rgb(255 255 255 / 20%); }
+.pro-chip[aria-pressed="true"] { background: var(--select-soft); border-color: var(--select); }
+.pro-chip:focus-visible, .pro-dialog button.btn:focus-visible { outline: 2px solid var(--select); outline-offset: 3px; }
+.pro-dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.pro-dialog-actions .btn { height: 46px; padding: 0 20px; border-radius: 12px; font-size: 15px; }
 
 @media (max-width: 980px) {
   .agent, .film { grid-template-columns: 1fr; gap: 40px; }
@@ -298,8 +308,8 @@ footer a:hover { color: var(--fg); }
 }
 @media (max-width: 560px) {
   .post-cta { padding: 24px 16px; }
-  .pro-rows li { flex-direction: column; gap: 14px; }
-  .pro-action { width: 100%; }
+  .pro-dialog-body { padding: 22px; }
+  .pro-dialog-actions .btn { flex: 1 1 100%; }
   .cards { grid-template-columns: 1fr; }
   .card .crop { height: 240px; }
   .card .crop img { max-width: 280px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
