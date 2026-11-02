@@ -1,0 +1,19 @@
+{
+  "paths": [
+    "apps/desktop/src/**",
+    "apps/server/src/export/**",
+    "apps/server/src/agent/tools/exportVideo.ts",
+    "apps/server/src/media/**",
+    "apps/web/src/preview/**",
+    "apps/web/src/audio/**",
+    "apps/web/src/panels/ExportDialog.tsx",
+    "apps/web/src/panels/exportDialog/**",
+    "packages/core/src/export.ts",
+    "packages/core/src/visual/**",
+    "packages/core/src/audio/**",
+    "packages/core/src/timeline/**",
+    "native/**",
+    "package.json",
+    "pnpm-lock.yaml"
+  ]
+}

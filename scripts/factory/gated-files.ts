@@ -1,0 +1,27 @@
+// The capability-gated app test files at the time this list was made. A file that leaves this list
+// silently would stop being verified, so one that's gone from a worktree fails instead.
+export const GATED_FILES: ReadonlyArray<string> = [
+  "test/app/audio-app.test.ts",
+  "test/app/capture-this-mac-app.test.ts",
+  "test/app/clip-transform-app.test.ts",
+  "test/app/components-app.test.ts",
+  "test/app/d290-graphic-media-app.test.ts",
+  "test/app/effects-app.test.ts",
+  "test/app/export-app.test.ts",
+  "test/app/gpu-compositor-app.test.ts",
+  "test/app/issue109-app.test.ts",
+  "test/app/issue12-app.test.ts",
+  "test/app/issue18-19-app.test.ts",
+  "test/app/issue20-app.test.ts",
+  "test/app/issue40-41-app.test.ts",
+  "test/app/issue55-app.test.ts",
+  "test/app/issue82-app.test.ts",
+  "test/app/issue83-app.test.ts",
+  "test/app/mixer-app.test.ts",
+  "test/app/scrub-cache-app.test.ts",
+  "test/app/text-looks-app.test.ts",
+  "test/app/transitions-all-app.test.ts",
+  "test/app/transitions-moves-app.test.ts",
+  "test/app/video-fx-app.test.ts",
+  "test/app/video-tone-app.test.ts",
+];
