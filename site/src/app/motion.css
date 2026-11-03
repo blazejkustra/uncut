@@ -176,6 +176,31 @@
   .cp-evidence { grid-row: 3; }
 }
 
+/* Desktop: the turn and the scorecard run across rather than down. */
+@media (min-width: 981px) {
+  .feature.stacked { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .feature.stacked .copy { text-align: center; }
+  .feature.stacked .copy .sub { margin-left: auto; margin-right: auto; }
+  .feature.stacked .panel { max-width: none; }
+  .feature.broad { grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr); gap: 56px; }
+  .feature.broad.flip { grid-template-columns: minmax(0, 1fr) minmax(0, 0.55fr); }
+  .feature.broad .panel { max-width: none; }
+
+  .agent-pb .pb-body { display: grid; grid-template-columns: minmax(330px, 0.36fr) minmax(0, 1fr); column-gap: 1.4em; row-gap: 0.58em; }
+  .agent-pb .pb-thread { display: contents; }
+  .agent-pb .pb-row { grid-column: 2; }
+  .agent-pb .pb-user { grid-column: 1; grid-row: 1 / span 5; align-self: start; justify-self: end; }
+  .agent-pb .pb-composer { grid-column: 1; grid-row: 6 / span 6; align-self: end; margin-top: 0; }
+
+  .critic-pb .pb-body { display: grid; grid-template-columns: minmax(0, 1fr) 13.5em; grid-template-rows: auto auto 1fr; }
+  .critic-pb .cp-head { grid-column: 1 / -1; }
+  .critic-pb .cp-by { grid-column: 1; }
+  .critic-pb .cp-scores { grid-column: 1; }
+  .critic-pb .cp-outcome { grid-column: 2; grid-row: 2 / span 2; margin-right: 0.9em; padding-left: 0.9em; border-left: 1px solid var(--border); }
+  .critic-pb .cp-trail { padding: 0 0 0.6em; }
+  .critic-pb .cp-verdict { margin: 0; }
+}
+
 /* The timeline: the screenshot with its playhead removed, and this one in its place, moving at one
    second per second on the ruler. */
 .tl-stage { position: relative; margin-top: 48px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel); overflow: hidden; }

@@ -58,14 +58,15 @@ type FeatureProps = {
   line: string;
   flip?: boolean;
   size?: "narrow" | "wide";
+  layout?: "stacked" | "broad";
   children: ReactNode;
 };
 
-/** A headline and one line beside a picture from the app; flip puts the picture on the left. */
-function Feature({ id, title, line, flip, size, children }: FeatureProps) {
+/** A headline and one line beside a picture from the app; flip puts the picture on the left. On desktop, stacked puts the headline above a full-width picture and broad gives the picture the larger share. */
+function Feature({ id, title, line, flip, size, layout, children }: FeatureProps) {
   return (
     <section id={id}>
-      <div className={flip ? "wrap feature flip" : "wrap feature"}>
+      <div className={["wrap feature", flip && "flip", layout].filter(Boolean).join(" ")}>
         <div data-reveal="" className="copy">
           <h2>{title}</h2>
           <p className="sub">{line}</p>
@@ -152,6 +153,7 @@ export default function Home() {
 
         <Feature
           id="features"
+          layout="stacked"
           title="It edits the timeline while you watch"
           line="Ask for a cut. A brief and a storyboard come first, then the edit lands on your timeline."
         >
@@ -161,6 +163,7 @@ export default function Home() {
         <Feature
           flip
           size="wide"
+          layout="broad"
           title="A critic reviews the cut"
           line="A separate agent that never saw the chat scores rendered frames and sends weak edits back."
         >

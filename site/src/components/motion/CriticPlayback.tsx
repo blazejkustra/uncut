@@ -138,8 +138,10 @@ export default function CriticPlayback() {
             <ScoreRow key={score.name} score={score} step={step} />
           ))}
         </div>
-        <Trail step={step} />
-        <Verdict step={step} />
+        <div className="cp-outcome">
+          <Trail step={step} />
+          <Verdict step={step} />
+        </div>
       </div>
     </div>
   );

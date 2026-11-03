@@ -469,3 +469,20 @@ test("Feature playback: waits below the fold, plays on screen without moving the
     await v.page.browserContext().close();
   }
 });
+
+test("Feature playback on desktop: the agent panel is landscape and fits the window, the critic panel is wider than tall", { skip }, async () => {
+  for (const [w, h] of [
+    [1024, 768],
+    [1280, 800],
+    [1440, 900],
+  ] as const) {
+    const v = await visitor("US", w, h);
+    await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+    const size = (sel: string) => v.page.$eval(sel, (e) => [(e as HTMLElement).offsetWidth, (e as HTMLElement).offsetHeight] as const);
+    const [agentW, agentH] = await size(".agent-pb");
+    assert.ok(agentW > agentH && agentH < h - 100, `agent at ${w}: ${agentW}x${agentH}`);
+    const [criticW, criticH] = await size(".critic-pb");
+    assert.ok(criticW > criticH * 1.4, `critic at ${w}: ${criticW}x${criticH}`);
+    await v.page.browserContext().close();
+  }
+});
