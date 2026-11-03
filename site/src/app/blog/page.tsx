@@ -40,7 +40,7 @@ export default function BlogIndex() {
         }}
       />
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <div className="blog">
           <h1>Blog</h1>
           <p className="sub">{DESCRIPTION}</p>

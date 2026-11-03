@@ -64,7 +64,7 @@ export default async function PostPage({ params }: Props) {
         }}
       />
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <article className="post">
           <p className="back">
             <a href="/blog/">All posts</a>

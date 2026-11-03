@@ -10,7 +10,7 @@ export default function NotFound() {
   return (
     <>
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <article className="doc">
           <h1>Page not found</h1>
           <p className="meta">404</p>

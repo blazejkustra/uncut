@@ -1,10 +1,12 @@
-// The landing page (was site/index.html): the hero with its WebGPU background, the agent, the editor
-// underneath, privacy and the closing call.
+// The landing page (was site/index.html): the hero with its WebGPU background, the launch film, a section per feature,
+// privacy and the closing call.
 import type { Metadata } from "next";
+import { Fragment, type ReactNode } from "react";
 import DownloadButtons from "../components/DownloadButtons.tsx";
 import HeroFx from "../components/HeroFx.tsx";
 import JsonLd from "../components/JsonLd.tsx";
 import LaunchFilm from "../components/LaunchFilm.tsx";
+import ScrollReveal from "../components/ScrollReveal.tsx";
 import { ClaudeMark, CodexMark } from "../components/Icons.tsx";
 import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
@@ -28,6 +30,49 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image" },
 };
 
+/** The heading's words as separate spans, so each can rise in on its own (globals.css, .hero h1 .w). */
+function Words({ text }: { text: string }) {
+  return text.split(" ").map((word, i) => (
+    <Fragment key={i}>
+      {i > 0 ? " " : null}
+      <span className="w">{word}</span>
+    </Fragment>
+  ));
+}
+
+const MORE: Array<[string, string]> = [
+  ["Sound and music", "A built-in sound library, online sound search and music ducked under speech."],
+  ["Effects and looks", "Filters, colour looks, transitions and text animations, previewed on the GPU."],
+  ["Plugins", "Looks, components, checks and agent tools in a folder, with a catalog to browse."],
+  ["Export", "H.264 or HEVC, loudness for social or broadcast, optional subtitles."],
+];
+
+type FeatureProps = {
+  id?: string;
+  title: string;
+  line: string;
+  flip?: boolean;
+  size?: "narrow" | "wide";
+  children: ReactNode;
+};
+
+/** A headline and one line beside a picture from the app; flip puts the picture on the left. */
+function Feature({ id, title, line, flip, size, children }: FeatureProps) {
+  return (
+    <section id={id}>
+      <div className={flip ? "wrap feature flip" : "wrap feature"}>
+        <div data-reveal="" className="copy">
+          <h2>{title}</h2>
+          <p className="sub">{line}</p>
+        </div>
+        <figure className={size ? `panel ${size}` : "panel"} data-reveal="">
+          {children}
+        </figure>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   return (
     <>
@@ -48,196 +93,180 @@ export default function Home() {
       />
       <SiteHeader />
 
-      <main>
+      <main id="main">
         <div className="hero">
           <HeroFx />
           <div className="wrap">
-            <h1>Edit videos by talking to an agent</h1>
-            <p className="lede">
-              Uncut is a video editor for the Mac with an agent built in. It runs your installed{" "}
-              <span className="who">
-                <ClaudeMark />
-                Claude{"\u00a0"}Code
-              </span>{" "}
-              or{" "}
-              <span className="who">
-                <CodexMark />
-                Codex
-              </span>
-              . The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
-            </p>
-            <DownloadButtons />
-            <p className="req">
-              For Apple silicon Macs. Free and open source. Needs ffmpeg from Homebrew. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
-              <a href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES`}>see the third-party notices</a>.
-            </p>
+            <div className="hero-copy">
+              <h1>
+                <Words text="Edit videos by talking to an agent" />
+              </h1>
+              <p className="lede">
+                Uncut is a video editor for the Mac with an agent built in. It runs your installed{" "}
+                <span className="who">
+                  <ClaudeMark />
+                  Claude{"\u00a0"}Code
+                </span>{" "}
+                or{" "}
+                <span className="who">
+                  <CodexMark />
+                  Codex
+                </span>
+                . The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
+              </p>
+              <DownloadButtons />
+              <p className="req">
+                For Apple silicon Macs. Free and open source. Needs ffmpeg from Homebrew. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
+                <a href={`${REPO_URL}/blob/main/THIRD_PARTY_NOTICES`}>see the third-party notices</a>.
+              </p>
+            </div>
+          </div>
+          <div className="wrap wide">
             <ZoomShot
               className="shot"
               src="/assets/img/editor.webp"
-              width={1600}
-              height={1000}
+              width={3200}
+              height={1904}
               fetchPriority="high"
-              alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with text, graphics, six clips with transitions and music, and the agent panel with its brief, a storyboard and a passed review."
+              alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with a kicker, titles, a graphic, six clips with transitions and music, and the agent panel with its brief, an approved storyboard and a passed review."
             />
           </div>
         </div>
 
         <section id="film">
           <div className="wrap film">
-            <div>
+            <div data-reveal="" className="copy">
               <h2>The launch film, made in Uncut</h2>
-              <p className="sub">
-                28 seconds, cut in Uncut itself. A prompt goes in, the agent builds the timeline, a critic scores the cut, and one clip changes on request. Turn
-                the sound on in the player.
-              </p>
+              <p className="sub">28 seconds, cut by the agent in Uncut itself. Turn the sound on in the player.</p>
             </div>
-            <LaunchFilm />
+            <div data-reveal="">
+              <LaunchFilm />
+            </div>
           </div>
         </section>
 
-        <section id="features">
-          <div className="wrap agent">
-            <div>
-              <h2>It edits the timeline live, and you stay in charge</h2>
-              <p className="sub">
-                Ask for a cut the way you would ask an editor. The agent sees your timeline, your footage and its transcript, and makes the edit right where you
-                can watch it happen.
-              </p>
-              <ul>
-                <li>
-                  <strong>Plans before it cuts.</strong> A brief and a shot-by-shot storyboard come first, shown in the thread as it builds.
-                </li>
-                <li>
-                  <strong>Reviewed by a critic.</strong> A separate agent that never saw the conversation scores rendered frames against the plan and sends the
-                  edit back when it falls short.
-                </li>
-                <li>
-                  <strong>Every turn is one undo.</strong> Keep what works, undo the rest, or keep editing by hand on the same timeline.
-                </li>
-              </ul>
+        <Feature
+          id="features"
+          title="It edits the timeline while you watch"
+          line="Ask for a cut. A brief and a storyboard come first, then the edit lands on your timeline."
+        >
+          <img
+            src="/assets/img/agent-panel.webp"
+            width={636}
+            height={996}
+            loading="lazy"
+            alt="The agent's turn on the Croatia film: imported 7 files, wrote the brief, a storyboard of 4 beats marked Approved, cut the travel film into six shots with titles and music, a review marked Passed, a closing summary, 2 edits and an Undo turn button."
+          />
+        </Feature>
+
+        <Feature
+          flip
+          size="wide"
+          title="A critic reviews the cut"
+          line="A separate agent that never saw the chat scores rendered frames and sends weak edits back."
+        >
+          <img
+            src="/assets/img/critic.webp"
+            width={600}
+            height={350}
+            loading="lazy"
+            alt="The critic's scores for a cut: hook in 2 s, phone readability, motion and variety, each 9 out of 10, with the frames each score is based on."
+          />
+        </Feature>
+
+        <section>
+          <div className="wrap">
+            <div data-reveal="" className="copy center">
+              <h2>A real editor underneath</h2>
+              <p className="sub">Each agent turn undoes in one step. Everything it does, you can do by hand.</p>
             </div>
-            <div className="panels">
-              <img
-                className="panel-img"
-                src="/assets/img/agent-turn.webp"
-                width={620}
-                height={730}
-                loading="lazy"
-                alt="An agent turn: it reads the transcript, cuts filler words and long pauses, appends the cleanest take and reports 3 edits with an undo button."
-              />
-              <img
-                className="panel-img"
-                src="/assets/img/agent-review.webp"
-                width={620}
-                height={750}
-                loading="lazy"
-                alt="A passed review from the independent critic, with scores for the hook, phone readability, motion, variety and sound sync."
-              />
+            <img
+              className="timeline-shot"
+              data-reveal=""
+              src="/assets/img/timeline.webp"
+              width={2080}
+              height={620}
+              loading="lazy"
+              alt="The timeline of the Croatia film: a kicker track with Croatia, a text track with Day four and Golden hour on the coast, a Title accent graphic, the main track with drone shots joined by transitions, and the Evening theme music bed."
+            />
+          </div>
+        </section>
+
+        <Feature size="narrow" title="Cut the talk by its words" line="Transcription runs on your Mac. Fillers and long pauses go in one click.">
+          <img
+            src="/assets/img/transcript.webp"
+            width={520}
+            height={1040}
+            loading="lazy"
+            alt="The transcript panel with buttons to remove filler words and pauses over 0.5 s, to make captions from the transcript, and the transcribed talk below with its timecodes."
+          />
+        </Feature>
+
+        <Feature
+          flip
+          size="narrow"
+          title="Titles, lower thirds and captions"
+          line="Animated titles and end cards. Captions burn in or play word by word, with SRT and WebVTT in and out."
+        >
+          <img
+            src="/assets/img/text.webp"
+            width={520}
+            height={1040}
+            loading="lazy"
+            alt="Text presets: title, text, lower third, big title, kicker and title, highlight word, caption, stroked title, outline and boxed label."
+          />
+        </Feature>
+
+        <section>
+          <div className="wrap">
+            <div data-reveal="" className="copy center">
+              <h2>Record straight into the project</h2>
+              <p className="sub">Your screen, camera and mic, or iOS simulators and Android emulators.</p>
             </div>
+            <figure className="panel capture" data-reveal="">
+              <img
+                src="/assets/img/capture.webp"
+                width={520}
+                height={490}
+                loading="lazy"
+                alt="The capture panel recording an iPhone 16 iOS simulator, with a Record button, the flow, maximum length, orientation, the app to open, and options to show touches and cut still parts."
+              />
+            </figure>
+          </div>
+        </section>
+
+        <section>
+          <div className="wrap more">
+            <h2 data-reveal="" className="copy">
+              The rest of the edit
+            </h2>
+            <dl className="more-list">
+              {MORE.map(([term, line]) => (
+                <div key={term} data-reveal="">
+                  <dt>{term}</dt>
+                  <dd>{line}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </section>
 
         <section>
           <div className="wrap">
-            <h2>A real editor underneath</h2>
-            <p className="sub">Tracks, trims, splits, snapping, keyframes and a mixer with ducking. Everything the agent does, you can do yourself.</p>
-            <div className="cards">
-              <article className="card">
-                <div className="crop">
-                  <img
-                    src="/assets/img/transcript.webp"
-                    width={520}
-                    height={1040}
-                    loading="lazy"
-                    alt="The transcript panel with buttons to remove filler words and pauses, and the transcribed talk below."
-                  />
-                </div>
-                <div className="body">
-                  <h3>Edit by transcript</h3>
-                  <p>Local transcription on your Mac. Remove fillers and long pauses in one click, or cut by the words.</p>
-                </div>
-              </article>
-              <article className="card">
-                <div className="crop">
-                  <img
-                    src="/assets/img/text.webp"
-                    width={520}
-                    height={1040}
-                    loading="lazy"
-                    alt="Text presets: title, lower third, big title, kicker, highlight word, caption, stroked title and outline."
-                  />
-                </div>
-                <div className="body">
-                  <h3>Captions and titles</h3>
-                  <p>Burned-in or word by word captions, SRT and WebVTT in and out, and animated titles, lower thirds and end cards.</p>
-                </div>
-              </article>
-              <article className="card">
-                <div className="crop">
-                  <img
-                    src="/assets/img/sounds.webp"
-                    width={520}
-                    height={1040}
-                    loading="lazy"
-                    alt="The sound effects panel with a search box and a list of sounds with waveforms."
-                  />
-                </div>
-                <div className="body">
-                  <h3>Sound effects and music</h3>
-                  <p>A built-in sound library, online sound search, and a mixer that ducks the music under speech.</p>
-                </div>
-              </article>
-              <article className="card">
-                <div className="crop">
-                  <img
-                    src="/assets/img/capture.webp"
-                    width={520}
-                    height={700}
-                    loading="lazy"
-                    alt="The capture panel with screen recording and a list of simulators and emulators to record."
-                  />
-                </div>
-                <div className="body">
-                  <h3>Capture</h3>
-                  <p>Record your screen, camera and mic, or iOS simulators, Android emulators and apps, straight into the project.</p>
-                </div>
-              </article>
+            <div data-reveal="" className="copy center">
+              <h2>No Uncut account, no Uncut quotas</h2>
+              <p className="sub">
+                Your files stay on your Mac, and the agent runs on your own sign-in. Frames, transcripts and prompts go to its provider.{" "}
+                <a href="/privacy/">Privacy notice</a>
+              </p>
             </div>
-            <div className="facts">
-              <div className="fact">
-                <h3>Effects and looks</h3>
-                <p>Filters, colour looks, transitions and text animations, previewed on the GPU.</p>
-              </div>
-              <div className="fact">
-                <h3>Plugins</h3>
-                <p>Looks, components, checks and agent tools in a folder, with a catalog to browse.</p>
-              </div>
-              <div className="fact">
-                <h3>Export</h3>
-                <p>H.264 or HEVC at the quality you pick, with loudness for social or broadcast and optional subtitles.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <div className="wrap">
-            <h2>No Uncut account, no Uncut quotas</h2>
-            <p className="sub">
-              Uncut runs on your Mac, and so does transcription, so your footage files stay there. The agent is your own Claude Code or Codex, with whatever
-              sign-in it already uses, billed the way that agent normally is. Frames, transcripts and prompts go to that agent's provider. Usage data is
-              anonymous, and you can turn it off.
-            </p>
-            <p className="sub">
-              <a href="/privacy/">Read the privacy notice</a>
-            </p>
           </div>
         </section>
 
         <section className="cta">
-          <div className="wrap">
+          <div className="wrap copy" data-reveal="">
             <h2>Start your next cut</h2>
-            <p className="sub">Install Claude Code or Codex and sign in, add ffmpeg with Homebrew, then open Uncut and tell it what to make.</p>
+            <p className="sub">Install Claude Code or Codex, add ffmpeg from Homebrew, then tell Uncut what to make.</p>
             <DownloadButtons />
             <p className="req">
               For Apple silicon Macs. Uses code of FFmpeg licensed under the LGPLv2.1,{" "}
@@ -248,6 +277,7 @@ export default function Home() {
       </main>
 
       <SiteFooter />
+      <ScrollReveal />
     </>
   );
 }

@@ -38,7 +38,7 @@ export default function Pricing() {
   return (
     <>
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <div className="blog pricing">
           <h1>Pricing</h1>
           <p className="sub">Uncut is free and open source. Pro adds hosted features for client review and teams.</p>

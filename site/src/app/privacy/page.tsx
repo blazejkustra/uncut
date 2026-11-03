@@ -14,7 +14,7 @@ export default function Privacy() {
   return (
     <>
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <article className="doc">
           <h1>Privacy</h1>
           <p className="meta">The Uncut app and this website</p>

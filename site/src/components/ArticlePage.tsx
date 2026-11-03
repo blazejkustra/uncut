@@ -45,7 +45,7 @@ export default function ArticlePage({ article, path, back }: { article: Article;
         }}
       />
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <article className="post">
           {back ? (
             <p className="back">

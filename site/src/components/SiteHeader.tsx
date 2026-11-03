@@ -7,6 +7,9 @@ import { DOWNLOAD_URL } from "../lib/site.ts";
 export default function SiteHeader() {
   return (
     <header className="top">
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
       <div className="wrap">
         <a className="wordmark" href="/" aria-label="Uncut home">
           <CutU />

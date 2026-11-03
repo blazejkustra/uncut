@@ -18,7 +18,7 @@ export default function CompareIndex() {
   return (
     <>
       <SiteHeader />
-      <main className="wrap">
+      <main id="main" className="wrap">
         <div className="blog">
           <h1>Compare Uncut</h1>
           <p className="sub">{DESCRIPTION}</p>
