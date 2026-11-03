@@ -161,7 +161,6 @@ export function planOnly(plan: AgentPlan): string {
         line(" hard lines", br.hardLines),
         line(" deliverables", br.deliverables),
         line(" notes", br.notes),
-        line(" loop", br.loop ? "yes, the last frame wraps to frame 0" : undefined),
       ]
         .filter(Boolean)
         .join("\n"),

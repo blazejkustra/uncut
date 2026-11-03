@@ -1,6 +1,6 @@
 /**
  * Whether the film is meant as one take (no cuts, no holds: the motion-film skill, or the brief's
- * words) and as a loop (only when the brief marks it: brief.loop). D296: and whether it is footage first (the brief's words name footage, or the
+ * words) and as a loop (the brief's words only, since the skill no longer prescribes one). D296: and whether it is footage first (the brief's words name footage, or the
  * timeline has video or pictures), where the footage should fill the frame.
  */
 /** Words that make a film UI first: it shows an app's interface. */
@@ -65,18 +65,28 @@ export function asksFootageCuts(text: string): boolean {
 }
 
 /**
+ * Phrases in the user's own words that make the film a loop: "seamless loop", "loops forever",
+ * "a looping video", "make it loop", "last frame = first". A loop the film shows or mentions
+ * ("the loop diagram", "the feedback loop", "in the loop") isn't one.
+ */
+const LOOP_ASK =
+  /\bseamless(?:ly)? (?:loop|looping|loops|repeat)s?\b|\bloops? (?:seamlessly|forever|endlessly|back|perfectly|smoothly)\b|\b(?:looping|loopable|looped|infinite|endless) (?:video|gif|animation|clip|film|background|bg|reel|sequence)\b|\b(?:make|let|have) (?:it|the (?:film|video|animation)) loop\b|\b(?:it|the (?:film|video|animation)) (?:should|must|needs to|has to|will) loop\b|\b(?:as|into) a (?:seamless |perfect )?loop\b|\blast frame (?:is|=|equals|matches) (?:the )?first\b/i;
+
+/** Whether the user's own words ask for a film that loops (LOOP_ASK, not negated in its clause). */
+export function asksLoop(text: string): boolean {
+  return clauses(text).some((clause) => {
+    const m = LOOP_ASK.exec(clause);
+    return !!m && !NEGATED.test(clause.slice(0, m.index));
+  });
+}
+
+/**
  * What the film is (the brief's words, the active skills) and what the user asked for in their own
  * words (`request`): `asked` when the request itself asks for one take. A1-noskill3 asked for "one
  * take on the beat" with the motion-film skill off, and its four hard cuts were findings only: the
  * request decides that cuts fail the round, whatever skills are on (hard in motionFindings).
  */
-export function motionIntent(o: {
-  readonly skills: ReadonlyArray<string>;
-  readonly words: string;
-  readonly hasFootage?: boolean;
-  readonly request?: string;
-  readonly loop?: boolean;
-}): {
+export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): {
   oneTake: boolean;
   loop: boolean;
   footage: boolean;
@@ -89,7 +99,8 @@ export function motionIntent(o: {
     asked,
     footageCuts: asksFootageCuts(o.request ?? ""),
     oneTake: film || asked || asksOneTake(o.words),
-    loop: o.loop === true,
+    // The loop seam only matters when the user asked for a loop (argent-e2e: "the loop diagram's style" in the brief).
+    loop: asksLoop(o.request ?? ""),
     // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
     // calm canvas around one UI element by design, so its words naming the app's UI keep it UI first.
     footage: !!o.hasFootage || (/\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words) && !UI_WORDS.test(o.words)),

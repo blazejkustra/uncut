@@ -87,7 +87,6 @@ Crossfades, blur-ins, fades from or to black, brightness ramps that develop an i
 - A plain local file server often can't serve byte ranges, so a video loaded by URL won't seek; that's why the blob URL.
 - While the cursor is on screen it stays inside the frame and above everything else; between send and Export, and after the Export click, it is gone, not parked by the button or in a corner.
 - Compare the first and last frames, cursor included; any difference shows as a jump when the film loops.
-- The film loops: brief_write it with loop: true, so the critic checks the seam.
 - If you're not sure the product has something, leave it out.
 </gotchas>
 
@@ -137,7 +136,6 @@ Never: hard cuts, crossfades, blur-ins, slices or tiles, bouncy easing, particle
 - A flood must overscale past the corners and take about a third of a second, or the corners pop and half the frame changes at once.
 - A clip inside a shape is drawn at its shown size or larger; never upscale a small file into a full-bleed frame.
 - The last frame must equal the first, or the loop stutters.
-- The film loops: brief_write it with loop: true, so the critic checks the seam.
 </gotchas>
 
 <start>

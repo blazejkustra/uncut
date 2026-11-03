@@ -1539,8 +1539,6 @@ div.card-head { cursor: default; }
 .brief-form { display: flex; flex-direction: column; gap: 6px; }
 .brief-field { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
 .brief-field .field { font-size: 12px; resize: vertical; }
-.brief-loop { align-items: center; cursor: pointer; }
-.brief-loop-choice { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 /* D197: the pinned Plan chip at the top of the thread; brief, storyboard and reviews are cards in it. */
 .plan-strip { flex: none; position: relative; z-index: 3; display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--border); }
 .plan-chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; }

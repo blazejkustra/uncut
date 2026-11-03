@@ -546,7 +546,6 @@ export function normBrief(raw: unknown): Brief | undefined {
     ...(by ? { by } : {}),
     ...(type ? { type } : {}),
     ...(skills.length ? { skills } : {}),
-    ...(b.loop === true ? { loop: true } : {}),
   };
 }
 

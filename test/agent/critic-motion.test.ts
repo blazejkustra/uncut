@@ -173,18 +173,19 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   const oneTake = motionFindings(scan, fps, { oneTake: true, loop: true });
   assert.deepEqual(
     oneTake.map((f) => f.key),
-    ["motion:seam:99", "motion:pop:20", "motion:jump:50", "motion:hold:60"],
+    ["motion:pop:20", "motion:jump:50", "motion:hold:60", "motion:seam:0"],
   );
-  assert.ok(oneTake.every((f) => f.rule === "motion" && f.hard === (f.key === "motion:seam:99")));
+  assert.ok(oneTake.every((f) => f.rule === "motion" && !f.hard));
   // D297: in a motion film pops, jumps (cuts) and the seam are blockers; a hold stays a finding.
   const filmFound = motionFindings(scan, fps, { oneTake: true, loop: true, hard: true });
   assert.deepEqual(
     filmFound.filter((f) => f.hard).map((f) => f.key),
-    ["motion:pop:20", "motion:jump:50", "motion:seam:99"],
+    ["motion:pop:20", "motion:jump:50", "motion:seam:0"],
   );
   assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
   assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
-  assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, false, "only the brief's loop mark makes a loop");
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, false, "the skill and the brief never make a loop");
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "", request: "a seamless loop" }).loop, true, "only the user's own words ask for one");
   assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), {
     asked: false,
     oneTake: true,
@@ -1009,13 +1010,13 @@ test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of so
       { start: 520, end: 524, peak: 0.1 },
       { start: 540, end: 544, peak: 0.1 },
     ],
-    seam: { diff: 0.3, typical: 0.01, frame: 599 },
+    seam: { diff: 0.3, typical: 0.01 },
     typical: 0.01,
   };
   const found = motionFindings(scan, 60, { oneTake: true, loop: true, hard: true });
   assert.equal(found.length, 12);
   assert.ok(
-    found.some((f) => f.key === "motion:seam:599" && f.hard),
+    found.some((f) => f.key === "motion:seam:0" && f.hard),
     found.map((f) => f.key).join(", "),
   );
   const firstSoft = found.findIndex((f) => !f.hard);

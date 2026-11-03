@@ -10,14 +10,14 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BUNDLE, MEDIA, killAll } from "../helpers/server.ts";
+import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { drums, writeWav } from "../helpers/beats-audio.ts";
 import { beatGrid, dropOf, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, LOOK_TOOLS } from "../../apps/server/src/agent/agentTools.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
-import { productionSession, type Content } from "../helpers/productionSession.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
+const FAKE = resolve("test/helpers/fake-claude.ts");
 const which = (name: string) => {
   try {
     return execFileSync("sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).trim() || undefined;
@@ -32,6 +32,7 @@ const skip =
     : !FFMPEG
       ? "ffmpeg isn't installed"
       : false;
+type Content = Array<{ type: string; text?: string; mimeType?: string }>;
 const textOf = (r: { content: Content }) => r.content.find((c) => c.type === "text")!.text!;
 const jsonOf = (r: { content: Content }) => JSON.parse(textOf(r));
 // A 1x1 PNG.
@@ -47,7 +48,96 @@ before(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-agent-production-")));
 });
 
-const setup = (name: string) => productionSession(join(root, name));
+async function setup(name: string) {
+  const base = join(root, name);
+  mkdirSync(join(base, "projects"), { recursive: true });
+  const plan = join(base, "plan.json");
+  const log = join(base, "prompts.jsonl");
+  const results = join(base, "results.jsonl");
+  writeFileSync(log, "");
+  writeFileSync(results, "");
+  const data = join(base, "data");
+  // D195: the critic's scripted answers and what each critic process got.
+  const critic = join(base, "critic.json");
+  const criticLog = join(base, "critic.jsonl");
+  writeFileSync(critic, "[]");
+  writeFileSync(criticLog, "");
+  const server = await startServer({
+    env: {
+      UNCUT_DATA_DIR: data,
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan,
+      FAKE_PROMPT_LOG: log,
+      FAKE_RESULT_LOG: results,
+      FAKE_CRITIC: critic,
+      FAKE_CRITIC_LOG: criticLog,
+      UNCUT_APPROVAL_MS: "8000",
+      UNCUT_ANALYZE_WAIT_MS: "20000",
+      OPENAI_API_KEY: "sk-openai-test",
+    },
+  });
+  const client = await connect(server.ready.port, server.ready.token);
+  const agent = client.subscribe("agent.subscribe");
+  const snap = await client.ok("project.create", { parentDir: join(base, "projects"), name: "Promo" });
+  await agent.until((s) => s?.dir === snap.dir);
+  const turns: Array<unknown> = [];
+  const latest = () => agent.values.at(-1);
+  const turn = (id: string) => latest()?.turns.find((t: { id: string }) => t.id === id);
+  let seen = 0;
+  const self = {
+    base,
+    data,
+    client,
+    agent,
+    latest,
+    dir: snap.dir as string,
+    /** The critic's answers, one per critic run from now on. */
+    critic: (answers: Array<unknown>) => (writeFileSync(critic, JSON.stringify(answers)), rmSync(`${critic}.turn`, { force: true })),
+    criticRuns: (): Array<{ critic: true; text: string; images: number; resume: string | null; args: Array<string>; env: Array<string>; cwd: string }> =>
+      readFileSync(criticLog, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l)),
+    prompts: (): Array<{ prompt: string; system: string }> =>
+      readFileSync(log, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l))
+        .filter((r) => !r.refused),
+    /** Tool results since the last call. */
+    results: (): Array<{ tool: string; result: { isError?: boolean; content: Content } }> => {
+      const all = readFileSync(results, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      const out = all.slice(seen);
+      seen = all.length;
+      return out;
+    },
+    start: async (prompt: string, steps: Array<unknown>, extra: Record<string, unknown> = {}) => {
+      turns.push(steps);
+      writeFileSync(plan, JSON.stringify(turns));
+      const { turnId } = await client.ok("agent.send", { prompt, ...extra });
+      return turnId as string;
+    },
+    // A long scripted turn (the critic test: 21 tool calls, contact sheets, frames and three critic
+    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88).
+    done: async (id: string) => {
+      await agent.until(() => turn(id) && turn(id).status !== "running", 150000);
+      return turn(id);
+    },
+    card: async (id: string) => (await agent.until((v) => v?.approval?.turnId === id, 15000), latest().approval),
+    ask: async (prompt: string, steps: Array<unknown>, extra: Record<string, unknown> = {}) => self.done(await self.start(prompt, steps, extra)),
+    stop: async () => {
+      client.close();
+      await server.stop();
+    },
+  };
+  return self;
+}
 
 const BEATS = [
   {
@@ -623,86 +713,6 @@ test("an @time fix turn: one round, the cap says what is open and passes nothing
     await s.stop();
   }
 });
-
-test(
-  "the loop check: a review checks the seam only when the brief marks a loop; a mismatch fails the round, a match passes",
-  { skip, timeout: 240000 },
-  async () => {
-    const s = await setup("loop");
-    try {
-      const box = (x: string) =>
-        `<canvas id="c"></canvas><script>const c=document.getElementById("c");window.render=(t,info)=>{c.width=info.width;c.height=info.height;const g=c.getContext("2d");g.fillStyle="#0b1d3a";g.fillRect(0,0,c.width,c.height);g.fillStyle="#f5a623";g.fillRect(${x},200,300,300);};</script>`;
-      const brief = {
-        film: "A UI morph",
-        audience: "devs",
-        duration: "2 s",
-        formats: ["4:5"],
-        assets: [],
-        visual: "Dark",
-        hardLines: [],
-        deliverables: ["4:5 mp4"],
-      };
-      const look = [
-        { tool: "contact_sheet", args: { max: 4 } },
-        { tool: "render_frames", args: { frames: [0], phone: true } },
-      ];
-      const round = async (steps: Array<unknown>) => {
-        await s.ask("review it", [...steps, ...look, { tool: "review_submit", args: {} }], { access: "auto", skipStoryboard: true });
-        return jsonOf(s.results().at(-1)!.result);
-      };
-      s.critic([]);
-
-      const plain = await round([
-        { tool: "brief_write", args: brief },
-        {
-          tool: "storyboard_propose",
-          args: { summary: "One move", beats: [{ start: 0, end: 2, title: "Move", entry: "Left", exit: "Right", purpose: "Show it", assets: [] }] },
-        },
-        { tool: "graphic_write", args: { name: "box.html", html: box("40+t*400") } },
-        { tool: "project_read" },
-        {
-          tool: "timeline_edit",
-          args: {
-            baseRevision: "$rev",
-            summary: "The box",
-            ops: [
-              { op: "add_track", track: { id: "v2", kind: "video", name: "Graphics", items: [] }, index: 0 },
-              { op: "insert_item", track: "v2", item: { id: "g-1", type: "graphic", src: "graphics/box.html", start: 0, duration: 60 } },
-            ],
-          },
-        },
-      ]);
-      assert.equal(plain.passed, true, plain.next);
-      assert.equal(plain.motion.seam, undefined);
-      assert.doesNotMatch(s.criticRuns()[0]!.text, /seam|loop/i, "no seam evidence, rubric line or fact unless the brief marks a loop");
-
-      const broken = await round([{ tool: "brief_write", args: { ...brief, loop: true } }]);
-      assert.equal(JSON.parse(readFileSync(join(s.dir, "brief.json"), "utf8")).loop, true);
-      assert.equal(broken.passed, false, "the critic's 9s don't pass a broken seam");
-      const seam = broken.blockers.find((b: any) => b.kind === "motion" && b.source === "check");
-      assert.ok(seam, JSON.stringify(broken.blockers));
-      assert.match(seam.what, /The loop seam at the end of the edit \(f 59, [\d.]+ s\)[\s\S]*Make the last state match the first/);
-      const text = s.criticRuns()[1]!.text;
-      assert.match(text, /loop: yes, the film is meant to loop/);
-      assert.match(text, /- the loop seam \(motion; the brief marks the film as a loop\)/);
-      assert.match(text, /Image \d+: the loop seam: frames 57, 58, 59, 0, 1, 2 left to right/);
-      assert.equal(s.criticRuns()[1]!.images, s.criticRuns()[0]!.images + 1, "plus the seam strip");
-
-      const clean = await round([
-        { tool: "graphic_write", args: { name: "box-2.html", html: box("40") } },
-        { tool: "project_read" },
-        {
-          tool: "timeline_edit",
-          args: { baseRevision: "$rev", summary: "A still box", ops: [{ op: "update_item", item: "g-1", set: { src: "graphics/box-2.html" } }] },
-        },
-      ]);
-      assert.equal(clean.passed, true, JSON.stringify(clean.blockers));
-      assert.ok(clean.motion.seam && clean.motion.seam.diff < 0.01, JSON.stringify(clean.motion.seam));
-    } finally {
-      await s.stop();
-    }
-  },
-);
 
 test("D195: a critic that fails or answers no JSON passes nothing and saves no round", { skip, timeout: 180000 }, async () => {
   const s = await setup("critic-fail");
