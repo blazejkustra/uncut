@@ -2,6 +2,10 @@
 // privacy and the closing call.
 import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
+import AgentPlayback from "../components/motion/AgentPlayback.tsx";
+import CriticPlayback from "../components/motion/CriticPlayback.tsx";
+import TimelineShot from "../components/motion/TimelineShot.tsx";
+import TranscriptWords from "../components/motion/TranscriptWords.tsx";
 import DownloadButtons from "../components/DownloadButtons.tsx";
 import HeroFx from "../components/HeroFx.tsx";
 import JsonLd from "../components/JsonLd.tsx";
@@ -12,6 +16,7 @@ import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
 import ZoomShot from "../components/ZoomShot.tsx";
 import { alternates, DOWNLOAD_URL, REPO_URL, SITE_NAME, SITE_URL } from "../lib/site.ts";
+import "./motion.css";
 
 const DESCRIPTION =
   "Uncut is an AI-first video editor for the Mac. It runs your installed Claude Code or Codex, which edits with you on a real timeline. Free and open source.";
@@ -150,13 +155,7 @@ export default function Home() {
           title="It edits the timeline while you watch"
           line="Ask for a cut. A brief and a storyboard come first, then the edit lands on your timeline."
         >
-          <img
-            src="/assets/img/agent-panel.webp"
-            width={636}
-            height={996}
-            loading="lazy"
-            alt="The agent's turn on the Croatia film: imported 7 files, wrote the brief, a storyboard of 4 beats marked Approved, cut the travel film into six shots with titles and music, a review marked Passed, a closing summary, 2 edits and an Undo turn button."
-          />
+          <AgentPlayback />
         </Feature>
 
         <Feature
@@ -165,13 +164,7 @@ export default function Home() {
           title="A critic reviews the cut"
           line="A separate agent that never saw the chat scores rendered frames and sends weak edits back."
         >
-          <img
-            src="/assets/img/critic.webp"
-            width={600}
-            height={350}
-            loading="lazy"
-            alt="The critic's scores for a cut: hook in 2 s, phone readability, motion and variety, each 9 out of 10, with the frames each score is based on."
-          />
+          <CriticPlayback />
         </Feature>
 
         <section>
@@ -180,26 +173,29 @@ export default function Home() {
               <h2>A real editor underneath</h2>
               <p className="sub">Each agent turn undoes in one step. Everything it does, you can do by hand.</p>
             </div>
-            <img
-              className="timeline-shot"
-              data-reveal=""
-              src="/assets/img/timeline.webp"
-              width={2080}
-              height={620}
-              loading="lazy"
-              alt="The timeline of the Croatia film: a kicker track with Croatia, a text track with Day four and Golden hour on the coast, a Title accent graphic, the main track with drone shots joined by transitions, and the Evening theme music bed."
-            />
+            <TimelineShot>
+              <img
+                className="timeline-shot"
+                src="/assets/img/timeline.webp"
+                width={2080}
+                height={620}
+                loading="lazy"
+                alt="The timeline of the Croatia film: a kicker track with Croatia, a text track with Day four and Golden hour on the coast, a Title accent graphic, the main track with drone shots joined by transitions, and the Evening theme music bed."
+              />
+            </TimelineShot>
           </div>
         </section>
 
         <Feature size="narrow" title="Cut the talk by its words" line="Transcription runs on your Mac. Fillers and long pauses go in one click.">
-          <img
-            src="/assets/img/transcript.webp"
-            width={520}
-            height={1040}
-            loading="lazy"
-            alt="The transcript panel with buttons to remove filler words and pauses over 0.5 s, to make captions from the transcript, and the transcribed talk below with its timecodes."
-          />
+          <TranscriptWords>
+            <img
+              src="/assets/img/transcript.webp"
+              width={520}
+              height={1040}
+              loading="lazy"
+              alt="The transcript panel with buttons to remove filler words and pauses over 0.5 s, to make captions from the transcript, and the transcribed talk below with its timecodes."
+            />
+          </TranscriptWords>
         </Feature>
 
         <Feature

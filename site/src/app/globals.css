@@ -16,6 +16,7 @@
   --select: #6d8cff;
   --select-soft: rgb(109 140 255 / 16%);
   --ok: #4ade80;
+  --warn: #fbbf24;
   --radius: 10px;
   --radius-sm: 6px;
   --font: "DM Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -223,13 +224,11 @@ figure { margin: 0; }
 .panel.narrow { max-width: 380px; }
 .panel.wide { max-width: 560px; }
 .panel.capture { margin: 48px auto 0; max-width: 520px; }
-.panel img, .timeline-shot { border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); }
+.panel img { border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); }
 .panel img { width: 100%; box-shadow: 0 30px 90px -40px rgb(109 140 255 / 25%); }
 
 .copy.center { text-align: center; }
 .copy.center .sub { margin-left: auto; margin-right: auto; }
-
-.timeline-shot { width: 100%; margin-top: 48px; }
 
 /* The features without a picture: the headline beside a short list. */
 .more { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 88px; align-items: start; }
@@ -371,7 +370,6 @@ button.btn { cursor: pointer; }
   .post-cta { padding: 24px 16px; }
   .pro-dialog-body { padding: 22px; }
   .pro-dialog-actions .btn { flex: 1 1 100%; }
-  .timeline-shot { height: 200px; object-fit: cover; object-position: left center; }
   .actions .btn { width: 100%; justify-content: center; }
 }
 /* The nav on the narrowest phones (360 px): logo, Pricing, Blog, the GitHub mark and Download still fit on one line. */

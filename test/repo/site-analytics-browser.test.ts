@@ -393,3 +393,79 @@ test("The CSP has no 'unsafe-inline' or 'unsafe-eval', and every page's own rule
       assert.ok(csp.includes(`'sha256-${createHash("sha256").update(m[1]!, "utf8").digest("base64")}'`), `${path}: an inline script without its hash`);
   }
 });
+
+const PLAYBACKS = [".agent-pb", ".critic-pb"];
+
+function hiddenRowCount(page: Page): Promise<number> {
+  return page.$$eval('.pb-row[data-state="off"], .cp-score[data-on="false"]', (rows) => rows.length);
+}
+
+async function assertFinishedPlayback(page: Page, label: string) {
+  for (const sel of PLAYBACKS) assert.equal(await page.$eval(sel, (e) => (e as HTMLElement).dataset.finished), "true", `${label}: ${sel}`);
+  assert.equal(await hiddenRowCount(page), 0, label);
+  const agent = await page.$eval(".agent-pb", (e) => e.textContent ?? "");
+  assert.match(agent, /Imported 7 files/);
+  assert.match(agent, /Storyboard, 4 beats/);
+  assert.match(agent, /Cut and passed: 21 s/);
+  assert.doesNotMatch(agent, /Approved/);
+  const critic = await page.$$eval(".cp-value", (values) => values.map((v) => (v as HTMLElement).dataset.v));
+  assert.deepEqual(critic, ["9", "9", "9", "9"]);
+}
+
+test("Feature playback with reduced motion: the finished state, no playback", { skip }, async () => {
+  const v = await visitor("US", 1440, 900);
+  await v.page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+  await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+  await settle(v.page);
+  await assertFinishedPlayback(v.page, "reduced motion");
+  await v.page.$eval(".agent-pb", (e) => e.scrollIntoView({ block: "center" }));
+  await settle(v.page);
+  await assertFinishedPlayback(v.page, "reduced motion, on screen");
+  assert.deepEqual(v.errors, []);
+  await v.page.browserContext().close();
+});
+
+test("Feature playback without script: the finished state is in the HTML", { skip }, async () => {
+  const v = await visitor("US", 390, 844);
+  await v.page.setJavaScriptEnabled(false);
+  await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+  await assertFinishedPlayback(v.page, "no script");
+  await v.page.browserContext().close();
+});
+
+test("Feature playback: waits below the fold, plays on screen without moving the layout, pauses off screen, one label for screen readers", { skip }, async () => {
+  for (const [w, h] of [
+    [1440, 900],
+    [360, 800],
+  ] as const) {
+    const v = await visitor("US", w, h);
+    await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+    const heights = () => v.page.evaluate(() => [".agent-pb", ".critic-pb", ".tl-stage", ".tx-stage"].map((s) => document.querySelector<HTMLElement>(s)!.offsetHeight));
+    const before = await heights();
+    assert.equal(await v.page.$eval(".agent-pb", (e) => (e as HTMLElement).dataset.finished), "false");
+    assert.ok((await hiddenRowCount(v.page)) > 0);
+
+    for (const sel of PLAYBACKS) {
+      assert.equal(await v.page.$eval(sel, (e) => e.getAttribute("role")), "img");
+      assert.ok(await v.page.$eval(sel, (e) => (e.getAttribute("aria-label") ?? "").length > 40));
+      assert.equal(await v.page.$eval(sel, (e) => e.firstElementChild!.getAttribute("aria-hidden")), "true");
+    }
+
+    await v.page.$eval(".agent-pb", (e) => e.scrollIntoView({ block: "center" }));
+    await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-user[data-state="done"]'), { timeout: 8000 });
+    await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-step[data-state="run"]'), { timeout: 8000 });
+    assert.deepEqual(await heights(), before, `no layout change at ${w}`);
+
+    await v.page.$eval("footer", (e) => e.scrollIntoView());
+    await v.page.waitForFunction(() => (document.querySelector(".agent-pb") as HTMLElement).dataset.paused !== undefined, { timeout: 4000 });
+    const paused = await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length);
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length), paused, "stays where it was off screen");
+
+    await v.page.$eval(".tl-stage", (e) => e.scrollIntoView({ block: "center" }));
+    await v.page.waitForFunction(() => (document.querySelector(".tl-stage") as HTMLElement).dataset.playing !== undefined, { timeout: 4000 });
+    assert.ok(await v.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll at ${w}`);
+    assert.deepEqual(v.errors, []);
+    await v.page.browserContext().close();
+  }
+});
