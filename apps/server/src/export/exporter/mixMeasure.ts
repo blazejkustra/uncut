@@ -8,7 +8,7 @@ import { SOUND_ROLES, soundRoles, type Media, type Project, type SoundRole, type
 
 import { graphFileArgs, planExport } from "../exportPlan.ts";
 import { mixMeasureCommand, parseMixMeasure, type LoudnessTrace } from "../plan/mixMeasure.ts";
-import { capsOf, run, ffmpegError } from "./ffmpeg.ts";
+import { capsOf, guardedRun, ffmpegError } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 
 export interface MixTraces {
@@ -50,7 +50,7 @@ export function makeMixMeasure() {
         passes.map(async ({ name, command }) => {
           const graphFile = join(temp, `${name}.txt`);
           await writeFile(graphFile, command.graph);
-          const r = await run(
+          const r = await guardedRun(
             bin,
             ["-hide_banner", "-nostdin", "-nostats", ...command.inputs, ...graphFileArgs(caps, graphFile), ...command.outputArgs],
             signal,

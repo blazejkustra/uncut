@@ -8,6 +8,8 @@ import { systemPath } from "../../app/bundledTools.ts";
 import { which } from "../../app/setup.ts";
 import { withoutApiKey } from "../../app/shellEnv.ts";
 import { localInputs } from "../../media/localInputs.ts";
+import { MemoryLimitExceeded, ffmpegMemoryLimit, watchMemory } from "./processMemory.ts";
+import { makeSlots, type Slots } from "./slots.ts";
 
 export class Cancelled extends Error {
   constructor() {
@@ -130,7 +132,26 @@ export const encoderThreads = (cores = availableParallelism()) => Math.max(1, co
 export const boundedDecoders = (inputs: ReadonlyArray<string>, threads = 2) =>
   inputs.flatMap((arg) => (arg === "-i" ? ["-threads", String(threads), "-i"] : [arg]));
 
-/** The export's encode: its inputs (boundedDecoders), the graph, encoderThreads and the output, progress on stdout. */
+/** How many inputs of one ffmpeg decode on VideoToolbox: past this its sessions run out and memory grows without bound. */
+export const HARDWARE_DECODES_MAX = 16;
+
+/** `inputs` with `-hwaccel videotoolbox` kept on the first `max` inputs only; the others decode in software. */
+export const capHardwareDecodes = (inputs: ReadonlyArray<string>, max = HARDWARE_DECODES_MAX) => {
+  const out: Array<string> = [];
+  let hardware = 0;
+  for (let i = 0; i < inputs.length; i++) {
+    const isHardware = inputs[i] === "-hwaccel" && inputs[i + 1] === "videotoolbox";
+    if (isHardware && hardware++ >= max) i++;
+    else out.push(inputs[i]!);
+  }
+  return out;
+};
+
+/** How many guardedRun ffmpegs run at once; the rest wait their turn. */
+export const FFMPEG_AT_ONCE = 4;
+export const ffmpegSlots = makeSlots(FFMPEG_AT_ONCE);
+
+/** The export's encode: its inputs (boundedDecoders, capHardwareDecodes), the graph, encoderThreads and the output, progress on stdout. */
 export const encodeArgs = (
   cmd: { readonly inputs: ReadonlyArray<string>; readonly outputArgs: ReadonlyArray<string> },
   graphArgs: ReadonlyArray<string>,
@@ -144,7 +165,7 @@ export const encodeArgs = (
   "pipe:1",
   "-stats_period",
   "0.25",
-  ...boundedDecoders(cmd.inputs),
+  ...boundedDecoders(capHardwareDecodes(cmd.inputs)),
   ...graphArgs,
   "-threads:v",
   String(encoderThreads(cores)),
@@ -159,13 +180,28 @@ interface RunResult {
 
 /**
  * Runs a tool to the end, killing it (SIGKILL) if `signal` aborts. stdout lines go to `onLine`
- * when given (ffmpeg's -progress), else are kept; stderr keeps its last 64 kB.
+ * when given (ffmpeg's -progress), else are kept; stderr keeps its last 64 kB. With `memoryLimit`
+ * (bytes) it's also killed once it holds more, rejecting with MemoryLimitExceeded.
  */
-export function run(bin: string, args: ReadonlyArray<string>, signal: AbortSignal | undefined, onLine?: (line: string) => void): Promise<RunResult> {
+export function run(
+  bin: string,
+  args: ReadonlyArray<string>,
+  signal: AbortSignal | undefined,
+  onLine?: (line: string) => void,
+  memoryLimit?: number,
+): Promise<RunResult> {
   return new Promise((resolvePromise, reject) => {
     if (signal?.aborted) return reject(new Cancelled());
     const child = spawn(bin, localInputs(bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
     lowerPriority(child);
+    let overLimit: MemoryLimitExceeded | undefined;
+    const stopWatching =
+      memoryLimit !== undefined && child.pid !== undefined
+        ? watchMemory(child.pid, memoryLimit, (used) => {
+            overLimit = new MemoryLimitExceeded(used, memoryLimit);
+            child.kill("SIGKILL");
+          })
+        : () => {};
     let stdout = "";
     let stderr = "";
     let partial = "";
@@ -179,15 +215,39 @@ export function run(bin: string, args: ReadonlyArray<string>, signal: AbortSigna
     const abort = () => child.kill("SIGKILL");
     signal?.addEventListener("abort", abort, { once: true });
     child.once("error", (error) => {
+      stopWatching();
       signal?.removeEventListener("abort", abort);
       reject(error);
     });
     child.once("close", (code) => {
+      stopWatching();
       signal?.removeEventListener("abort", abort);
       if (signal?.aborted) return reject(new Cancelled());
+      if (overLimit) return reject(overLimit);
       resolvePromise({ code, stdout, stderr });
     });
   });
+}
+
+const takeSlot = (slots: Slots, signal: AbortSignal | undefined) =>
+  slots.take(signal).catch(() => {
+    throw new Cancelled();
+  });
+
+/** run() for one-off heavy ffmpegs (encodes, composites, sound passes): in turn (ffmpegSlots) and under the memory limit. */
+export async function guardedRun(
+  bin: string,
+  args: ReadonlyArray<string>,
+  signal: AbortSignal | undefined,
+  onLine?: (line: string) => void,
+  { slots = ffmpegSlots, memoryLimit = ffmpegMemoryLimit() }: { readonly slots?: Slots; readonly memoryLimit?: number } = {},
+): Promise<RunResult> {
+  const release = await takeSlot(slots, signal);
+  try {
+    return await run(bin, args, signal, onLine, memoryLimit);
+  } finally {
+    release();
+  }
 }
 
 /**
