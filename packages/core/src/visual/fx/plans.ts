@@ -17,6 +17,9 @@ import {
   effectParams,
   effectOptions,
   MASK,
+  CUTOUT,
+  FACE_BLUR,
+  faceIds,
 } from "./defs.ts";
 
 // ---- edits ----
@@ -32,7 +35,7 @@ interface Target {
   readonly tracks: ReadonlyArray<{
     readonly kind: string;
     readonly locked?: boolean;
-    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name" | "transform">>;
+    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name" | "transform" | "reverse" | "loop">>;
   }>;
   readonly media?: ReadonlyArray<{
     readonly id: string;
@@ -43,7 +46,12 @@ interface Target {
   }>;
 }
 
-type ClipOf = { item: Pick<Item, "id" | "type" | "effects" | "name" | "transform">; name: string; probe?: Pick<MediaProbe, "width" | "height"> | undefined };
+type ClipOf = {
+  item: Pick<Item, "id" | "type" | "effects" | "name" | "transform" | "reverse" | "loop">;
+  name: string;
+  kind: string;
+  probe?: Pick<MediaProbe, "width" | "height"> | undefined;
+};
 
 function clipOf(project: Target, id: string): ClipOf | { problem: string } {
   for (const t of project.tracks)
@@ -54,7 +62,7 @@ function clipOf(project: Target, id: string): ClipOf | { problem: string } {
       // SVG stills are drawn by Chromium in the export, not decoded: looks and effects don't apply to them (D138).
       if (fxSkips(media)) return { problem: "Looks and effects don't apply to SVG images." };
       if (t.locked || it.locked) return { problem: "That clip is locked: unlock it to change its effects." };
-      return { item: it, name: it.name ?? media.name ?? it.id, probe: media.probe };
+      return { item: it, name: it.name ?? media.name ?? it.id, kind: media.kind, probe: media.probe };
     }
   return { problem: "Pick a clip first." };
 }
@@ -136,7 +144,7 @@ export function planAdjust(project: Target, itemId: string, patch: Partial<Recor
 export const adjustWord = (key: AdjustKey, v: number) =>
   key === "exposure" ? `${v > 0 ? "+" : ""}${Math.round(v * 100) / 100} EV` : `${v > 0 ? "+" : ""}${Math.round(v * 100)}`;
 
-type EffectValues = Record<string, number | string | boolean>;
+type EffectValues = Record<string, number | string | boolean | ReadonlyArray<number>>;
 
 /** A new mask's shape (D326): the middle 60 % of the clip's box, whole canvas px. */
 function defaultMask(project: Target, c: ClipOf): EffectValues {
@@ -146,14 +154,27 @@ function defaultMask(project: Target, c: ClipOf): EffectValues {
 }
 
 /** An entry's params as written: its options and numbers with defaults filled in and clamped. */
-const effectValues = (module: string, params: unknown): EffectValues => ({ ...effectOptions(module, params), ...effectParams(module, params) });
+const effectValues = (module: string, params: unknown): EffectValues => {
+  const faces = module === FACE_BLUR ? faceIds(params) : [];
+  return { ...effectOptions(module, params), ...effectParams(module, params), ...(faces.length ? { faces } : {}) };
+};
 
-function valueWord(info: NonNullable<ReturnType<typeof effectInfo>>, key: string, v: number | string | boolean): string | undefined {
+function valueWord(info: NonNullable<ReturnType<typeof effectInfo>>, key: string, v: EffectValues[string]): string | undefined {
+  if (Array.isArray(v)) return `${v.length} face${v.length === 1 ? "" : "s"}`;
   const option = info.options?.find((o) => o.key === key);
   if (option?.kind === "choice") return option.choices.find((c) => c.id === v)?.name.toLowerCase();
   if (option) return typeof v === "boolean" ? (v ? "on" : "off") : String(v);
   const p = info.params.find((d) => d.key === key);
   return p && typeof v === "number" ? `${Math.round(v * 100) / 100}${p.unit ? ` ${p.unit}` : ""}` : undefined;
+}
+
+/** Why a clip can't take background removal or face blur (D328), which read vision results of a video. */
+function visionEffectProblem(c: ClipOf, module: string): string | undefined {
+  if (module !== CUTOUT && module !== FACE_BLUR) return undefined;
+  if (c.kind !== "video") return module === CUTOUT ? "Background removal works on video clips." : "Face blur works on video clips.";
+  if (module === CUTOUT && c.item.reverse) return "Background removal doesn't work on a clip that plays backwards: turn Play backwards off first.";
+  if (module === CUTOUT && c.item.loop) return "Background removal doesn't work on a looped clip: turn Loop off first.";
+  return undefined;
 }
 
 /** Add an effect to a clip (with its defaults), or with `params` change the one it has. */
@@ -162,6 +183,8 @@ export function planEffect(project: Target, itemId: string, module: string, para
   const info = effectInfo(module);
   if (!info) return { problem: `There's no effect called ${module}.` };
   if ("problem" in c) return c;
+  const vision = visionEffectProblem(c, module);
+  if (vision) return { problem: vision };
   const list = [...(c.item.effects ?? [])];
   const at = list.findIndex((e) => e.module === module);
   const base = at >= 0 ? effectValues(module, list[at]!.params) : effectValues(module, module === MASK ? defaultMask(project, c) : {});

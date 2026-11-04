@@ -2,7 +2,8 @@
 // then run an RpcServer for that one socket.
 import { homedir, hostname } from "node:os";
 
-import { LibraryError, LINK_METHODS, PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { LibraryError, LINK_METHODS, PluginError, ProjectError, RPC_METHODS, VisionError, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import type { Project } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -16,6 +17,9 @@ import { answerProjectSkills, realProject } from "../agent/skillTrust.ts";
 import { findClaude, sessionEnv } from "../agent/session/config.ts";
 import { templatesRpc } from "../templates/templates.ts";
 import { Analysis } from "../analysis/analysis.ts";
+import { reframePlan, reframeSubject } from "../analysis/vision/reframe.ts";
+import { shellFfmpeg } from "../analysis/vision/pluginVision.ts";
+import { VisionFailure } from "../analysis/vision/vision.ts";
 import { presentedToken, tokensMatch } from "./auth.ts";
 import { defaultParentDir, listFolder } from "./files.ts";
 import { ServerConfig } from "./config.ts";
@@ -219,6 +223,37 @@ const handlersLayer = ({
     [RPC_METHODS.analysisJobs]: () => analysis.jobs,
     [RPC_METHODS.analysisCancel]: ({ jobId }) => analysis.cancel(jobId),
     [RPC_METHODS.analysisCached]: ({ mediaId, analyzer, omit }) => analysis.cached(mediaId, analyzer, omit),
+    // D328: auto reframe: the subject is found first, then the edit is planned against the project as it is then.
+    [RPC_METHODS.visionReframe]: ({ itemId, zoom }) =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return yield* new VisionError({ reason: "invalid", message: "Open a project first." });
+        const failed = (error: unknown) => new VisionError({ reason: error instanceof VisionFailure ? error.reason : "failed", message: (error as Error).message });
+        const subject = yield* Effect.tryPromise({
+          try: (signal) => reframeSubject(analysis.vision, open.project as Project, open.dir, itemId, shellFfmpeg(config), signal),
+          catch: failed,
+        });
+        let summary = "";
+        yield* projects
+          .editIn(open.openId, (now) =>
+            Effect.try({
+              try: () => {
+                const plan = reframePlan(now as Project, itemId, subject, zoom);
+                summary = plan.summary;
+                return plan;
+              },
+              catch: failed,
+            }),
+          )
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof VisionError
+                ? error
+                : new VisionError({ reason: "invalid", message: `The project changed while its faces were found, so it wasn't reframed: ${error.message}` }),
+            ),
+          );
+        return { summary };
+      }),
     [RPC_METHODS.historySubscribe]: () => projects.historyChanges,
     [RPC_METHODS.historyPreview]: ({ revision }) => projects.historyPreview(revision),
     [RPC_METHODS.historyJump]: ({ revision }) => projects.historyJump(revision),

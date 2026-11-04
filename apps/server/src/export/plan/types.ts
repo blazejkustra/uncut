@@ -14,6 +14,8 @@ import {
   RENDER_CSS,
 } from "@uncut/core";
 
+import type { LayerMatte } from "./vision.ts";
+
 export type Quality = ExportQuality;
 
 /** A linear opacity ramp on a layer, in project frames: fade in from 0 at `st` to 1 at st + d, or out. */
@@ -90,6 +92,8 @@ export interface LayerFx {
    * the rasteriser's WebGPU (shadeLayers) and the layer's picture comes from them (CommandOptions.shaded).
    */
   readonly shader?: ShaderUse;
+  /** D328: face blur's masks on each frame from f0 (px of the w × h picture); the exporter draws them into a grey mask video. */
+  readonly faceMasks?: ReadonlyArray<ReadonlyArray<ClipMask>>;
 }
 
 /** A clip's box for each frame from f0 (absent: the plain full frame, drawn as before D75). */
@@ -116,6 +120,8 @@ export type VisualLayer =
       /** A held clip (D94): the source time (s) of its media's last frame, where its source stops. */
       readonly last?: number;
       readonly fx?: LayerFx;
+      /** D328: background removal's matte (the vision cache's .mkv), its frames timed like a ramp's (`times` after `source`, the matte's own clock). */
+      readonly matte?: LayerMatte;
     })
   | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean; readonly fx?: LayerFx })
   | (LayerBase & {

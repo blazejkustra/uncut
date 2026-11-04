@@ -2,6 +2,7 @@
 // and of what, then the controls they share. Every change goes to each selected item it applies to
 // as one edit (timeline/multi.ts planForAll): the filter's strength and removal, Adjust, effects,
 // speed, volume and opacity. A value shows when all of them have it, else the first one's.
+import { BehindSubjectButton } from "./vision.tsx";
 import { SPEED_PRESETS, SPEED_RANGE, speedLabel } from "@uncut/core/arrange";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 import { fxSkips } from "@uncut/core/fx";
@@ -117,6 +118,7 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
           </button>
         </Tooltip>
       </div>
+      {items.length > 0 && items.every((i) => i.type === "text") && <BehindSubjectButton project={project} textIds={items.map((i) => i.id)} locked={lockedIds.size > 0} />}
       <div className="insp-sub" data-testid="inspector-multi-sub">
         {selectionWords(items)}
         {lockedIds.size ? `, ${lockedIds.size} locked` : ""}

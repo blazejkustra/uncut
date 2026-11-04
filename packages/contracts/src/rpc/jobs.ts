@@ -5,6 +5,7 @@ import { ExportQuality, ExportLoudness, ExportSubtitles, ExportRange, ExportVide
 import { Empty } from "./rpcs.ts";
 import { FootageHit, FootageStatus } from "../footage.ts";
 import { Analyzer, AnalysisError, AnalysisJob, TranscriptionState, TranscriptionError } from "../analysis.ts";
+import { VisionError } from "../vision.ts";
 import { PluginInfo, PluginError, PluginContributions, CatalogEntry } from "../plugins.ts";
 import { CaptureState, CaptureError, CaptureOptions, CaptureOrientation, TakeKind, MultiPart, MultiLayout } from "../capture.ts";
 import { GeneratorChoice, GeneratorInfo, GenerateRequest, GenerateError, GenerateJob, KeyInfo, KeyProvider } from "../generate.ts";
@@ -96,6 +97,14 @@ export const AnalysisCachedRpc = Rpc.make(RPC_METHODS.analysisCached, {
   payload: Schema.Struct({ mediaId: Schema.String, analyzer: Analyzer, omit: Schema.optional(Schema.Array(Schema.String)) }),
   success: Schema.Struct({ result: Schema.NullOr(Schema.Unknown) }),
   error: AnalysisError,
+});
+
+// D328: auto reframe: the clip's box keyed to follow its subject (faces, else the person matte) on
+// the project's canvas, as one edit; it waits while the faces are found. VisionError says why not.
+export const VisionReframeRpc = Rpc.make(RPC_METHODS.visionReframe, {
+  payload: Schema.Struct({ itemId: Schema.String, zoom: Schema.optional(Schema.Number) }),
+  success: Schema.Struct({ summary: Schema.String }),
+  error: VisionError,
 });
 
 // The open project's history (D71) now and on every change (null: nothing open).

@@ -38,6 +38,10 @@ import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { ensureReversed, type ReverseTarget } from "../../media/reversed.ts";
+import { readyVision, unblurredClips, visionResolver } from "../../analysis/vision/clipVision.ts";
+import type { VisionAnalysis } from "../../analysis/vision/vision.ts";
+import type { VisionLookup } from "../plan/vision.ts";
+import { writeFaceMasks } from "./faceMasks.ts";
 import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
 /** How often a step's frame count goes to the dialog, at most (ms). */
@@ -67,10 +71,12 @@ export interface RunJobCtx {
   readonly ffmpegBin: () => Promise<string | undefined>;
   readonly missingMedia: (plan: ExportPlan) => Promise<string | undefined>;
   readonly duckEnvelopes: (bin: string, dir: string, project: Project, measure: boolean, signal?: AbortSignal) => Promise<Map<string, SpeechEnvelope | null>>;
+  /** D328: the vision module clips' cutouts and face blur read (absent: they're drawn without). */
+  readonly vision?: VisionAnalysis | undefined;
 }
 
 export const makeRunJob = (ctx: RunJobCtx) => {
-  const { patch, ffmpegBin, missingMedia, duckEnvelopes } = ctx;
+  const { patch, ffmpegBin, missingMedia, duckEnvelopes, vision } = ctx;
   const runJob = async (
     job: ExportJob,
     planned: ExportPlan,
@@ -78,7 +84,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     mediaPath: (m: Media) => string,
     overwrite: boolean,
     signal: AbortSignal,
-    replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string },
+    replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>, vision?: VisionLookup) => ExportPlan | { readonly problem: string },
     cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>,
     css: string = RASTER_CSS,
     reviewPage?: string,
@@ -95,6 +101,8 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     let usedEncoder: "hardware" | "software" | undefined;
     const keepTemp = process.env.UNCUT_KEEP_EXPORT_TEMP === "1";
     const step = stepReporter((s) => patch(job.id, { step: s }));
+    let envelopesNow = cachedEnvelopes;
+    let releaseVision = () => {};
     try {
       const bin = await ffmpegBin();
       stage = "measure";
@@ -105,6 +113,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       if (needed.some((id) => !cachedEnvelopes.has(id))) {
         step("sound");
         const envelopes = await duckEnvelopes(bin, job.projectDir, project, true, signal);
+        envelopesNow = envelopes;
         const again = replan(envelopes);
         if (!("problem" in again)) {
           plan = again;
@@ -118,6 +127,20 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       for (const [k, target] of reversed.entries()) {
         step("reverse", k, reversed.length);
         await ensureReversed(target, { ffmpeg: bin, fps: project.canvas.fps, signal });
+      }
+      // D328: the mattes and faces clips' cutouts and face blur read, made now when the preview hasn't yet.
+      const ready = await readyVision(vision, project, job.projectDir, { signal, onStep: (done, total) => step("vision", done, total) });
+      releaseVision = ready.release;
+      const unblurred = unblurredClips(project, ready);
+      if (unblurred.length)
+        throw new Error(
+          `The export stopped so faces aren't shown unblurred: ${unblurred.join(", ")} ${unblurred.length === 1 ? "has face blur, but its faces" : "have face blur, but their faces"} couldn't be found.`,
+        );
+      if (ready.made.size || ready.failed.size) {
+        const again = replan(envelopesNow, visionResolver(ready));
+        if ("problem" in again) throw new Error(again.problem);
+        plan = again;
+        patch(job.id, { warnings: plan.warnings });
       }
       stage = "rasterise";
       const caps = await capsOf(bin);
@@ -138,6 +161,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
       const untagged = await untaggedFiles(bin, plan, signal);
       stage = "shader";
+      const faceMasks = await writeFaceMasks(bin, plan, temp, signal);
       const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal, (done, total) => step("shaders", done, total));
       signal.removeEventListener("abort", onAbort);
       await rasterizer.close();
@@ -190,6 +214,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
           subtitles,
           luts,
           shaded,
+          faceMasks,
         });
         await writeFile(graphFile, cmd.graph);
         const renderStart = Date.now();
@@ -274,6 +299,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     } finally {
       // Everything it started and wrote is gone before the job says it's over.
       await rasterizer?.close().catch(() => {});
+      releaseVision();
       graphicMedia?.close();
       if (temp && !(keepTemp && end.phase === "failed")) await rm(temp, { recursive: true, force: true }).catch(() => {});
     }

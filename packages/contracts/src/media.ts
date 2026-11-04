@@ -35,6 +35,8 @@ export const MEDIA_FILE_PATH = "/media/file";
 // (<project>/.cache/proxies/), with Range support like MEDIA_FILE_PATH; 404 until it is made.
 // D327: GET /media/proxy/<media id>/<from>-<to>?token=…: the reversed copy of that range of it
 // (<project>/.cache/reversed/), for a reversed clip; 404 until it is made.
+// D328: GET /media/proxy/<media id>/vision/<key>.mp4 | <key>.json?token=…: a vision result a clip
+// reads (a matte's preview copy and info, or faces), by the key its state gives; 404 until made.
 export const PROXY_PATH = "/media/proxy";
 
 /**
@@ -51,6 +53,15 @@ export const ProxyState = Schema.Struct({
   error: Schema.optional(Schema.String),
   /** D327: a reversed copy of media frames [from, to) for a reversed clip, not the media's proxy. */
   reverse: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number })),
+  /** D328: a vision result a clip's effects read (a matte or faces for media seconds [start, end)), not the media's proxy; `key` names its files. */
+  vision: Schema.optional(
+    Schema.Struct({
+      output: Schema.Literals(["matte", "faces"]),
+      mode: Schema.optional(Schema.Literals(["person", "subject"])),
+      start: Schema.Number,
+      end: Schema.Number,
+    }),
+  ),
 });
 export type ProxyState = typeof ProxyState.Type;
 // GET /media/waveform/<media id>?token=…: the sound's peaks for the timeline, as JSON

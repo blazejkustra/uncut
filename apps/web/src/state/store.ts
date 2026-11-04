@@ -42,6 +42,8 @@ export {
   proxyOf,
   reversedOf,
   reversedUrl,
+  visionOf,
+  visionUrl,
   sfxUrl,
   folderSoundUrl,
   libraryPreviewUrl,

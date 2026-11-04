@@ -1,0 +1,46 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.cutout",
+  "kind": "effect",
+  "name": "Remove background",
+  "description": "Keeps the person or subject, the rest shows the tracks below",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "enum": [
+          "person",
+          "subject"
+        ],
+        "default": "person",
+        "description": "Keep: person (people only) or subject (the salient foreground: people, pets, objects; macOS 14 or later)"
+      },
+      "softness": {
+        "type": "number",
+        "minimum": 0.05,
+        "maximum": 1,
+        "default": 1,
+        "description": "Edge softness: 1 keeps the matte's own soft edge, lower is crisper"
+      },
+      "shrink": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0,
+        "description": "Shrink edge: pulls the edge in, past a light fringe"
+      }
+    }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "user-round"
+  }
+}

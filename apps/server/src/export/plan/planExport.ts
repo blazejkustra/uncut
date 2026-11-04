@@ -66,6 +66,11 @@ import { type ExportPlan, mediaToken, type VisualLayer, type LayerFx, type Ramp,
 import { capStates, opacityRamps, splitAt, placementOf, svgClipHtml, splitLoop } from "./layers.ts";
 import { mergeableCues, captionLayers, subtitleLayers } from "./captions.ts";
 import { constantGain } from "./gain.ts";
+import { clipVision, layerFaceMasks, type VisionLookup } from "./vision.ts";
+
+/** A clip drawn without its background removed or its faces blurred (D328), and why. */
+const visionNote = (name: string, output: "matte" | "faces", why: string) =>
+  `${name} is drawn without ${output === "faces" ? "its faces blurred" : "its background removed"}: ${why.replace(/\.$/, "")}.`;
 
 // ---- the plan ----
 
@@ -93,12 +98,14 @@ export interface PlanOptions {
   readonly motionBlur?: boolean | undefined;
   /** D327: the reversed copy of a media range (the exporter makes it before the plan runs). */
   readonly reversedFile?: ((media: Media, range: ReverseRange) => string | undefined) | undefined;
+  /** D328: the vision results (mattes, faces) clips read (the exporter makes them before the plan runs). */
+  readonly vision?: VisionLookup | undefined;
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
 export function planExport(
   project: Project,
-  { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false, reversedFile }: PlanOptions,
+  { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false, reversedFile, vision }: PlanOptions,
 ): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
@@ -258,7 +265,12 @@ export function planExport(
           return moveBox(fxBox(item, clipBox(item, project.canvas, media.probe, f0 + k - start), f0 + k - start, fps), fx.shift, fx.zoom, fx.shiftY);
         });
         // Picture effects (D136) run before the box, so a clip with them always has one.
-        const effects = clipFx(item, project.luts);
+        // D328: background removal and face blur read the vision results made for the clip.
+        const seen =
+          media.kind === "video"
+            ? clipVision(project, item, media, clipFx(item, project.luts), f0 - start, f1 - f0, vision, (output, why) => warnings.push(visionNote(name(item), output, why)))
+            : { effects: clipFx(item, project.luts) };
+        const effects = seen.effects;
         // A shader effect (D213) is a picture pass too (SVG stills take none, D138).
         const shader = fxSkips(media) ? undefined : clipShader(item);
         const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
@@ -282,8 +294,9 @@ export function planExport(
           const fit = fitRect(rest, boxes[0]!.fit, media.probe);
           const w = fixed ? placements[0]!.cw : Math.max(1, Math.round(fit.w * kx));
           const h = fixed ? placements[0]!.ch : Math.max(1, Math.round(fit.h * ky));
+          const faceMasks = seen.faces && effects ? { faceMasks: layerFaceMasks(seen.faces, effects, w, h, ky) } : {};
           layerFx = {
-            fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}) },
+            fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}), ...faceMasks },
           };
         }
         const layer: VisualLayer =
@@ -298,6 +311,7 @@ export function planExport(
                 source: sourceAt(project, item, f0 - start),
                 speed: item.speed ?? 1,
                 ...(isRamped(item) ? { times: rampTimes(project, item, f0 - start, f1 - f0) } : {}),
+                ...(seen.matte ? { matte: seen.matte } : {}),
                 fills: fills(media),
                 ...geometry,
                 ...layerFx,

@@ -65,7 +65,7 @@ export const ExportJob = Schema.Struct({
    */
   step: Schema.optional(
     Schema.Struct({
-      kind: Schema.Literals(["sound", "graphics", "shaders", "loudness", "reverse"]),
+      kind: Schema.Literals(["sound", "graphics", "shaders", "loudness", "reverse", "vision"]),
       done: Schema.optional(Schema.Number),
       total: Schema.optional(Schema.Number),
     }),

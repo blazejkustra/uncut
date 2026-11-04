@@ -33,7 +33,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically: one call is one undo step in your turn. Pass the revision you last read as baseRevision; if the user changed the same items since then, the edit is refused and you get their changes. A refusal gives each problem a fix (a start frame, a track, a free id): use it. Edits that touch a lock are refused; only the user unlocks. dryRun: true returns lines, diff and conflicts without applying.\nEdit ops (fields in the schema): insert_item (main: index, default the end; other tracks: item needs a start), update_item (null removes a field; transform, style, animation, effects and keys are replaced whole, so send what you keep), trim_item (frames > 0 shortens, < 0 lengthens; on main the rest ripples), slip_item (same place and length, other frames of its media), roll_edit (the cut after item moves frames later; nothing else shifts), split_item (at counts from the item's start; the second half gets newId), move_item (main: index; other tracks: start), delete_item (on main the rest closes up), nest_items (neighbouring Main items into a sequence), unnest_item, edit_sequence (ops inside a sequence), delete_sequence, set_transition (on the incoming main item, not the first; null clears it; modules_list kind \"transition\" lists them and their limits; allowTrim: true trims the spare media an overlap lacks), add_track, update_track (mixer replaced whole), delete_track, add_media, update_media, delete_media (unused only), update_project (master replaced whole).\ndocs_read edits gives every op's fields and rules; docs_read text, picture and sound give style, transform, keys, effects and mixer fields.",
+      "description": "Apply edit ops atomically: one call is one undo step in your turn. Pass the revision you last read as baseRevision; if the user changed the same items since then, the edit is refused and you get their changes. A refusal gives each problem a fix: use it. Edits that touch a lock are refused; only the user unlocks. dryRun: true returns lines, diff and conflicts without applying.\nEdit ops (fields in the schema): insert_item (main: index, default the end; elsewhere: start), update_item (null removes a field; transform, style, animation, effects and keys are replaced whole, so send what you keep), trim_item (frames > 0 shortens, < 0 lengthens; on main the rest ripples), slip_item (same place and length, other frames of its media), roll_edit (the cut after item moves frames later; nothing else shifts), split_item (at counts from the item's start; the second half gets newId), move_item (main: index; other tracks: start), delete_item (on main the rest closes up), nest_items (neighbouring Main items into a sequence), unnest_item, edit_sequence (ops inside a sequence), delete_sequence, set_transition (on the incoming main item; null clears it; modules_list kind \"transition\" lists them; allowTrim: true trims the spare media an overlap lacks), add_track, update_track (mixer replaced whole), delete_track, add_media, update_media, delete_media (unused only), update_project (master replaced whole).\ndocs_read edits gives every op's fields and rules; docs_read text, picture and sound give style, transform, keys, effects and mixer fields.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1758,6 +1758,20 @@
           "description": "An audio track that is free there (default: picked or made)."
         }
       }
+    },
+    "reframe": {
+      "type": "object",
+      "required": ["op", "item"],
+      "additionalProperties": false,
+      "description": "D328: auto reframe a video clip to the project's canvas (e.g. 16:9 footage on a 9:16 canvas): its box becomes the picture at cover size, with x (or y) keys that follow the largest face (else the person's outline), smoothed, moving only when the subject leaves the middle, kept inside the picture. zoom 1 to 4 zooms in as well. Other keys stay. The faces are found first (on-device, cached), which can take a while on a long clip.",
+      "properties": { "op": { "const": "reframe" }, "item": { "type": "string" }, "zoom": { "type": "number", "minimum": 1, "maximum": 4 } }
+    },
+    "textBehindSubject": {
+      "type": "object",
+      "required": ["op", "texts"],
+      "additionalProperties": false,
+      "description": "D328: text behind subject: the video clip under these texts (on a track below them, overlapping them most) is copied onto a new track above them with effect.cutout (person) on the copy, muted, so the person stands in front of the text.",
+      "properties": { "op": { "const": "text_behind_subject" }, "texts": { "type": "array", "items": { "type": "string" }, "minItems": 1 } }
     },
     "setSpeed": {
       "type": "object",

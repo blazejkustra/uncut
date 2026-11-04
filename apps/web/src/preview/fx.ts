@@ -11,7 +11,11 @@
 // (D133's maths); vignette, grain and letterbox are core's HTML over it.
 // D326: a chroma key (core keyAlpha and despill) on the picture before everything else, and a
 // shape mask (core maskCoverage, in the clip's box) multiplied into the alpha at the end.
+// D328: face blur first (the picture at w × h with a Gaussian-blurred copy shown through core
+// faceCoverage of the faces' masks), and background removal: the matte's frame through core
+// matteAlpha multiplied into the alpha after the key.
 import { colourLut, keyChroma, maskAt, shakeWindow, shakeZoom, spillChannel, type ClipFx, type ClipMask, type ColourLut } from "@uncut/core/fx";
+import type { Cutout } from "@uncut/core/vision";
 import type { ClipBox } from "@uncut/core/box";
 import type { Item } from "@uncut/core/types";
 
@@ -33,6 +37,10 @@ uniform float uKeyTolerance;
 uniform float uKeySoftness;
 uniform float uSpill;
 uniform int uSpillChannel;
+uniform sampler2D uMatte;
+uniform bool uCutout;
+uniform float uCutCentre;
+uniform float uCutSoft;
 vec4 keyed(vec4 c) {
   if (!uKey) return c;
   float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -46,7 +54,46 @@ vec4 keyed(vec4 c) {
 vec4 picture(vec2 q) {
   vec2 uv = (q + uWin) / uZoomed;
   if (uMirror) uv.x = 1.0 - uv.x;
-  return keyed(texture(uSrc, uv));
+  vec4 c = keyed(texture(uSrc, uv));
+  if (uCutout) c.a *= clamp((texture(uMatte, uv).r - uCutCentre) / uCutSoft + 0.5, 0.0, 1.0);
+  return c;
+}`;
+
+/** D328: the picture at w × h with its blurred copy shown through the faces' masks (core faceCoverage), rows from the top. */
+const FACES = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform sampler2D uBlur;
+uniform vec2 uDim;
+uniform int uFaceN;
+uniform vec4 uFaces[8];
+uniform bool uFaceEllipse;
+uniform float uFaceFeather;
+out vec4 outColor;
+float cover(vec4 m, vec2 q) {
+  vec2 h = 0.5*m.zw;
+  vec2 d = q - (m.xy + h);
+  float sd;
+  if (uFaceEllipse) {
+    float k0 = length(d / h);
+    float k1 = length(d / (h*h));
+    sd = k1 > 0.0 ? k0*(k0 - 1.0) / k1 : -min(h.x, h.y);
+  } else {
+    vec2 w = abs(d) - h;
+    sd = length(max(w, 0.0)) + min(max(w.x, w.y), 0.0);
+  }
+  return clamp(0.5 - sd / uFaceFeather, 0.0, 1.0);
+}
+void main() {
+  vec2 q = gl_FragCoord.xy;
+  vec4 c = texture(uSrc, q / uDim);
+  vec3 b = texture(uBlur, q / uDim).rgb;
+  float k = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uFaceN) break;
+    k = max(k, cover(uFaces[i], q));
+  }
+  outColor = vec4(mix(c.rgb, b, k), c.a);
 }`;
 
 /** Block averages for pixelate: one texel per block. */
@@ -254,7 +301,7 @@ export interface MaskFrame {
 
 const SPILL_CHANNELS = { green: 1, blue: 2 } as const;
 
-type Uniforms = Record<string, number | boolean | ReadonlyArray<number> | { int: number | ReadonlyArray<number> }>;
+type Uniforms = Record<string, number | boolean | ReadonlyArray<number> | { int: number | ReadonlyArray<number> } | { vec4s: ReadonlyArray<number> }>;
 
 /** The key's uniforms (off when the clip has none). */
 function keyUniforms(fx: ClipFx): Uniforms {
@@ -303,6 +350,26 @@ export function maskFrame(
 
 /** What a mask draw adds to the redraw check. */
 export const maskKey = (m: MaskFrame | undefined) => (m ? JSON.stringify(m) : "");
+
+/** D328: a frame's matte (its <video>, at the clip's frame) and its face masks (picture px, the blur's sigma in px). */
+export interface VisionDraw {
+  readonly matte?: { readonly source: TexImageSource; readonly cutout: Cutout } | undefined;
+  readonly faces?: { readonly masks: ReadonlyArray<ClipMask>; readonly sigma: number } | undefined;
+}
+
+/** What a vision draw adds to the redraw check. */
+export const visionKey = (v: VisionDraw | undefined) =>
+  v ? `${v.matte ? `${frameKeyOf(v.matte.source)}|${JSON.stringify(v.matte.cutout)}` : ""}|${v.faces ? JSON.stringify(v.faces) : ""}` : "";
+
+/** At most this many faces are blurred on one frame (the shader's array). */
+export const MAX_FACES = 8;
+
+/** The cutout's uniforms (off without a matte). */
+function cutoutUniforms(v: VisionDraw | undefined): Uniforms {
+  const c = v?.matte?.cutout;
+  if (!c) return { uCutout: false, uMatte: { int: 4 } };
+  return { uCutout: true, uMatte: { int: 4 }, uCutCentre: 0.5 + 0.45 * c.shrink, uCutSoft: c.softness };
+}
 type Target = { readonly tex: WebGLTexture; readonly fbo: WebGLFramebuffer; w: number; h: number };
 
 /** One WebGL2 context drawing a clip's picture with its effects into its canvas. */
@@ -311,6 +378,7 @@ export class FxRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly programs = new Map<string, Program>();
   private src: WebGLTexture;
+  private matteTex: WebGLTexture;
   private lutTex: WebGLTexture;
   private lutKey = "";
   private readonly targets = new Map<string, Target>();
@@ -337,7 +405,7 @@ export class FxRenderer {
     if (!gl) throw new Error("WebGL2 isn't available");
     this.gl = gl;
     this.float = !!gl.getExtension("EXT_color_buffer_float");
-    this.src = this.lutTex = gl.createTexture()!;
+    this.src = this.lutTex = this.matteTex = gl.createTexture()!;
     this.init();
     canvas.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
@@ -363,6 +431,7 @@ export class FxRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     this.src = this.texture2d(gl.LINEAR);
+    this.matteTex = this.texture2d(gl.LINEAR);
     this.lutTex = gl.createTexture()!;
   }
 
@@ -372,7 +441,8 @@ export class FxRenderer {
     if (fx.pixelate) this.program("pixelate", PIXELATE);
     this.program("colour", COLOUR);
     if (fx.rgbSplit || fx.sharpen) this.program("spatial", SPATIAL);
-    if (fx.glow) this.program("glow", GLOW);
+    if (fx.glow || fx.faceBlur) this.program("glow", GLOW);
+    if (fx.faceBlur) this.program("faces", FACES);
     this.program("final", FINAL);
   }
 
@@ -437,6 +507,7 @@ export class FxRenderer {
       if (at === null) continue;
       if (typeof v === "boolean") gl.uniform1i(at, v ? 1 : 0);
       else if (typeof v === "number") gl.uniform1f(at, v);
+      else if ("vec4s" in v) gl.uniform4fv(at, new Float32Array(v.vec4s));
       else if ("int" in v) {
         if (typeof v.int === "number") gl.uniform1i(at, v.int);
         else gl.uniform2i(at, v.int[0]!, v.int[1]!);
@@ -476,6 +547,60 @@ export class FxRenderer {
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB32F, lut.size, lut.size, lut.size, 0, gl.RGB, gl.FLOAT, lut.data);
   }
 
+  /** A matte frame into its texture (no colour conversion: its grey is the matte's value); false when it can't be read yet. */
+  private upload(tex: WebGLTexture, source: TexImageSource): boolean {
+    const gl = this.gl;
+    this.bind(4, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
+    }
+  }
+
+  /**
+   * D328: the source at w × h with a Gaussian-blurred copy (sigma px; blurred at a reduced size when
+   * it's wide, as the glow) shown through the faces' masks. Its target is the picture from then on.
+   */
+  private faceBlur(faces: NonNullable<VisionDraw["faces"]>, w: number, h: number): WebGLTexture {
+    const gl = this.gl;
+    const s = Math.max(1, Math.floor(faces.sigma / 4));
+    const gw = Math.max(1, Math.ceil(w / s));
+    const gh = Math.max(1, Math.ceil(h / s));
+    const a = this.target("faces-a", gw, gh, gl.LINEAR);
+    const b = this.target("faces-b", gw, gh, gl.LINEAR);
+    const glow = this.program("glow", GLOW);
+    const pass = { uImg: { int: 0 }, uOut: [gw, gh], uSigma: faces.sigma / s, uThreshold: false, uLow: 0, uAmount: 1 };
+    this.bind(0, this.src);
+    this.use(glow, { ...pass, uImgSize: [w, h], uDir: [1, 0] });
+    this.draw(a, gw, gh);
+    this.bind(0, a.tex);
+    this.use(glow, { ...pass, uImgSize: [gw, gh], uDir: [0, 1] });
+    this.draw(b, gw, gh);
+    const out = this.target("faced", w, h, gl.LINEAR);
+    const masks = faces.masks.slice(0, MAX_FACES);
+    const m0 = masks[0]!;
+    this.bind(0, this.src);
+    this.bind(1, b.tex);
+    this.use(this.program("faces", FACES), {
+      uSrc: { int: 0 },
+      uBlur: { int: 1 },
+      uDim: [w, h],
+      uFaceN: { int: masks.length },
+      uFaces: { vec4s: masks.flatMap((m) => [m.x, m.y, m.w, m.h]) },
+      uFaceEllipse: m0.shape === "ellipse",
+      uFaceFeather: Math.max(1, m0.feather),
+    });
+    this.draw(out, w, h);
+    return out.tex;
+  }
+
   private draw(target: Target | undefined, w: number, h: number) {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : this.output);
@@ -506,6 +631,7 @@ export class FxRenderer {
     key?: string,
     output: WebGLFramebuffer | null = null,
     mask?: MaskFrame,
+    vision?: VisionDraw,
   ): boolean {
     const gl = this.gl;
     this.output = output;
@@ -515,7 +641,7 @@ export class FxRenderer {
     }
     // The same frame with the same effects at the same size (a paused clip re-rendered): nothing to do.
     const frame = frameKeyOf(source);
-    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}|${maskKey(mask)}` : "";
+    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}|${maskKey(mask)}|${visionKey(vision)}` : "";
     if (sig && sig === this.last && this.drawn) return true;
     this.last = "";
     if (!this.shared && this.canvas.width !== w) this.canvas.width = w;
@@ -531,6 +657,8 @@ export class FxRenderer {
       this.drawn = false;
       return false;
     }
+    if (vision?.matte && !this.upload(this.matteTex, vision.matte.source)) vision = { ...vision, matte: undefined };
+    const picture = vision?.faces?.masks.length ? this.faceBlur(vision.faces, w, h) : this.src;
     // The shake's window in the zoomed picture (whole px), as the export's crop.
     let zoomed = [w, h];
     let win = [0, 0];
@@ -542,13 +670,14 @@ export class FxRenderer {
       zoomed = [zw, zh];
       win = [o.x, o.y];
     }
-    const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true, ...keyUniforms(fx) };
+    const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true, ...keyUniforms(fx), ...cutoutUniforms(vision) };
+    this.bind(4, this.matteTex);
     // Pixelate: block averages first.
     const block = fx.pixelate ? Math.max(1, Math.round(fx.pixelate * k)) : 1;
     let blocks: Target | undefined;
     if (block > 1) {
       blocks = this.target("blocks", Math.ceil(w / block), Math.ceil(h / block), gl.NEAREST);
-      this.bind(0, this.src);
+      this.bind(0, picture);
       this.use(this.program("pixelate", PIXELATE), { ...pictureUniforms, uBlock: { int: block } });
       this.draw(blocks, blocks.w, blocks.h);
     }
@@ -560,7 +689,7 @@ export class FxRenderer {
     }
     let img = this.target("colour", w, h, gl.NEAREST);
     if (blocks) this.bind(1, blocks.tex);
-    this.bind(0, this.src);
+    this.bind(0, picture);
     this.use(this.program("colour", COLOUR), {
       ...pictureUniforms,
       uBlocks: { int: 1 },

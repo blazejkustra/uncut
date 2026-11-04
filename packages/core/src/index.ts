@@ -209,6 +209,9 @@ export {
   CHROMA_KEY,
   BLEND,
   MASK,
+  CUTOUT,
+  FACE_BLUR,
+  faceIds,
   BLEND_MODES,
   blendInfo,
   blendChannel,
@@ -669,3 +672,35 @@ export {
 } from "./timeline/speedRamp.ts";
 export type { RampEase, RampPreset, ReverseRange, SpeedKey } from "./timeline/speedRamp.ts";
 export { CANVAS_FPS } from "./timeline/types.ts";
+export {
+  FRAME_EPSILON_S,
+  VISION_STEP_S,
+  frameIndex,
+  visionSeconds,
+  visionRange,
+  visionProblem,
+  matteFrames,
+  matteAlpha,
+  matteAlphaExpr,
+  FACE_GAP_S,
+  FACE_HOLD_S,
+  facesAt,
+  faceList,
+  faceMasks,
+  faceCoverage,
+} from "./visual/vision.ts";
+export type { Cutout, CutoutMode, FaceBlur, FaceFrames, FaceSample, FaceShape } from "./visual/vision.ts";
+export {
+  REFRAME_SMOOTH_S,
+  REFRAME_DEAD_ZONE,
+  REFRAME_MOVE_MIN_S,
+  REFRAME_MOVE_MAX_S,
+  smooth,
+  reframePath,
+  reframeGeometry,
+  boxAt,
+  subjectCentre,
+  planReframe,
+  planTextBehindSubject,
+} from "./visual/visionPlans.ts";
+export type { CameraKey, ReframeGeometry, ReframeOptions, SubjectBox } from "./visual/visionPlans.ts";

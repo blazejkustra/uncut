@@ -64,6 +64,7 @@ const TYPES: Record<string, string> = {
   ".woff": "font/woff",
   ".ttf": "font/ttf",
   ".otf": "font/otf",
+  ".json": "application/json",
 };
 // The DJI clips are ".MP4": the lookup is by lowercased extension.
 const contentType = (path: string) => TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
@@ -208,6 +209,11 @@ export const layer = Layer.unwrap(
             .slice(PROXY_PATH.length + 1)
             .split("/")
             .map(decode);
+          // D328: a clip vision result's file (a matte's preview copy or info, or faces), by its key.
+          if (id && MEDIA_ID.test(id) && range === "vision" && rest.length === 1 && rest[0]) {
+            const file = yield* proxies.visionFor(id, rest[0]);
+            return file ? yield* serveFile(request, file) : notFound();
+          }
           if (!id || !MEDIA_ID.test(id) || rest.length) return notFound();
           // D327: a reversed copy of a range of it (from-to, media frames).
           const span = range === undefined ? undefined : /^(\d+)-(\d+)$/.exec(range);

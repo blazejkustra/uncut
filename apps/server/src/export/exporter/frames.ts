@@ -58,6 +58,8 @@ import {
   blendGraph,
 } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
+import { clipVision, layerFaceMasks, type VisionLookup } from "../plan/vision.ts";
+import { faceMaskFrame } from "./faceMasks.ts";
 import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
@@ -91,6 +93,8 @@ export interface FrameSessionOptions {
   readonly downscale?: boolean;
   /** D327: the reversed copies of reversed clips, made before the session (media/reversed.ts). */
   readonly reversedFile?: ((media: Media, range: ReverseRange) => string | undefined) | undefined;
+  /** D328: the vision results clips' cutouts and face blur read, made before the session (analysis/vision/clipVision.ts). */
+  readonly vision?: VisionLookup | undefined;
 }
 
 export interface FrameSession {
@@ -201,7 +205,14 @@ export async function openFrameSession(
       got = (async () => {
         const small = options.downscale && W * 2 <= cw ? { outWidth: W, outHeight: H } : undefined;
         const background = join(temp, `bg-${W}.png`);
-        const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src), reversedFile: options.reversedFile });
+        const plan = planExport(project, {
+          mediaPath,
+          width: W,
+          height: H,
+          graphic: (src) => graphics.get(src),
+          reversedFile: options.reversedFile,
+          vision: options.vision,
+        });
         await rs.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background, ...small });
         const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
         return { background, untagged, small };
@@ -348,7 +359,14 @@ export async function openFrameSession(
         // A blur dissolve (D133): gblur at the frame's sigma (output px).
         const blur = v.blur ? `,${blurFilters((v.blur * H) / ch)}` : "";
         // A clip's looks and effects (D136): picture effects before its box (which it then always has), overlays after it.
-        const effects = v.item.type === "clip" && media && !svg ? clipFx(v.item, project.luts) : undefined;
+        // D328: background removal and face blur at this frame, from the vision results made for the clip.
+        const seen =
+          v.item.type === "clip" && media?.kind === "video"
+            ? clipVision(project, v.item, media, clipFx(v.item, project.luts), local, 1, options.vision, (output, why) =>
+                notes.push(`"${v.item.name ?? v.item.id}" is drawn without ${output === "faces" ? "its faces blurred" : "its background removed"}: ${why.replace(/\.$/, "")}`),
+              )
+            : { effects: v.item.type === "clip" && media && !svg ? clipFx(v.item, project.luts) : undefined };
+        const effects = seen.effects;
         // D213: a shader effect is a picture pass, drawn first with the rasteriser's WebGPU as the export does.
         const shader = v.item.type === "clip" && media && !svg ? clipShader(v.item) : undefined;
         const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
@@ -424,6 +442,26 @@ export async function openFrameSession(
               );
             }
           }
+          const extra: { matte?: string; faces?: string } = {};
+          if (seen.matte && effects?.cutout) {
+            const m = seen.matte;
+            k++;
+            inputs.push("-ss", String(Math.max(0, m.source - 0.25 / m.fps)), "-i", m.file);
+            graph.push(`[${k}:v:0]trim=end_frame=1,setpts=0[xm${k}]`);
+            extra.matte = `xm${k}`;
+          }
+          if (seen.faces && effects?.faceBlur) {
+            // The effects' size, as below.
+            const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
+            const fw = v.box.scale !== 1 ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw;
+            const fh = v.box.scale !== 1 ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch;
+            const file = join(temp, `w${W}-f${f}-${k}-faces.gray`);
+            await writeFile(file, faceMaskFrame(layerFaceMasks(seen.faces, effects, fw, fh, H / ch)[0]!, fw, fh));
+            k++;
+            inputs.push("-f", "rawvideo", "-pix_fmt", "gray", "-s", `${fw}x${fh}`, "-i", file);
+            graph.push(`[${k}:v:0]setpts=0[xf${k}]`);
+            extra.faces = `xf${k}`;
+          }
           k++;
           inputs.push(...source);
           if (picture && (effects || shader)) {
@@ -446,7 +484,7 @@ export async function openFrameSession(
             };
             graph.push(
               `[${k}:v:0]${pick}null[e${k}]`,
-              ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts),
+              ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts, extra),
               ...boxGraph([p], `s${k}`, `u${k}`, project.canvas.fps),
             );
           } else graph.push(`[${k}:v:0]${pick}null[s${k}]`, ...boxGraph([p], `s${k}`, `u${k}`, project.canvas.fps));

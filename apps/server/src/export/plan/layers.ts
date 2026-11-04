@@ -87,6 +87,20 @@ export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
  * data sliced, a video's source time moved on. `source` overrides that (a looped clip's next pass).
  */
 function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, source?: number): VisualLayer {
+  return withVisionSlice(slicePicture(layer, from, to, fps, source), layer, from - layer.f0, to - layer.f0);
+}
+
+/** D328: a slice's face masks and matte frames. */
+function withVisionSlice(slice: VisualLayer, layer: VisualLayer, a: number, b: number): VisualLayer {
+  if (slice.kind !== "video" && slice.kind !== "image") return slice;
+  const faceMasks = slice.fx?.faceMasks;
+  const fx = slice.fx && faceMasks ? { fx: { ...slice.fx, faceMasks: faceMasks.slice(a, b) } } : {};
+  if (slice.kind !== "video" || layer.kind !== "video" || !layer.matte) return { ...slice, ...fx } as VisualLayer;
+  const times = layer.matte.times.slice(a, b);
+  return { ...slice, ...fx, matte: { ...layer.matte, source: layer.matte.source + times[0]!, times: times.map((t) => t - times[0]!) } };
+}
+
+function slicePicture(layer: VisualLayer, from: number, to: number, fps: number, source?: number): VisualLayer {
   const a = from - layer.f0;
   const b = to - layer.f0;
   const common = {

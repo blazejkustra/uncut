@@ -251,6 +251,8 @@ export interface EffectInfo {
 export const CHROMA_KEY = "effect.chroma-key";
 export const BLEND = "effect.blend";
 export const MASK = "effect.mask";
+export const CUTOUT = "effect.cutout";
+export const FACE_BLUR = "effect.face-blur";
 
 /** The built-in effects, in the panel's order. Lengths are canvas pixels. */
 export const EFFECTS: ReadonlyArray<EffectInfo> = [
@@ -393,11 +395,62 @@ export const EFFECTS: ReadonlyArray<EffectInfo> = [
       { key: "feather", name: "Feather", min: 0, max: 500, step: 1, default: 0, unit: "px" },
     ],
   },
+  {
+    id: CUTOUT,
+    name: "Remove background",
+    description: "Keeps the person or subject, the rest shows the tracks below",
+    group: "composite",
+    options: [
+      {
+        key: "mode",
+        name: "Keep",
+        kind: "choice",
+        choices: [
+          { id: "person", name: "People" },
+          { id: "subject", name: "Subject" },
+        ],
+        default: "person",
+      },
+    ],
+    params: [
+      { key: "softness", name: "Edge softness", min: 0.05, max: 1, step: 0.01, default: 1 },
+      { key: "shrink", name: "Shrink edge", min: 0, max: 1, step: 0.01, default: 0 },
+    ],
+  },
+  {
+    id: FACE_BLUR,
+    name: "Face blur",
+    description: "Blurs faces and follows them",
+    group: "picture",
+    options: [
+      {
+        key: "shape",
+        name: "Shape",
+        kind: "choice",
+        choices: [
+          { id: "ellipse", name: "Ellipse" },
+          { id: "rectangle", name: "Rectangle" },
+        ],
+        default: "ellipse",
+      },
+    ],
+    params: [
+      { key: "amount", name: "Amount", min: 2, max: 80, step: 1, default: 24, unit: "px" },
+      { key: "feather", name: "Feather", min: 0, max: 100, step: 1, default: 12, unit: "px" },
+      { key: "padding", name: "Padding", min: 0, max: 1, step: 0.01, default: 0.25 },
+    ],
+  },
 ];
 
 export const effectInfo = (id: string | undefined) => EFFECTS.find((e) => e.id === id);
 /** Every module id a clip's effects can draw (LOOK, ADJUST and EFFECTS). */
 export const DRAWN_FX: ReadonlySet<string> = new Set([LOOK, ADJUST, ...EFFECTS.map((e) => e.id)]);
+
+/** Face blur's "only these faces" (D328): the whole face ids in `params.faces` (none: every face). */
+export function faceIds(params: unknown): Array<number> {
+  const faces = (params && typeof params === "object" ? (params as Record<string, unknown>).faces : undefined) as unknown;
+  return Array.isArray(faces) ? [...new Set(faces.filter((f): f is number => Number.isInteger(f) && f >= 0))].slice(0, 64) : [];
+}
 
 /** An effect's params with its defaults filled in and every value clamped. */
 export function effectParams(id: string, params: unknown): Record<string, number> {

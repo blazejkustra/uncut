@@ -29,6 +29,8 @@
     "./nesting": "./src/timeline/nesting.ts",
     "./retime": "./src/timeline/retimeGraphics.ts",
     "./speedRamp": "./src/timeline/speedRamp.ts",
+    "./vision": "./src/visual/vision.ts",
+    "./visionPlans": "./src/visual/visionPlans.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",
     "./transitions": "./src/visual/transitions.ts",

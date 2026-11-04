@@ -52,6 +52,10 @@ import { projectGraphics } from "./exporter/graphics.ts";
 import { makeDuckEnvelopes } from "./exporter/duckEnvelopes.ts";
 import { makeRunJob } from "./exporter/runJob.ts";
 import { pinReversed, readyReversed, reversedResolver, reverseTargets } from "../media/reversed.ts";
+import { Plugins } from "../plugins/plugins.ts";
+import { pluginVision } from "../analysis/vision/pluginVision.ts";
+import { readyVision, visionResolver } from "../analysis/vision/clipVision.ts";
+import type { VisionLookup } from "./plan/vision.ts";
 import { REVIEW_VIDEO, reviewFolderFor, reviewManifest, reviewPageHtml } from "./exporter/reviewPage.ts";
 import { makePreviewLoudness } from "./exporter/previewLoudness.ts";
 import { makeMixMeasure, type MixTraces } from "./exporter/mixMeasure.ts";
@@ -146,6 +150,8 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const projects = yield* Projects;
     const config = yield* ServerConfig;
+    const plugins = yield* Plugins;
+    const vision = pluginVision(plugins, config);
     const jobsRef = yield* SubscriptionRef.make<ReadonlyArray<ExportJob>>([]);
     const controllers = new Map<string, AbortController>();
     let queue: Promise<void> = Promise.resolve();
@@ -189,7 +195,21 @@ export const layer = Layer.effect(
 
     const duckEnvelopes = makeDuckEnvelopes();
 
-    const runJob = makeRunJob({ patch, ffmpegBin, missingMedia, duckEnvelopes });
+    const runJob = makeRunJob({ patch, ffmpegBin, missingMedia, duckEnvelopes, vision });
+
+    /** D327, D328: the reversed copies and vision results a project's frames read, made first and held until `release`. */
+    const readyFrames = async (bin: string, project: Project, dir: string, mediaPath: (m: Media) => string, signal: AbortSignal) => {
+      const reversed = await readyReversed(bin, project, dir, mediaPath, signal);
+      const seen = await readyVision(vision, project, dir, { signal }).catch((error: unknown) => {
+        reversed.release();
+        throw error;
+      });
+      const release = () => {
+        reversed.release();
+        seen.release();
+      };
+      return { reversedFile: reversed.reversedFile, vision: visionResolver(seen), release };
+    };
 
     const start = (input: ExportInput) =>
       Effect.gen(function* () {
@@ -291,8 +311,8 @@ export const layer = Layer.effect(
         // D327: reversed clips read reversed copies; the job makes the missing ones before it renders.
         const reversed = yield* Effect.promise(() => reverseTargets(sized, dir, mediaPath));
         const reversedFile = reversedResolver(reversed);
-        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) =>
-          planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur, reversedFile });
+        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>, seen?: VisionLookup) =>
+          planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur, reversedFile, vision: seen });
         const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
@@ -386,9 +406,9 @@ export const layer = Layer.effect(
         return yield* Effect.tryPromise({
           try: async (signal) => {
             const { graphics, fonts } = await projectGraphics(config, dir, project);
-            const { reversedFile, release } = await readyReversed(bin, project, dir, mediaPath, signal);
+            const { reversedFile, vision: seen, release } = await readyFrames(bin, project, dir, mediaPath, signal);
             try {
-              return await renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss, { reversedFile });
+              return await renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss, { reversedFile, vision: seen });
             } finally {
               release();
             }
@@ -410,10 +430,11 @@ export const layer = Layer.effect(
               try: async () => {
                 const { graphics, fonts } = await projectGraphics(config, dir, project);
                 const life = new AbortController();
-                const { reversedFile, release } = await readyReversed(bin, project, dir, mediaPath, life.signal);
+                const { reversedFile, vision: seen, release } = await readyFrames(bin, project, dir, mediaPath, life.signal);
                 const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, {
                   ...options,
                   reversedFile,
+                  vision: seen,
                 }).catch((error: unknown) => {
                   release();
                   throw error;

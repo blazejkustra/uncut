@@ -258,7 +258,7 @@ export function reverseRange(project: WithTracks, item: Item): ReverseRange | un
 }
 
 /** A main clip's own frames that overlapping transitions play before its start and after its end (half of each). */
-function transitionHandles(project: WithTracks, item: Item): { before: number; after: number } {
+export function transitionHandles(project: WithTracks, item: Item): { before: number; after: number } {
   const track = project.tracks?.find((t) => t.role === "main" && t.items.some((i) => i.id === item.id));
   if (!track) return { before: 0, after: 0 };
   const index = track.items.findIndex((i) => i.id === item.id);
@@ -284,6 +284,7 @@ export function reverseProblem(project: Pick<Project, "media" | "tracks">, item:
   if (!media || media.kind !== "video") return "Only video clips play backwards.";
   if (!media.probe?.frames) return "Uncut doesn't know this video's length yet, so it can't reverse it.";
   if (item.loop || item.hold) return "A looped or held clip can't play backwards: turn Loop and Hold off first.";
+  if (item.effects?.some((e) => e.module === "effect.cutout" && !e.bypass)) return "A clip with its background removed can't play backwards: remove Remove background first.";
   if (hasFollowers(project, item)) return "Its detached sound or linked picture would still play forwards: delete or unlink it first.";
   return undefined;
 }

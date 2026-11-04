@@ -17,8 +17,12 @@ import {
   CHROMA_KEY,
   BLEND,
   MASK,
+  CUTOUT,
+  FACE_BLUR,
+  faceIds,
 } from "./defs.ts";
 import type { BlendMode, ChromaKey, ClipMask, ClipMaskShape } from "./matte.ts";
+import type { Cutout, CutoutMode, FaceBlur, FaceShape } from "../vision.ts";
 
 // ---- a clip's effects, compiled ----
 
@@ -42,6 +46,9 @@ export interface ClipFx {
   readonly key?: ChromaKey;
   readonly mask?: ClipMask;
   readonly blend?: BlendMode;
+  /** D328: the person or subject matte as the picture's alpha (after the key), and face blur on the picture first. */
+  readonly cutout?: Cutout;
+  readonly faceBlur?: FaceBlur;
 }
 
 const live = (item: Pick<Item, "effects">): ReadonlyArray<ModuleUse> =>
@@ -102,6 +109,14 @@ export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArra
           feather: p.feather!,
         };
         break;
+      case CUTOUT:
+        fx.cutout = { mode: o.mode as CutoutMode, softness: p.softness!, shrink: p.shrink! };
+        break;
+      case FACE_BLUR: {
+        const only = faceIds(e.params);
+        fx.faceBlur = { amount: p.amount!, shape: o.shape as FaceShape, feather: p.feather!, padding: p.padding!, ...(only.length ? { faces: only } : {}) };
+        break;
+      }
       case "effect.blur":
         fx.blur = p.amount!;
         break;
@@ -149,7 +164,7 @@ export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArra
 
 /** Whether the effects change the picture itself (the WebGL pass / the export's filters), not only overlays or the box. */
 export const needsPicturePass = (fx: ClipFx | undefined) =>
-  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow || fx.key || fx.mask);
+  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow || fx.key || fx.mask || fx.cutout || fx.faceBlur);
 /** Whether anything is drawn over the picture (vignette, grain, letterbox). */
 export const hasOverlay = (fx: ClipFx | undefined) => !!fx && !!(fx.vignette || fx.grain || fx.letterbox);
 

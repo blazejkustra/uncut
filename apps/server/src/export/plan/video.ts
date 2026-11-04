@@ -35,6 +35,8 @@ export interface CommandOptions {
   readonly luts?: ReadonlyMap<string, string> | undefined;
   /** Shaded layers' pictures (D213): the file of the frames the rasteriser drew, by layer. */
   readonly shaded?: ReadonlyMap<VisualLayer, string> | undefined;
+  /** D328: face blur's mask frames (grey, one per layer frame, at the effects' size), by layer. */
+  readonly faceMasks?: ReadonlyMap<VisualLayer, string> | undefined;
   /** A soft subtitle track (D105): an .srt file muxed as mov_text with an ISO 639-2 language tag. */
   readonly subtitles?:
     | { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined }

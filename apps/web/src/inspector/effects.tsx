@@ -10,6 +10,8 @@ import {
   effectOptions,
   effectParams,
   MASK,
+  CUTOUT,
+  FACE_BLUR,
   LOOK,
   lookInfo,
   planAdjust,
@@ -35,6 +37,7 @@ import { actions } from "../state/store.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { Prop, Section, SliderNum, Toggle } from "./controls.tsx";
 import { NumberField, send, showDraft, type PlanResult } from "./fields.tsx";
+import { FacePicker, VisionStatus } from "./vision.tsx";
 
 /** A slider that drafts while it moves and sends one edit on release. */
 export function Live({
@@ -265,6 +268,8 @@ function EffectEntry({ project, item, entry, info, locked }: { project: ProjectM
           </Prop>
         ))
       )}
+      {(entry.module === CUTOUT || entry.module === FACE_BLUR) && !entry.bypass && <VisionStatus project={project} item={item} module={entry.module} />}
+      {entry.module === FACE_BLUR && !entry.bypass && <FacePicker project={project} item={item} locked={locked} />}
     </div>
   );
 }

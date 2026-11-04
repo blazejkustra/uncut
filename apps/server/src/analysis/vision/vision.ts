@@ -20,7 +20,7 @@ import { writeAtomic } from "../../project/atomicWrite.ts";
 import { Cancelled } from "../analysisRunner.ts";
 import { fingerprint } from "../queue/cache.ts";
 import { type Platform, type VisionCandidate, pickProvider, platformOf } from "./providers.ts";
-import { type VisionRequest, readCachedJson, readCachedMatte, visionFiles } from "./visionCache.ts";
+import { type VisionRequest, findCovering, readCachedJson, readCachedMatte, visionFiles } from "./visionCache.ts";
 
 export interface VisionCallResult {
   readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
@@ -132,6 +132,8 @@ export class VisionAnalysis {
     const files = visionFiles(target.dir, fp, request);
     const cached = await readCachedMatte(files);
     if (cached) return { video: files.video, info: cached, cached: true };
+    const covering = await findCovering(target.dir, fp, request, parseMatteInfo);
+    if (covering) return { video: covering.files.video, info: covering.value, cached: true };
     const ffmpeg = await this.deps.ffmpeg();
     if (!ffmpeg) throw new VisionFailure("failed", "ffmpeg isn't installed, and Uncut needs it to write the matte (brew install ffmpeg).");
     const part = await this.partFor(files.video);
@@ -172,13 +174,13 @@ export class VisionAnalysis {
     target: VisionTarget,
     range: { readonly start: number; readonly end: number },
     options: VisionOptions,
-  ): Promise<{ readonly result: FacesResult; readonly cached: boolean }> {
+  ): Promise<{ readonly result: FacesResult; readonly cached: boolean; readonly file: string }> {
     checkRange(range.start, range.end);
     return this.json(target, { output: "faces", start: range.start, end: range.end, parse: parseFaces, args: { media: target.path, ...range } }, options);
   }
 
   /** One object followed from `box` at `at` until the range ends or it's lost. */
-  async track(target: VisionTarget, request: TrackRequest, options: VisionOptions): Promise<{ readonly result: TrackResult; readonly cached: boolean }> {
+  async track(target: VisionTarget, request: TrackRequest, options: VisionOptions): Promise<{ readonly result: TrackResult; readonly cached: boolean; readonly file: string }> {
     checkRange(request.at, request.end);
     const { x, y, w, h } = request.box;
     if (!(unit(x) && unit(y) && w > 0 && h > 0 && x + w <= 1.000001 && y + h <= 1.000001))
@@ -220,13 +222,18 @@ export class VisionAnalysis {
     await rmdir(dirname(folder)).catch(() => {});
   }
 
-  private async json<T>(target: VisionTarget, ask: JsonAsk<T>, options: VisionOptions): Promise<{ readonly result: T; readonly cached: boolean }> {
+  private async json<T>(target: VisionTarget, ask: JsonAsk<T>, options: VisionOptions): Promise<{ readonly result: T; readonly cached: boolean; readonly file: string }> {
     const { output, start, end, box, parse, args } = ask;
     const provider = await this.provider(output);
     const fp = await fingerprint(target.path);
-    const files = visionFiles(target.dir, fp, this.request(output, start, end, await this.moduleOf(provider, options.signal), { box }));
+    const request = this.request(output, start, end, await this.moduleOf(provider, options.signal), { box });
+    const files = visionFiles(target.dir, fp, request);
     const cached = await readCachedJson(files.json, parse);
-    if (cached) return { result: cached, cached: true };
+    if (cached) return { result: cached, cached: true, file: files.json };
+    if (output === "faces") {
+      const covering = await findCovering(target.dir, fp, request, parse);
+      if (covering) return { result: covering.value, cached: true, file: covering.files.json };
+    }
     const part = await this.partFor(files.json);
     let made = false;
     try {
@@ -234,9 +241,9 @@ export class VisionAnalysis {
       const parsed = parse(await readJsonFile(part));
       if ("problem" in parsed) throw new VisionFailure("failed", `${provider.name} answered ${output} Uncut can't use: ${parsed.problem}`);
       await this.stillSame(target.path, fp);
-      await writeAtomic(files.json, `${JSON.stringify(parsed.value)}\n`);
+      await writeAtomic(files.json, `${JSON.stringify({ ...parsed.value, module: request.module })}\n`);
       made = true;
-      return { result: parsed.value, cached: false };
+      return { result: parsed.value, cached: false, file: files.json };
     } finally {
       await this.dropPart(part, made);
     }

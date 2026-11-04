@@ -16,26 +16,28 @@ export const CORE_OPS: ReadonlyArray<string> = CORE.map((b) => (b.properties!.op
 
 /** The convenience ops: name, the spec $def with their full shape, and a line for the tool description. */
 const CONVENIENCE: ReadonlyArray<{ readonly op: string; readonly def: string; readonly line: string }> = [
-  { op: "insert_text", def: "insertText", line: "text in a look (a text-style module) on the top-most free text track, with the looks it comes with" },
+  { op: "insert_text", def: "insertText", line: "text in a look (a text-style module) on the top-most free text track" },
   {
     op: "insert_device_frame",
     def: "insertDeviceFrame",
-    line: "a phone or browser frame with footage on its screen (the clip on a video track, the frame above it)",
+    line: "a phone or browser frame with footage on its screen",
   },
   {
     op: "place_item",
     def: "placeItem",
-    line: "puts a new item (or moves one by id) where asked when free, else after what's in the way, on a free track of that kind, or rippling; the result's placed says where",
+    line: "puts a new item (or moves one) where asked when free, else after what's in the way, on a free track or rippling; placed says where",
   },
-  { op: "put_on_main", def: "putOnMain", line: "moves a picture off Main onto it at the nearest cut; a take's microphone and other parts get linked under it" },
+  { op: "put_on_main", def: "putOnMain", line: "moves a picture off Main onto it at the nearest cut, a take's other parts linked under it" },
   { op: "detach_audio", def: "detachAudio", line: "moves a clip's sound to its own audio item and mutes the clip" },
   { op: "set_speed", def: "setSpeed", line: "speed 0.1 to 10, a ramp or reverse; length follows" },
   {
     op: "replace_range",
     def: "replaceRange",
-    line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves (stays in sync)",
+    line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves",
   },
-  { op: "edit_captions", def: "editCaptions", line: "fixes caption words (by transcript word id), forces card starts, changes mode, grouping or fillers" },
+  { op: "reframe", def: "reframe", line: "the clip fills the canvas and follows its subject's face" },
+  { op: "text_behind_subject", def: "textBehindSubject", line: "copies the clip under the texts above them, background removed" },
+  { op: "edit_captions", def: "editCaptions", line: "fixes caption words (transcript word ids), card starts, mode, grouping or fillers" },
 ];
 export const CONVENIENCE_OPS: ReadonlyArray<string> = CONVENIENCE.map((c) => c.op);
 const DEFS = toolsSpec.$defs as unknown as Record<string, Schema>;

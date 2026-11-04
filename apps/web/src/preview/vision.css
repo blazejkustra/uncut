@@ -1,0 +1,3 @@
+/* D328: how far a clip's matte or faces are; the matte's own <video> is read by WebGL, never shown. */
+.pv-vision-note { position: absolute; left: calc(12px / var(--pv-scale)); bottom: calc(12px / var(--pv-scale)); max-width: calc(100% - 24px / var(--pv-scale)); padding: calc(4px / var(--pv-scale)) calc(8px / var(--pv-scale)); border-radius: calc(4px / var(--pv-scale)); background: rgb(0 0 0 / 62%); color: #fff; font-size: calc(12px / var(--pv-scale)); line-height: 1.3; pointer-events: none; z-index: 2; }
+.pv-matte { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }

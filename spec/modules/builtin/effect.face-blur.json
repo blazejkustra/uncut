@@ -1,0 +1,62 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.face-blur",
+  "kind": "effect",
+  "name": "Face blur",
+  "description": "Blurs faces and follows them",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "shape": {
+        "enum": [
+          "ellipse",
+          "rectangle"
+        ],
+        "default": "ellipse",
+        "description": "Shape drawn round each face"
+      },
+      "amount": {
+        "type": "number",
+        "minimum": 2,
+        "maximum": 80,
+        "default": 24,
+        "description": "Amount: the blur in canvas px"
+      },
+      "feather": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 12,
+        "description": "Feather: the soft edge's width in canvas px"
+      },
+      "padding": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.25,
+        "description": "Padding: how much bigger than the face, a share of its size each side"
+      },
+      "faces": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": 64,
+        "description": "Only these face ids (from the Inspector's list); none blurs every face"
+      }
+    }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "scan-face"
+  }
+}

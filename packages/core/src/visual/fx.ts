@@ -40,6 +40,9 @@ export {
   CHROMA_KEY,
   BLEND,
   MASK,
+  CUTOUT,
+  FACE_BLUR,
+  faceIds,
 } from "./fx/defs.ts";
 export type { AdjustKey, Adjust, AdjustInfo, Rgb3, Curve, LookDef, LookInfo, EffectParam, EffectOption, EffectGroup, EffectInfo } from "./fx/defs.ts";
 export {

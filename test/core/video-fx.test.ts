@@ -81,7 +81,9 @@ test("D136: every effect, the look and Adjust have a manifest whose params are t
     assert.equal(m.name, e.name);
     assert.deepEqual(validateModule(m), [], e.id);
     const props = m.params.properties as Record<string, { minimum: number; maximum: number; default: number }>;
-    assert.deepEqual(Object.keys(props), [...(e.options ?? []).map((o) => o.key), ...e.params.map((p) => p.key)], e.id);
+    // Face blur's "only these faces" (D328) is a list, kept beside its options and numbers.
+    const keys = Object.keys(props).filter((k) => !(e.id === "effect.face-blur" && k === "faces"));
+    assert.deepEqual(keys, [...(e.options ?? []).map((o) => o.key), ...e.params.map((p) => p.key)], e.id);
     for (const p of e.params)
       assert.deepEqual([props[p.key]!.minimum, props[p.key]!.maximum, props[p.key]!.default], [p.min, p.max, p.default], `${e.id} ${p.key}`);
   }

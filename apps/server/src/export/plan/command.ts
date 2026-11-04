@@ -1,7 +1,7 @@
 import { codecExtension, isProRes, maskGeq } from "@uncut/core";
-import type { ExportPlan, Placement } from "./types.ts";
-import { type CommandOptions, fadeFilters, alphaFilters, boxGraph, videoSource, same, placeAt } from "./video.ts";
-import { fxGraph } from "./fx.ts";
+import type { ExportPlan, Placement, VisualLayer } from "./types.ts";
+import { type CommandOptions, fadeFilters, alphaFilters, boxGraph, videoSource, same, placeAt, rampPts } from "./video.ts";
+import { fxGraph, type VisionInputs } from "./fx.ts";
 import { blendGraph, maskGraph } from "./matte.ts";
 import { blurPad, BLUR_STEPS, IRIS_MASK_STEP } from "./layers.ts";
 import { n } from "./num.ts";
@@ -22,6 +22,29 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     layer.clipMask
       ? [...boxGraph(geo, input, `${output}u`, fps), ...maskGraph(layer.clipMask, geo[0]!.w, geo[0]!.h, `${output}u`, output, fps, layer.f1 - layer.f0)]
       : boxGraph(geo, input, output, fps);
+  // D328: mattes and face masks are inputs after all the others (their numbers are known at the end).
+  const late: Array<{ readonly args: ReadonlyArray<string>; readonly line: (index: number) => string }> = [];
+  const visionOf = (layer: VisualLayer, k: number): VisionInputs => {
+    const frames = layer.f1 - layer.f0;
+    const out: { matte?: string; faces?: string } = {};
+    if (layer.kind === "video" && layer.matte && layer.fx?.fx.cutout) {
+      const m = layer.matte;
+      const pre = Math.min(1, m.source);
+      // Half a matte frame of slack: the .mkv's timestamps are rounded to the millisecond.
+      const times = m.times.map((t) => t + 0.5 / m.fps);
+      late.push({
+        args: ["-ss", n(m.source - pre), "-t", n(pre + (m.times.at(-1) ?? 0) + 2 / m.fps + 1), "-i", m.file],
+        line: (i) => `[${i}:v:0]setpts='${rampPts(times, pre, fps)}',fps=${fps}:start_time=0:round=up,trim=end_frame=${frames}[xm${k}]`,
+      });
+      out.matte = `xm${k}`;
+    }
+    const faces = opts.faceMasks?.get(layer);
+    if (faces && (layer.kind === "video" || layer.kind === "image") && layer.fx?.fx.faceBlur) {
+      late.push({ args: ["-i", faces], line: (i) => `[${i}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[xf${k}]` });
+      out.faces = `xf${k}`;
+    }
+    return out;
+  };
   plan.visuals.forEach((layer, k) => {
     const index = k + 1;
     const frames = layer.f1 - layer.f0;
@@ -39,7 +62,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       inputs.push("-i", shaded);
       graph.push(
         `[${index}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[e${k}]`,
-        ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
+        ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)),
         ...boxed(layer, geo, `p${k}`, `q${k}`),
       );
       chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
@@ -49,7 +72,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       const picked = source.picked;
       if (geo && layer.fx) {
         // Picture effects (D136) on the picture, then its box.
-        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxed(layer, geo, `p${k}`, `q${k}`));
+        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)), ...boxed(layer, geo, `p${k}`, `q${k}`));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else if (geo) {
         // A box (D75): the picture made into its box, then placed by the overlay.
@@ -75,12 +98,12 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         if (layer.fx.fx.shake)
           graph.push(
             `[${index}:v:0]${looped.join(",")},setpts=N[e${k}]`,
-            ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
+            ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)),
             ...boxed(layer, geo, `p${k}`, `q${k}`),
           );
         else
           graph.push(
-            ...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts),
+            ...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)),
             `[e${k}]${looped.join(",")},setpts=N[p${k}]`,
             ...boxed(layer, geo, `p${k}`, `q${k}`),
           );
@@ -228,6 +251,10 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   // The soft subtitle track (D105): the last input, its own stream (cue times are the edit's).
   const subtitleInput = inputs.filter((a) => a === "-i").length;
   if (opts.subtitles) inputs.push("-f", "srt", "-i", opts.subtitles.file);
+  for (const input of late) {
+    graph.push(input.line(inputs.filter((a) => a === "-i").length));
+    inputs.push(...input.args);
+  }
   const audioCodec = isProRes(codec) ? ["-c:a", "pcm_s24le"] : ["-c:a", "aac", "-b:a", opts.quality === "draft" ? "128k" : "192k"];
   const outputArgs = [
     "-map",

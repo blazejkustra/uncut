@@ -1,4 +1,4 @@
-import { type ColourLut, shakeZoom, shakeExpr } from "@uncut/core";
+import { type ColourLut, type Cutout, matteAlphaExpr, shakeZoom, shakeExpr } from "@uncut/core";
 import type { ExportPlan, LayerFx } from "./types.ts";
 import { n } from "./num.ts";
 import { blurFilters, BLUR_STEPS } from "./layers.ts";
@@ -25,9 +25,62 @@ const filterPath = (path: string) => {
  * premultiplied gblur). A chroma key (D326, keyGraph) runs before all of them. The preview's shader
  * (apps/web/src/preview/fx.ts) does the same.
  */
-export function fxGraph(lf: LayerFx, input: string, output: string, fps: number, f0: number, luts?: ReadonlyMap<string, string>): Array<string> {
-  const keyed = lf.fx.key ? keyGraph(lf.fx.key, input, `${output}kd`, lf.w, lf.h) : [];
-  return [...keyed, ...effectsGraph(lf, keyed.length ? `${output}kd` : input, output, fps, f0, luts)];
+export function fxGraph(
+  lf: LayerFx,
+  input: string,
+  output: string,
+  fps: number,
+  f0: number,
+  luts?: ReadonlyMap<string, string>,
+  vision: VisionInputs = {},
+): Array<string> {
+  const lines: Array<string> = [];
+  let at = input;
+  const step = (suffix: string, made: Array<string>) => {
+    lines.push(...made);
+    at = `${output}${suffix}`;
+  };
+  if (lf.fx.faceBlur && vision.faces) step("fb", faceBlurGraph(lf, at, `${output}fb`, vision.faces));
+  if (lf.fx.key) step("kd", keyGraph(lf.fx.key, at, `${output}kd`, lf.w, lf.h));
+  if (lf.fx.cutout && vision.matte) step("co", cutoutGraph(lf.fx.cutout, at, `${output}co`, vision.matte, lf.w, lf.h));
+  return [...lines, ...effectsGraph(lf, at, output, fps, f0, luts)];
+}
+
+/** D328: the graph labels of a layer's matte frames and face mask frames (one per layer frame, from 0). */
+export interface VisionInputs {
+  readonly matte?: string | undefined;
+  readonly faces?: string | undefined;
+}
+
+/**
+ * D328 face blur: the picture at w × h, a copy blurred (gblur, sigma amount · k), shown through the
+ * face mask (grey, white = blurred: core faceCoverage, drawn by the exporter) over the picture.
+ */
+export function faceBlurGraph(lf: LayerFx, input: string, output: string, mask: string): Array<string> {
+  const o = output;
+  const sigma = Math.max(0.5, (lf.fx.faceBlur?.amount ?? 0) * lf.k);
+  return [
+    `[${input}]scale=w=${lf.w}:h=${lf.h}:out_range=pc,format=gbrap,split=2[${o}a][${o}b]`,
+    `[${o}b]gblur=sigma=${n(sigma)}:sigmaV=${n(sigma)}:steps=${BLUR_STEPS}[${o}c]`,
+    `[${mask}]format=gray[${o}m]`,
+    `[${o}c][${o}m]alphamerge[${o}d]`,
+    `[${o}a][${o}d]overlay=format=gbrp:eof_action=pass,format=gbrap[${output}]`,
+  ];
+}
+
+/**
+ * D328 background removal: the matte's frames (grey, white = keep) at w × h, through core
+ * matteAlpha (a lut), multiplied into the picture's alpha.
+ */
+export function cutoutGraph(cutout: Cutout, input: string, output: string, matte: string, w: number, h: number): Array<string> {
+  const o = output;
+  return [
+    `[${matte}]scale=w=${w}:h=${h}:flags=bilinear,format=gray,lut=c0='${matteAlphaExpr(cutout)}'[${o}m]`,
+    `[${input}]scale=w=${w}:h=${h}:out_range=pc,format=gbrap,split=2[${o}c][${o}a]`,
+    `[${o}a]alphaextract[${o}e]`,
+    `[${o}e][${o}m]blend=all_mode=multiply[${o}k]`,
+    `[${o}c][${o}k]alphamerge[${output}]`,
+  ];
 }
 
 function effectsGraph(lf: LayerFx, input: string, output: string, fps: number, f0: number, luts?: ReadonlyMap<string, string>): Array<string> {

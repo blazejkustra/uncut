@@ -87,6 +87,11 @@ export const exportActions = {
     return result.ok ? result.value.result : undefined;
   },
   dismissAnalysisError: () => set({ analysisError: undefined }),
+  /** D328: auto reframe a clip to the canvas's shape (the server finds its faces first): undefined when done, else why not. */
+  async reframe(itemId: string): Promise<string | undefined> {
+    const result = await call((c) => c["vision.reframe"]({ itemId }));
+    return result.ok ? undefined : plainError(result.error);
+  },
 
   /** The Setup row's speech model (D68): download, cancel, choose. */
   async downloadModel(model?: string) {

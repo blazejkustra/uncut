@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
-import { EFFECTS, LOOKS } from "../../packages/core/src/index.ts";
+import { CUTOUT, EFFECTS, FACE_BLUR, LOOKS } from "../../packages/core/src/index.ts";
 import type { Item, Project } from "../../packages/core/src/timeline/types.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { viewerPrefs } from "../helpers/viewer-prefs.ts";
@@ -70,7 +70,8 @@ const CASES: ReadonlyArray<Case> = [
     ],
     min: SSIM_LOOKS,
   },
-  ...EFFECTS.map((e): Case => ({
+  // Background removal and face blur read vision results: test/app/vision-app.test.ts.
+  ...EFFECTS.filter((e) => e.id !== CUTOUT && e.id !== FACE_BLUR).map((e): Case => ({
     name: e.id.slice("effect.".length),
     effects: [{ module: e.id }],
     min: e.id === "effect.grain" ? "grain" : (FLOORS[e.id] ?? SSIM_LOOKS),

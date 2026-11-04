@@ -9,7 +9,9 @@ import { ScrubCache, liftsTone, convertsPrimaries } from "../scrub.ts";
 import { VIDEO_UNTONE_FILTER, ensureUntoneFilter } from "../tone.ts";
 import { GpuCompositor, plainColour } from "../gpu.ts";
 import { type ClipFx, blendInfo, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
-import { FxRenderer, frameKeyOf, maskFrame, maskKey, presentedFrames, type MaskFrame } from "../fx.ts";
+import { FxRenderer, frameKeyOf, maskFrame, maskKey, presentedFrames, visionKey, type MaskFrame, type VisionDraw } from "../fx.ts";
+import { VisionViews } from "../vision.ts";
+import { speedAt } from "@uncut/core/speedRamp";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
 import {
@@ -58,6 +60,8 @@ export abstract class CompositorBase {
   // Clip looks and effects (D136): each clip's compiled effects (by its effects' JSON), its WebGL
   // canvas over the hidden picture element, and its overlay (vignette, grain, bars).
   protected readonly fxOf = new Map<string, { key: string; fx: ClipFx | undefined }>();
+  /** D328: clips' matte videos and their "Removing background" notes. */
+  protected readonly vision = new VisionViews(() => this.render());
   protected readonly fxCanvas = new Map<string, FxRenderer>();
   protected readonly fxOverlay = new Map<string, { el: HTMLDivElement; html: string }>();
   protected readonly fxPool: Array<FxRenderer> = [];
@@ -188,6 +192,7 @@ export abstract class CompositorBase {
     this.boxes.delete(id);
     this.els.delete(id);
     this.dropFx(id);
+    this.vision.drop(id);
   }
 
   /** A clip's effects canvas and overlay off the canvas (its picture element shown again). */
@@ -334,13 +339,23 @@ export abstract class CompositorBase {
    * into the clip's 2D canvas (the Effects panel's thumbnails do the same). The copy keeps the last
    * picture, so a paused clip whose frame hasn't changed isn't drawn again.
    */
-  protected drawShared(copy: FxCopy, source: PictureEl, fx: ClipFx, w: number, h: number, t: number, key: string | undefined, mask?: MaskFrame): boolean {
+  protected drawShared(
+    copy: FxCopy,
+    source: PictureEl,
+    fx: ClipFx,
+    w: number,
+    h: number,
+    t: number,
+    key: string | undefined,
+    mask?: MaskFrame,
+    vision?: VisionDraw,
+  ): boolean {
     const r = this.fxShared;
     if (!r || r.lost) return false;
     const frame = frameKeyOf(source);
-    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}|${maskKey(mask)}` : "";
+    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}|${maskKey(mask)}|${visionKey(vision)}` : "";
     if (sig && sig === copy.sig && copy.drawn) return true;
-    if (!r.render(source, fx, w, h, t, 1, undefined, null, mask)) return false;
+    if (!r.render(source, fx, w, h, t, 1, undefined, null, mask, vision)) return false;
     const c = copy.canvas;
     if (c.width !== w) c.width = w;
     if (c.height !== h) c.height = h;
@@ -427,9 +442,12 @@ export abstract class CompositorBase {
       const t = (Math.floor(frame) - start) / fps;
       const key = shaded ? undefined : this.fxOf.get(item.id)?.key;
       const mask = maskFrame(item, fx, box, size, Math.floor(frame) - start, fps);
+      const vision = this.visionFrame(item, fx, wrap, Math.floor(frame) - start, size);
       const ok =
         pictureReady(el) &&
-        (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key, null, mask) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key, mask));
+        (r
+          ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key, null, mask, vision)
+          : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key, mask, vision));
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
       const drawn = ok || (r ? r.drawn && !r.lost : copy!.drawn && !this.fxShared?.lost);
       el.style.visibility = drawn || shaded ? "hidden" : "";
@@ -437,6 +455,7 @@ export abstract class CompositorBase {
       if (shaded) shaded.style.visibility = drawn ? "hidden" : "";
       if (drawn) shown = c;
     } else if (this.fxCanvas.has(item.id) || this.fxCopies.has(item.id)) {
+      this.vision.drop(item.id);
       this.releaseFx(item.id);
       el.style.visibility = shaded ? "hidden" : "";
     }
@@ -473,6 +492,18 @@ export abstract class CompositorBase {
       o.el.innerHTML = html;
     }
     o.el.style.opacity = String(opacity);
+  }
+
+  /** D328: the matte frame and face masks a clip draws now, its note shown on its box while they're on their way. */
+  protected visionFrame(item: Item, fx: ClipFx, wrap: HTMLDivElement, local: number, size: { readonly w: number; readonly h: number }): VisionDraw | undefined {
+    if (!this.project || (!fx.cutout && !fx.faceBlur)) {
+      this.vision.drop(item.id);
+      return undefined;
+    }
+    const { playing, rate } = getPlayback();
+    const seen = this.vision.frame(this.project, item, fx, local, size, playing && rate === 1, speedAt(item, local));
+    this.vision.note(item.id, wrap, seen.notes.join(", ") || undefined);
+    return seen.matte || seen.faces ? { matte: seen.matte, faces: seen.faces } : undefined;
   }
 
   /** The wrapper of a clip's media element (its box). */
@@ -672,7 +703,7 @@ export abstract class CompositorBase {
     // D265: a shader draws on its own WebGPU canvas, which the compositor then reads as the picture.
     if (this.shaderUseOf(item) && shaderProblem()) return false;
     const fx = this.effectsOf(item);
-    return !fx || (!hasOverlay(fx) && !fx.blend && !fx.mask);
+    return !fx || (!hasOverlay(fx) && !fx.blend && !fx.mask && !fx.cutout && !fx.faceBlur);
   }
 
   render() {

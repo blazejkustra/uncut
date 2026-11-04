@@ -26,6 +26,9 @@ import { posterKey } from "./media.ts";
 import { runProbe } from "./probe.ts";
 import { localInputs } from "./localInputs.ts";
 import { ReverseQueue } from "./reversed.ts";
+import { Plugins } from "../plugins/plugins.ts";
+import { pluginVision } from "../analysis/vision/pluginVision.ts";
+import { VisionQueue } from "../analysis/vision/visionQueue.ts";
 
 export const proxyDir = (projectDir: string) => join(projectDir, ".cache", "proxies");
 export const proxyName = (id: string, key: string) => `${id}--${key}.mp4`;
@@ -390,6 +393,8 @@ export interface ProxiesShape {
   readonly proxyFor: (id: string) => Effect.Effect<string | undefined>;
   /** D327: the reversed copy of media frames [from, to) of a media item, when it is made. */
   readonly reversedFor: (id: string, from: number, to: number) => Effect.Effect<string | undefined>;
+  /** D328: a file of a clip vision result of a media item (<key>.mp4, <key>.json), when it is made. */
+  readonly visionFor: (id: string, name: string) => Effect.Effect<string | undefined>;
 }
 
 export class Proxies extends Context.Service<Proxies, ProxiesShape>()("uncut/Proxies") {}
@@ -405,6 +410,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projects = yield* Projects;
     const exporter = yield* Exporter;
+    const plugins = yield* Plugins;
     const ref = yield* SubscriptionRef.make<ReadonlyArray<ProxyState>>([]);
     const tool = (name: string) => async () => {
       await config.shellReady;
@@ -414,7 +420,18 @@ export const layer = Layer.effect(
     // The preview proxies and the reversed copies (D327) share one list of states.
     let proxyStates: ReadonlyArray<ProxyState> = [];
     let reverseStates: ReadonlyArray<ProxyState> = [];
-    const publish = () => Effect.runSync(SubscriptionRef.set(ref, [...proxyStates, ...reverseStates]));
+    let visionStates: ReadonlyArray<ProxyState> = [];
+    const publish = () => Effect.runSync(SubscriptionRef.set(ref, [...proxyStates, ...reverseStates, ...visionStates]));
+    // D328: clips' vision results (mattes, faces) are made in the background like reversed copies.
+    const vision = new VisionQueue({
+      vision: pluginVision(plugins, config),
+      ffmpeg,
+      exportBusy: exporter.busy,
+      onChange: (states) => {
+        visionStates = states;
+        publish();
+      },
+    });
     const reversed = new ReverseQueue({
       ffmpeg,
       exportBusy: exporter.busy,
@@ -442,6 +459,7 @@ export const layer = Layer.effect(
       Effect.sync(() => {
         queue.shutdown();
         reversed.shutdown();
+        vision.shutdown();
       }),
     );
     // Exports come first (D55): no proxy starts while one is queued or running.
@@ -450,13 +468,17 @@ export const layer = Layer.effect(
         Effect.sync(() => {
           queue.setExportBusy(jobs.some((j) => EXPORT_BUSY.has(j.phase)));
           reversed.pump();
+          vision.pump();
         }),
       ),
     );
     // Reversed clips need their copies whatever the proxies setting: the preview can't play backwards.
     yield* Effect.forkScoped(
       Stream.runForEach(projects.changes, (snapshot: ProjectSnapshot | null) =>
-        Effect.promise(() => reversed.sync(snapshot?.dir, snapshot?.project as Project | undefined)),
+        Effect.promise(async () => {
+          await reversed.sync(snapshot?.dir, snapshot?.project as Project | undefined);
+          await vision.sync(snapshot?.dir, snapshot?.project as Project | undefined);
+        }),
       ),
     );
     if (!proxiesOff()) {
@@ -477,6 +499,7 @@ export const layer = Layer.effect(
       states: SubscriptionRef.changes(ref),
       proxyFor: (id) => Effect.promise(() => queue.proxyFor(id)),
       reversedFor: (id, from, to) => Effect.promise(() => reversed.fileFor(id, from, to)),
+      visionFor: (id, name) => Effect.sync(() => vision.fileFor(id, name)),
     });
   }),
 );

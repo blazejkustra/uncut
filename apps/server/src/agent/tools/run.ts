@@ -51,6 +51,7 @@ import { makeExportVideo } from "./exportVideo.ts";
 import { clock, frameSheetLayout, sheetLayout } from "../agentFootage.ts";
 import { jitterFindings, measureRun } from "../motionJitter.ts";
 import { peekProject } from "./peek.ts";
+import { expandVisionOps } from "./visionOps.ts";
 import { which } from "../../app/setup.ts";
 import { graphicElementsOf } from "../../export/graphicElements.ts";
 import { elementEditOp, elementRows, graphicItem, type ElementEditArgs } from "./graphicElements.ts";
@@ -491,8 +492,12 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           };
           const unknown = unknownOp(args.ops);
           if (unknown) return refuse(unknown);
+          // D328: reframe (from the clip's faces, found first) and text_behind_subject become the ops that do them.
+          const ffmpegNow = async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? ""));
+          const seen = yield* Effect.promise(() => expandVisionOps(v.session.project as Project, v.dir, args.ops as ReadonlyArray<unknown>, analysis.vision, ffmpegNow, r.abort.signal));
+          if ("problem" in seen) return refuse(seen.problem);
           // insert_device_frame (D76) becomes the edit ops that make it (tracks, the screen clip, the frame).
-          const expanded = expandDeviceFrames(v.session.project as Project, args.ops);
+          const expanded = expandDeviceFrames(v.session.project as Project, seen.ops);
           if ("problem" in expanded) return refuse(expanded.problem);
           // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
           const pluginLooks = Object.fromEntries((yield* plugins.contributions).looks.map((l) => [l.id, l]));

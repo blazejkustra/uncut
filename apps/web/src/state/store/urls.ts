@@ -55,7 +55,7 @@ export const proxyUrl = (id: string, key: string) => {
   return url ? `${url}&v=${encodeURIComponent(key)}` : undefined;
 };
 /** D212: a media item's proxy state in the open project. */
-export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId && !p.reverse);
+export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId && !p.reverse && !p.vision);
 /** D327: the state of the reversed copy of media frames [from, to) of a media item. */
 export const reversedOf = (s: AppStateShape, mediaId: string, range: { readonly from: number; readonly to: number }) =>
   s.proxies.find((p) => p.mediaId === mediaId && p.reverse?.from === range.from && p.reverse.to === range.to);
@@ -66,6 +66,28 @@ export const reversedUrl = (id: string, range: { readonly from: number; readonly
   const u = new URL(url);
   u.pathname = `${u.pathname}/${range.from}-${range.to}`;
   u.searchParams.set("v", key);
+  return u.href;
+};
+/** D328: the state of a vision result (a matte or faces for media seconds [start, end)) of a media item. */
+export const visionOf = (
+  s: AppStateShape,
+  mediaId: string,
+  request: { readonly output: "matte" | "faces"; readonly mode?: string | undefined; readonly start: number; readonly end: number },
+) =>
+  s.proxies.find(
+    (p) =>
+      p.mediaId === mediaId &&
+      p.vision?.output === request.output &&
+      (p.vision.mode ?? "") === (request.mode ?? "") &&
+      p.vision.start === request.start &&
+      p.vision.end === request.end,
+  );
+/** D328: a file of a vision result (`name`: <key>.mp4 or <key>.json). */
+export const visionUrl = (id: string, name: string) => {
+  const url = serverUrl(PROXY_PATH, id);
+  if (!url) return undefined;
+  const u = new URL(url);
+  u.pathname = `${u.pathname}/vision/${name}`;
   return u.href;
 };
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
