@@ -179,7 +179,7 @@ export default function Home() {
             <TimelineShot>
               <img
                 className="timeline-shot"
-                src="/assets/img/timeline.webp"
+                src="/assets/img/timeline-v2.webp"
                 width={2080}
                 height={620}
                 loading="lazy"
