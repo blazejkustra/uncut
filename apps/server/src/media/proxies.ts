@@ -395,6 +395,8 @@ export interface ProxiesShape {
   readonly reversedFor: (id: string, from: number, to: number) => Effect.Effect<string | undefined>;
   /** D328: a file of a clip vision result of a media item (<key>.mp4, <key>.json), when it is made. */
   readonly visionFor: (id: string, name: string) => Effect.Effect<string | undefined>;
+  readonly track: VisionQueue["track"];
+  readonly cancelTrack: (item: string) => void;
 }
 
 export class Proxies extends Context.Service<Proxies, ProxiesShape>()("uncut/Proxies") {}
@@ -500,6 +502,8 @@ export const layer = Layer.effect(
       proxyFor: (id) => Effect.promise(() => queue.proxyFor(id)),
       reversedFor: (id, from, to) => Effect.promise(() => reversed.fileFor(id, from, to)),
       visionFor: (id, name) => Effect.sync(() => vision.fileFor(id, name)),
+      track: (target, on, signal) => vision.track(target, on, signal),
+      cancelTrack: (item) => vision.cancelTrack(item),
     });
   }),
 );

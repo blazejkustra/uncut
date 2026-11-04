@@ -13,7 +13,7 @@ import { pictureMedia } from "@uncut/core/timeline";
 import type { FieldSet, Item } from "@uncut/core/types";
 
 import { findItem, type Plan } from "./edit.ts";
-import { planUpdate } from "../preview/text.ts";
+import { planTransform, planUpdate } from "../preview/text.ts";
 import type { ProjectModel } from "../state/project.ts";
 
 type Problem = { readonly problem: string };
@@ -172,6 +172,20 @@ function describePatch(p: BoxPatch, noun: string): string {
   if (p.opacity !== undefined) return `Set ${noun} opacity to ${Math.round(p.opacity * 100)}%`;
   if (p.radius !== undefined) return p.radius > 0 ? `Round ${noun} corners (${p.radius} px)` : `Square ${noun} corners`;
   return `Change ${noun} box`;
+}
+
+export function planTextPosition(project: ProjectModel, itemId: string, patch: { readonly x?: number; readonly y?: number }, frame: number): Plan | Problem {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That item isn't in the project any more." };
+  const axes = (["x", "y"] as const).filter((p) => patch[p] !== undefined);
+  const keyedAxes = axes.filter((p) => keysOf(placed.item.keys, p).length > 0);
+  if (!keyedAxes.length) return planTransform(project, itemId, patch);
+  const local = Math.min(placed.item.duration - 1, Math.max(0, Math.round(frame - placed.start)));
+  const keys = keyedAxes.reduce((list, p) => setKey(list, p, local, Math.round(patch[p]!)), [...(placed.item.keys ?? [])]);
+  const moved = planUpdate(project, itemId, { keys }, `Move text (key at ${secs(local, project.canvas.fps)})`);
+  const rest = Object.fromEntries(axes.filter((p) => !keyedAxes.includes(p)).map((p) => [p, patch[p]]));
+  const other = Object.keys(rest).length ? planTransform(project, itemId, rest) : undefined;
+  return other && "ops" in other && "ops" in moved ? { ...moved, ops: [...moved.ops, ...other.ops] } : moved;
 }
 
 /** Whether `prop` has a key at the playhead ("on"), keys elsewhere ("keyed") or none. */
@@ -351,6 +365,9 @@ export function planResetPosition(project: ProjectModel, itemId: string): Plan |
   if (!placed) return { problem: "That item isn't in the project any more." };
   if (isBoxed(project, placed.item)) return planResetBox(project, itemId);
   const { x: _x, y: _y, w: _w, ...rest } = placed.item.transform ?? {};
-  if (!placed.item.transform || (_x === undefined && _y === undefined && _w === undefined)) return { problem: "It's already where it starts." };
-  return planUpdate(project, itemId, { transform: Object.keys(rest).length ? rest : null }, `Reset the position of ${placed.item.name ?? itemId}`);
+  const placedByHand = _x !== undefined || _y !== undefined || _w !== undefined;
+  const keyed = !!placed.item.keys?.length;
+  if (!placedByHand && !keyed) return { problem: "It's already where it starts." };
+  const set: FieldSet = { ...(placedByHand ? { transform: Object.keys(rest).length ? rest : null } : {}), ...(keyed ? { keys: null } : {}) };
+  return planUpdate(project, itemId, set, `Reset the position of ${placed.item.name ?? itemId}`);
 }

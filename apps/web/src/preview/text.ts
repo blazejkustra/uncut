@@ -5,6 +5,7 @@
 // complete style / transform / animation / props, built from the item as it is now.
 import { mainEnd as mainEndOf } from "@uncut/core/rules";
 import { SOLID, safeMargin, textDecor, textLook, textPlacement, TEXT_STYLES, themeColors, type RenderTarget } from "@uncut/core/render";
+import { keyAt } from "@uncut/core/box";
 import { lookItem } from "@uncut/core/textPlan";
 import type { FieldSet, Item, TextBackground, TextShadow, TextStroke, TimedModule } from "@uncut/core/types";
 
@@ -20,12 +21,13 @@ type Transform = NonNullable<Item["transform"]>;
  * A text item's position, size and box as it's drawn (core textPlacement, the rule textHtml uses:
  * the item's, else its look's, a spanning look's safe area included), weight, colour, alignment.
  */
-export function textBox(item: Item, target: Pick<RenderTarget, "canvas" | "theme">) {
+export function textBox(item: Item, target: Pick<RenderTarget, "canvas" | "theme"> & { readonly canvas: { readonly fps?: number } }, local?: number) {
   const look = textLook(item.style?.preset);
   const at = textPlacement(item, target);
+  const keyed = (prop: "x" | "y") => (local === undefined ? undefined : keyAt(item.keys, prop, local, target.canvas.fps));
   return {
-    x: Math.round(at.x),
-    y: Math.round(at.y),
+    x: Math.round(keyed("x") ?? at.x),
+    y: Math.round(keyed("y") ?? at.y),
     w: at.w === undefined ? undefined : Math.round(at.w),
     size: Math.round(at.size),
     weight: item.style?.weight ?? look.weight,

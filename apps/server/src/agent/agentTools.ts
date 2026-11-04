@@ -9,7 +9,7 @@ export { stepLabel, shownUrl, doingLabel, partialFields } from "./tools/labels.t
 export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.ts";
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
 export { fullProject, projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, OUTLINE_ITEMS } from "./tools/summary.ts";
-export { modulesIndex, modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
+export { modulesIndex, modulesList, expandDeviceFrames, expandConvenienceOps, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 export { withoutDecisionIds } from "./tools/decisionIds.ts";
 import { withoutDecisionIds, scrubDescriptions } from "./tools/decisionIds.ts";

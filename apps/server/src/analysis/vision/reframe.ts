@@ -123,7 +123,8 @@ export async function reframeEdit(
   dir: string,
   itemId: string,
   ffmpeg: () => Promise<string | undefined>,
-  options: { readonly zoom?: number | undefined; readonly signal?: AbortSignal | undefined } = {},
+  options: { readonly zoom?: number | undefined; readonly signal?: AbortSignal | undefined; readonly latest?: (() => Project) | undefined } = {},
 ): Promise<{ readonly ops: ReadonlyArray<unknown>; readonly summary: string }> {
-  return reframePlan(project, itemId, await reframeSubject(vision, project, dir, itemId, ffmpeg, options.signal), options.zoom);
+  const subject = await reframeSubject(vision, project, dir, itemId, ffmpeg, options.signal);
+  return reframePlan(options.latest?.() ?? project, itemId, subject, options.zoom);
 }

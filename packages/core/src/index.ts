@@ -704,3 +704,15 @@ export {
   planTextBehindSubject,
 } from "./visual/visionPlans.ts";
 export type { CameraKey, ReframeGeometry, ReframeOptions, SubjectBox } from "./visual/visionPlans.ts";
+export {
+  TRACK_SMOOTH_S,
+  TRACK_TOLERANCE,
+  hasPositionKeys,
+  planTrack,
+  planUntrack,
+  thinPath,
+  trackProblem,
+  trackRequest,
+  trackTargets,
+} from "./visual/visionTrack.ts";
+export type { TrackAsk, TrackFrame, TrackOptions, TrackPlan, TrackRequest } from "./visual/visionTrack.ts";

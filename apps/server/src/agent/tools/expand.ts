@@ -19,7 +19,9 @@ import {
 } from "@uncut/core";
 import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed, planReplaceRange, planReverse, planSpeedRamp } from "@uncut/core/arrange";
 import type { SpeedKey } from "@uncut/core/speedRamp";
+import { expandPlacement, type PlacementNote } from "@uncut/core/agentPlace";
 import { withoutDecisionIds } from "./decisionIds.ts";
+import { expandCaptionEdits } from "./summary.ts";
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
 const SHOWN_IN_PREVIEW = (m: ModuleManifest) =>
@@ -342,4 +344,21 @@ export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>):
     }
   }
   return { ops: out };
+}
+
+/** Every convenience op that needs no waiting, turned into the edit ops that do it, in the order they build on each other. */
+export function expandConvenienceOps(
+  project: Project,
+  ops: ReadonlyArray<unknown>,
+  pluginLooks: Readonly<Record<string, TextLook>> = {},
+): { ops: Array<unknown>; notes: ReadonlyArray<PlacementNote> } | { problem: string } {
+  const frames = expandDeviceFrames(project, ops);
+  if ("problem" in frames) return frames;
+  const texts = expandTextLooks(project, frames.ops, pluginLooks);
+  if ("problem" in texts) return texts;
+  const captions = expandCaptionEdits(project, texts.ops);
+  if ("problem" in captions) return captions;
+  const arranged = expandArrangeOps(project, captions.ops);
+  if ("problem" in arranged) return arranged;
+  return expandPlacement(project, arranged.ops);
 }

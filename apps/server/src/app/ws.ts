@@ -18,6 +18,8 @@ import { findClaude, sessionEnv } from "../agent/session/config.ts";
 import { templatesRpc } from "../templates/templates.ts";
 import { Analysis } from "../analysis/analysis.ts";
 import { reframePlan, reframeSubject } from "../analysis/vision/reframe.ts";
+import { VisionStopped } from "../analysis/vision/clipVision.ts";
+import { trackPlan, trackTarget } from "../analysis/vision/track.ts";
 import { shellFfmpeg } from "../analysis/vision/pluginVision.ts";
 import { VisionFailure } from "../analysis/vision/vision.ts";
 import { presentedToken, tokensMatch } from "./auth.ts";
@@ -102,6 +104,25 @@ const handlersLayer = ({
     answerProjectSkills(config.dataDir, realProject(dir), key, load),
   );
   const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
+  const visionFailed = (error: unknown) => new VisionError({ reason: error instanceof VisionFailure ? error.reason : "failed", message: (error as Error).message });
+  const openForVision = Effect.flatMap(projects.current, (open) => (open ? Effect.succeed(open) : Effect.fail(new VisionError({ reason: "invalid", message: "Open a project first." }))));
+  const editFromVision = <P extends ReturnType<typeof reframePlan> | ReturnType<typeof trackPlan>>(openId: number, plan: (now: Project) => P, when: string) =>
+    Effect.gen(function* () {
+      let made: P | undefined;
+      yield* projects
+        .editIn(openId, (now) =>
+          Effect.try({
+            try: () => (made = plan(now as Project)),
+            catch: visionFailed,
+          }),
+        )
+        .pipe(
+          Effect.mapError((error) =>
+            error instanceof VisionError ? error : new VisionError({ reason: "invalid", message: `The project changed while ${when}: ${error.message}` }),
+          ),
+        );
+      return made!;
+    });
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -226,34 +247,34 @@ const handlersLayer = ({
     // D328: auto reframe: the subject is found first, then the edit is planned against the project as it is then.
     [RPC_METHODS.visionReframe]: ({ itemId, zoom }) =>
       Effect.gen(function* () {
-        const open = yield* projects.current;
-        if (!open) return yield* new VisionError({ reason: "invalid", message: "Open a project first." });
-        const failed = (error: unknown) => new VisionError({ reason: error instanceof VisionFailure ? error.reason : "failed", message: (error as Error).message });
+        const open = yield* openForVision;
         const subject = yield* Effect.tryPromise({
           try: (signal) => reframeSubject(analysis.vision, open.project as Project, open.dir, itemId, shellFfmpeg(config), signal),
-          catch: failed,
+          catch: visionFailed,
         });
-        let summary = "";
-        yield* projects
-          .editIn(open.openId, (now) =>
-            Effect.try({
-              try: () => {
-                const plan = reframePlan(now as Project, itemId, subject, zoom);
-                summary = plan.summary;
-                return plan;
-              },
-              catch: failed,
-            }),
-          )
-          .pipe(
-            Effect.mapError((error) =>
-              error instanceof VisionError
-                ? error
-                : new VisionError({ reason: "invalid", message: `The project changed while its faces were found, so it wasn't reframed: ${error.message}` }),
-            ),
-          );
-        return { summary };
+        const plan = yield* editFromVision(open.openId, (now) => reframePlan(now, itemId, subject, zoom), "its faces were found, so it wasn't reframed");
+        return { summary: plan.summary };
       }),
+    [RPC_METHODS.visionTrack]: ({ itemId, targetId, frame, box, scale }) =>
+      Effect.gen(function* () {
+        const open = yield* openForVision;
+        const ask = { item: itemId, target: targetId, frame, box, scale };
+        const made = yield* Effect.tryPromise({
+          try: async (signal) => {
+            const target = await trackTarget(open.project as Project, open.dir, ask);
+            const result = await proxies.track(target, { item: itemId, clip: targetId }, signal).catch((error: unknown) => {
+              if (error instanceof VisionStopped) return undefined;
+              throw error;
+            });
+            return result && { target, result };
+          },
+          catch: visionFailed,
+        });
+        if (!made) return { summary: "", stopped: true };
+        const plan = yield* editFromVision(open.openId, (now) => trackPlan(now, ask, made.target, made.result), "the object was tracked, so the track wasn't applied");
+        return { summary: plan.summary, ...("note" in plan && plan.note ? { note: plan.note } : {}) };
+      }),
+    [RPC_METHODS.visionTrackCancel]: ({ itemId }) => Effect.sync(() => proxies.cancelTrack(itemId)),
     [RPC_METHODS.historySubscribe]: () => projects.historyChanges,
     [RPC_METHODS.historyPreview]: ({ revision }) => projects.historyPreview(revision),
     [RPC_METHODS.historyJump]: ({ revision }) => projects.historyJump(revision),

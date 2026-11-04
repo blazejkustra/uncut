@@ -43,10 +43,11 @@ export function visionStateOf(project: Pick<Project, "media" | "canvas" | "track
   return request && item.media ? visionOf(getState(), item.media, request) : undefined;
 }
 
-const verb = (output: Output) => (output === "matte" ? "Removing background" : "Finding faces");
+const VERBS: Readonly<Record<Output | "track", string>> = { matte: "Removing background", faces: "Finding faces", track: "Tracking" };
+const verb = (output: Output | "track") => VERBS[output];
 
 /** What a clip's preview says while a vision result is on its way or couldn't be made (undefined once it's there). */
-export function visionNote(state: ProxyState | undefined, output: Output): string | undefined {
+export function visionNote(state: ProxyState | undefined, output: Output | "track"): string | undefined {
   if (state?.phase === "done") return undefined;
   if (state?.phase === "failed") return state.error ?? `${verb(output)} didn't work.`;
   if (state?.waiting === "export") return `${verb(output)} after the export…`;

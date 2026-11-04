@@ -149,6 +149,8 @@ export interface AppStateShape {
   readonly proxies: ReadonlyArray<ProxyState>;
   // Why the last Analyze click was refused, shown in the Library.
   readonly analysisError?: string;
+  /** D329: the last word from tracking an overlay, by its id: when the object was lost, or why it couldn't be tracked. */
+  readonly trackNotes?: Readonly<Record<string, string>>;
   // The speech models for transcripts and their downloads (D68), for the Setup row.
   readonly transcription?: TranscriptionState;
   // Why the last model action was refused.

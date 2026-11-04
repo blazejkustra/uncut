@@ -107,6 +107,20 @@ export const VisionReframeRpc = Rpc.make(RPC_METHODS.visionReframe, {
   error: VisionError,
 });
 
+// Answers once tracking is over and the edit made, so the call outlasts the usual timeout.
+export const VisionTrackRpc = Rpc.make(RPC_METHODS.visionTrack, {
+  payload: Schema.Struct({
+    itemId: Schema.String,
+    targetId: Schema.String,
+    frame: Schema.Number,
+    box: Schema.Struct({ x: Schema.Number, y: Schema.Number, w: Schema.Number, h: Schema.Number }),
+    scale: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Struct({ summary: Schema.String, note: Schema.optional(Schema.String), stopped: Schema.optional(Schema.Boolean) }),
+  error: VisionError,
+});
+export const VisionTrackCancelRpc = Rpc.make(RPC_METHODS.visionTrackCancel, { payload: Schema.Struct({ itemId: Schema.String }), success: Schema.Void });
+
 // The open project's history (D71) now and on every change (null: nothing open).
 export const HistorySubscribeRpc = Rpc.make(RPC_METHODS.historySubscribe, { payload: Empty, success: Schema.NullOr(HistoryState), stream: true });
 // The project as it was at a revision (the History tab's preview); changes nothing.

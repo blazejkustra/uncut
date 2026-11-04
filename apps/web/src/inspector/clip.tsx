@@ -21,6 +21,7 @@ import {
   PROP_NAMES,
   type BoxPatch,
 } from "../timeline/clip.ts";
+import { findItem } from "../timeline/edit.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { showDraft, send, NumberField, Slider, Group } from "./fields.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
@@ -227,14 +228,14 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
  * The clip's keys (F5, D148): previous and next key (also [ and ]), and with the playhead on a key
  * its ease, how it moves on to the next key (the same curve in the preview and the export).
  */
-function KeysGroup({ project, item, local, inside, locked }: { project: ProjectModel; item: Item; local: number; inside: boolean; locked: boolean }) {
+export function KeysGroup({ project, item, local, inside, locked }: { project: ProjectModel; item: Item; local: number; inside: boolean; locked: boolean }) {
   const frames = keyFrames(item);
   const ease = inside ? keyEase(item, local) : undefined;
   const go = (dir: -1 | 1) => {
     const to = nearbyKey(project, getPlayback().frame, dir, [item.id]);
     if (to !== undefined) (playback.pause(), playback.seek(to));
   };
-  const start = clipState(project, item.id, getPlayback().frame)?.start ?? 0;
+  const start = findItem(project, item.id)?.start ?? 0;
   const at = start + local;
   return (
     <Group label={`Keys (${frames.length})`}>

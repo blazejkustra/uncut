@@ -130,6 +130,8 @@ export interface Motion {
   readonly reveal?: number;
   /** A zoom move (D81): the text's scale about its box's centre. */
   readonly scale?: number;
+  /** A text's x and y keys at this frame (D329): the box's top-left, in place of its transform's. */
+  readonly keyed?: { readonly x?: number; readonly y?: number };
   /** A word-by-word move (D81): each word's progress, 0 (not there yet) → 1 (arrived), and how it arrives. */
   readonly words?: ReadonlyArray<number>;
   readonly wordStyle?: WordStyle;
@@ -348,14 +350,16 @@ export function textHtml(
   const { width, height } = target.canvas;
   const look = textLook(item.style?.preset);
   const s = item.style ?? {};
-  const { x, y, w, size } = textPlacement(item, target);
+  const { x: restX, y: restY, w, size } = textPlacement(item, target);
+  const x = motion?.keyed?.x ?? restX;
+  const y = motion?.keyed?.y ?? restY;
   const decor = textDecor(item, look, size, target);
   const extra = s as { readonly accent?: unknown; readonly accentBox?: unknown };
   const accentBox = typeof extra.accentBox === "string" && extra.accentBox ? resolveColor(target, extra.accentBox, DEFAULT_THEME.colors.accent) : undefined;
   const css = [
     `left:${num((x / width) * 100)}%`,
     item.anchor === "bottom" ? `bottom:${num((1 - y / height) * 100)}%` : `top:${num((y / height) * 100)}%`,
-    w && w > 0 ? `width:${num((w / width) * 100)}%` : `width:max-content;max-width:${num(Math.max(5, 100 - (x / width) * 100))}%`,
+    w && w > 0 ? `width:${num((w / width) * 100)}%` : `width:max-content;max-width:${num(Math.max(5, 100 - (restX / width) * 100))}%`,
     `font-size:${num((size / height) * 100)}cqh`,
     `font-weight:${s.weight ?? look.weight}`,
     `font-family:${resolveFont(target, s.font ?? look.font).replace(/"/g, "'")}`,

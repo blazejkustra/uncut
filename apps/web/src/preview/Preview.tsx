@@ -12,7 +12,7 @@ import { RENDER_CSS } from "@uncut/core/render";
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
-import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
+import { usePlayback, getPlayback, playback, type PreviewDraft } from "./playback.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { actions, getState, subscribeApp, textPresets } from "../state/store.ts";
 import { useProxiesOn } from "../settings/proxies.ts";
@@ -20,8 +20,8 @@ import { useScrubCacheOn } from "../settings/scrub.ts";
 import { useGpuCompositorOn } from "../settings/gpu.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
-import { planText, planTextScale, planTransform, snapBox, textBox, type Guide } from "./text.ts";
-import { clipState, planClipBox, planResetPosition, resizeBox, type Corner } from "../timeline/clip.ts";
+import { planText, planTextScale, snapBox, textBox, type Guide } from "./text.ts";
+import { clipState, planClipBox, planResetPosition, planTextPosition, resizeBox, type Corner } from "../timeline/clip.ts";
 import { Transport } from "./Transport.tsx";
 import { useViewport } from "./viewport.ts";
 import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
@@ -36,6 +36,7 @@ import { ElementSelection, pickElement } from "./stage/ElementSelection.tsx";
 import { AgentChangePill } from "./stage/AgentChangePill.tsx";
 import { MediaSkim } from "./stage/MediaSkim.tsx";
 import { RegionPins, RegionSelect } from "./stage/Region.tsx";
+import { TrackProgress, TrackSelect } from "./stage/Track.tsx";
 
 interface CanvasDrag {
   readonly id: string;
@@ -115,6 +116,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   const [editing, setEditing] = useState<InlineEdit | undefined>();
   // Issue #118: the Area tool (a rectangle over the picture into the chat).
   const [region, setRegion] = useState(false);
+  const trackPick = usePlayback((s) => s.trackPick);
   const endRegion = useCallback(() => setRegion(false), []);
   useEffect(() => {
     const c = new Compositor(dir, frameRef.current!, mediaRef.current!, textRef.current!);
@@ -200,7 +202,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     }
     const hit = editableText(e.target);
     if (!hit) return;
-    const box = textBox(hit.item, project);
+    const box = textBox(hit.item, project, start.frame - (findItem(project, hit.item.id)?.start ?? 0));
     drag.current = {
       ...start,
       id: hit.item.id,
@@ -220,7 +222,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     d.textCorner
       ? planTextScale(p, d.id, to.k ?? 1, d.textCorner, { x: d.x, y: d.y, w: d.w, h: d.h })
       : d.kind === "text"
-        ? planTransform(p, d.id, { x: to.x, y: to.y })
+        ? planTextPosition(p, d.id, { x: to.x, y: to.y }, d.frame)
         : d.kind === "clip"
           ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame)
           : planClipBox(p, d.id, to, d.frame);
@@ -464,11 +466,13 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
               <ClipSelection project={project} />
               <ElementSelection project={project} />
               {!editing && <TextSelection layer={textRef} project={project} />}
+              <TrackProgress project={project} />
             </div>
           </div>
           <MediaSkim />
           <RegionPins project={project} />
           {region && <RegionSelect project={project} onDone={endRegion} />}
+          {trackPick && <TrackSelect project={project} pick={trackPick} />}
         </div>
       </div>
       <AgentChangePill fps={project.canvas.fps} />

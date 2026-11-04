@@ -35,9 +35,10 @@ const CONVENIENCE: ReadonlyArray<{ readonly op: string; readonly def: string; re
     def: "replaceRange",
     line: "swaps timeline frames [from, to) of a clip or sound for another media from its frame in; nothing moves",
   },
-  { op: "reframe", def: "reframe", line: "the clip fills the canvas and follows its subject's face" },
-  { op: "text_behind_subject", def: "textBehindSubject", line: "copies the clip under the texts above them, background removed" },
-  { op: "edit_captions", def: "editCaptions", line: "fixes caption words (transcript word ids), card starts, mode, grouping or fillers" },
+  { op: "reframe", def: "reframe", line: "the clip fills the canvas, following its face" },
+  { op: "text_behind_subject", def: "textBehindSubject", line: "copies the clip under the texts above them, cut out" },
+  { op: "track", def: "track", line: "pins item to an object in the clip under it" },
+  { op: "edit_captions", def: "editCaptions", line: "fixes caption words (word ids), card starts, mode, grouping or fillers" },
 ];
 export const CONVENIENCE_OPS: ReadonlyArray<string> = CONVENIENCE.map((c) => c.op);
 const DEFS = toolsSpec.$defs as unknown as Record<string, Schema>;

@@ -49,6 +49,8 @@ export const RPC_METHODS = {
   analysisCancel: "analysis.cancel",
   analysisCached: "analysis.cached",
   visionReframe: "vision.reframe",
+  visionTrack: "vision.track",
+  visionTrackCancel: "vision.trackCancel",
   historySubscribe: "history.subscribe",
   historyPreview: "history.preview",
   historyJump: "history.jump",

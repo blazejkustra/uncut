@@ -13,7 +13,7 @@ import {
   withGraphicRetime,
 } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
-import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
+import { projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
 import { planOnly } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
@@ -21,10 +21,7 @@ import {
   bigChange,
   checksOut,
   FONT_ERRORS,
-  expandArrangeOps,
-  expandCaptionEdits,
-  expandDeviceFrames,
-  expandTextLooks,
+  expandConvenienceOps,
   MAX_LOOSE_FRAMES,
   LOOK_TOOLS,
   MAX_FRAMES,
@@ -492,25 +489,16 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           };
           const unknown = unknownOp(args.ops);
           if (unknown) return refuse(unknown);
+          const pluginLooks = Object.fromEntries((yield* plugins.contributions).looks.map((l) => [l.id, l]));
+          const prepare = (project: Project, ops: ReadonlyArray<unknown>) => expandConvenienceOps(project, ops, pluginLooks);
+          const openNow = () => (view()?.session.project ?? v.session.project) as Project;
           // D328: reframe (from the clip's faces, found first) and text_behind_subject become the ops that do them.
           const ffmpegNow = async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? ""));
-          const seen = yield* Effect.promise(() => expandVisionOps(v.session.project as Project, v.dir, args.ops as ReadonlyArray<unknown>, analysis.vision, ffmpegNow, r.abort.signal));
+          const seen = yield* Effect.promise(() =>
+            expandVisionOps(v.session.project as Project, v.dir, args.ops as ReadonlyArray<unknown>, analysis.vision, ffmpegNow, r.abort.signal, { current: openNow, prepare }),
+          );
           if ("problem" in seen) return refuse(seen.problem);
-          // insert_device_frame (D76) becomes the edit ops that make it (tracks, the screen clip, the frame).
-          const expanded = expandDeviceFrames(v.session.project as Project, seen.ops);
-          if ("problem" in expanded) return refuse(expanded.problem);
-          // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
-          const pluginLooks = Object.fromEntries((yield* plugins.contributions).looks.map((l) => [l.id, l]));
-          const texts = expandTextLooks(v.session.project as Project, expanded.ops, pluginLooks);
-          if ("problem" in texts) return refuse(texts.problem);
-          // edit_captions (D82) becomes the update_item of the captions it changes.
-          const captions = expandCaptionEdits(v.session.project as Project, texts.ops);
-          if ("problem" in captions) return refuse(captions.problem);
-          // detach_audio (D123), set_speed (D125; ramp and reverse D327) and replace_range (issue #118) become the item ops that do them.
-          const arranged = expandArrangeOps(v.session.project as Project, captions.ops);
-          if ("problem" in arranged) return refuse(arranged.problem);
-          // D206: place_item (overlaps resolved as asked) and set_transition's allowTrim.
-          const placed = expandPlacement(v.session.project as Project, arranged.ops);
+          const placed = prepare(v.session.project as Project, seen.ops);
           if ("problem" in placed) return refuse(placed.problem);
           // D213: effect.shader entries named by id get their definition (a plugin's or the project's).
           const shaded = expandShaderEffects(placed.ops, yield* shaderDefsOf(v));
@@ -519,6 +507,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const retime = withGraphicRetime(v.session.project as Project, shaded.ops as ReadonlyArray<Op>);
           const ops = retime.ops;
           const placements = placed.notes.length ? { placed: placed.notes } : {};
+          const tracked = seen.notes.length ? { tracked: seen.notes } : {};
           const retimed = retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, v.session.project.canvas.fps) } : {};
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(
@@ -584,6 +573,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               }),
               diff: projectDiff(v.session.project as Project, planned),
               ...placements,
+            ...tracked,
               ...retimed,
               duration: end,
               seconds: Number((end / planned.canvas.fps).toFixed(2)),
@@ -620,6 +610,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             ok: true,
             revision: snapshot.revision,
             ...placements,
+            ...tracked,
             ...retimed,
             duration: end,
             seconds: Number((end / project.canvas.fps).toFixed(2)),

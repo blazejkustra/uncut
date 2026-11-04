@@ -358,8 +358,8 @@ test("split keeps the in-animation and fade-in on the first half, the out ones o
       ],
     ],
   );
-  // The end can't cut below the last key (80); the start trim moves keys with it.
-  assert.equal(ok(planTrim(anim, "t", "end", -500)).duration, 80);
+  // D329: a text trims past its keys, down to its longest animation (20); the start trim moves keys with it.
+  assert.equal(ok(planTrim(anim, "t", "end", -500)).duration, 20);
   p = applyValid(anim, planTrim(anim, "t", "start", 60));
   // (D75: a keyed value cut off at the new start gets a key there, so it doesn't jump.)
   assert.deepEqual([item(p, "t").duration, item(p, "t").keys!.map((k) => k.frame)], [30, [0, 20]]);

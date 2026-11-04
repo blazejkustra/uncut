@@ -20,6 +20,12 @@ export interface PreviewDraft {
   readonly project: ProjectModel;
 }
 
+export interface TrackPick {
+  readonly item: string;
+  readonly target: string;
+  readonly scale: boolean;
+}
+
 export interface PlaybackState {
   /** Fractional while playing; whole frames when paused. */
   readonly frame: number;
@@ -57,6 +63,7 @@ export interface PlaybackState {
    * backwards. At any rate but 1 the preview seeks its videos per frame and stays silent.
    */
   readonly rate: number;
+  readonly trackPick: TrackPick | undefined;
   /** In and out points (I/O, G3), frames; drawn on the ruler. */
   readonly markIn: number | undefined;
   readonly markOut: number | undefined;
@@ -99,6 +106,7 @@ const savedSkimming = () => {
   }
 };
 let state: PlaybackState = {
+  trackPick: undefined,
   frame: 0,
   playing: false,
   frames: 1,
@@ -170,6 +178,11 @@ function tick(now: number) {
 export const playback = {
   subscribe,
 
+  pickTrack(pick: TrackPick | undefined) {
+    if (pick) playback.pause();
+    set({ trackPick: pick });
+  },
+
   /**
    * The open project changed: the playhead stays where it is unless the project got shorter than
    * that; then it goes to the new end (so deleting an end card at the end leaves the playhead
@@ -191,6 +204,7 @@ export const playback = {
       frame: 0,
       playing: false,
       selected: undefined,
+      trackPick: undefined,
       cut: undefined,
       gainKey: undefined,
       zoom: 1,

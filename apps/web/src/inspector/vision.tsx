@@ -4,12 +4,17 @@
 import { CUTOUT, FACE_BLUR, clipFx, planEffect } from "@uncut/core/fx";
 import { faceList, type FaceFrames } from "@uncut/core/vision";
 import { planTextBehindSubject } from "@uncut/core/visionPlans";
+import { hasPositionKeys, planUntrack, trackTargets } from "@uncut/core/visionTrack";
 import type { Item } from "@uncut/core/types";
 import { useEffect, useState } from "react";
 
+import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { visionNote, visionStateOf } from "../preview/vision.ts";
 import { type ProjectModel } from "../state/project.ts";
-import { actions, useAppSelect, visionUrl } from "../state/store.ts";
+import { actions, trackOf, useAppSelect, visionUrl } from "../state/store.ts";
+import { findItem } from "../timeline/edit.ts";
+import { KeysGroup } from "./clip.tsx";
+import { Section } from "./controls.tsx";
 import { send } from "./fields.tsx";
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -115,5 +120,98 @@ export function BehindSubjectButton({ project, textIds, locked }: { project: Pro
         Text behind subject
       </button>
     </div>
+  );
+}
+
+const clipName = (project: ProjectModel, clip: Item) => clip.name ?? project.media.find((m) => m.id === clip.media)?.name ?? clip.id;
+
+const clipAtPlayhead = (project: ProjectModel, clips: ReadonlyArray<Item>) => {
+  const frame = Math.floor(getPlayback().frame);
+  return clips.find((c) => {
+    const start = findItem(project, c.id)?.start ?? 0;
+    return frame >= start && frame < start + c.duration;
+  });
+};
+
+function TextKeys({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const frame = usePlayback((s) => Math.round(s.frame));
+  const local = frame - (findItem(project, item.id)?.start ?? 0);
+  return <KeysGroup project={project} item={item} local={local} inside={local >= 0 && local < item.duration} locked={locked} />;
+}
+
+export function TrackSection({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const clips = trackTargets(project, item.id);
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const [scale, setScale] = useState(false);
+  const state = useAppSelect((s) => trackOf(s, item.id));
+  const note = useAppSelect((s) => s.trackNotes?.[item.id]);
+  const picking = usePlayback((s) => s.trackPick?.item === item.id);
+  useEffect(() => () => playback.pickTrack(undefined), [item.id]);
+  const keyed = hasPositionKeys(item);
+  if (!clips.length && !(item.type === "text" && keyed)) return null;
+  const target = clips.find((c) => c.id === chosen) ?? clipAtPlayhead(project, clips) ?? clips[0];
+  const busy = !!state;
+  return (
+    <Section title="Track" testId="insp-sec-track" remember="track">
+      <div className="group track-panel" data-testid="insp-track">
+        {clips.length > 0 && (
+          <select className="field input" data-testid="insp-track-target" aria-label="Clip to follow" value={target?.id ?? ""} disabled={locked || busy} onChange={(e) => setChosen(e.target.value)}>
+            {clips.map((c) => (
+              <option key={c.id} value={c.id}>
+                {clipName(project, c)}
+              </option>
+            ))}
+          </select>
+        )}
+        {clips.length > 0 && (
+          <label className="check-row">
+            <input type="checkbox" data-testid="insp-track-scale" checked={scale} disabled={locked || busy} onChange={(e) => setScale(e.target.checked)} />
+            Follow its size too
+          </label>
+        )}
+        <div className="field-row wrap">
+          {busy && (
+            <>
+              <span className="muted small" data-testid="insp-track-status">
+                {visionNote(state, "track")}
+              </span>
+              <button className="small-btn" data-testid="insp-track-cancel" onClick={() => void actions.cancelTrack(item.id)}>
+                Cancel
+              </button>
+            </>
+          )}
+          {!busy && picking && (
+            <>
+              <span className="muted small">Draw a box round the object on the preview.</span>
+              <button className="small-btn" data-testid="insp-track-stop-pick" onClick={() => playback.pickTrack(undefined)}>
+                Cancel
+              </button>
+            </>
+          )}
+          {!busy && !picking && target && (
+            <button
+              className="small-btn"
+              data-testid="insp-track-run"
+              disabled={locked}
+              title="Pin this item to an object in the clip, forward from the playhead"
+              onClick={() => playback.pickTrack({ item: item.id, target: target.id, scale })}
+            >
+              Track
+            </button>
+          )}
+          {!busy && !picking && keyed && (
+            <button className="small-btn" data-testid="insp-track-remove" disabled={locked} title={scale ? "Takes off its x, y and scale keys; other keys stay" : "Takes off its x and y keys; scale and other keys stay"} onClick={() => send((p) => planUntrack(p, item.id, { scale }))}>
+              Remove track
+            </button>
+          )}
+        </div>
+        {note && (
+          <div className="muted small" data-testid="insp-track-note">
+            {note}
+          </div>
+        )}
+      </div>
+      {item.type === "text" && keyed && <TextKeys project={project} item={item} locked={locked} />}
+    </Section>
   );
 }

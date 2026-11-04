@@ -53,13 +53,15 @@ export const ProxyState = Schema.Struct({
   error: Schema.optional(Schema.String),
   /** D327: a reversed copy of media frames [from, to) for a reversed clip, not the media's proxy. */
   reverse: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number })),
-  /** D328: a vision result a clip's effects read (a matte or faces for media seconds [start, end)), not the media's proxy; `key` names its files. */
+  /** D328: a vision result a clip's effects read (a matte or faces for media seconds [start, end)), not the media's proxy; `key` names its files. D329: or a track an overlay (`item`) follows in a clip (`target`). */
   vision: Schema.optional(
     Schema.Struct({
-      output: Schema.Literals(["matte", "faces"]),
+      output: Schema.Literals(["matte", "faces", "track"]),
       mode: Schema.optional(Schema.Literals(["person", "subject"])),
       start: Schema.Number,
       end: Schema.Number,
+      item: Schema.optional(Schema.String),
+      target: Schema.optional(Schema.String),
     }),
   ),
 });

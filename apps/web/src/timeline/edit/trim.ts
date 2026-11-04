@@ -1,4 +1,5 @@
 // Trim, split and delete planners (edit.ts), ripple delete and group trims.
+import { isDrawnComponent } from "@uncut/core/components";
 import { overlaps } from "@uncut/core/transitions";
 import { busySpans, keepMainTimes, rippleMainGaps } from "@uncut/core/arrange";
 import { withGraphicRetime } from "@uncut/core/retime";
@@ -82,7 +83,8 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
   const snapped = nearestSnap([edge === "start" ? start + moved : end + moved], snap);
   if (snapped) moved += snapped.shift;
   // How short the item may get: one frame, its animations and fades, a transition at either cut
-  // needs both clips twice its length, and (end edge) its last key.
+  // needs both clips twice its length, and (end edge) its last key, unless it's an overlay: core's
+  // trim_item keys the new end and drops the rest, and a tracked overlay has a key on its last frame.
   const next = main ? track.items[placed.index + 1] : undefined;
   const own = main ? (item.transitionIn?.duration ?? 0) : 0;
   const into = next?.transitionIn?.duration ?? 0;
@@ -90,7 +92,8 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
   const ownHandle = main && item.transitionIn && overlaps(item.transitionIn.module) ? Math.ceil(own / 2) : 0;
   const intoHandle = next?.transitionIn && overlaps(next.transitionIn.module) ? Math.ceil(into / 2) : 0;
   const anims = Object.values(item.animation ?? {}).map((a) => a?.duration ?? 0);
-  const keys = edge === "end" ? [...(item.keys ?? []), ...(item.gainKeys ?? [])].map((k) => k.frame) : [];
+  const overlay = item.type === "text" || isDrawnComponent(item) || media?.kind === "image";
+  const keys = edge === "end" ? [...(overlay ? [] : (item.keys ?? [])), ...(item.gainKeys ?? [])].map((k) => k.frame) : [];
   const minDuration = Math.max(1, 2 * own, 2 * into, (item.fadeIn ?? 0) + (item.fadeOut ?? 0), ...anims, ...keys);
   const speed = item.speed ?? 1;
   // Video and audio play from a time in their media; still images and text can grow freely.

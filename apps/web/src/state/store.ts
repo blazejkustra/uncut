@@ -44,6 +44,7 @@ export {
   reversedUrl,
   visionOf,
   visionUrl,
+  trackOf,
   sfxUrl,
   folderSoundUrl,
   libraryPreviewUrl,

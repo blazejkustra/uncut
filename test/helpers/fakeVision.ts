@@ -27,6 +27,8 @@ export interface FaceBox {
 export interface FakeVisionOptions {
   readonly matte?: MatteSpec;
   readonly face?: (frame: number) => FaceBox;
+  /** The object's box on each frame from the track's start (no answer: lost there). */
+  readonly track?: (frame: number) => FaceBox | undefined;
   /** Waited for before answering a call. */
   readonly hold?: (tool: string, signal: AbortSignal) => Promise<void>;
   /** The module's error sentence, by tool. */
@@ -39,7 +41,7 @@ export interface FakeVisionOptions {
 
 export type FakeCall = { readonly tool: string; readonly signal: AbortSignal } & Record<string, unknown>;
 
-const MANIFEST = { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["matte", "faces"], backend: "system" } };
+const MANIFEST = { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["matte", "faces", "track"], backend: "system" } };
 const FACE_FPS = 30;
 
 export const SMALL_MATTE: MatteSpec = { width: 64, height: 36, fps: 30, frames: 60, lum: "if(lt(X,32),255,0)" };
@@ -55,6 +57,18 @@ const facesJson = (args: Record<string, unknown>, face: FakeVisionOptions["face"
   const count = face ? Math.round((end - start) * FACE_FPS) : 0;
   const frames = Array.from({ length: count }, (_, i) => ({ t: start + i / FACE_FPS, faces: [{ id: 1, confidence: 0.9, ...face!(i) }] }));
   return { start, end, fps: FACE_FPS, width: 1920, height: 1080, frames };
+};
+
+const trackJson = (args: Record<string, unknown>, track: NonNullable<FakeVisionOptions["track"]>) => {
+  const at = args.at as number;
+  const end = args.end as number;
+  const frames: Array<Record<string, unknown>> = [];
+  for (let i = 0; at + i / FACE_FPS < end; i++) {
+    const box = track(i);
+    frames.push(box ? { t: at + i / FACE_FPS, ...box, confidence: 0.9 } : { t: at + i / FACE_FPS, lost: true });
+    if (!box) break;
+  }
+  return { start: at, end, fps: FACE_FPS, width: 1920, height: 1080, frames };
 };
 
 const answered = (structured?: unknown): VisionCallResult => ({ content: [{ type: "text", text: "written" }], structured });
@@ -73,6 +87,10 @@ export function fakeVision(options: FakeVisionOptions = {}) {
       if (signal.aborted) return { content: [] };
       if (tool === "faces") {
         writeFileSync(args.out as string, JSON.stringify(facesJson(args, options.face)));
+        return answered({});
+      }
+      if (tool === "track") {
+        writeFileSync(args.out as string, JSON.stringify(trackJson(args, options.track ?? (() => ({ x: 0.4, y: 0.4, w: 0.2, h: 0.2 })))));
         return answered({});
       }
       writeMatte(args.out as string, matte);

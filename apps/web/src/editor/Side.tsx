@@ -16,7 +16,7 @@ import { hasSpeed, NamesEditor, SpeedEditor } from "../inspector/speed.tsx";
 import { BackgroundEditor } from "../inspector/background.tsx";
 import { CaptionsEditor } from "../inspector/captions.tsx";
 import { ClipBoxEditor } from "../inspector/clip.tsx";
-import { BehindSubjectButton, ReframeButton } from "../inspector/vision.tsx";
+import { BehindSubjectButton, ReframeButton, TrackSection } from "../inspector/vision.tsx";
 import { EffectsEditor } from "../inspector/effects.tsx";
 import { MultiInspector } from "../inspector/multi.tsx";
 import { Section } from "../inspector/controls.tsx";
@@ -204,6 +204,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
           {item.type === "clip" && media?.kind === "video" && <ReframeButton item={item} locked={locked} />}
         </Section>
       )}
+      {(item.type === "text" || isBoxed(project, item)) && <TrackSection project={project} item={item} locked={locked} />}
       {item.type === "clip" && media && media.kind !== "audio" && !fxSkips(media) && <EffectsEditor project={project} item={item} locked={locked} />}
       {hasSpeed(project, item) && (
         <Section title="Speed" testId="insp-sec-speed" remember="speed">

@@ -82,6 +82,7 @@ export const visionOf = (
       p.vision.start === request.start &&
       p.vision.end === request.end,
   );
+export const trackOf = (s: AppStateShape, itemId: string) => s.proxies.find((p) => p.vision?.output === "track" && p.vision.item === itemId);
 /** D328: a file of a vision result (`name`: <key>.mp4 or <key>.json). */
 export const visionUrl = (id: string, name: string) => {
   const url = serverUrl(PROXY_PATH, id);

@@ -31,6 +31,7 @@
     "./speedRamp": "./src/timeline/speedRamp.ts",
     "./vision": "./src/visual/vision.ts",
     "./visionPlans": "./src/visual/visionPlans.ts",
+    "./visionTrack": "./src/visual/visionTrack.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",
     "./transitions": "./src/visual/transitions.ts",

@@ -22,7 +22,11 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+import { hasPositionKeys } from "@uncut/core/visionTrack";
 import { type ProjectModel } from "../../state/project.ts";
+import { getPlayback, usePlayback } from "../../preview/playback.ts";
+import { findItem } from "../../timeline/edit.ts";
+import { planTextPosition } from "../../timeline/clip.ts";
 import { measureText } from "../../preview/measure.ts";
 import {
   caseOf,
@@ -421,7 +425,9 @@ function Decor({ project, item, edit, disabled }: { project: ProjectModel; item:
 }
 
 function Layout({ project, item, edit, disabled }: { project: ProjectModel; item: Item; edit: TextEdit; disabled: boolean }) {
-  const box = textBox(item, project);
+  const frame = usePlayback((s) => (hasPositionKeys(item) ? Math.round(s.frame) : 0));
+  const box = textBox(item, project, frame - (findItem(project, item.id)?.start ?? 0));
+  const position = (patch: { readonly x?: number; readonly y?: number }) => (p: ProjectModel, id: string) => planTextPosition(p, id, patch, Math.round(getPlayback().frame));
   const text = item.type === "text";
   const rotate = item.transform?.rotate ?? 0;
   const opacity = Math.round((item.transform?.opacity ?? 1) * 100);
@@ -454,8 +460,8 @@ function Layout({ project, item, edit, disabled }: { project: ProjectModel; item
           unit="px"
           value={box.x}
           disabled={disabled}
-          onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { x: v }))}
-          onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { x: v }))}
+          onPreview={(v) => edit.preview(position({ x: v }))}
+          onCommit={(v) => v !== undefined && edit.commit(position({ x: v }))}
         />
         <NumInput
           testId="insp-y"
@@ -463,8 +469,8 @@ function Layout({ project, item, edit, disabled }: { project: ProjectModel; item
           unit="px"
           value={box.y}
           disabled={disabled}
-          onPreview={(v) => edit.preview((p, id) => planTransform(p, id, { y: v }))}
-          onCommit={(v) => v !== undefined && edit.commit((p, id) => planTransform(p, id, { y: v }))}
+          onPreview={(v) => edit.preview(position({ y: v }))}
+          onCommit={(v) => v !== undefined && edit.commit(position({ y: v }))}
         />
         <NumInput
           testId="insp-w"

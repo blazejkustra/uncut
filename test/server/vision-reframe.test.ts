@@ -90,7 +90,9 @@ test("D328: the vision.reframe RPC finds the subject on the open project, then p
   const source = readFileSync("apps/server/src/app/ws.ts", "utf8");
   const handler = source.slice(source.indexOf("[RPC_METHODS.visionReframe]"), source.indexOf("[RPC_METHODS.historySubscribe]"));
   assert.match(handler, /reframeSubject\(analysis\.vision, open\.project as Project, open\.dir, itemId, shellFfmpeg\(config\), signal\)/);
-  assert.match(handler, /reframeSubject[\s\S]*\.editIn\(open\.openId, \(now\) =>[\s\S]*reframePlan\(now as Project, itemId, subject, zoom\)/);
+  assert.match(handler, /reframeSubject[\s\S]*editFromVision\(open\.openId, \(now\) => reframePlan\(now, itemId, subject, zoom\)/);
+  assert.match(handler, /proxies\.track[\s\S]*editFromVision\(open\.openId, \(now\) => trackPlan\(now, ask, made\.target, made\.result\)/);
+  assert.match(source, /editFromVision = [\s\S]*\.editIn\(openId, \(now\) =>[\s\S]*plan\(now as Project\)/);
   assert.doesNotMatch(handler, /reframeEdit/);
 });
 
@@ -253,5 +255,5 @@ test("D328: the agent's reframe op passes its signal through: aborting stops the
 
 test("D328: the timeline_edit tool hands its run's abort signal to the vision ops", () => {
   const source = readFileSync("apps/server/src/agent/tools/run.ts", "utf8");
-  assert.match(source, /expandVisionOps\([^\n]*r\.abort\.signal\)/);
+  assert.match(source, /expandVisionOps\([\s\S]*?r\.abort\.signal\b/);
 });

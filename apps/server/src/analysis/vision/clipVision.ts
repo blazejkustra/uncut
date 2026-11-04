@@ -8,14 +8,14 @@
 import { realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { type FacesResult, type MatteInfo, type MatteMode } from "@uncut/contracts";
+import { type FacesResult, type MatteInfo, type MatteMode, type TrackResult } from "@uncut/contracts";
 import { CUTOUT, FACE_BLUR, effectOptions, visionProblem, visionRange, type FaceFrames, type Item, type Media, type Project } from "@uncut/core";
 import { flattenSequences } from "@uncut/core/nesting";
 
 import { run } from "../../export/exporter/ffmpeg.ts";
 import { VisionFailure, type VisionAnalysis } from "./vision.ts";
 
-export type ClipVisionOutput = "matte" | "faces";
+export type ClipVisionOutput = "matte" | "faces" | "track";
 
 /** One vision result a clip needs: its media, the output (and matte mode) and the media's seconds [start, end). */
 export interface ClipVisionRequest {
@@ -23,6 +23,8 @@ export interface ClipVisionRequest {
   readonly mode?: MatteMode | undefined;
   readonly start: number;
   readonly end: number;
+  /** A track's object on the picture, 0 to 1. */
+  readonly box?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | undefined;
 }
 
 export interface ClipVisionTarget extends ClipVisionRequest {
@@ -37,9 +39,11 @@ export interface ClipVisionTarget extends ClipVisionRequest {
 /** A made result: a matte (its file, the preview's copy, its info) or faces, and its cache file's key (the name without extension). */
 export type ClipVisionResult =
   | { readonly output: "matte"; readonly key: string; readonly video: string; readonly info: MatteInfo }
-  | { readonly output: "faces"; readonly key: string; readonly file: string; readonly result: FacesResult };
+  | { readonly output: "faces"; readonly key: string; readonly file: string; readonly result: FacesResult }
+  | { readonly output: "track"; readonly key: string; readonly file: string; readonly result: TrackResult };
 
-export const requestId = (mediaId: string, r: ClipVisionRequest) => `${mediaId}|${r.output}|${r.mode ?? ""}|${r.start}-${r.end}`;
+const boxId = (b: ClipVisionRequest["box"]) => (b ? `|${b.x},${b.y},${b.w},${b.h}` : "");
+export const requestId = (mediaId: string, r: ClipVisionRequest) => `${mediaId}|${r.output}|${r.mode ?? ""}|${r.start}-${r.end}${boxId(r.box)}`;
 
 const live = (item: Item, module: string) => item.effects?.find((e) => e.module === module && !e.bypass);
 
@@ -145,26 +149,27 @@ const inflight = new Map<string, SharedRun>();
 /** Cache files an export or a frame session will read (by path, how many hold each). */
 const pins = new Map<string, number>();
 
+async function askModule(vision: VisionAnalysis, target: ClipVisionTarget, signal: AbortSignal, report: (f: number) => void): Promise<ClipVisionResult> {
+  const where = { dir: target.dir, path: target.path };
+  const { start, end, box } = target;
+  if (target.output === "faces") {
+    const made = await vision.faces(where, { start, end }, { signal, onProgress: report });
+    return { output: "faces", key: basename(made.file, ".json"), file: made.file, result: made.result };
+  }
+  if (target.output === "track") {
+    const made = await vision.track(where, { at: start, end, box: box! }, { signal, onProgress: report });
+    return { output: "track", key: basename(made.file, ".json"), file: made.file, result: made.result };
+  }
+  const made = await vision.matte(where, { start, end, mode: target.mode ?? "person" }, { signal, onProgress: report });
+  return { output: "matte", key: basename(made.video, ".mkv"), video: made.video, info: made.info };
+}
+
 /**
  * One result made (or found in the cache), pinned from the moment it exists until the run's
  * waiters have taken their own pins (`settled`).
  */
 async function make(vision: VisionAnalysis, target: ClipVisionTarget, signal: AbortSignal, report: (f: number) => void, settled: Promise<unknown>): Promise<ClipVisionResult> {
-  const where = { dir: target.dir, path: target.path };
-  const result: ClipVisionResult =
-    target.output === "faces"
-      ? await vision.faces(where, { start: target.start, end: target.end }, { signal, onProgress: report }).then((made) => ({
-          output: "faces" as const,
-          key: basename(made.file, ".json"),
-          file: made.file,
-          result: made.result,
-        }))
-      : await vision.matte(where, { start: target.start, end: target.end, mode: target.mode ?? "person" }, { signal, onProgress: report }).then((made) => ({
-          output: "matte" as const,
-          key: basename(made.video, ".mkv"),
-          video: made.video,
-          info: made.info,
-        }));
+  const result = await askModule(vision, target, signal, report);
   const release = pinVision([result]);
   void settled.finally(() => setImmediate(release));
   return result;
@@ -280,7 +285,8 @@ export function visionResolver(ready: Pick<ReadyVision, "made" | "failed">) {
       const problem = ready.failed.get(id);
       return problem ? { problem } : undefined;
     }
-    return r.output === "matte" ? { matte: { file: r.video, info: r.info } } : { faces: r.result };
+    if (r.output === "matte") return { matte: { file: r.video, info: r.info } };
+    return r.output === "faces" ? { faces: r.result } : undefined;
   };
 }
 

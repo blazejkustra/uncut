@@ -4,7 +4,7 @@
 // transition past its end and the incoming one start half before its start, on top; a dip to
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "../audio/audio.ts";
-import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "../visual/box.ts";
+import { clipBox, EASES, keyAt, moveBox, type ClipBox, type Ease } from "../visual/box.ts";
 import { isSpringName, springEase } from "../visual/spring.ts";
 import { fxBox, fxSkips } from "../visual/fx.ts";
 import { captionAt } from "../text/captions.ts";
@@ -341,9 +341,9 @@ export function zoomScale(p: number, out: boolean, params: { readonly [key: stri
  * bounce and blur may overshoot and settle; wipe's reveal and pop's starting size stay in range.
  */
 export function animationAt(
-  item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text">>,
+  item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text" | "keys">>,
   local: number,
-  canvas: Pick<Canvas, "width" | "height">,
+  canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number },
   { skipIn = false, skipOut = false } = {},
 ): { opacity: number; motion: Motion } {
   let opacity = 1;
@@ -409,11 +409,14 @@ export function animationAt(
     if (a.loop.module === PULSE_MOVE) scale *= 1 + (amount * (1 - Math.cos((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration))) / 2;
     else if (a.loop.module === WIGGLE_MOVE) rotate += amount * wave;
   }
+  const keyed = isText ? { x: keyAt(item.keys, "x", at, canvas.fps), y: keyAt(item.keys, "y", at, canvas.fps) } : {};
+  if (isText) scale *= keyAt(item.keys, "scale", at, canvas.fps) ?? 1;
   const motion: {
     dx?: number;
     dy?: number;
     reveal?: number;
     scale?: number;
+    keyed?: { x?: number; y?: number };
     words?: Array<number>;
     wordStyle?: WordStyle;
     chars?: number;
@@ -425,6 +428,7 @@ export function animationAt(
   if (dy) motion.dy = dy;
   if (reveal < 1) motion.reveal = reveal;
   if (scale !== 1) motion.scale = scale;
+  if (keyed.x !== undefined || keyed.y !== undefined) motion.keyed = { ...(keyed.x !== undefined ? { x: keyed.x } : {}), ...(keyed.y !== undefined ? { y: keyed.y } : {}) };
   if (words && words.some((w) => w < 1)) {
     motion.words = words;
     motion.wordStyle = wordStyle ?? "pop";

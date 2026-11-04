@@ -6,6 +6,14 @@ import { call, plainError } from "../server.ts";
 import { revealWhenDone } from "../sync.ts";
 import { actions } from "../actions.ts";
 
+/** Past the plugin host's own cap on one call (1800 s, D325), so it's the module that answers. */
+const VISION_EDIT_TIMEOUT_MS = 35 * 60_000;
+
+const setTrackNote = (itemId: string, note: string | undefined) => {
+  const { [itemId]: _old, ...others } = state.trackNotes ?? {};
+  set({ trackNotes: note ? { ...others, [itemId]: note } : others });
+};
+
 export const exportActions = {
   /** ⌘E / the Export button: the export dialog, with ffmpeg checked (it shows the fix when missing). */
   openExport() {
@@ -89,9 +97,16 @@ export const exportActions = {
   dismissAnalysisError: () => set({ analysisError: undefined }),
   /** D328: auto reframe a clip to the canvas's shape (the server finds its faces first): undefined when done, else why not. */
   async reframe(itemId: string): Promise<string | undefined> {
-    const result = await call((c) => c["vision.reframe"]({ itemId }));
+    const result = await call((c) => c["vision.reframe"]({ itemId }), VISION_EDIT_TIMEOUT_MS);
     return result.ok ? undefined : plainError(result.error);
   },
+
+  async track(ask: { readonly itemId: string; readonly targetId: string; readonly frame: number; readonly box: { x: number; y: number; w: number; h: number }; readonly scale?: boolean }) {
+    setTrackNote(ask.itemId, undefined);
+    const result = await call((c) => c["vision.track"](ask), VISION_EDIT_TIMEOUT_MS);
+    setTrackNote(ask.itemId, result.ok ? result.value.note : plainError(result.error));
+  },
+  cancelTrack: (itemId: string) => call((c) => c["vision.trackCancel"]({ itemId })),
 
   /** The Setup row's speech model (D68): download, cancel, choose. */
   async downloadModel(model?: string) {

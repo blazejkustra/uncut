@@ -21,7 +21,7 @@ import {
   visionBusy,
   visionPinned,
 } from "./clipVision.ts";
-import type { VisionAnalysis } from "./vision.ts";
+import { VisionFailure, type VisionAnalysis } from "./vision.ts";
 
 export interface VisionQueueOptions {
   readonly vision: VisionAnalysis;
@@ -32,13 +32,22 @@ export interface VisionQueueOptions {
 
 type Run = { readonly target: ClipVisionTarget; readonly controller: AbortController };
 
-const stateOf = (t: ClipVisionRequest & Pick<ClipVisionTarget, "media">, patch: Partial<ProxyState>): ProxyState => ({
+interface TrackJob extends Run {
+  readonly item: string;
+  readonly clip: string;
+  readonly resolve: (result: ClipVisionResult) => void;
+  readonly reject: (error: Error) => void;
+}
+
+const stateOf = (t: ClipVisionRequest & Pick<ClipVisionTarget, "media">, patch: Partial<ProxyState>, on: { readonly item?: string; readonly target?: string } = {}): ProxyState => ({
   mediaId: t.media.id,
   phase: "queued",
   progress: 0,
-  vision: { output: t.output, ...(t.mode ? { mode: t.mode } : {}), start: t.start, end: t.end },
+  vision: { output: t.output, ...(t.mode ? { mode: t.mode } : {}), start: t.start, end: t.end, ...on },
   ...patch,
 });
+
+const itemIn = (project: Project | undefined, id: string) => project?.tracks.some((t) => t.items.some((i) => i.id === id)) ?? false;
 
 export class VisionQueue {
   private states = new Map<string, ProxyState>();
@@ -50,6 +59,7 @@ export class VisionQueue {
   private syncing = Promise.resolve();
   private readonly options: VisionQueueOptions;
   private refusedWhy = new Map<string, string>();
+  private readonly tracks = new Map<string, TrackJob>();
 
   constructor(options: VisionQueueOptions) {
     this.options = options;
@@ -77,6 +87,39 @@ export class VisionQueue {
   shutdown() {
     this.closed = true;
     this.running?.controller.abort();
+    for (const item of [...this.tracks.keys()]) this.cancelTrack(item);
+  }
+
+  track(target: ClipVisionTarget, on: { readonly item: string; readonly clip: string }, signal?: AbortSignal): Promise<ClipVisionResult> {
+    if (this.tracks.has(on.item)) return Promise.reject(new VisionFailure("invalid", "This item is being tracked already: cancel that first."));
+    if (signal?.aborted) return Promise.reject(new VisionStopped());
+    const done = new Promise<ClipVisionResult>((resolve, reject) => {
+      const job: TrackJob = { target, controller: new AbortController(), ...on, resolve, reject };
+      this.tracks.set(on.item, job);
+      this.states.set(target.id, stateOf(target, {}, { item: on.item, target: on.clip }));
+    });
+    const cancel = () => this.cancelTrack(on.item);
+    signal?.addEventListener("abort", cancel, { once: true });
+    this.publish();
+    this.pump();
+    return done.finally(() => signal?.removeEventListener("abort", cancel));
+  }
+
+  cancelTrack(item: string, why: Error = new VisionStopped()) {
+    const job = this.tracks.get(item);
+    if (!job) return;
+    if (this.running === job) {
+      job.controller.abort(why);
+      return;
+    }
+    this.endTrack(job);
+    job.reject(why);
+  }
+
+  private endTrack(job: TrackJob) {
+    this.tracks.delete(job.item);
+    this.states.delete(job.target.id);
+    this.publish();
   }
 
   /** Waits until nothing is queued or running (tests). */
@@ -87,9 +130,8 @@ export class VisionQueue {
 
   pump() {
     if (this.closed || this.running || this.options.exportBusy()) return;
-    const target = this.queued()[0];
-    if (!target) return;
-    const run: Run = { target, controller: new AbortController() };
+    const run = this.nextRun();
+    if (!run) return;
     this.running = run;
     void this.make(run).finally(() => {
       if (this.running === run) this.running = undefined;
@@ -99,8 +141,23 @@ export class VisionQueue {
 
   private queued = () => this.targets.filter((t) => this.states.get(t.id)?.phase === "queued");
 
+  private nextRun(): Run | undefined {
+    const job = [...this.tracks.values()].find((j) => this.states.get(j.target.id)?.phase === "queued");
+    if (job) return job;
+    const target = this.queued()[0];
+    return target ? { target, controller: new AbortController() } : undefined;
+  }
+
+  private stopGoneTracks(dir: string | undefined, project: Project | undefined) {
+    for (const job of [...this.tracks.values()]) {
+      if (job.target.dir === dir && itemIn(project, job.item) && itemIn(project, job.clip)) continue;
+      this.cancelTrack(job.item, new VisionFailure("invalid", "The item or the clip went while it was being tracked, so nothing changed."));
+    }
+  }
+
   private async reconcile(dir: string | undefined, project: Project | undefined) {
     const { targets, refused } = dir && project ? await clipVisionTargets(project, dir) : { targets: [], refused: [] };
+    this.stopGoneTracks(dir, project);
     if (dir !== this.dir) {
       this.states.clear();
       this.results.clear();
@@ -114,6 +171,10 @@ export class VisionQueue {
     }
     this.refusedWhy = new Map(refused.map((r) => [r.id, r.reason]));
     for (const r of refused) next.set(r.id, stateOf(r, { phase: "failed", error: r.reason }));
+    for (const job of this.tracks.values()) {
+      const state = this.states.get(job.target.id);
+      if (state) next.set(job.target.id, state);
+    }
     if (this.running && !next.has(this.running.target.id)) this.running.controller.abort();
     this.states = next;
     for (const id of [...this.results.keys()]) if (!next.has(id)) this.results.delete(id);
@@ -162,9 +223,25 @@ export class VisionQueue {
     await makePreview(bin, video, signal);
   }
 
+  private async makeTrack(job: TrackJob) {
+    const { target, controller } = job;
+    try {
+      const result = await ensureClipVision(this.options.vision, target, {
+        signal: controller.signal,
+        onProgress: (f) => this.set(target.id, { progress: Math.min(0.99, f) }),
+      });
+      this.endTrack(job);
+      job.resolve(result);
+    } catch (error) {
+      this.endTrack(job);
+      job.reject(controller.signal.aborted ? (controller.signal.reason as Error) : (error as Error));
+    }
+  }
+
   private async make(run: Run) {
     const { target, controller } = run;
     this.set(target.id, { phase: "running", progress: 0 });
+    if ("item" in run) return this.makeTrack(run as TrackJob);
     try {
       const result = await ensureClipVision(this.options.vision, target, {
         signal: controller.signal,
