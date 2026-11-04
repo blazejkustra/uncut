@@ -408,7 +408,10 @@ export const layer = Layer.effect(
             const { graphics, fonts } = await projectGraphics(config, dir, project);
             const { reversedFile, vision: seen, release } = await readyFrames(bin, project, dir, mediaPath, signal);
             try {
-              return await renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss, { reversedFile, vision: seen });
+              return await renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss, {
+                reversedFile,
+                vision: seen,
+              });
             } finally {
               release();
             }

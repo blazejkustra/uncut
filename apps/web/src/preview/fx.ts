@@ -670,7 +670,15 @@ export class FxRenderer {
       zoomed = [zw, zh];
       win = [o.x, o.y];
     }
-    const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true, ...keyUniforms(fx), ...cutoutUniforms(vision) };
+    const pictureUniforms = {
+      uSrc: { int: 0 },
+      uSize: [w, h],
+      uZoomed: zoomed,
+      uWin: win,
+      uMirror: fx.mirror === true,
+      ...keyUniforms(fx),
+      ...cutoutUniforms(vision),
+    };
     this.bind(4, this.matteTex);
     // Pixelate: block averages first.
     const block = fx.pixelate ? Math.max(1, Math.round(fx.pixelate * k)) : 1;

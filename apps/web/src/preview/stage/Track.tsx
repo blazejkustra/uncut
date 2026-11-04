@@ -29,7 +29,9 @@ export function TrackSelect({ project, pick }: { project: ProjectModel; pick: Tr
   return (
     <div className="pv-region-catch" data-testid="track-catch" {...handlers}>
       <div className="pv-track-hint">Draw a box round the object to follow</div>
-      {drawing && <div className="pv-region drawing" data-testid="track-rect" style={{ left: drawing.x, top: drawing.y, width: drawing.w, height: drawing.h }} />}
+      {drawing && (
+        <div className="pv-region drawing" data-testid="track-rect" style={{ left: drawing.x, top: drawing.y, width: drawing.w, height: drawing.h }} />
+      )}
     </div>
   );
 }
@@ -45,7 +47,12 @@ export function TrackProgress({ project }: { project: ProjectModel }) {
         if (!clip?.inside) return null;
         const { x, y, w, h } = clip.box;
         return (
-          <div key={state.vision!.item} data-testid="track-progress" data-item={state.vision!.item} style={{ position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" }}>
+          <div
+            key={state.vision!.item}
+            data-testid="track-progress"
+            data-item={state.vision!.item}
+            style={{ position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" }}
+          >
             <div className="pv-vision-note">{visionNote(state, "track")}</div>
           </div>
         );

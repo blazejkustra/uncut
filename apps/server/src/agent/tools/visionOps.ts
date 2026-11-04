@@ -75,11 +75,13 @@ export async function expandVisionOps(
     if ("problem" in now) return { problem: `${where}: the ops before it can't be applied: ${now.problem} Fix them, or send this op in its own call.` };
     const latest = () => {
       const after = projectAfter(context.current?.() ?? project, out, context.prepare);
-      if ("problem" in after) throw new VisionFailure("invalid", `The project changed during the wait, so the ops before it can't be applied: ${after.problem}`);
+      if ("problem" in after)
+        throw new VisionFailure("invalid", `The project changed during the wait, so the ops before it can't be applied: ${after.problem}`);
       return after;
     };
     if (op.op === "text_behind_subject") {
-      if (!Array.isArray(op.texts) || !op.texts.length || !op.texts.every((t) => typeof t === "string")) return { problem: `${where}: texts must be text item ids.` };
+      if (!Array.isArray(op.texts) || !op.texts.length || !op.texts.every((t) => typeof t === "string"))
+        return { problem: `${where}: texts must be text item ids.` };
       const plan = planTextBehindSubject(now, op.texts as Array<string>);
       if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
       out.push(...plan.ops);
@@ -88,7 +90,13 @@ export async function expandVisionOps(
     if (op.op === "track") {
       const shape = trackShapeProblem(op);
       if (shape) return { problem: `${where}: ${shape}` };
-      const ask = { item: op.item as string, target: op.target as string, frame: op.at as number, box: op.box as { x: number; y: number; w: number; h: number }, scale: op.scale as boolean | undefined };
+      const ask = {
+        item: op.item as string,
+        target: op.target as string,
+        frame: op.at as number,
+        box: op.box as { x: number; y: number; w: number; h: number },
+        scale: op.scale as boolean | undefined,
+      };
       try {
         const plan = await trackEdit(vision, now, dir, ask, latest, signal);
         out.push(...plan.ops);
@@ -99,7 +107,8 @@ export async function expandVisionOps(
       continue;
     }
     if (typeof op.item !== "string") return { problem: `${where}: item must be a clip id.` };
-    if (op.zoom !== undefined && !(typeof op.zoom === "number" && op.zoom >= 1 && op.zoom <= 4)) return { problem: `${where}: zoom must be a number from 1 to 4.` };
+    if (op.zoom !== undefined && !(typeof op.zoom === "number" && op.zoom >= 1 && op.zoom <= 4))
+      return { problem: `${where}: zoom must be a number from 1 to 4.` };
     try {
       const plan = await reframeEdit(vision, now, dir, op.item, ffmpeg, { zoom: op.zoom as number | undefined, signal, latest });
       out.push(...plan.ops);

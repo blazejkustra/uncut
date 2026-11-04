@@ -164,7 +164,21 @@ export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArra
 
 /** Whether the effects change the picture itself (the WebGL pass / the export's filters), not only overlays or the box. */
 export const needsPicturePass = (fx: ClipFx | undefined) =>
-  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow || fx.key || fx.mask || fx.cutout || fx.faceBlur);
+  !!fx &&
+  !!(
+    fx.colour ||
+    fx.posterize ||
+    fx.mirror ||
+    fx.shake ||
+    fx.pixelate ||
+    fx.rgbSplit ||
+    fx.sharpen ||
+    fx.glow ||
+    fx.key ||
+    fx.mask ||
+    fx.cutout ||
+    fx.faceBlur
+  );
 /** Whether anything is drawn over the picture (vignette, grain, letterbox). */
 export const hasOverlay = (fx: ClipFx | undefined) => !!fx && !!(fx.vignette || fx.grain || fx.letterbox);
 

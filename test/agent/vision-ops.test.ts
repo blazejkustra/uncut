@@ -25,7 +25,14 @@ const FACES = {
 
 function fakeVision(calls: Array<Record<string, unknown>>) {
   return new VisionAnalysis({
-    candidates: async () => [{ id: "fake.vision", name: "Fake", version: "1.0.0", manifest: { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["matte", "faces"], backend: "system" } } }],
+    candidates: async () => [
+      {
+        id: "fake.vision",
+        name: "Fake",
+        version: "1.0.0",
+        manifest: { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["matte", "faces"], backend: "system" } },
+      },
+    ],
     call: async (_id, tool, args) => {
       if (tool === "version") return { content: [] };
       calls.push({ tool, ...args });
@@ -63,7 +70,16 @@ test("D328: reframe finds the faces, then keys the clip to follow them; text_beh
   try {
     const calls: Array<Record<string, unknown>> = [];
     const vision = fakeVision(calls);
-    const r = await expandVisionOps(f.project(), f.dir, [{ op: "reframe", item: "c" }, { op: "text_behind_subject", texts: ["title"] }], vision, async () => "ffmpeg");
+    const r = await expandVisionOps(
+      f.project(),
+      f.dir,
+      [
+        { op: "reframe", item: "c" },
+        { op: "text_behind_subject", texts: ["title"] },
+      ],
+      vision,
+      async () => "ffmpeg",
+    );
     assert.ok(!("problem" in r), JSON.stringify(r));
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.tool, "faces");
@@ -128,13 +144,27 @@ const TRACK_OP = { op: "track", item: "t", target: "c", at: 0, box: { x: 200, y:
 /** A module that writes a track: the object moves right, lost at `lostAt` when given. */
 function trackVision(calls: Array<Record<string, unknown>>, lostAt?: number, hold?: (signal: AbortSignal) => Promise<void>) {
   return new VisionAnalysis({
-    candidates: async () => [{ id: "fake.vision", name: "Fake", version: "1.0.0", manifest: { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["track"], backend: "system" } } }],
+    candidates: async () => [
+      {
+        id: "fake.vision",
+        name: "Fake",
+        version: "1.0.0",
+        manifest: { id: "fake.vision", kind: "analyzer", analyzer: { inputs: ["video"], outputs: ["track"], backend: "system" } },
+      },
+    ],
     call: async (_id, tool, args, { signal }) => {
       if (tool === "version") return { content: [] };
       calls.push({ tool, ...args });
       await hold?.(signal);
       const count = lostAt ?? 60;
-      const frames: Array<Record<string, unknown>> = Array.from({ length: count }, (_, i) => ({ t: i / 30, x: 0.1 + i * 0.005, y: 0.2, w: 0.1, h: 0.1, confidence: 0.9 }));
+      const frames: Array<Record<string, unknown>> = Array.from({ length: count }, (_, i) => ({
+        t: i / 30,
+        x: 0.1 + i * 0.005,
+        y: 0.2,
+        w: 0.1,
+        h: 0.1,
+        confidence: 0.9,
+      }));
       if (lostAt !== undefined) frames.push({ t: lostAt / 30, lost: true });
       writeFileSync(args.out as string, JSON.stringify({ start: 0, end: 2, fps: 30, width: 1920, height: 1080, frames }));
       return { content: [{ type: "text", text: "written" }], structured: {} };
@@ -177,7 +207,10 @@ test("D329: track's bad shapes, a reversed clip and offline media are refused wi
     assert.match(await problem({ ...TRACK_OP, target: 3 }), /target must/);
     assert.match(await problem({ ...TRACK_OP, zoom: 2 }), /unknown field zoom/);
     assert.match(await problem({ ...TRACK_OP, scale: "yes" }), /scale must/);
-    const reversed = { ...f.project, tracks: [f.project.tracks[0]!, { ...f.project.tracks[1]!, items: [{ ...f.project.tracks[1]!.items[0]!, reverse: true }] }] };
+    const reversed = {
+      ...f.project,
+      tracks: [f.project.tracks[0]!, { ...f.project.tracks[1]!, items: [{ ...f.project.tracks[1]!.items[0]!, reverse: true }] }],
+    };
     assert.match(await problem(TRACK_OP, reversed), /plays backwards/);
     rmSync(f.media);
     assert.match(await problem(TRACK_OP), /isn't there/);
@@ -208,13 +241,17 @@ test("D329: the track op's shape is in the tool's spec", () => {
   assert.match(OP_SHAPES.track!, /"op":"track"/);
 });
 
-const textKeys = (p: Project, ops: ReadonlyArray<unknown>) => applyEdit(createSession(p), { actor: "agent", ops: ops as ReadonlyArray<Op> }).project.tracks[0]!.items[0]!.keys!;
+const textKeys = (p: Project, ops: ReadonlyArray<unknown>) =>
+  applyEdit(createSession(p), { actor: "agent", ops: ops as ReadonlyArray<Op> }).project.tracks[0]!.items[0]!.keys!;
 
 test("D329 review: the user changing the target during the wait: track plans on the project as it is after it", async () => {
   const f = trackFixture();
   try {
     let open = f.project;
-    const faster = { ...f.project, tracks: [f.project.tracks[0]!, { ...f.project.tracks[1]!, items: [{ ...f.project.tracks[1]!.items[0]!, speed: 2, duration: 30 }] }] };
+    const faster = {
+      ...f.project,
+      tracks: [f.project.tracks[0]!, { ...f.project.tracks[1]!, items: [{ ...f.project.tracks[1]!.items[0]!, speed: 2, duration: 30 }] }],
+    };
     const vision = trackVision([], undefined, async () => {
       open = faster;
     });
@@ -226,7 +263,9 @@ test("D329 review: the user changing the target during the wait: track plans on 
     const vanish = trackVision([], undefined, async () => {
       open = gone;
     });
-    const refused = await expandVisionOps(f.project, f.dir, [{ ...TRACK_OP, box: { x: 210, y: 200, w: 100, h: 100 } }], vanish, FFMPEG, undefined, { current: () => open });
+    const refused = await expandVisionOps(f.project, f.dir, [{ ...TRACK_OP, box: { x: 210, y: 200, w: 100, h: 100 } }], vanish, FFMPEG, undefined, {
+      current: () => open,
+    });
     assert.match((refused as { problem: string }).problem, /video clip/);
   } finally {
     f.cleanup();
@@ -237,14 +276,20 @@ test("D329 review: reframe plans on the project as it is after the wait too", as
   const f = fixture();
   try {
     const before = f.project();
-    const fade = [{ frame: 0, opacity: 0 }, { frame: 20, opacity: 1 }];
+    const fade = [
+      { frame: 0, opacity: 0 },
+      { frame: 20, opacity: 1 },
+    ];
     let open = before;
     const vision = fakeVision([]);
     const current = () => (open = apply(before, [{ op: "update_item", item: "c", set: { keys: fade } }]));
     const r = await expandVisionOps(before, f.dir, [{ op: "reframe", item: "c" }], vision, FFMPEG, undefined, { current });
     assert.ok(!("problem" in r), JSON.stringify(r));
     const clip = apply(open, r.ops).tracks[1]!.items[0]!;
-    assert.ok(clip.keys!.some((k) => k.opacity === 1), "the key added during the wait stays");
+    assert.ok(
+      clip.keys!.some((k) => k.opacity === 1),
+      "the key added during the wait stays",
+    );
   } finally {
     f.cleanup();
   }
@@ -266,7 +311,9 @@ test("D329 review: a title added in the same batch can be pinned; a bad earlier 
 
     const noPrepare = await expandVisionOps(f.project, f.dir, [title, pin], trackVision([]), FFMPEG);
     assert.match((noPrepare as { problem: string }).problem, /ops\[1\] \(track\): the ops before it can't be applied/);
-    const bad = await expandVisionOps(f.project, f.dir, [{ op: "update_item", item: "nope", set: {} }, TRACK_OP], trackVision([]), FFMPEG, undefined, { prepare });
+    const bad = await expandVisionOps(f.project, f.dir, [{ op: "update_item", item: "nope", set: {} }, TRACK_OP], trackVision([]), FFMPEG, undefined, {
+      prepare,
+    });
     assert.match((bad as { problem: string }).problem, /can't be applied/);
     const badLook = await expandVisionOps(f.project, f.dir, [{ ...title, look: 3 }, pin], trackVision([]), FFMPEG, undefined, { prepare });
     assert.match((badLook as { problem: string }).problem, /look must be/);
@@ -277,7 +324,7 @@ test("D329 review: a title added in the same batch can be pinned; a bad earlier 
 
 test("D329 review: run.ts gives the vision ops the project now and the expansions; tracked is once per result; reframe's call has the long timeout", () => {
   const run = readFileSync("apps/server/src/agent/tools/run.ts", "utf8");
-  assert.match(run, /r\.abort\.signal, \{ current: openNow, prepare \}/);
+  assert.match(run, /r\.abort\.signal,\s*\{\s*current: openNow,\s*prepare,?\s*\}/);
   assert.doesNotMatch(run, /\.\.\.tracked,\s*\.\.\.tracked/);
   const actions = readFileSync("apps/web/src/state/store/actions/export.ts", "utf8");
   assert.match(actions, /c\["vision\.reframe"\]\(\{ itemId \}\), VISION_EDIT_TIMEOUT_MS\)/);

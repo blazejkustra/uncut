@@ -48,7 +48,26 @@ export const SMALL_MATTE: MatteSpec = { width: 64, height: 36, fps: 30, frames: 
 
 function writeMatte(out: string, m: MatteSpec) {
   const source = `color=c=black:s=${m.width}x${m.height}:r=${m.fps}:d=${m.frames / m.fps},format=gray,geq=lum='${m.lum}'`;
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-threads", "4", "-filter_threads", "4", "-f", "lavfi", "-i", source, "-c:v", "ffv1", "-threads", "4", "-f", "matroska", out]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-threads",
+    "4",
+    "-filter_threads",
+    "4",
+    "-f",
+    "lavfi",
+    "-i",
+    source,
+    "-c:v",
+    "ffv1",
+    "-threads",
+    "4",
+    "-f",
+    "matroska",
+    out,
+  ]);
 }
 
 const facesJson = (args: Record<string, unknown>, face: FakeVisionOptions["face"]) => {

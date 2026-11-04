@@ -363,7 +363,9 @@ export async function openFrameSession(
         const seen =
           v.item.type === "clip" && media?.kind === "video"
             ? clipVision(project, v.item, media, clipFx(v.item, project.luts), local, 1, options.vision, (output, why) =>
-                notes.push(`"${v.item.name ?? v.item.id}" is drawn without ${output === "faces" ? "its faces blurred" : "its background removed"}: ${why.replace(/\.$/, "")}`),
+                notes.push(
+                  `"${v.item.name ?? v.item.id}" is drawn without ${output === "faces" ? "its faces blurred" : "its background removed"}: ${why.replace(/\.$/, "")}`,
+                ),
               )
             : { effects: v.item.type === "clip" && media && !svg ? clipFx(v.item, project.luts) : undefined };
         const effects = seen.effects;

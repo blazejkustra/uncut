@@ -20,7 +20,14 @@ const H = 360;
 const SPEED = 150;
 const onPath = (name: string) => spawnSync("sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).stdout.trim() || undefined;
 const ffmpeg = onPath("ffmpeg");
-const skip = process.platform !== "darwin" ? "Apple Vision is macOS only" : !ffmpeg ? "ffmpeg isn't installed" : !onPath("xcrun") ? "Xcode's command line tools aren't installed" : false;
+const skip =
+  process.platform !== "darwin"
+    ? "Apple Vision is macOS only"
+    : !ffmpeg
+      ? "ffmpeg isn't installed"
+      : !onPath("xcrun")
+        ? "Xcode's command line tools aren't installed"
+        : false;
 
 let root = "";
 let dir = "";
@@ -34,7 +41,12 @@ function project(clip: Partial<Item> = {}): Project {
     canvas: { width: W, height: H, fps: 30 },
     media: [{ id: "m", kind: "video", name: "ball.mov", path: join(root, "ball.mov"), probe: { frames: 120, fps: 30, width: W, height: H, hasAudio: false } }],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", text: "Ball", start: 0, duration: 120, transform: { x: 30, y: 20 } } as Item] },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [{ id: "t", type: "text", text: "Ball", start: 0, duration: 120, transform: { x: 30, y: 20 } } as Item],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c", type: "clip", media: "m", in: 0, duration: 120, ...clip } as Item] },
     ],
   };
@@ -109,6 +121,9 @@ test("D329: cancelling stops the real run and nothing is kept", { skip, timeout:
   const done = queue.track(target, { item: "t", clip: "c" });
   queue.cancelTrack("t");
   await assert.rejects(done, VisionStopped);
-  assert.equal(queue.list().some((s) => s.vision?.output === "track"), false);
+  assert.equal(
+    queue.list().some((s) => s.vision?.output === "track"),
+    false,
+  );
   await until(() => !visionBusy(), "the stopped run is over");
 });

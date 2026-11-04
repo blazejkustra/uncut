@@ -55,7 +55,12 @@ export function FacePicker({ project, item, locked }: { project: ProjectModel; i
   }, [url]);
   if (!faces || !fx?.faceBlur) return null;
   const found = faceList(faces);
-  if (!found.length) return <div className="muted small" data-testid="insp-faces-none">No faces found in this clip.</div>;
+  if (!found.length)
+    return (
+      <div className="muted small" data-testid="insp-faces-none">
+        No faces found in this clip.
+      </div>
+    );
   const picked = fx.faceBlur.faces ?? [];
   const toggle = (id: number) => {
     const next = picked.includes(id) ? picked.filter((f) => f !== id) : [...picked, id];
@@ -93,7 +98,13 @@ export function ReframeButton({ item, locked }: { item: Item; locked: boolean })
   };
   return (
     <div className="group" data-testid="insp-reframe">
-      <button className="small-btn" data-testid="insp-reframe-run" disabled={locked || busy} onClick={() => void run()} title="Fill the canvas and follow the subject's face">
+      <button
+        className="small-btn"
+        data-testid="insp-reframe-run"
+        disabled={locked || busy}
+        onClick={() => void run()}
+        title="Fill the canvas and follow the subject's face"
+      >
         {busy ? "Reframing…" : "Auto reframe"}
       </button>
       {problem && (
@@ -155,7 +166,14 @@ export function TrackSection({ project, item, locked }: { project: ProjectModel;
     <Section title="Track" testId="insp-sec-track" remember="track">
       <div className="group track-panel" data-testid="insp-track">
         {clips.length > 0 && (
-          <select className="field input" data-testid="insp-track-target" aria-label="Clip to follow" value={target?.id ?? ""} disabled={locked || busy} onChange={(e) => setChosen(e.target.value)}>
+          <select
+            className="field input"
+            data-testid="insp-track-target"
+            aria-label="Clip to follow"
+            value={target?.id ?? ""}
+            disabled={locked || busy}
+            onChange={(e) => setChosen(e.target.value)}
+          >
             {clips.map((c) => (
               <option key={c.id} value={c.id}>
                 {clipName(project, c)}
@@ -200,7 +218,13 @@ export function TrackSection({ project, item, locked }: { project: ProjectModel;
             </button>
           )}
           {!busy && !picking && keyed && (
-            <button className="small-btn" data-testid="insp-track-remove" disabled={locked} title={scale ? "Takes off its x, y and scale keys; other keys stay" : "Takes off its x and y keys; scale and other keys stay"} onClick={() => send((p) => planUntrack(p, item.id, { scale }))}>
+            <button
+              className="small-btn"
+              data-testid="insp-track-remove"
+              disabled={locked}
+              title={scale ? "Takes off its x, y and scale keys; other keys stay" : "Takes off its x and y keys; scale and other keys stay"}
+              onClick={() => send((p) => planUntrack(p, item.id, { scale }))}
+            >
               Remove track
             </button>
           )}

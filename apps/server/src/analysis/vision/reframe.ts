@@ -40,7 +40,21 @@ function matteBoxes(ffmpeg: string, video: string, width: number, height: number
   const w = BOX_WIDTH;
   const h = Math.max(2, Math.round((BOX_WIDTH * height) / width / 2) * 2);
   return new Promise((resolve, reject) => {
-    const args = ["-hide_banner", "-nostdin", "-v", "error", "-threads", "4", "-i", video, "-vf", `scale=${w}:${h}:flags=area,format=gray`, "-f", "rawvideo", "pipe:1"];
+    const args = [
+      "-hide_banner",
+      "-nostdin",
+      "-v",
+      "error",
+      "-threads",
+      "4",
+      "-i",
+      video,
+      "-vf",
+      `scale=${w}:${h}:flags=area,format=gray`,
+      "-f",
+      "rawvideo",
+      "pipe:1",
+    ];
     const child = spawn(ffmpeg, localInputs(ffmpeg, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
     const boxes: Array<SubjectBox | undefined> = [];
     let pending = Buffer.alloc(0);

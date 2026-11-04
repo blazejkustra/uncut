@@ -61,7 +61,13 @@ test("a clip's moment maps to its media's seconds through sourceAt: constant spe
   assert.equal(visionSeconds(p, clip(), 15), 2.5);
   const fast = clip({ speed: 2 });
   assert.equal(visionSeconds(project([fast]), fast, 15), 3);
-  const ramped = clip({ speedKeys: [{ frame: 0, speed: 3, ease: "inOut" }, { frame: 45, speed: 0.3 }, { frame: 90, speed: 3 }] });
+  const ramped = clip({
+    speedKeys: [
+      { frame: 0, speed: 3, ease: "inOut" },
+      { frame: 45, speed: 0.3 },
+      { frame: 90, speed: 3 },
+    ],
+  });
   const rp = project([ramped]);
   for (const f of [0, 7, 30, 44, 60, 89]) assert.equal(visionSeconds(rp, ramped, f), sourceAt(rp, ramped, f), `frame ${f}`);
 });
@@ -148,22 +154,40 @@ test("faces: a box on its frame, drawn between neighbours across a short miss, h
   assert.ok(Math.abs(facesAt(f, 5 / 30)[0]!.x - 0.15) < 1e-9);
   const between = facesAt(f, 11 / 30)[0]!;
   assert.ok(Math.abs(between.x - 0.21) < 1e-9, `interpolated x ${between.x}`);
-  const ended = track(30, Array.from({ length: 20 }, (_, i) => i + 10));
+  const ended = track(
+    30,
+    Array.from({ length: 20 }, (_, i) => i + 10),
+  );
   assert.ok(Math.abs(facesAt(ended, 12 / 30)[0]!.x - 0.19) < 1e-9, "held at its last box");
   assert.equal(facesAt(ended, 20 / 30).length, 0, "gone after the hold");
-  const long = track(60, Array.from({ length: 20 }, (_, i) => i + 10));
+  const long = track(
+    60,
+    Array.from({ length: 20 }, (_, i) => i + 10),
+  );
   assert.equal(facesAt(long, 25 / 30).length, 0, "a miss longer than the gap isn't bridged");
 });
 
 test("faces: only the picked ids, the list of faces seen, and their masks with padding and coverage", () => {
   const two: FaceFrames = {
     frames: [
-      { t: 0, faces: [{ id: 1, x: 0.1, y: 0.1, w: 0.2, h: 0.2 }, { id: 2, x: 0.6, y: 0.1, w: 0.2, h: 0.2 }] },
+      {
+        t: 0,
+        faces: [
+          { id: 1, x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
+          { id: 2, x: 0.6, y: 0.1, w: 0.2, h: 0.2 },
+        ],
+      },
       { t: 1 / 30, faces: [{ id: 2, x: 0.6, y: 0.1, w: 0.2, h: 0.2 }] },
     ],
   };
-  assert.deepEqual(facesAt(two, 0, [2]).map((f) => f.id), [2]);
-  assert.deepEqual(faceList(two).map((f) => f.id), [1, 2]);
+  assert.deepEqual(
+    facesAt(two, 0, [2]).map((f) => f.id),
+    [2],
+  );
+  assert.deepEqual(
+    faceList(two).map((f) => f.id),
+    [1, 2],
+  );
   const blur = { amount: 10, shape: "rectangle" as const, feather: 0, padding: 0.5 };
   const [m] = faceMasks([{ id: 1, x: 0.25, y: 0.25, w: 0.5, h: 0.5 }], blur, 100, 100);
   assert.deepEqual([m!.x, m!.y, m!.w, m!.h], [0, 0, 100, 100]);
@@ -220,7 +244,10 @@ test("auto reframe: 16:9 footage on a 9:16 canvas fills it at cover size and fol
   const item = after.tracks[0]!.items[0]!;
   assert.equal(item.transform!.fit, "cover");
   assert.equal(item.transform!.opacity, 0.9, "other transform fields stay");
-  assert.ok(item.keys!.some((k) => k.opacity === 1), "other keys stay");
+  assert.ok(
+    item.keys!.some((k) => k.opacity === 1),
+    "other keys stay",
+  );
   for (let f = 0; f < item.duration; f += 5) {
     const box = clipBox(item, canvas, { width: 1920, height: 1080 }, f);
     assert.ok(box.content.x <= 1e-6 && box.content.x + box.content.w >= canvas.width - 1e-6, `frame ${f}: the picture covers the canvas`);
@@ -231,7 +258,10 @@ test("auto reframe: 16:9 footage on a 9:16 canvas fills it at cover size and fol
   assert.ok(Math.abs(faceAt(89, 0.75) - 540) < 200, "and is near the middle at the end");
   assert.match(plan.summary, /Reframe talk\.mp4/);
   assert.match((planReframe(p, "c", () => undefined) as { problem: string }).problem, /nothing to follow/);
-  assert.match((planReframe(project([clip()], { width: 1920, height: 1080, fps: 30 }), "c", () => ({ x: 0, y: 0, w: 1, h: 1 })) as { problem: string }).problem, /already has the canvas's shape/);
+  assert.match(
+    (planReframe(project([clip()], { width: 1920, height: 1080, fps: 30 }), "c", () => ({ x: 0, y: 0, w: 1, h: 1 })) as { problem: string }).problem,
+    /already has the canvas's shape/,
+  );
 });
 
 // ---- text behind subject ----
@@ -248,7 +278,10 @@ test("text behind subject: the clip under the text copied above it with its back
   assert.equal(copy.mute, true);
   assert.equal(copy.start, 0);
   assert.equal(copy.in, 60);
-  assert.deepEqual(copy.effects!.map((e) => e.module), [CUTOUT]);
+  assert.deepEqual(
+    copy.effects!.map((e) => e.module),
+    [CUTOUT],
+  );
   assert.deepEqual(validateProject(after, modules), []);
   const alone = project([], undefined, [{ id: "text", kind: "text", name: "Text", items: [text] }]);
   assert.match((planTextBehindSubject(alone, ["title"]) as { problem: string }).problem, /no video clip under/);

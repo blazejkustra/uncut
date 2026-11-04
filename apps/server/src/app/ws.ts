@@ -104,8 +104,11 @@ const handlersLayer = ({
     answerProjectSkills(config.dataDir, realProject(dir), key, load),
   );
   const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
-  const visionFailed = (error: unknown) => new VisionError({ reason: error instanceof VisionFailure ? error.reason : "failed", message: (error as Error).message });
-  const openForVision = Effect.flatMap(projects.current, (open) => (open ? Effect.succeed(open) : Effect.fail(new VisionError({ reason: "invalid", message: "Open a project first." }))));
+  const visionFailed = (error: unknown) =>
+    new VisionError({ reason: error instanceof VisionFailure ? error.reason : "failed", message: (error as Error).message });
+  const openForVision = Effect.flatMap(projects.current, (open) =>
+    open ? Effect.succeed(open) : Effect.fail(new VisionError({ reason: "invalid", message: "Open a project first." })),
+  );
   const editFromVision = <P extends ReturnType<typeof reframePlan> | ReturnType<typeof trackPlan>>(openId: number, plan: (now: Project) => P, when: string) =>
     Effect.gen(function* () {
       let made: P | undefined;
@@ -271,7 +274,11 @@ const handlersLayer = ({
           catch: visionFailed,
         });
         if (!made) return { summary: "", stopped: true };
-        const plan = yield* editFromVision(open.openId, (now) => trackPlan(now, ask, made.target, made.result), "the object was tracked, so the track wasn't applied");
+        const plan = yield* editFromVision(
+          open.openId,
+          (now) => trackPlan(now, ask, made.target, made.result),
+          "the object was tracked, so the track wasn't applied",
+        );
         return { summary: plan.summary, ...("note" in plan && plan.note ? { note: plan.note } : {}) };
       }),
     [RPC_METHODS.visionTrackCancel]: ({ itemId }) => Effect.sync(() => proxies.cancelTrack(itemId)),

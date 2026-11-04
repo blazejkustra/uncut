@@ -180,7 +180,11 @@ export class VisionAnalysis {
   }
 
   /** One object followed from `box` at `at` until the range ends or it's lost. */
-  async track(target: VisionTarget, request: TrackRequest, options: VisionOptions): Promise<{ readonly result: TrackResult; readonly cached: boolean; readonly file: string }> {
+  async track(
+    target: VisionTarget,
+    request: TrackRequest,
+    options: VisionOptions,
+  ): Promise<{ readonly result: TrackResult; readonly cached: boolean; readonly file: string }> {
     checkRange(request.at, request.end);
     const { x, y, w, h } = request.box;
     if (!(unit(x) && unit(y) && w > 0 && h > 0 && x + w <= 1.000001 && y + h <= 1.000001))
@@ -222,7 +226,11 @@ export class VisionAnalysis {
     await rmdir(dirname(folder)).catch(() => {});
   }
 
-  private async json<T>(target: VisionTarget, ask: JsonAsk<T>, options: VisionOptions): Promise<{ readonly result: T; readonly cached: boolean; readonly file: string }> {
+  private async json<T>(
+    target: VisionTarget,
+    ask: JsonAsk<T>,
+    options: VisionOptions,
+  ): Promise<{ readonly result: T; readonly cached: boolean; readonly file: string }> {
     const { output, start, end, box, parse, args } = ask;
     const provider = await this.provider(output);
     const fp = await fingerprint(target.path);

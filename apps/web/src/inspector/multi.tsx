@@ -118,7 +118,9 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
           </button>
         </Tooltip>
       </div>
-      {items.length > 0 && items.every((i) => i.type === "text") && <BehindSubjectButton project={project} textIds={items.map((i) => i.id)} locked={lockedIds.size > 0} />}
+      {items.length > 0 && items.every((i) => i.type === "text") && (
+        <BehindSubjectButton project={project} textIds={items.map((i) => i.id)} locked={lockedIds.size > 0} />
+      )}
       <div className="insp-sub" data-testid="inspector-multi-sub">
         {selectionWords(items)}
         {lockedIds.size ? `, ${lockedIds.size} locked` : ""}

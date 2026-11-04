@@ -15,7 +15,11 @@ import { writeFaceMasks } from "../../apps/server/src/export/exporter/faceMasks.
 import type { VisionLookup } from "../../apps/server/src/export/plan/vision.ts";
 
 const countFrames = (file: string) =>
-  Number(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file], { encoding: "utf8" }).trim());
+  Number(
+    execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file], {
+      encoding: "utf8",
+    }).trim(),
+  );
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = hasFfmpeg ? false : "needs ffmpeg";
@@ -50,7 +54,20 @@ const MATTE = (x: number, y: number, n: number) => 255 * Math.min(1, Math.max(0,
 function readRgb(file: string, n: number): Float64Array {
   const raw = execFileSync(
     "ffmpeg",
-    ["-v", "error", ...CAP, "-i", file, "-vf", `select=eq(n\\,${n}),scale=out_range=pc:in_color_matrix=bt709:in_range=tv,format=rgb48le`, "-frames:v", "1", "-f", "rawvideo", "-"],
+    [
+      "-v",
+      "error",
+      ...CAP,
+      "-i",
+      file,
+      "-vf",
+      `select=eq(n\\,${n}),scale=out_range=pc:in_color_matrix=bt709:in_range=tv,format=rgb48le`,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-",
+    ],
     { maxBuffer: 16 << 20 },
   );
   const out = new Float64Array(W * H * 3);
@@ -64,7 +81,10 @@ before(() => {
   // The subject: a hue sweep with fine detail (so a blur shows).
   clip("top.mkv", "geq=r='255*(0.5+0.5*sin(X/3))':g='255*(0.5+0.5*sin(Y/4))':b='255*clip(X/W,0,1)'");
   clip("under.mkv", "geq=r=30:g=60:b=220");
-  lavfi("matte.mkv", `color=c=black:s=${W}x${H}:r=${FPS}:d=1,format=gray,geq=lum='255*clip(min(min(X-(60+4*N),180+4*N-X),min(Y-40,140-Y))/4+0.5,0,1)'`, ["-c:v", "ffv1"]);
+  lavfi("matte.mkv", `color=c=black:s=${W}x${H}:r=${FPS}:d=1,format=gray,geq=lum='255*clip(min(min(X-(60+4*N),180+4*N-X),min(Y-40,140-Y))/4+0.5,0,1)'`, [
+    "-c:v",
+    "ffv1",
+  ]);
 });
 after(() => dir && rmSync(dir, { recursive: true, force: true }));
 
@@ -81,7 +101,13 @@ function project(effects: Item["effects"], extra: Partial<Item> = {}): Project {
     { id: "top", kind: "video", name: "Top", items: [{ id: "t1", type: "clip", media: "m-top", start: 0, in: 0, duration: 30, effects, ...extra }] },
     { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "u1", type: "clip", media: "m-under", in: 0, duration: 30 }] },
   ];
-  return { format: "uncut/0", name: "Vision", canvas: { width: W, height: H, fps: FPS, background: "#000000" }, media: [media("m-top", "top.mkv"), media("m-under", "under.mkv")], tracks };
+  return {
+    format: "uncut/0",
+    name: "Vision",
+    canvas: { width: W, height: H, fps: FPS, background: "#000000" },
+    media: [media("m-top", "top.mkv"), media("m-under", "under.mkv")],
+    tracks,
+  };
 }
 
 const matteInfo = { fps: FPS, width: W, height: H, times: Array.from({ length: 30 }, (_, i) => i / FPS) };
@@ -111,7 +137,28 @@ async function exported(name: string, p: Project, frame: number, vision?: Vision
   const out = join(dir, `${name}.mkv`);
   const r = spawnSync(
     "ffmpeg",
-    ["-hide_banner", "-y", ...CAP, ...cmd.inputs, "-/filter_complex", join(dir, `${name}.txt`), "-map", "[vout]", "-c:v", "ffv1", "-pix_fmt", "yuv444p", "-frames:v", String(frame + 1), out, "-map", "[aout]", "-f", "null", "-"],
+    [
+      "-hide_banner",
+      "-y",
+      ...CAP,
+      ...cmd.inputs,
+      "-/filter_complex",
+      join(dir, `${name}.txt`),
+      "-map",
+      "[vout]",
+      "-c:v",
+      "ffv1",
+      "-pix_fmt",
+      "yuv444p",
+      "-frames:v",
+      String(frame + 1),
+      out,
+      "-map",
+      "[aout]",
+      "-f",
+      "null",
+      "-",
+    ],
     { encoding: "utf8" },
   );
   assert.equal(r.status, 0, `${name}: ${r.stderr.slice(-1500)}`);
@@ -229,9 +276,17 @@ test("writeFaceMasks yields to the event loop between frames: a timer set on its
 
 test("without a matte the clip is drawn unkeyed, with the reason as a warning", { skip }, () => {
   const p = project([{ module: "effect.cutout", params: { mode: "subject" } }]);
-  const plan = planExport(p, { mediaPath: (m) => m.path, width: W, height: H, vision: () => ({ problem: "Background removal needs a vision module for this system." }) });
+  const plan = planExport(p, {
+    mediaPath: (m) => m.path,
+    width: W,
+    height: H,
+    vision: () => ({ problem: "Background removal needs a vision module for this system." }),
+  });
   if ("problem" in plan) throw new Error(plan.problem);
-  assert.ok(plan.warnings.some((w) => /without its background removed: Background removal needs a vision module for this system\./.test(w)), plan.warnings.join("\n"));
+  assert.ok(
+    plan.warnings.some((w) => /without its background removed: Background removal needs a vision module for this system\./.test(w)),
+    plan.warnings.join("\n"),
+  );
   const layer = plan.visuals.find((l) => l.item.id === "t1")!;
   assert.ok(layer.kind === "video" && !layer.matte);
 });

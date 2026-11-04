@@ -495,7 +495,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // D328: reframe (from the clip's faces, found first) and text_behind_subject become the ops that do them.
           const ffmpegNow = async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? ""));
           const seen = yield* Effect.promise(() =>
-            expandVisionOps(v.session.project as Project, v.dir, args.ops as ReadonlyArray<unknown>, analysis.vision, ffmpegNow, r.abort.signal, { current: openNow, prepare }),
+            expandVisionOps(v.session.project as Project, v.dir, args.ops as ReadonlyArray<unknown>, analysis.vision, ffmpegNow, r.abort.signal, {
+              current: openNow,
+              prepare,
+            }),
           );
           if ("problem" in seen) return refuse(seen.problem);
           const placed = prepare(v.session.project as Project, seen.ops);
@@ -573,7 +576,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               }),
               diff: projectDiff(v.session.project as Project, planned),
               ...placements,
-            ...tracked,
+              ...tracked,
               ...retimed,
               duration: end,
               seconds: Number((end / planned.canvas.fps).toFixed(2)),

@@ -49,9 +49,21 @@ test("D328: keys added while faces were being found are kept, and the plan fits 
     const edited = apply(before, [{ op: "update_item", item: "c", set: { keys: FADE_KEYS, duration: 50 } }]);
     const after = apply(edited, reframePlan(edited, "c", subject).ops);
     const keys = clipOf(after).keys!;
-    assert.deepEqual(keys.filter((k) => k.opacity !== undefined).map((k) => [k.frame, k.opacity]), [[0, 0], [20, 1]]);
-    assert.ok(keys.some((k) => k.x !== undefined), JSON.stringify(keys));
-    assert.ok(keys.every((k) => k.frame <= 50), "the plan is for the clip's new length");
+    assert.deepEqual(
+      keys.filter((k) => k.opacity !== undefined).map((k) => [k.frame, k.opacity]),
+      [
+        [0, 0],
+        [20, 1],
+      ],
+    );
+    assert.ok(
+      keys.some((k) => k.x !== undefined),
+      JSON.stringify(keys),
+    );
+    assert.ok(
+      keys.every((k) => k.frame <= 50),
+      "the plan is for the clip's new length",
+    );
   } finally {
     f.cleanup();
   }
@@ -65,7 +77,10 @@ test("D328: the plan made from the project as it was before the wait would have 
     const stale = await reframeEdit(vision, before, f.dir, "c", ffmpeg);
     const edited = apply(before, [{ op: "update_item", item: "c", set: { keys: FADE_KEYS } }]);
     const keys = clipOf(apply(edited, stale.ops)).keys!;
-    assert.equal(keys.some((k) => k.opacity !== undefined), false);
+    assert.equal(
+      keys.some((k) => k.opacity !== undefined),
+      false,
+    );
   } finally {
     f.cleanup();
   }
@@ -91,7 +106,7 @@ test("D328: the vision.reframe RPC finds the subject on the open project, then p
   const handler = source.slice(source.indexOf("[RPC_METHODS.visionReframe]"), source.indexOf("[RPC_METHODS.historySubscribe]"));
   assert.match(handler, /reframeSubject\(analysis\.vision, open\.project as Project, open\.dir, itemId, shellFfmpeg\(config\), signal\)/);
   assert.match(handler, /reframeSubject[\s\S]*editFromVision\(open\.openId, \(now\) => reframePlan\(now, itemId, subject, zoom\)/);
-  assert.match(handler, /proxies\.track[\s\S]*editFromVision\(open\.openId, \(now\) => trackPlan\(now, ask, made\.target, made\.result\)/);
+  assert.match(handler, /proxies\.track[\s\S]*editFromVision\(\s*open\.openId,\s*\(now\) => trackPlan\(now, ask, made\.target, made\.result\)/);
   assert.match(source, /editFromVision = [\s\S]*\.editIn\(openId, \(now\) =>[\s\S]*plan\(now as Project\)/);
   assert.doesNotMatch(handler, /reframeEdit/);
 });
@@ -100,7 +115,11 @@ function mattesOnDisk(dir: string) {
   const root = analysisDir(dir);
   return readdirSync(root).flatMap((print) => {
     const folder = join(root, print, "vision");
-    return existsSync(folder) ? readdirSync(folder).filter((n) => n.startsWith("matte-")).map((n) => join(folder, n)) : [];
+    return existsSync(folder)
+      ? readdirSync(folder)
+          .filter((n) => n.startsWith("matte-"))
+          .map((n) => join(folder, n))
+      : [];
   });
 }
 
@@ -114,7 +133,10 @@ test("D328: the matte a clip without faces is reframed from survives the next ed
     assert.equal(set.transform?.fit, "cover");
 
     const kept = mattesOnDisk(f.dir);
-    assert.ok(kept.some((n) => n.endsWith(".mkv")), kept.join());
+    assert.ok(
+      kept.some((n) => n.endsWith(".mkv")),
+      kept.join(),
+    );
     const folder = join(analysisDir(f.dir), "old-print", "vision");
     mkdirSync(folder, { recursive: true });
     const unheld = join(folder, `matte-${"b".repeat(24)}.mkv`);

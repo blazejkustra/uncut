@@ -427,7 +427,8 @@ function Decor({ project, item, edit, disabled }: { project: ProjectModel; item:
 function Layout({ project, item, edit, disabled }: { project: ProjectModel; item: Item; edit: TextEdit; disabled: boolean }) {
   const frame = usePlayback((s) => (hasPositionKeys(item) ? Math.round(s.frame) : 0));
   const box = textBox(item, project, frame - (findItem(project, item.id)?.start ?? 0));
-  const position = (patch: { readonly x?: number; readonly y?: number }) => (p: ProjectModel, id: string) => planTextPosition(p, id, patch, Math.round(getPlayback().frame));
+  const position = (patch: { readonly x?: number; readonly y?: number }) => (p: ProjectModel, id: string) =>
+    planTextPosition(p, id, patch, Math.round(getPlayback().frame));
   const text = item.type === "text";
   const rotate = item.transform?.rotate ?? 0;
   const opacity = Math.round((item.transform?.opacity ?? 1) * 100);

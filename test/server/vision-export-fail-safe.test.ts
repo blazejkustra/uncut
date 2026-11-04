@@ -174,7 +174,10 @@ test("D328: background removal with no module warns and draws the clip without t
     const run = await runExport(f, p, fakeVision({ noModule: true }).vision, true);
     assert.equal(run.end.phase, "cancelled", run.end.error);
     const plan = run.plans.at(-1)!;
-    assert.ok(plan.warnings.some((w) => /without its background removed: Background removal needs a vision module/.test(w)), plan.warnings.join("\n"));
+    assert.ok(
+      plan.warnings.some((w) => /without its background removed: Background removal needs a vision module/.test(w)),
+      plan.warnings.join("\n"),
+    );
     assert.deepEqual(run.end.warnings, plan.warnings);
     const layer = plan.visuals.find((l) => l.item.id === "c")!;
     assert.ok(layer.kind === "video" && !layer.matte);

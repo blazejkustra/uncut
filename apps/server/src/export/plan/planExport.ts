@@ -268,7 +268,9 @@ export function planExport(
         // D328: background removal and face blur read the vision results made for the clip.
         const seen =
           media.kind === "video"
-            ? clipVision(project, item, media, clipFx(item, project.luts), f0 - start, f1 - f0, vision, (output, why) => warnings.push(visionNote(name(item), output, why)))
+            ? clipVision(project, item, media, clipFx(item, project.luts), f0 - start, f1 - f0, vision, (output, why) =>
+                warnings.push(visionNote(name(item), output, why)),
+              )
             : { effects: clipFx(item, project.luts) };
         const effects = seen.effects;
         // A shader effect (D213) is a picture pass too (SVG stills take none, D138).
@@ -296,7 +298,16 @@ export function planExport(
           const h = fixed ? placements[0]!.ch : Math.max(1, Math.round(fit.h * ky));
           const faceMasks = seen.faces && effects ? { faceMasks: layerFaceMasks(seen.faces, effects, w, h, ky) } : {};
           layerFx = {
-            fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}), ...faceMasks },
+            fx: {
+              fx: effects ?? {},
+              start,
+              w,
+              h,
+              k: ky,
+              ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}),
+              ...(shader ? { shader } : {}),
+              ...faceMasks,
+            },
           };
         }
         const layer: VisualLayer =

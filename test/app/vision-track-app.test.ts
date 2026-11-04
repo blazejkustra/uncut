@@ -28,7 +28,8 @@ let page: Page;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", name);
 
-const text = (over: Partial<Item>): Item => ({ id: "title", type: "text", text: "FOLLOW", start: 0, duration: SECONDS * FPS, style: { size: 60, color: "#ffffff" }, ...over } as Item);
+const text = (over: Partial<Item>): Item =>
+  ({ id: "title", type: "text", text: "FOLLOW", start: 0, duration: SECONDS * FPS, style: { size: 60, color: "#ffffff" }, ...over }) as Item;
 
 function ballProject(media: string): Project {
   return {
@@ -48,9 +49,16 @@ function trainProject(): Project {
     format: "uncut/0",
     name: "Train",
     canvas: { width: 1920, height: 1080, fps: FPS, background: "#000000" },
-    media: [{ id: "m-train", kind: "video", name: "steam-dorset.mp4", path: TRAIN, probe: { frames: 980, fps: 29.97, width: 1920, height: 1080, hasAudio: false } }],
+    media: [
+      { id: "m-train", kind: "video", name: "steam-dorset.mp4", path: TRAIN, probe: { frames: 980, fps: 29.97, width: 1920, height: 1080, hasAudio: false } },
+    ],
     tracks: [
-      { id: "text", kind: "text", name: "Text", items: [{ ...text({ duration: 660, text: "LOCOMOTIVE", style: { size: 72, color: "#ffffff", weight: 800 } }), transform: { x: 1040, y: 280 } } as Item] },
+      {
+        id: "text",
+        kind: "text",
+        name: "Text",
+        items: [{ ...text({ duration: 660, text: "LOCOMOTIVE", style: { size: 72, color: "#ffffff", weight: 800 } }), transform: { x: 1040, y: 280 } } as Item],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "train", type: "clip", media: "m-train", in: 300, duration: 660 } as Item] },
     ],
   };
@@ -67,7 +75,11 @@ const makeBall = (path: string) => {
 const onDisk = (dir: string): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
 const waitRevision = (n: number) =>
-  page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 30000 }, n);
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 30000 },
+    n,
+  );
 
 async function goTo(frame: number) {
   await page.click("[data-testid=timeline]");
@@ -77,7 +89,10 @@ async function goTo(frame: number) {
   await page.keyboard.up("Shift");
   for (let i = 0; i < frame % FPS; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
-  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 15000 });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    { timeout: 15000 },
+  );
   await sleep(400);
 }
 
@@ -114,9 +129,30 @@ async function selectTitle() {
 
 const frameShot = (name: string) => page.$("[data-testid=preview-frame]").then((el) => el!.screenshot({ path: out(name) }));
 const rgb = (file: string, w: number, h: number) =>
-  execFileSync("ffmpeg", ["-v", "error", "-threads", "4", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"], { maxBuffer: 64 << 20 });
+  execFileSync(
+    "ffmpeg",
+    ["-v", "error", "-threads", "4", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"],
+    { maxBuffer: 64 << 20 },
+  );
 function compare(a: string, b: string) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-threads", "4", "-i", a, "-i", b, "-lavfi", "[0]scale=640:360,format=gray[a];[1]scale=640:360,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-threads",
+      "4",
+      "-i",
+      a,
+      "-i",
+      b,
+      "-lavfi",
+      "[0]scale=640:360,format=gray[a];[1]scale=640:360,format=gray[b];[a][b]ssim",
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
+  );
   const pa = rgb(a, 64, 36);
   const pb = rgb(b, 64, 36);
   let d = 0;
@@ -174,7 +210,10 @@ test("D329: Track in the Inspector: a box on the preview ends in keys, one Undo,
   assert.ok(Math.abs(drawn - (200 + 2 * 150)) < 16, `the preview draws it there: ${drawn}`);
   await selectTitle();
   assert.ok((await page.$("[data-testid=insp-keys]")) !== null, "a text's keys are in the Inspector");
-  assert.ok(Math.abs(Number(await page.$eval("[data-testid=insp-x]", (el) => (el as HTMLInputElement).value)) - drawn) <= 1, "the Inspector's X is where it's drawn");
+  assert.ok(
+    Math.abs(Number(await page.$eval("[data-testid=insp-x]", (el) => (el as HTMLInputElement).value)) - drawn) <= 1,
+    "the Inspector's X is where it's drawn",
+  );
 
   // Export (Standard, loudness off) and compare at three times.
   const preview = new Map<number, string>();
@@ -235,43 +274,50 @@ test("D329: Track in the Inspector: a box on the preview ends in keys, one Undo,
   app = undefined;
 });
 
-test("D329: a real train: progress on the clip, Cancel, then a text following the locomotive", { skip: skip || (!existsSync(TRAIN) && "the train footage isn't on this Mac"), timeout: 600000 }, async () => {
-  const dir = writeProject(root, "Train", trainProject());
-  await openProject(dir, join(root, "out", "Train.mp4"));
-  await selectTitle();
-  await goTo(0);
-  await selectTitle();
-  const canvas = { width: 1920, height: 1080 };
-  const LOCO = { x: 1160, y: 380, w: 220, h: 180 };
+test(
+  "D329: a real train: progress on the clip, Cancel, then a text following the locomotive",
+  { skip: skip || (!existsSync(TRAIN) && "the train footage isn't on this Mac"), timeout: 600000 },
+  async () => {
+    const dir = writeProject(root, "Train", trainProject());
+    await openProject(dir, join(root, "out", "Train.mp4"));
+    await selectTitle();
+    await goTo(0);
+    await selectTitle();
+    const canvas = { width: 1920, height: 1080 };
+    const LOCO = { x: 1160, y: 380, w: 220, h: 180 };
 
-  const start = await revision();
-  await page.click("[data-testid=insp-track-run]");
-  await page.waitForSelector("[data-testid=track-catch]");
-  await drawBox(LOCO, canvas);
-  await page.waitForSelector("[data-testid=track-progress]", { timeout: 20000 });
-  await page.waitForFunction(() => /Tracking \d+%/.test(document.querySelector("[data-testid=track-progress]")?.textContent ?? ""), { timeout: 20000, polling: 30 });
-  await frameShot("track-progress.png");
-  await (await page.$("[data-testid=insp-sec-track]"))!.screenshot({ path: out("track-inspector-progress.png") });
-  assert.ok((await page.$("[data-testid=insp-track-status]")) !== null);
-  await page.click("[data-testid=insp-track-cancel]");
-  await page.waitForFunction(() => !document.querySelector("[data-testid=track-progress]"), { timeout: 20000 });
-  assert.equal(await revision(), start, "a cancel changes nothing");
+    const start = await revision();
+    await page.click("[data-testid=insp-track-run]");
+    await page.waitForSelector("[data-testid=track-catch]");
+    await drawBox(LOCO, canvas);
+    await page.waitForSelector("[data-testid=track-progress]", { timeout: 20000 });
+    await page.waitForFunction(() => /Tracking \d+%/.test(document.querySelector("[data-testid=track-progress]")?.textContent ?? ""), {
+      timeout: 20000,
+      polling: 30,
+    });
+    await frameShot("track-progress.png");
+    await (await page.$("[data-testid=insp-sec-track]"))!.screenshot({ path: out("track-inspector-progress.png") });
+    assert.ok((await page.$("[data-testid=insp-track-status]")) !== null);
+    await page.click("[data-testid=insp-track-cancel]");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=track-progress]"), { timeout: 20000 });
+    assert.equal(await revision(), start, "a cancel changes nothing");
 
-  await page.click("[data-testid=insp-track-run]");
-  await page.waitForSelector("[data-testid=track-catch]");
-  await drawBox(LOCO, canvas);
-  await waitRevision(start + 1);
-  const keys = onDisk(dir).tracks[0]!.items[0]!.keys!;
-  console.log(`  ${keys.length} keys over 660 frames; last at frame ${keys.at(-1)!.frame}`);
-  assert.ok(keys.length < 120, `thinned: ${keys.length} keys`);
-  const note = await page.$eval("[data-testid=insp-track-note]", (el) => el.textContent ?? "").catch(() => "");
-  console.log(`  note: ${note || "none"}`);
-  await page.click("[data-testid=timeline]");
-  await page.keyboard.press("Escape");
-  for (const frame of [0, 120, 300]) {
-    await goTo(frame);
-    await frameShot(`track-train-${frame}.png`);
-  }
-  await selectTitle();
-  await (await page.$("[data-testid=insp-sec-track]"))!.screenshot({ path: out("track-inspector.png") });
-});
+    await page.click("[data-testid=insp-track-run]");
+    await page.waitForSelector("[data-testid=track-catch]");
+    await drawBox(LOCO, canvas);
+    await waitRevision(start + 1);
+    const keys = onDisk(dir).tracks[0]!.items[0]!.keys!;
+    console.log(`  ${keys.length} keys over 660 frames; last at frame ${keys.at(-1)!.frame}`);
+    assert.ok(keys.length < 120, `thinned: ${keys.length} keys`);
+    const note = await page.$eval("[data-testid=insp-track-note]", (el) => el.textContent ?? "").catch(() => "");
+    console.log(`  note: ${note || "none"}`);
+    await page.click("[data-testid=timeline]");
+    await page.keyboard.press("Escape");
+    for (const frame of [0, 120, 300]) {
+      await goTo(frame);
+      await frameShot(`track-train-${frame}.png`);
+    }
+    await selectTitle();
+    await (await page.$("[data-testid=insp-sec-track]"))!.screenshot({ path: out("track-inspector.png") });
+  },
+);

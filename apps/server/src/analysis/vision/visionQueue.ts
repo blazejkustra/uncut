@@ -39,7 +39,11 @@ interface TrackJob extends Run {
   readonly reject: (error: Error) => void;
 }
 
-const stateOf = (t: ClipVisionRequest & Pick<ClipVisionTarget, "media">, patch: Partial<ProxyState>, on: { readonly item?: string; readonly target?: string } = {}): ProxyState => ({
+const stateOf = (
+  t: ClipVisionRequest & Pick<ClipVisionTarget, "media">,
+  patch: Partial<ProxyState>,
+  on: { readonly item?: string; readonly target?: string } = {},
+): ProxyState => ({
   mediaId: t.media.id,
   phase: "queued",
   progress: 0,
@@ -249,9 +253,10 @@ export class VisionQueue {
       });
       if (!this.states.has(target.id)) return;
       this.results.set(target.id, result);
-      if (result.output === "matte") await this.preview(result.video, controller.signal).catch((error: unknown) => {
-        throw new Error(`The matte is made, but its preview couldn't be: ${(error as Error).message}`);
-      });
+      if (result.output === "matte")
+        await this.preview(result.video, controller.signal).catch((error: unknown) => {
+          throw new Error(`The matte is made, but its preview couldn't be: ${(error as Error).message}`);
+        });
       this.set(target.id, { phase: "done", progress: 1, key: result.key });
     } catch (error) {
       if (controller.signal.aborted || error instanceof VisionStopped) this.set(target.id, { phase: "queued", progress: 0 });

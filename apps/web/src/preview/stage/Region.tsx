@@ -91,11 +91,7 @@ export function RegionSelect({ project, onDone }: { project: ProjectModel; onDon
   const hasRange = markIn !== undefined && markOut !== undefined && markOut > markIn;
   const shown = drawing ?? picked?.screen;
   return (
-    <div
-      className="pv-region-catch"
-      data-testid="region-catch"
-      {...handlers}
-    >
+    <div className="pv-region-catch" data-testid="region-catch" {...handlers}>
       {shown && <div className="pv-region drawing" data-testid="region-rect" style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h }} />}
       {picked && (
         <div

@@ -3,7 +3,24 @@ import assert from "node:assert/strict";
 
 import { planTrim } from "../../apps/web/src/timeline/edit.ts";
 import { planResetPosition } from "../../apps/web/src/timeline/clip.ts";
-import { applyEdit, createSession, animationAt, keyAt, planTrack, planUntrack, textHtml, thinPath, trackProblem, trackRequest, trackTargets, type Item, type Project, type RenderTarget, type Op, type TrackFrame } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  animationAt,
+  keyAt,
+  planTrack,
+  planUntrack,
+  textHtml,
+  thinPath,
+  trackProblem,
+  trackRequest,
+  trackTargets,
+  type Item,
+  type Project,
+  type RenderTarget,
+  type Op,
+  type TrackFrame,
+} from "../../packages/core/src/index.ts";
 
 const CANVAS = { width: 1920, height: 1080, fps: 30 } as const;
 const TEXT: Item = { id: "t", type: "text", text: "Hello", start: 0, duration: 120, transform: { x: 100, y: 200 } };
@@ -57,7 +74,10 @@ test("D329: reversed, looped and still clips, a clip above and a locked item are
   assert.match(trackProblem({ ...above, tracks: [above.tracks[1]!, above.tracks[0]!] }, "t", "c")!, /isn't under/);
   const still = project();
   assert.match(trackProblem({ ...still, media: [{ ...still.media[0]!, kind: "image" }] }, "t", "c")!, /video clip/);
-  assert.deepEqual(trackTargets(project(), "t").map((c) => c.id), ["c"]);
+  assert.deepEqual(
+    trackTargets(project(), "t").map((c) => c.id),
+    ["c"],
+  );
 });
 
 test("D329: a text keeps its offset from the object, on a clip that fills the canvas", () => {
@@ -74,7 +94,14 @@ test("D329: a text keeps its offset from the object, on a clip that fills the ca
 test("D329: sped up and ramped clips follow the clip's time, not the timeline's", () => {
   const fast = keysOfPlan(planTrack(project({ speed: 2 }), { item: "t", target: "c", start: 0 }, steady()));
   near(keyAt(fast, "x", 30, 30)!, 100 + 0.2 * 1920);
-  const ramp = project({ speedKeys: [{ frame: 0, speed: 1 }, { frame: 30, speed: 1, ease: "linear" }, { frame: 31, speed: 4 }, { frame: 120, speed: 4 }] });
+  const ramp = project({
+    speedKeys: [
+      { frame: 0, speed: 1 },
+      { frame: 30, speed: 1, ease: "linear" },
+      { frame: 31, speed: 4 },
+      { frame: 120, speed: 4 },
+    ],
+  });
   const keys = keysOfPlan(planTrack(ramp, { item: "t", target: "c", start: 0 }, steady()));
   near(keyAt(keys, "x", 15, 30)!, 100 + 0.05 * 1920, 3);
   const slope = (f: number) => keyAt(keys, "x", f + 10, 30)! - keyAt(keys, "x", f, 30)!;
@@ -82,12 +109,28 @@ test("D329: sped up and ramped clips follow the clip's time, not the timeline's"
 });
 
 test("D329: tracking from the middle of a clip with a trim starts at the moment asked for, and earlier keys stay", () => {
-  const overlay = { keys: [{ frame: 0, x: 0, y: 0, opacity: 1 }, { frame: 30, x: 100, y: 200 }, { frame: 80, x: 999, y: 999 }, { frame: 80, opacity: 0.5 }] };
+  const overlay = {
+    keys: [
+      { frame: 0, x: 0, y: 0, opacity: 1 },
+      { frame: 30, x: 100, y: 200 },
+      { frame: 80, x: 999, y: 999 },
+      { frame: 80, opacity: 0.5 },
+    ],
+  };
   const clip = { in: 30 };
   const keys = keysOfPlan(planTrack(project(clip, overlay), { item: "t", target: "c", start: 2 }, steady(10, 2)));
-  assert.deepEqual(keys.slice(0, 2).map((k) => [k.frame, k.x]), [[0, 0], [30, 100]]);
+  assert.deepEqual(
+    keys.slice(0, 2).map((k) => [k.frame, k.x]),
+    [
+      [0, 0],
+      [30, 100],
+    ],
+  );
   assert.ok(!keys.some((k) => k.x === 999), "a later key of the old path goes");
-  assert.ok(keys.some((k) => k.frame === 80 && k.opacity === 0.5), "another property's key stays");
+  assert.ok(
+    keys.some((k) => k.frame === 80 && k.opacity === 0.5),
+    "another property's key stays",
+  );
   near(keyAt(keys, "x", 60, 30)!, 100 + 1 * 0.1 * 1920);
 });
 
@@ -100,7 +143,10 @@ test("D329: when the object is lost, it holds its last position and says when, o
   const keys = keysOfPlan(plan);
   assert.ok(keys.at(-1)!.frame <= 15, "no keys past the loss");
   assert.equal(keyAt(keys, "x", 80, 30), keyAt(keys, "x", 14, 30));
-  const never = planTrack(project(), { item: "t", target: "c", start: 0 }, [{ t: 0, x: 0.1, y: 0.1, w: 0.1, h: 0.1 }, { t: 1 / 30, lost: true }]);
+  const never = planTrack(project(), { item: "t", target: "c", start: 0 }, [
+    { t: 0, x: 0.1, y: 0.1, w: 0.1, h: 0.1 },
+    { t: 1 / 30, lost: true },
+  ]);
   assert.match((never as { problem: string }).problem, /straight away/);
 });
 
@@ -111,7 +157,7 @@ test("D329: jitter is smoothed and thinned, and the first key is exactly where t
   assert.equal(keys[0]!.x, 100);
   assert.ok(keys.length < 30, `thinned: ${keys.length} keys for 120 frames`);
   for (let f = 0; f < 119; f++) {
-    const expected = 100 + (0.1 * Math.sin(f / 20)) * 1920;
+    const expected = 100 + 0.1 * Math.sin(f / 20) * 1920;
     near(keyAt(keys, "x", f, 30)!, expected, 12);
   }
 });
@@ -133,10 +179,43 @@ test("D329: scale is off by default; on, it's the object's size against where it
 test("D329: the clip's own box and keys are in the path; a sticker and an image take ordinary keys", () => {
   const boxed = keysOfPlan(planTrack(project({ transform: { x: 0, y: 0, w: 960, h: 540, fit: "fill" } }), { item: "t", target: "c", start: 0 }, steady()));
   near(keyAt(boxed, "x", 30, 30)! - 100, 0.1 * 960);
-  const panning = keysOfPlan(planTrack(project({ transform: { x: 0, y: 0, w: 1920, h: 1080, fit: "fill" }, keys: [{ frame: 0, y: 0 }, { frame: 60, y: 100 }] }), { item: "t", target: "c", start: 0 }, steady()));
+  const panning = keysOfPlan(
+    planTrack(
+      project({
+        transform: { x: 0, y: 0, w: 1920, h: 1080, fit: "fill" },
+        keys: [
+          { frame: 0, y: 0 },
+          { frame: 60, y: 100 },
+        ],
+      }),
+      { item: "t", target: "c", start: 0 },
+      steady(),
+    ),
+  );
   near(keyAt(panning, "y", 60, 30)!, 300);
   const base = project();
-  const sticker = { ...base, tracks: [{ id: "over", kind: "video" as const, name: "Over", items: [{ id: "s", type: "component" as const, component: "component.sticker", start: 0, duration: 120, props: { emoji: "🔥" }, transform: { x: 50, y: 60, w: 200, h: 200 } } as Item] }, base.tracks[1]!] };
+  const sticker = {
+    ...base,
+    tracks: [
+      {
+        id: "over",
+        kind: "video" as const,
+        name: "Over",
+        items: [
+          {
+            id: "s",
+            type: "component" as const,
+            component: "component.sticker",
+            start: 0,
+            duration: 120,
+            props: { emoji: "🔥" },
+            transform: { x: 50, y: 60, w: 200, h: 200 },
+          } as Item,
+        ],
+      },
+      base.tracks[1]!,
+    ],
+  };
   const keys = keysOfPlan(planTrack(sticker, { item: "s", target: "c", start: 0 }, steady()));
   assert.equal(keys[0]!.x, 50);
   near(keyAt(keys, "x", 30, 30)!, 50 + 0.1 * 1920);
@@ -144,7 +223,17 @@ test("D329: the clip's own box and keys are in the path; a sticker and an image 
 
 test("D329: a text's keys reach its HTML through its animation, without reflowing, and the track comes off", () => {
   const target = { canvas: { width: 1000, height: 1000, background: "#000", fps: 30 } } as unknown as RenderTarget;
-  const item: Item = { id: "t", type: "text", text: "Hi", duration: 60, transform: { x: 100, y: 100 }, keys: [{ frame: 0, x: 100, y: 100 }, { frame: 60, x: 700, y: 400, scale: 2 }] };
+  const item: Item = {
+    id: "t",
+    type: "text",
+    text: "Hi",
+    duration: 60,
+    transform: { x: 100, y: 100 },
+    keys: [
+      { frame: 0, x: 100, y: 100 },
+      { frame: 60, x: 700, y: 400, scale: 2 },
+    ],
+  };
   const { motion } = animationAt(item, 30, target.canvas);
   assert.deepEqual(motion.keyed, { x: 400, y: 250 });
   const html = textHtml(item, target, { motion });
@@ -153,13 +242,27 @@ test("D329: a text's keys reach its HTML through its animation, without reflowin
   assert.match(html, /max-width:90%/);
   const plain = animationAt({ ...item, keys: undefined }, 30, target.canvas);
   assert.deepEqual(plain.motion, {});
-  const off = planUntrack(project({}, { keys: [{ frame: 0, x: 1, y: 2 }, { frame: 5, opacity: 0.5 }] }), "t");
+  const off = planUntrack(
+    project(
+      {},
+      {
+        keys: [
+          { frame: 0, x: 1, y: 2 },
+          { frame: 5, opacity: 0.5 },
+        ],
+      },
+    ),
+    "t",
+  );
   assert.ok(!("problem" in off));
   assert.deepEqual((off.ops[0] as unknown as { set: { keys: unknown } }).set.keys, [{ frame: 5, opacity: 0.5 }]);
 });
 
-const TRACK_KEYS = [{ frame: 0, x: 0, y: 0 }, { frame: 119, x: 500, y: 0 }];
-const planned = <T,>(plan: T | { readonly problem: string }) => {
+const TRACK_KEYS = [
+  { frame: 0, x: 0, y: 0 },
+  { frame: 119, x: 500, y: 0 },
+];
+const planned = <T>(plan: T | { readonly problem: string }) => {
   if (plan && typeof plan === "object" && "problem" in plan) throw new Error(plan.problem);
   return plan as T;
 };
@@ -181,7 +284,11 @@ test("D329 review: an overlay trims past its keys from the end, its value kept o
   const many: Project = {
     ...base,
     media: [...base.media, { id: "still", kind: "image", name: "a.png", path: "/x/a.png", probe: { width: 10, height: 10 } } as Project["media"][number]],
-    tracks: [{ id: "over", kind: "video", name: "Over", items: [] }, ...overlays.map((o, i) => ({ id: `o${i}`, kind: "video" as const, name: `O${i}`, items: [o] })), base.tracks[1]!],
+    tracks: [
+      { id: "over", kind: "video", name: "Over", items: [] },
+      ...overlays.map((o, i) => ({ id: `o${i}`, kind: "video" as const, name: `O${i}`, items: [o] })),
+      base.tracks[1]!,
+    ],
   };
   assert.equal(planned(planTrim(many, "s", "end", -60)).duration, 60);
   assert.equal(planned(planTrim(many, "i", "end", -60)).duration, 60);
@@ -189,9 +296,23 @@ test("D329 review: an overlay trims past its keys from the end, its value kept o
 });
 
 test("D329 review: Remove track takes x and y, and scale only when asked; the user's scale keys otherwise stay", () => {
-  const p = project({}, { keys: [{ frame: 0, x: 1, y: 2, scale: 1.5 }, { frame: 5, opacity: 0.5 }, { frame: 9, scale: 2 }] });
-  const keysAfter = (scale: boolean) => ((planned(planUntrack(p, "t", { scale })) as { ops: ReadonlyArray<unknown> }).ops[0] as { set: { keys: unknown } }).set.keys;
-  assert.deepEqual(keysAfter(false), [{ frame: 0, scale: 1.5 }, { frame: 5, opacity: 0.5 }, { frame: 9, scale: 2 }]);
+  const p = project(
+    {},
+    {
+      keys: [
+        { frame: 0, x: 1, y: 2, scale: 1.5 },
+        { frame: 5, opacity: 0.5 },
+        { frame: 9, scale: 2 },
+      ],
+    },
+  );
+  const keysAfter = (scale: boolean) =>
+    ((planned(planUntrack(p, "t", { scale })) as { ops: ReadonlyArray<unknown> }).ops[0] as { set: { keys: unknown } }).set.keys;
+  assert.deepEqual(keysAfter(false), [
+    { frame: 0, scale: 1.5 },
+    { frame: 5, opacity: 0.5 },
+    { frame: 9, scale: 2 },
+  ]);
   assert.deepEqual(keysAfter(true), [{ frame: 5, opacity: 0.5 }]);
 });
 
@@ -202,6 +323,8 @@ test("D329 review: Reset position on a keyed text takes its keys off too, as a c
   assert.equal(set.transform, null);
   assert.equal(set.keys, null);
   const onlyKeys = project({}, { keys: TRACK_KEYS, transform: { rotate: 5 } });
-  assert.deepEqual(((planned(planResetPosition(onlyKeys, "t")) as { ops: ReadonlyArray<unknown> }).ops[0] as { set: Record<string, unknown> }).set, { keys: null });
+  assert.deepEqual(((planned(planResetPosition(onlyKeys, "t")) as { ops: ReadonlyArray<unknown> }).ops[0] as { set: Record<string, unknown> }).set, {
+    keys: null,
+  });
   assert.match((planResetPosition(project({}, { transform: { rotate: 5 } }), "t") as { problem: string }).problem, /already where it starts/);
 });

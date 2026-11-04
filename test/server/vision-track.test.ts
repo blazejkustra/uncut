@@ -19,7 +19,13 @@ const apply = (p: Project, ops: ReadonlyArray<unknown>) => applyEdit(createSessi
 
 function withText(path: string): Project {
   const p = oneClipProject(path);
-  return { ...p, tracks: [{ id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", text: "Hi", start: 0, duration: 60, transform: { x: 50, y: 60 } } as Item] }, ...p.tracks] };
+  return {
+    ...p,
+    tracks: [
+      { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", text: "Hi", start: 0, duration: 60, transform: { x: 50, y: 60 } } as Item] },
+      ...p.tracks,
+    ],
+  };
 }
 
 function queueOf(options: FakeVisionOptions) {
@@ -49,7 +55,10 @@ test("D329: a track runs in the queue, its state on the stream names the item an
     gate.open();
     const made = await done;
     assert.equal(made.output, "track");
-    assert.equal(queue.list().some((s) => s.vision?.output === "track"), false);
+    assert.equal(
+      queue.list().some((s) => s.vision?.output === "track"),
+      false,
+    );
     queue.shutdown();
   } finally {
     f.cleanup();
@@ -69,7 +78,10 @@ test("D329: edits made while tracking are kept: the plan is made on the project 
     const after = textOf(apply(edited, plan.ops));
     assert.equal(after.text, "New");
     assert.equal(keyAt(after.keys, "x", 0, 30), 500, "from where the text is now");
-    assert.ok(after.keys!.some((k) => k.opacity === 0.5), "its other keys stay");
+    assert.ok(
+      after.keys!.some((k) => k.opacity === 0.5),
+      "its other keys stay",
+    );
     assert.ok(keyAt(after.keys, "x", 40, 30)! > 500);
     queue.shutdown();
   } finally {
@@ -115,7 +127,10 @@ test("D329: cancelling reaches the module, says stopped and leaves nothing; a se
     queue.cancelTrack("t");
     await assert.rejects(done, VisionStopped);
     assert.equal(calls[0]!.signal.aborted, true);
-    assert.equal(queue.list().some((s) => s.vision?.output === "track"), false);
+    assert.equal(
+      queue.list().some((s) => s.vision?.output === "track"),
+      false,
+    );
     queue.shutdown();
   } finally {
     f.cleanup();
@@ -126,9 +141,15 @@ test("D329: the caller's own stop (the socket went) stops the run, also while it
   const f = visionFolder();
   try {
     const gate = deferred();
-    const { queue, calls } = queueOf({ track: MOVING, hold: (_tool, signal) => Promise.race([gate.gate, new Promise<void>((r) => signal.addEventListener("abort", () => r()))]) });
+    const { queue, calls } = queueOf({
+      track: MOVING,
+      hold: (_tool, signal) => Promise.race([gate.gate, new Promise<void>((r) => signal.addEventListener("abort", () => r()))]),
+    });
     const p = withText(f.media);
-    const two = { ...p, tracks: [{ ...p.tracks[0]!, items: [...p.tracks[0]!.items, { id: "u", type: "text", text: "Yo", start: 0, duration: 60 } as Item] }, p.tracks[1]!] };
+    const two = {
+      ...p,
+      tracks: [{ ...p.tracks[0]!, items: [...p.tracks[0]!.items, { id: "u", type: "text", text: "Yo", start: 0, duration: 60 } as Item] }, p.tracks[1]!],
+    };
     await queue.sync(f.dir, two);
     const first = await trackTarget(two, f.dir, ASK);
     const second = await trackTarget(two, f.dir, { ...ASK, item: "u", box: { x: 300, y: 900, w: 90, h: 90 } });
@@ -151,7 +172,10 @@ test("D329: the caller's own stop (the socket went) stops the run, also while it
 test("D329: a deleted overlay or a closed project stops the run with a sentence", TIMEOUT, async () => {
   const f = visionFolder();
   try {
-    const { queue, calls } = queueOf({ track: MOVING, hold: (_tool, signal) => new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true })) });
+    const { queue, calls } = queueOf({
+      track: MOVING,
+      hold: (_tool, signal) => new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true })),
+    });
     const p = withText(f.media);
     await queue.sync(f.dir, p);
     const done = queue.track(await trackTarget(p, f.dir, ASK), { item: "t", clip: "c" });
@@ -197,7 +221,10 @@ test("D329: offline media, a module's refusal and no module are sentences", TIME
     await assert.rejects(queue.track(await trackTarget(p, f.dir, ASK), { item: "t", clip: "c" }), /can read/);
     const none = queueOf({ noModule: true });
     await none.queue.sync(f.dir, p);
-    await assert.rejects(none.queue.track(await trackTarget(p, f.dir, ASK), { item: "t", clip: "c" }), (e: Error) => e instanceof VisionFailure && /Motion tracking/.test(e.message));
+    await assert.rejects(
+      none.queue.track(await trackTarget(p, f.dir, ASK), { item: "t", clip: "c" }),
+      (e: Error) => e instanceof VisionFailure && /Motion tracking/.test(e.message),
+    );
     rmSync(f.media);
     await assert.rejects(trackTarget(p, f.dir, ASK), /isn't there/);
     queue.shutdown();

@@ -72,7 +72,11 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       const picked = source.picked;
       if (geo && layer.fx) {
         // Picture effects (D136) on the picture, then its box.
-        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)), ...boxed(layer, geo, `p${k}`, `q${k}`));
+        graph.push(
+          `${picked.join(",")}[e${k}]`,
+          ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts, visionOf(layer, k)),
+          ...boxed(layer, geo, `p${k}`, `q${k}`),
+        );
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else if (geo) {
         // A box (D75): the picture made into its box, then placed by the overlay.

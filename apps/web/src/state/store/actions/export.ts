@@ -101,7 +101,13 @@ export const exportActions = {
     return result.ok ? undefined : plainError(result.error);
   },
 
-  async track(ask: { readonly itemId: string; readonly targetId: string; readonly frame: number; readonly box: { x: number; y: number; w: number; h: number }; readonly scale?: boolean }) {
+  async track(ask: {
+    readonly itemId: string;
+    readonly targetId: string;
+    readonly frame: number;
+    readonly box: { x: number; y: number; w: number; h: number };
+    readonly scale?: boolean;
+  }) {
     setTrackNote(ask.itemId, undefined);
     const result = await call((c) => c["vision.track"](ask), VISION_EDIT_TIMEOUT_MS);
     setTrackNote(ask.itemId, result.ok ? result.value.note : plainError(result.error));

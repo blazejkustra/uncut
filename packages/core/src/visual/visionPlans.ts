@@ -120,7 +120,11 @@ export interface ReframeGeometry {
 }
 
 /** How a picture of `media` size pans on the canvas at cover size times `zoom`; undefined when it already fits. */
-export function reframeGeometry(canvas: { readonly width: number; readonly height: number }, media: { readonly width: number; readonly height: number }, zoom = 1): ReframeGeometry | undefined {
+export function reframeGeometry(
+  canvas: { readonly width: number; readonly height: number },
+  media: { readonly width: number; readonly height: number },
+  zoom = 1,
+): ReframeGeometry | undefined {
   const k = Math.max(canvas.width / media.width, canvas.height / media.height);
   const w = media.width * k;
   const h = media.height * k;
@@ -175,9 +179,18 @@ export function planReframe(
   const path = reframePath(positions, { fps: project.canvas.fps, window: g.window, min: g.min, max: g.max });
   if (!path) return { problem: "No face or subject was found in this clip, so there's nothing to follow." };
   const view = g.axis === "x" ? project.canvas.width : project.canvas.height;
-  const other = g.axis === "x" ? { y: Math.round(((project.canvas.height - g.h) / 2) * 100) / 100 } : { x: Math.round(((project.canvas.width - g.w) / 2) * 100) / 100 };
+  const other =
+    g.axis === "x" ? { y: Math.round(((project.canvas.height - g.h) / 2) * 100) / 100 } : { x: Math.round(((project.canvas.width - g.w) / 2) * 100) / 100 };
   const { x: _x, y: _y, w: _w, h: _h, fit: _fit, scale: _scale, ...rest } = item.transform ?? {};
-  const transform = { ...rest, ...other, [g.axis]: boxAt(g, view, path[0]!.centre), w: Math.round(g.w * 100) / 100, h: Math.round(g.h * 100) / 100, fit: "cover", ...(zoom !== 1 ? { scale: zoom } : {}) };
+  const transform = {
+    ...rest,
+    ...other,
+    [g.axis]: boxAt(g, view, path[0]!.centre),
+    w: Math.round(g.w * 100) / 100,
+    h: Math.round(g.h * 100) / 100,
+    fit: "cover",
+    ...(zoom !== 1 ? { scale: zoom } : {}),
+  };
   const kept = (item.keys ?? []).flatMap((k) => {
     const { x: _kx, y: _ky, scale: _ks, ...own } = k;
     return Object.keys(own).some((f) => f !== "frame" && f !== "ease") ? [own] : [];
@@ -236,10 +249,7 @@ export function planTextBehindSubject(project: Project, textIds: ReadonlyArray<s
   for (let n = 2; names.has(name); n++) name = `Cutout ${n}`;
   const clipName = best.item.name ?? project.media.find((m) => m.id === best!.item.media)?.name ?? best.item.id;
   return {
-    ops: [
-      { op: "add_track", index: topIndex, track: { id: trackId, kind: "video", name } } as Op,
-      { op: "insert_item", track: trackId, item: copy } as Op,
-    ],
+    ops: [{ op: "add_track", index: topIndex, track: { id: trackId, kind: "video", name } } as Op, { op: "insert_item", track: trackId, item: copy } as Op],
     summary: `Put the text behind the subject of ${clipName}`,
     copyId,
   };

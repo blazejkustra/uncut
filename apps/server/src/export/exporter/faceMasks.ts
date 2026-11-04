@@ -28,10 +28,42 @@ export function faceMaskFrame(masks: ReadonlyArray<ClipMask>, w: number, h: numb
 }
 
 /** Writes grey frames to an FFV1 file through ffmpeg's stdin (4 threads). */
-function encodeGrey(bin: string, w: number, h: number, fps: number, frames: number, frame: (i: number) => Uint8Array, out: string, signal: AbortSignal): Promise<void> {
+function encodeGrey(
+  bin: string,
+  w: number,
+  h: number,
+  fps: number,
+  frames: number,
+  frame: (i: number) => Uint8Array,
+  out: string,
+  signal: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Cancelled());
-    const args = ["-hide_banner", "-nostdin", "-y", "-v", "error", "-threads", "4", "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${w}x${h}`, "-r", String(fps), "-i", "pipe:0", "-c:v", "ffv1", "-threads", "4", out];
+    const args = [
+      "-hide_banner",
+      "-nostdin",
+      "-y",
+      "-v",
+      "error",
+      "-threads",
+      "4",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "gray",
+      "-s",
+      `${w}x${h}`,
+      "-r",
+      String(fps),
+      "-i",
+      "pipe:0",
+      "-c:v",
+      "ffv1",
+      "-threads",
+      "4",
+      out,
+    ];
     const child = spawn(bin, args, { stdio: ["pipe", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
@@ -58,7 +90,12 @@ function encodeGrey(bin: string, w: number, h: number, fps: number, frames: numb
 }
 
 /** The face mask videos of a plan's layers with face blur, by layer (files in `temp`). */
-export async function writeFaceMasks(bin: string, plan: Pick<ExportPlan, "visuals" | "fps">, temp: string, signal: AbortSignal): Promise<Map<VisualLayer, string>> {
+export async function writeFaceMasks(
+  bin: string,
+  plan: Pick<ExportPlan, "visuals" | "fps">,
+  temp: string,
+  signal: AbortSignal,
+): Promise<Map<VisualLayer, string>> {
   const out = new Map<VisualLayer, string>();
   for (const [k, layer] of plan.visuals.entries()) {
     if ((layer.kind !== "video" && layer.kind !== "image") || !layer.fx?.faceMasks || !layer.fx.fx.faceBlur) continue;

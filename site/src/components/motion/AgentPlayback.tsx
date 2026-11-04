@@ -44,7 +44,12 @@ const ROWS: ReadonlyArray<Row> = [
   { kind: "step", doing: "Proposing a storyboard of 4 beats", done: "Proposed a storyboard of 4 beats", runMs: 900 },
   { kind: "card", done: "Storyboard, 4 beats", icon: <Clapperboard />, runMs: 420 },
   { kind: "log", doing: "Reading the timeline, and 1 more", done: "Read the timeline, and 1 more", runMs: 650 },
-  { kind: "edit", doing: "Editing the timeline: Cut the travel film: six shots, titles, music", done: "Cut the travel film: six shots, titles, music", runMs: 1400 },
+  {
+    kind: "edit",
+    doing: "Editing the timeline: Cut the travel film: six shots, titles, music",
+    done: "Cut the travel film: six shots, titles, music",
+    runMs: 1400,
+  },
   { kind: "log", doing: "Asking the critic for a review, and 2 more", done: "Asked the critic for a review, and 2 more", runMs: 700 },
   { kind: "critic", doing: "Running", done: "Passed", runMs: 1200 },
 ];

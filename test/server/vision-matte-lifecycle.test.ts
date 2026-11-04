@@ -39,7 +39,8 @@ type Folder = ReturnType<typeof visionFolder>;
 
 const hasFfmpeg = async (): Promise<string | undefined> => "ffmpeg";
 const noFfmpeg = async (): Promise<string | undefined> => undefined;
-const queueOf = (vision: ReturnType<typeof fakeVision>["vision"], { ffmpeg = hasFfmpeg, exportBusy = (): boolean => false } = {}) => new VisionQueue({ vision, ffmpeg, exportBusy, onChange: () => {} });
+const queueOf = (vision: ReturnType<typeof fakeVision>["vision"], { ffmpeg = hasFfmpeg, exportBusy = (): boolean => false } = {}) =>
+  new VisionQueue({ vision, ffmpeg, exportBusy, onChange: () => {} });
 
 const solidClip = (out: string, colour: string, size: string) =>
   execFileSync("ffmpeg", ["-v", "error", "-y", ...CAP, "-f", "lavfi", "-i", `color=c=${colour}:s=${size}:r=30:d=0.5`, "-c:v", "ffv1", out]);
@@ -63,7 +64,12 @@ function oddSizeProject(top: string, under: string): Project {
       { id: "under", kind: "video", name: "under.mkv", path: under, probe: probe(CANVAS_W) },
     ],
     tracks: [
-      { id: "top", kind: "video", name: "Top", items: [{ id: "t", type: "clip", media: "odd", start: 0, in: 0, duration: 15, effects: [CUTOUT_PERSON] } as Item] },
+      {
+        id: "top",
+        kind: "video",
+        name: "Top",
+        items: [{ id: "t", type: "clip", media: "odd", start: 0, in: 0, duration: 15, effects: [CUTOUT_PERSON] } as Item],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "u", type: "clip", media: "under", in: 0, duration: 15 } as Item] },
     ],
   };
@@ -78,14 +84,45 @@ async function exportOddFrame(f: Folder, p: Project, vision: ReturnType<typeof f
     assert.deepEqual(plan.warnings, []);
     const background = join(f.root, "bg.png");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=black:s=${CANVAS_W}x${ODD_H}`, "-frames:v", "1", background]);
-    const cmd = exportCommand(plan, { background, rasters: new Map(), caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 }, quality: "high", output: join(f.root, "x.mp4") });
+    const cmd = exportCommand(plan, {
+      background,
+      rasters: new Map(),
+      caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 },
+      quality: "high",
+      output: join(f.root, "x.mp4"),
+    });
     const graph = join(f.root, "graph.txt");
     writeFileSync(graph, cmd.graph);
     const out = join(f.root, "out.mkv");
-    const r = spawnSync("ffmpeg", ["-hide_banner", "-y", ...CAP, ...cmd.inputs, "-/filter_complex", graph, "-map", "[vout]", "-c:v", "ffv1", "-frames:v", "6", out, "-map", "[aout]", "-f", "null", "-"], { encoding: "utf8" });
+    const r = spawnSync(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-y",
+        ...CAP,
+        ...cmd.inputs,
+        "-/filter_complex",
+        graph,
+        "-map",
+        "[vout]",
+        "-c:v",
+        "ffv1",
+        "-frames:v",
+        "6",
+        out,
+        "-map",
+        "[aout]",
+        "-f",
+        "null",
+        "-",
+      ],
+      { encoding: "utf8" },
+    );
     assert.equal(r.status, 0, r.stderr.slice(-1500));
     assert.equal(silentFailure(r.stderr), undefined);
-    const frame = execFileSync("ffmpeg", ["-v", "error", ...CAP, "-i", out, "-vf", "select=eq(n\\,5),format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"], { maxBuffer: 8 << 20 });
+    const frame = execFileSync("ffmpeg", ["-v", "error", ...CAP, "-i", out, "-vf", "select=eq(n\\,5),format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"], {
+      maxBuffer: 8 << 20,
+    });
     const px = (x: number, y: number) => [...frame.subarray((y * CANVAS_W + x) * 3, (y * CANVAS_W + x) * 3 + 3)];
     return { px, inputs: cmd.inputs, video: [...ready.made.values()][0] as ClipVisionResult & { output: "matte" } };
   } finally {
@@ -112,7 +149,9 @@ test("D328: 853x480 footage gets a matte and an encoded preview copy at even siz
     const state = queue.list()[0]!;
     assert.equal(state.phase, "done", state.error);
     const preview = queue.fileFor("odd", `${state.key}.mp4`)!;
-    const probe = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width,height", "-of", "csv=p=0", preview], { encoding: "utf8" }).trim();
+    const probe = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width,height", "-of", "csv=p=0", preview], {
+      encoding: "utf8",
+    }).trim();
     assert.equal(probe, `h264,${CANVAS_W},${ODD_H}`);
     queue.shutdown();
     assertCutOut((await exportOddFrame(f, p, vision)).px);
@@ -129,7 +168,10 @@ test("D328: the export reads the matte itself: it makes no preview copy and does
     const { px, inputs, video } = await exportOddFrame(f, oddSizeProject(top, under), vision);
     assertCutOut(px);
     assert.ok(inputs.includes(video.video), "the export's command reads the matte's .mkv");
-    assert.equal(inputs.some((a) => a.endsWith(".preview.mp4")), false);
+    assert.equal(
+      inputs.some((a) => a.endsWith(".preview.mp4")),
+      false,
+    );
     assert.equal(existsSync(previewOf(video.video)), false, "making the matte for the export made no preview copy");
   } finally {
     f.cleanup();
@@ -205,7 +247,12 @@ test("D328: cleanup leaves a matte an export holds until the export lets it go",
 });
 
 test("D328: pins count: one holder letting go leaves the matte pinned for the other, and releasing twice counts once", T, () => {
-  const made: ClipVisionResult = { output: "faces", key: "faces-x", file: "/tmp/pin-count.json", result: { start: 0, end: 1, fps: 30, width: 1, height: 1, frames: [] } as never };
+  const made: ClipVisionResult = {
+    output: "faces",
+    key: "faces-x",
+    file: "/tmp/pin-count.json",
+    result: { start: 0, end: 1, fps: 30, width: 1, height: 1, frames: [] } as never,
+  };
   const first = pinVision([made]);
   const second = pinVision([made]);
   first();

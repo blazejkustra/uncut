@@ -433,42 +433,47 @@ test("Feature playback without script: the finished state is in the HTML", { ski
   await v.page.browserContext().close();
 });
 
-test("Feature playback: waits below the fold, plays on screen without moving the layout, pauses off screen, one label for screen readers", { skip }, async () => {
-  for (const [w, h] of [
-    [1440, 900],
-    [360, 800],
-  ] as const) {
-    const v = await visitor("US", w, h);
-    await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
-    const heights = () => v.page.evaluate(() => [".agent-pb", ".critic-pb", ".tl-stage", ".tx-stage"].map((s) => document.querySelector<HTMLElement>(s)!.offsetHeight));
-    const before = await heights();
-    assert.equal(await v.page.$eval(".agent-pb", (e) => (e as HTMLElement).dataset.finished), "false");
-    assert.ok((await hiddenRowCount(v.page)) > 0);
+test(
+  "Feature playback: waits below the fold, plays on screen without moving the layout, pauses off screen, one label for screen readers",
+  { skip },
+  async () => {
+    for (const [w, h] of [
+      [1440, 900],
+      [360, 800],
+    ] as const) {
+      const v = await visitor("US", w, h);
+      await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
+      const heights = () =>
+        v.page.evaluate(() => [".agent-pb", ".critic-pb", ".tl-stage", ".tx-stage"].map((s) => document.querySelector<HTMLElement>(s)!.offsetHeight));
+      const before = await heights();
+      assert.equal(await v.page.$eval(".agent-pb", (e) => (e as HTMLElement).dataset.finished), "false");
+      assert.ok((await hiddenRowCount(v.page)) > 0);
 
-    for (const sel of PLAYBACKS) {
-      assert.equal(await v.page.$eval(sel, (e) => e.getAttribute("role")), "img");
-      assert.ok(await v.page.$eval(sel, (e) => (e.getAttribute("aria-label") ?? "").length > 40));
-      assert.equal(await v.page.$eval(sel, (e) => e.firstElementChild!.getAttribute("aria-hidden")), "true");
+      for (const sel of PLAYBACKS) {
+        assert.equal(await v.page.$eval(sel, (e) => e.getAttribute("role")), "img");
+        assert.ok(await v.page.$eval(sel, (e) => (e.getAttribute("aria-label") ?? "").length > 40));
+        assert.equal(await v.page.$eval(sel, (e) => e.firstElementChild!.getAttribute("aria-hidden")), "true");
+      }
+
+      await v.page.$eval(".agent-pb", (e) => e.scrollIntoView({ block: "center" }));
+      await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-user[data-state="done"]'), { timeout: 8000 });
+      await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-step[data-state="run"]'), { timeout: 8000 });
+      assert.deepEqual(await heights(), before, `no layout change at ${w}`);
+
+      await v.page.$eval("footer", (e) => e.scrollIntoView());
+      await v.page.waitForFunction(() => (document.querySelector(".agent-pb") as HTMLElement).dataset.paused !== undefined, { timeout: 4000 });
+      const paused = await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length);
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.equal(await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length), paused, "stays where it was off screen");
+
+      await v.page.$eval(".tl-stage", (e) => e.scrollIntoView({ block: "center" }));
+      await v.page.waitForFunction(() => (document.querySelector(".tl-stage") as HTMLElement).dataset.playing !== undefined, { timeout: 4000 });
+      assert.ok(await v.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll at ${w}`);
+      assert.deepEqual(v.errors, []);
+      await v.page.browserContext().close();
     }
-
-    await v.page.$eval(".agent-pb", (e) => e.scrollIntoView({ block: "center" }));
-    await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-user[data-state="done"]'), { timeout: 8000 });
-    await v.page.waitForFunction(() => document.querySelector('.agent-pb .pb-step[data-state="run"]'), { timeout: 8000 });
-    assert.deepEqual(await heights(), before, `no layout change at ${w}`);
-
-    await v.page.$eval("footer", (e) => e.scrollIntoView());
-    await v.page.waitForFunction(() => (document.querySelector(".agent-pb") as HTMLElement).dataset.paused !== undefined, { timeout: 4000 });
-    const paused = await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length);
-    await new Promise((r) => setTimeout(r, 1500));
-    assert.equal(await v.page.$eval(".agent-pb", (e) => e.querySelectorAll('[data-state="off"]').length), paused, "stays where it was off screen");
-
-    await v.page.$eval(".tl-stage", (e) => e.scrollIntoView({ block: "center" }));
-    await v.page.waitForFunction(() => (document.querySelector(".tl-stage") as HTMLElement).dataset.playing !== undefined, { timeout: 4000 });
-    assert.ok(await v.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll at ${w}`);
-    assert.deepEqual(v.errors, []);
-    await v.page.browserContext().close();
-  }
-});
+  },
+);
 
 test("Feature playback on desktop: the agent panel is landscape and fits the window, the critic panel is wider than tall", { skip }, async () => {
   for (const [w, h] of [

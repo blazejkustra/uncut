@@ -71,7 +71,8 @@ export async function visionMediaPath(dir: string, media: Media): Promise<string
   const within = inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
   if (within && inside.split(sep)[0] !== "media")
     throw new VisionFailure("invalid", `${media.name || media.id} points inside the project's own files, which vision doesn't read.`);
-  if (path.split(sep).includes(".cache")) throw new VisionFailure("invalid", `${media.name || media.id} points into a cache folder, which vision doesn't read.`);
+  if (path.split(sep).includes(".cache"))
+    throw new VisionFailure("invalid", `${media.name || media.id} points into a cache folder, which vision doesn't read.`);
   return path;
 }
 
@@ -83,7 +84,10 @@ export interface RefusedTarget extends ClipVisionRequest {
 }
 
 /** Every vision result the project's clips read, one per media and request, and those it can't make. */
-export async function clipVisionTargets(project: Project, dir: string): Promise<{ readonly targets: Array<ClipVisionTarget>; readonly refused: Array<RefusedTarget> }> {
+export async function clipVisionTargets(
+  project: Project,
+  dir: string,
+): Promise<{ readonly targets: Array<ClipVisionTarget>; readonly refused: Array<RefusedTarget> }> {
   const flat = flattenSequences(project);
   const out = new Map<string, ClipVisionTarget>();
   const refused = new Map<string, RefusedTarget>();
@@ -123,9 +127,32 @@ export async function makePreview(ffmpeg: string, video: string, signal: AbortSi
   const part = `${out}.part`;
   try {
     const encoder = await matteEncoder(ffmpeg);
-    const args = ["-hide_banner", "-nostdin", "-y", "-v", "error", "-threads", "4", "-i", video, "-vf", "scale=trunc((iw+1)/2)*2:trunc((ih+1)/2)*2,format=yuv420p", ...encoder, "-threads", "4", "-color_range", "tv", "-movflags", "+faststart", "-f", "mp4", part];
+    const args = [
+      "-hide_banner",
+      "-nostdin",
+      "-y",
+      "-v",
+      "error",
+      "-threads",
+      "4",
+      "-i",
+      video,
+      "-vf",
+      "scale=trunc((iw+1)/2)*2:trunc((ih+1)/2)*2,format=yuv420p",
+      ...encoder,
+      "-threads",
+      "4",
+      "-color_range",
+      "tv",
+      "-movflags",
+      "+faststart",
+      "-f",
+      "mp4",
+      part,
+    ];
     const r = await run(ffmpeg, args, signal);
-    if (r.code !== 0) throw new VisionFailure("failed", `ffmpeg couldn't make the matte's preview: ${r.stderr.trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
+    if (r.code !== 0)
+      throw new VisionFailure("failed", `ffmpeg couldn't make the matte's preview: ${r.stderr.trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
     await rename(part, out);
     return out;
   } finally {
@@ -168,7 +195,13 @@ async function askModule(vision: VisionAnalysis, target: ClipVisionTarget, signa
  * One result made (or found in the cache), pinned from the moment it exists until the run's
  * waiters have taken their own pins (`settled`).
  */
-async function make(vision: VisionAnalysis, target: ClipVisionTarget, signal: AbortSignal, report: (f: number) => void, settled: Promise<unknown>): Promise<ClipVisionResult> {
+async function make(
+  vision: VisionAnalysis,
+  target: ClipVisionTarget,
+  signal: AbortSignal,
+  report: (f: number) => void,
+  settled: Promise<unknown>,
+): Promise<ClipVisionResult> {
   const result = await askModule(vision, target, signal, report);
   const release = pinVision([result]);
   void settled.finally(() => setImmediate(release));
@@ -336,7 +369,6 @@ export async function readyVision(
   return { made, failed, release };
 }
 
-
 /** Clips with face blur whose faces weren't found, by name, with why: the export stops rather than show them (D328). */
 export function unblurredClips(project: Project, ready: Pick<ReadyVision, "made" | "failed">): Array<string> {
   const flat = flattenSequences(project);
@@ -345,7 +377,11 @@ export function unblurredClips(project: Project, ready: Pick<ReadyVision, "made"
     const media = item.type === "clip" ? flat.media.find((m) => m.id === item.media) : undefined;
     if (!media || !live(item, FACE_BLUR)) continue;
     const request = clipRequests(flat, item).find((r) => r.output === "faces");
-    const why = request ? (ready.made.has(requestId(media.id, request)) ? undefined : (ready.failed.get(requestId(media.id, request)) ?? "it wasn't analysed")) : visionProblem(flat, item, "faces");
+    const why = request
+      ? ready.made.has(requestId(media.id, request))
+        ? undefined
+        : (ready.failed.get(requestId(media.id, request)) ?? "it wasn't analysed")
+      : visionProblem(flat, item, "faces");
     if (why) out.push(`"${item.name ?? media.name ?? item.id}" (${why.replace(/\.$/, "")})`);
   }
   return out;

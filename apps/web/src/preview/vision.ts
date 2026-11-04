@@ -101,7 +101,8 @@ export class VisionViews {
       const note = visionNote(state, "faces");
       if (note) notes.push(note);
       const faces = state?.phase === "done" && state.key ? readJson<FaceFrames>(visionUrl(item.media, `${state.key}.json`) ?? "", this.changed) : undefined;
-      if (faces) out.faces = { masks: faceMasks(facesAt(faces, seconds, fx.faceBlur.faces), fx.faceBlur, size.w, size.h), sigma: Math.max(0.5, fx.faceBlur.amount) };
+      if (faces)
+        out.faces = { masks: faceMasks(facesAt(faces, seconds, fx.faceBlur.faces), fx.faceBlur, size.w, size.h), sigma: Math.max(0.5, fx.faceBlur.amount) };
     }
     return { ...out, notes };
   }

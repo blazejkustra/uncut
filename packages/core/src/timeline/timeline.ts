@@ -428,7 +428,8 @@ export function animationAt(
   if (dy) motion.dy = dy;
   if (reveal < 1) motion.reveal = reveal;
   if (scale !== 1) motion.scale = scale;
-  if (keyed.x !== undefined || keyed.y !== undefined) motion.keyed = { ...(keyed.x !== undefined ? { x: keyed.x } : {}), ...(keyed.y !== undefined ? { y: keyed.y } : {}) };
+  if (keyed.x !== undefined || keyed.y !== undefined)
+    motion.keyed = { ...(keyed.x !== undefined ? { x: keyed.x } : {}), ...(keyed.y !== undefined ? { y: keyed.y } : {}) };
   if (words && words.some((w) => w < 1)) {
     motion.words = words;
     motion.wordStyle = wordStyle ?? "pop";

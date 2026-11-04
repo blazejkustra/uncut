@@ -46,11 +46,30 @@ const FACES = {
 };
 
 function project(media: string): Project {
-  const colours = { id: "m-colours", kind: "video" as const, name: "Colours.mp4", path: join(media, "Colours.mp4"), probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false } };
-  const blue = { id: "m-blue", kind: "video" as const, name: "Blue.mp4", path: join(media, "Blue.mp4"), probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false } };
+  const colours = {
+    id: "m-colours",
+    kind: "video" as const,
+    name: "Colours.mp4",
+    path: join(media, "Colours.mp4"),
+    probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false },
+  };
+  const blue = {
+    id: "m-blue",
+    kind: "video" as const,
+    name: "Blue.mp4",
+    path: join(media, "Blue.mp4"),
+    probe: { frames: 60, fps: 30, width: W, height: H, hasAudio: false },
+  };
   const main: Array<Item> = [
     { id: "under", type: "clip", media: "m-blue", in: 0, duration: 30 },
-    { id: "faces", type: "clip", media: "m-colours", in: 30, duration: 30, effects: [{ module: "effect.face-blur", params: { amount: 16, shape: "ellipse", feather: 20, padding: 0.1 } }] },
+    {
+      id: "faces",
+      type: "clip",
+      media: "m-colours",
+      in: 30,
+      duration: 30,
+      effects: [{ module: "effect.face-blur", params: { amount: 16, shape: "ellipse", feather: 20, padding: 0.1 } }],
+    },
   ];
   return {
     format: "uncut/0",
@@ -59,7 +78,22 @@ function project(media: string): Project {
     media: [colours, blue],
     tracks: [
       { id: "text", kind: "text", name: "Text", items: [{ id: "title", type: "text", text: "BEHIND", start: 0, duration: 30 }] },
-      { id: "top", kind: "video", name: "Top", items: [{ id: "cut", type: "clip", media: "m-colours", start: 0, in: 0, duration: 30, effects: [{ module: "effect.cutout", params: { mode: "person", softness: 1, shrink: 0 } }] }] },
+      {
+        id: "top",
+        kind: "video",
+        name: "Top",
+        items: [
+          {
+            id: "cut",
+            type: "clip",
+            media: "m-colours",
+            start: 0,
+            in: 0,
+            duration: 30,
+            effects: [{ module: "effect.cutout", params: { mode: "person", softness: 1, shrink: 0 } }],
+          },
+        ],
+      },
       { id: "main", kind: "video", role: "main", name: "Main", items: main },
     ],
   };
@@ -79,7 +113,10 @@ async function seedVision(projectDir: string, file: string) {
     ...["-c:v", "ffv1", "-level", "3", "-g", "1", matte.video],
   ]);
   const times = Array.from({ length: 60 }, (_, i) => Math.round((i / 30) * 1e6) / 1e6);
-  writeFileSync(matte.json, JSON.stringify({ format: "uncut.matte/1", mode: "person", start: 0, end: 2, fps: 30, width: W, height: H, frames: 60, times, module }));
+  writeFileSync(
+    matte.json,
+    JSON.stringify({ format: "uncut.matte/1", mode: "person", start: 0, end: 2, fps: 30, width: W, height: H, frames: 60, times, module }),
+  );
   const faces = visionFiles(projectDir, fp, { output: "faces", start: 0, end: 2, module });
   writeFileSync(faces.json, JSON.stringify({ ...FACES, module }));
 }
@@ -87,7 +124,11 @@ async function seedVision(projectDir: string, file: string) {
 const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const revision = () => page.$eval("[data-testid=saved]", (el) => Number(/revision (\d+)/.exec((el as HTMLElement).title)?.[1] ?? -1));
 const waitRevision = (n: number) =>
-  page.waitForFunction((r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r, { timeout: 15000 }, n);
+  page.waitForFunction(
+    (r) => Number(/revision (\d+)/.exec(document.querySelector<HTMLElement>("[data-testid=saved]")!.title)?.[1]) === r,
+    { timeout: 15000 },
+    n,
+  );
 async function goTo(frame: number) {
   await page.keyboard.press("Home");
   await page.keyboard.down("Shift");
@@ -96,13 +137,20 @@ async function goTo(frame: number) {
   for (let i = 0; i < frame % 30; i++) await page.keyboard.press("ArrowRight");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === f, {}, frame);
   await page.waitForFunction(
-    () => [...document.querySelectorAll<HTMLVideoElement>("video[data-item], video[data-matte]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)),
+    () =>
+      [...document.querySelectorAll<HTMLVideoElement>("video[data-item], video[data-matte]")].every(
+        (v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2),
+      ),
     { timeout: 15000 },
   );
   await sleep(500);
 }
 function compare(a: string, b: string) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]scale=480:270,format=gray[a];[1]scale=480:270,format=gray[b];[a][b]ssim", "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
   const ssim = Number(/All:([\d.]+)/.exec(r.stderr)![1]);
   const pa = rgb(a, 48, 27);
   const pb = rgb(b, 48, 27);
@@ -111,7 +159,9 @@ function compare(a: string, b: string) {
   return { ssim, colour: d / pa.length };
 }
 const rgb = (file: string, w: number, h: number) =>
-  execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"], { maxBuffer: 64 << 20 });
+  execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"], {
+    maxBuffer: 64 << 20,
+  });
 
 before(async () => {
   if (skip) return;
@@ -120,7 +170,22 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-vision-app-")));
   mkdirSync(join(root, "media"), { recursive: true });
   makeColours(join(root, "media", "Colours.mp4"), W, H, 2);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=0x2040d0:s=${W}x${H}:r=30:d=2`, "-c:v", "libx264", "-crf", "6", "-pix_fmt", "yuv420p", join(root, "media", "Blue.mp4")]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=0x2040d0:s=${W}x${H}:r=30:d=2`,
+    "-c:v",
+    "libx264",
+    "-crf",
+    "6",
+    "-pix_fmt",
+    "yuv420p",
+    join(root, "media", "Blue.mp4"),
+  ]);
   dir = writeProject(root, "Vision", project(join(root, "media")));
   await seedVision(dir, join(root, "media", "Colours.mp4"));
   mkdirSync(join(root, "out"));

@@ -63,7 +63,8 @@ function locate(project: Pick<Project, "tracks">, id: string): { readonly index:
 
 const isVideoClip = (project: Pick<Project, "media">, item: Item) => item.type === "clip" && project.media.find((m) => m.id === item.media)?.kind === "video";
 
-const isOverlay = (project: Tracked, item: Item) => (item.type === "text" && typeof item.text === "string") || isDrawnComponent(item) || (item.type === "clip" && !!pictureMedia(project, item));
+const isOverlay = (project: Tracked, item: Item) =>
+  (item.type === "text" && typeof item.text === "string") || isDrawnComponent(item) || (item.type === "clip" && !!pictureMedia(project, item));
 
 const spanOf = (starts: ReadonlyMap<string, number>, item: Item) => {
   const from = starts.get(item.id) ?? item.start ?? 0;
@@ -97,7 +98,6 @@ export function trackProblem(project: Tracked, itemId: string, targetId?: string
   if (!project.media.find((m) => m.id === target.item.media)?.probe?.frames) return "Uncut doesn't know this video's length yet, so it can't track in it.";
   return undefined;
 }
-
 
 function pictureAt(project: Tracked, target: Item, local: number): Rect {
   const media = project.media.find((m) => m.id === target.media)!;
@@ -139,7 +139,11 @@ function overlayAt(project: Tracked, item: Item, local: number): { readonly x: n
   const fps = project.canvas.fps;
   if (item.type === "text") {
     const rest = textPlacement(item, project as Parameters<typeof textPlacement>[1]);
-    return { x: keyAt(item.keys, "x", local, fps) ?? rest.x, y: keyAt(item.keys, "y", local, fps) ?? rest.y, scale: keyAt(item.keys, "scale", local, fps) ?? 1 };
+    return {
+      x: keyAt(item.keys, "x", local, fps) ?? rest.x,
+      y: keyAt(item.keys, "y", local, fps) ?? rest.y,
+      scale: keyAt(item.keys, "scale", local, fps) ?? 1,
+    };
   }
   const media = pictureMedia(project, item);
   return media ? clipBox(item, project.canvas, media.probe, local) : componentBox(item, project.canvas, local)!;
@@ -151,7 +155,13 @@ interface Sample {
   readonly size: number;
 }
 
-function objectPath(project: Tracked, target: Item, frames: ReadonlyArray<TrackFrame>, from: number, count: number): { readonly path: Array<Sample>; readonly lostLocal?: number } {
+function objectPath(
+  project: Tracked,
+  target: Item,
+  frames: ReadonlyArray<TrackFrame>,
+  from: number,
+  count: number,
+): { readonly path: Array<Sample>; readonly lostLocal?: number } {
   const lost = frames.at(-1)?.lost ? frames.at(-1)!.t : undefined;
   const boxes = lost === undefined ? frames : frames.slice(0, -1);
   const times = boxes.map((f) => f.t);
@@ -190,7 +200,8 @@ export function thinPath(channels: ReadonlyArray<{ readonly values: ReadonlyArra
   const length = channels[0]?.values.length ?? 0;
   if (length === 0) return [];
   const kept = new Set([0, length - 1]);
-  const missBy = (values: ReadonlyArray<number>, a: number, b: number, i: number) => Math.abs(values[i]! - (values[a]! + ((values[b]! - values[a]!) * (i - a)) / (b - a)));
+  const missBy = (values: ReadonlyArray<number>, a: number, b: number, i: number) =>
+    Math.abs(values[i]! - (values[a]! + ((values[b]! - values[a]!) * (i - a)) / (b - a)));
   const worstBetween = (a: number, b: number) => {
     let worst = 0;
     let at = -1;
@@ -227,7 +238,11 @@ function keysKept(keys: Item["keys"], from: number, replaced: ReadonlyArray<stri
   });
 }
 
-const nameOf = (project: Pick<Project, "media">, item: Item) => item.name ?? (typeof item.text === "string" && item.text.trim() ? item.text.trim().slice(0, 24) : undefined) ?? project.media.find((m) => m.id === item.media)?.name ?? item.id;
+const nameOf = (project: Pick<Project, "media">, item: Item) =>
+  item.name ??
+  (typeof item.text === "string" && item.text.trim() ? item.text.trim().slice(0, 24) : undefined) ??
+  project.media.find((m) => m.id === item.media)?.name ??
+  item.id;
 
 export function planTrack(project: Tracked, options: TrackOptions, frames: ReadonlyArray<TrackFrame>): TrackPlan {
   const problem = trackProblem(project, options.item, options.target);
@@ -244,19 +259,30 @@ export function planTrack(project: Tracked, options: TrackOptions, frames: Reado
   const fps = project.canvas.fps;
   const { path, lostLocal } = objectPath(project, target, frames, first - under.from, over.to - first);
   const lostAt = momentLabel((lostLocal ?? 0) + under.from, fps);
-  if (path.length < 2 && lostLocal !== undefined) return { problem: `The tracker lost the object straight away, at ${lostAt}. Draw a tighter box on something with clear edges.` };
+  if (path.length < 2 && lostLocal !== undefined)
+    return { problem: `The tracker lost the object straight away, at ${lostAt}. Draw a tighter box on something with clear edges.` };
   if (!path.length) return { problem: "The tracker found nothing at that moment, so the track wasn't applied." };
   const local = first - over.from;
   const base = overlayAt(project, item, local);
-  const x = settled(path.map((p) => base.x + p.x - path[0]!.x), fps, TRACK_SMOOTH_S);
-  const y = settled(path.map((p) => base.y + p.y - path[0]!.y), fps, TRACK_SMOOTH_S);
-  const scale = options.scale ? settled(path.map((p) => (base.scale * p.size) / path[0]!.size), fps, TRACK_SCALE_SMOOTH_S) : undefined;
+  const x = settled(
+    path.map((p) => base.x + p.x - path[0]!.x),
+    fps,
+    TRACK_SMOOTH_S,
+  );
+  const y = settled(
+    path.map((p) => base.y + p.y - path[0]!.y),
+    fps,
+    TRACK_SMOOTH_S,
+  );
+  const scale = options.scale
+    ? settled(
+        path.map((p) => (base.scale * p.size) / path[0]!.size),
+        fps,
+        TRACK_SCALE_SMOOTH_S,
+      )
+    : undefined;
   const tolerance = TRACK_TOLERANCE * Math.max(project.canvas.width, project.canvas.height);
-  const channels = [
-    { values: x, tolerance },
-    { values: y, tolerance },
-    ...(scale ? [{ values: scale, tolerance: TRACK_SCALE_TOLERANCE }] : []),
-  ];
+  const channels = [{ values: x, tolerance }, { values: y, tolerance }, ...(scale ? [{ values: scale, tolerance: TRACK_SCALE_TOLERANCE }] : [])];
   const moved = channels.some((c) => c.values.some((v) => Math.abs(v - c.values[0]!) > c.tolerance));
   const picks = moved ? thinPath(channels) : [0];
   const pins: Array<Key> = picks.map((i) => ({ frame: local + i, x: round2(x[i]!), y: round2(y[i]!), ...(scale ? { scale: round3(scale[i]!) } : {}) }));
@@ -283,6 +309,8 @@ export function planUntrack(project: Tracked, itemId: string, options: { readonl
   if (!found) return { problem: "That item isn't in the project any more." };
   if (found.track.locked || found.item.locked) return { problem: "That item is locked: unlock it first." };
   const keys = keysKept(found.item.keys, -Infinity, options.scale ? ["x", "y", "scale"] : ["x", "y"]);
-  return { ops: [{ op: "update_item", item: itemId, set: { keys: keys.length ? keys : null } }], summary: `Remove the track on ${nameOf(project, found.item)}` };
+  return {
+    ops: [{ op: "update_item", item: itemId, set: { keys: keys.length ? keys : null } }],
+    summary: `Remove the track on ${nameOf(project, found.item)}`,
+  };
 }
-

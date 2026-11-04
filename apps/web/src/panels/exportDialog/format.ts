@@ -80,10 +80,14 @@ export function preparingStatus(job: Pick<ExportJob, "step">, graphics = true): 
           ? `Reversing clips${counted ? `: ${counted.done + 1} of ${counted.total}` : "…"}`
           : s.kind === "vision"
             ? `Removing backgrounds and finding faces${counted ? `: ${counted.done + 1} of ${counted.total}` : "…"}`
-          : s.kind === "graphics"
-            ? `Drawing the ${graphics ? "graphics" : "text"}${frames}`
-            : `Drawing the shader effects${frames}`;
-  return { text, fraction: counted && (s!.kind === "graphics" || s!.kind === "shaders" || s!.kind === "reverse" || s!.kind === "vision") ? counted.done / counted.total : undefined };
+            : s.kind === "graphics"
+              ? `Drawing the ${graphics ? "graphics" : "text"}${frames}`
+              : `Drawing the shader effects${frames}`;
+  return {
+    text,
+    fraction:
+      counted && (s!.kind === "graphics" || s!.kind === "shaders" || s!.kind === "reverse" || s!.kind === "vision") ? counted.done / counted.total : undefined,
+  };
 }
 
 /** The Export button's label while a job runs: the encode's percentage, or the preparing step's as the dialog's bar shows it. */
