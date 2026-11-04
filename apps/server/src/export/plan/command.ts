@@ -1,7 +1,8 @@
 import { codecExtension, isProRes, maskGeq } from "@uncut/core";
-import type { ExportPlan } from "./types.ts";
+import type { ExportPlan, Placement } from "./types.ts";
 import { type CommandOptions, fadeFilters, alphaFilters, boxGraph, videoSource, same, placeAt } from "./video.ts";
 import { fxGraph } from "./fx.ts";
+import { blendGraph, maskGraph } from "./matte.ts";
 import { blurPad, BLUR_STEPS, IRIS_MASK_STEP } from "./layers.ts";
 import { n } from "./num.ts";
 import { audioGraph } from "./audio.ts";
@@ -16,6 +17,11 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   const backdrop = opts.video?.alpha ? `${toYuv(true)},lutyuv=a=0` : toYuv(false);
   graph.push(`[0:v]${backdrop},loop=loop=${plan.frames - 1}:size=1:start=0,settb=1/${fps},setpts=N[b0]`);
   let base = "b0";
+  /** The box (D75) and then the clip's shape mask in it (D326). */
+  const boxed = (layer: ExportPlan["visuals"][number], geo: ReadonlyArray<Placement>, input: string, output: string) =>
+    layer.clipMask
+      ? [...boxGraph(geo, input, `${output}u`, fps), ...maskGraph(layer.clipMask, geo[0]!.w, geo[0]!.h, `${output}u`, output, fps, layer.f1 - layer.f0)]
+      : boxGraph(geo, input, output, fps);
   plan.visuals.forEach((layer, k) => {
     const index = k + 1;
     const frames = layer.f1 - layer.f0;
@@ -34,7 +40,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       graph.push(
         `[${index}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[e${k}]`,
         ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
-        ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+        ...boxed(layer, geo, `p${k}`, `q${k}`),
       );
       chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
     } else if (layer.kind === "video") {
@@ -43,11 +49,11 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       const picked = source.picked;
       if (geo && layer.fx) {
         // Picture effects (D136) on the picture, then its box.
-        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxed(layer, geo, `p${k}`, `q${k}`));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else if (geo) {
         // A box (D75): the picture made into its box, then placed by the overlay.
-        graph.push(`${picked.join(",")}[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        graph.push(`${picked.join(",")}[p${k}]`, ...boxed(layer, geo, `p${k}`, `q${k}`));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else {
         const alpha = !layer.fills || fades.length > 0 || !!layer.wipe || !!layer.iris || !!layer.mask || opacity.length > 0;
@@ -70,13 +76,13 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
           graph.push(
             `[${index}:v:0]${looped.join(",")},setpts=N[e${k}]`,
             ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts),
-            ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+            ...boxed(layer, geo, `p${k}`, `q${k}`),
           );
         else
           graph.push(
             ...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts),
             `[e${k}]${looped.join(",")},setpts=N[p${k}]`,
-            ...boxGraph(geo, `p${k}`, `q${k}`, fps),
+            ...boxed(layer, geo, `p${k}`, `q${k}`),
           );
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else if (geo && same(geo.map((p) => p.cw)) && same(geo.map((p) => p.ch))) {
@@ -201,7 +207,12 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       at = `:x='${x}-${W}':y=0`;
     }
     graph.push(`${chain.join(",")}[l${k}]`);
-    graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=${fmt}:repeatlast=0${at}[b${k + 1}]`);
+    // A blend mode (D326) blends onto everything below; a transparent export draws it normally.
+    if (layer.blend && !opts.video?.alpha)
+      graph.push(
+        ...blendGraph({ mode: layer.blend, at, f0: layer.f0, f1: layer.f1, frames: plan.frames, format: "yuv444p" }, base, `l${k}`, `b${k + 1}`, W, H, fps),
+      );
+    else graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=${fmt}:repeatlast=0${at}[b${k + 1}]`);
     base = `b${k + 1}`;
   });
   // fps on frames already on the 1/fps grid passes them through one to one; it gives the stream its rate.

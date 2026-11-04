@@ -284,7 +284,11 @@
         "x": { "type": "number", "description": "Clips: the box's left edge in canvas pixels." },
         "y": { "type": "number", "description": "Clips: the box's top edge in canvas pixels." },
         "scale": { "type": "number", "exclusiveMinimum": 0, "description": "Clips: the picture's zoom in the box." },
-        "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maskX": { "type": "number", "description": "Clips with effect.mask (D326): the mask's left edge, canvas px from the box's left edge." },
+        "maskY": { "type": "number", "description": "Clips with effect.mask (D326): the mask's top edge, canvas px from the box's top edge." },
+        "maskW": { "type": "number", "minimum": 0, "description": "Clips with effect.mask (D326): the mask's width in canvas px." },
+        "maskH": { "type": "number", "minimum": 0, "description": "Clips with effect.mask (D326): the mask's height in canvas px." }
       }
     },
     "itemBase": {

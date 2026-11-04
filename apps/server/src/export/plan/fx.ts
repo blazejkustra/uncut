@@ -2,6 +2,7 @@ import { type ColourLut, shakeZoom, shakeExpr } from "@uncut/core";
 import type { ExportPlan, LayerFx } from "./types.ts";
 import { n } from "./num.ts";
 import { blurFilters, BLUR_STEPS } from "./layers.ts";
+import { keyGraph } from "./matte.ts";
 
 /** The colour tables (D136) a plan's layers use, each once: what the exporter writes as .cube files. */
 export const planLuts = (plan: Pick<ExportPlan, "visuals">): Array<ColourLut> => [
@@ -21,9 +22,15 @@ const filterPath = (path: string) => {
  * first, `f0`), pixelate (pixelize, block averages), colour (lut3d trilinear on core's table),
  * posterize (lutrgb floor), RGB split (rgbashift), sharpen (a 3×3 convolution, weights over 16),
  * glow (a thresholded copy blurred and screened on), back to 4:4:4 YUV with alpha, then blur (D133's
- * premultiplied gblur). The preview's shader (apps/web/src/preview/fx.ts) does the same.
+ * premultiplied gblur). A chroma key (D326, keyGraph) runs before all of them. The preview's shader
+ * (apps/web/src/preview/fx.ts) does the same.
  */
 export function fxGraph(lf: LayerFx, input: string, output: string, fps: number, f0: number, luts?: ReadonlyMap<string, string>): Array<string> {
+  const keyed = lf.fx.key ? keyGraph(lf.fx.key, input, `${output}kd`, lf.w, lf.h) : [];
+  return [...keyed, ...effectsGraph(lf, keyed.length ? `${output}kd` : input, output, fps, f0, luts)];
+}
+
+function effectsGraph(lf: LayerFx, input: string, output: string, fps: number, f0: number, luts?: ReadonlyMap<string, string>): Array<string> {
   const { fx, w, h, k } = lf;
   // 16-bit RGB with alpha: a still's transparency is carried through (every step leaves alpha as it is).
   const chain = [`scale=w=${w}:h=${h}:out_range=pc`, "format=gbrap16le"];

@@ -2,7 +2,23 @@ import type { Item, ModuleUse, ProjectLut } from "../../timeline/types.ts";
 import { type ClipBox, fitRect, moveBox, type Rect } from "../box.ts";
 import type { ColourSpec } from "./colour.ts";
 import { lutTable } from "./cube.ts";
-import { type LookDef, lookInfo, type Adjust, LOOK, num, ADJUST, adjustOf, isNeutral, effectInfo, effectParams } from "./defs.ts";
+import {
+  type LookDef,
+  lookInfo,
+  type Adjust,
+  LOOK,
+  num,
+  ADJUST,
+  adjustOf,
+  isNeutral,
+  effectInfo,
+  effectParams,
+  effectOptions,
+  CHROMA_KEY,
+  BLEND,
+  MASK,
+} from "./defs.ts";
+import type { BlendMode, ChromaKey, ClipMask, ClipMaskShape } from "./matte.ts";
 
 // ---- a clip's effects, compiled ----
 
@@ -22,6 +38,10 @@ export interface ClipFx {
   readonly vignette?: { readonly amount: number; readonly size: number };
   readonly grain?: { readonly amount: number };
   readonly letterbox?: { readonly ratio: number };
+  /** D326: the alpha path (key on the picture first, the mask in the box) and the blend onto what's below (never "normal"). */
+  readonly key?: ChromaKey;
+  readonly mask?: ClipMask;
+  readonly blend?: BlendMode;
 }
 
 const live = (item: Pick<Item, "effects">): ReadonlyArray<ModuleUse> =>
@@ -62,7 +82,26 @@ export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArra
     }
     if (!effectInfo(e.module)) continue;
     const p = effectParams(e.module, e.params);
+    const o = effectOptions(e.module, e.params);
     switch (e.module) {
+      case CHROMA_KEY:
+        fx.key = { color: o.color as string, tolerance: p.tolerance!, softness: p.softness!, spill: p.spill! };
+        break;
+      case BLEND:
+        if (o.mode !== "normal") fx.blend = o.mode as BlendMode;
+        break;
+      case MASK:
+        fx.mask = {
+          shape: o.shape as ClipMaskShape,
+          invert: o.invert === true,
+          x: p.x!,
+          y: p.y!,
+          w: p.w!,
+          h: p.h!,
+          radius: p.radius!,
+          feather: p.feather!,
+        };
+        break;
       case "effect.blur":
         fx.blur = p.amount!;
         break;
@@ -110,7 +149,7 @@ export function clipFx(item: Pick<Item, "type" | "effects">, luts?: ReadonlyArra
 
 /** Whether the effects change the picture itself (the WebGL pass / the export's filters), not only overlays or the box. */
 export const needsPicturePass = (fx: ClipFx | undefined) =>
-  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow);
+  !!fx && !!(fx.colour || fx.posterize || fx.mirror || fx.shake || fx.pixelate || fx.rgbSplit || fx.sharpen || fx.glow || fx.key || fx.mask);
 /** Whether anything is drawn over the picture (vignette, grain, letterbox). */
 export const hasOverlay = (fx: ClipFx | undefined) => !!fx && !!(fx.vignette || fx.grain || fx.letterbox);
 

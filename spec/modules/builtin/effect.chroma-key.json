@@ -1,0 +1,52 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.chroma-key",
+  "kind": "effect",
+  "name": "Chroma key",
+  "description": "Removes a green screen or any colour you pick",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "default": "#00ff00",
+        "x-control": "color",
+        "description": "Key colour: the colour made transparent"
+      },
+      "tolerance": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.25,
+        "description": "Tolerance: how far (in chroma) from the key colour is still keyed out"
+      },
+      "softness": {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 1,
+        "default": 0.1,
+        "description": "Softness: how wide the blend from keyed out to kept is"
+      },
+      "spill": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "description": "Spill removal: pulls the key colour's cast off the edges (green or blue keys)"
+      }
+    }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "pipette"
+  }
+}

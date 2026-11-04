@@ -25,6 +25,8 @@ import {
   graphicLocal,
   fxBox,
   clipFx,
+  maskAt,
+  scaleMask,
   fxSkips,
   clipShader,
   needsPicturePass,
@@ -243,6 +245,12 @@ export function planExport(
         const placements = boxes.map((b) => placementOf(b, kx, ky, rest));
         const geometry = plainAt.every(Boolean) ? {} : { geometry: { frames: placements } };
         const alpha = boxes.some((b) => b.opacity !== 1) ? { alpha: boxes.map((b) => b.opacity) } : {};
+        // D326: the shape mask in the box (keyed: one per frame) and the blend mode.
+        const masks = effects?.mask ? boxes.map((_, k) => scaleMask(maskAt(effects.mask!, item.keys, f0 + k - start, rest, fps), kx, ky)) : undefined;
+        const matte = {
+          ...(masks ? { clipMask: masks.every((m) => JSON.stringify(m) === JSON.stringify(masks[0])) ? [masks[0]!] : masks } : {}),
+          ...(effects?.blend ? { blend: effects.blend } : {}),
+        };
         let layerFx: { fx?: LayerFx } = {};
         if (picture && (effects || shader)) {
           // The size the effects work at, as the preview's (core fxPictureSize): the picture's fit before
@@ -258,10 +266,11 @@ export function planExport(
         }
         const layer: VisualLayer =
           media.kind === "image"
-            ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry, ...layerFx }
+            ? { ...base, ...alpha, ...matte, kind: "image", file: path, fills: fills(media), ...geometry, ...layerFx }
             : {
                 ...base,
                 ...alpha,
+                ...matte,
                 kind: "video",
                 file: path,
                 source: sourceAt(project, item, f0 - start),

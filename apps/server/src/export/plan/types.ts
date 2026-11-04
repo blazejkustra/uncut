@@ -9,6 +9,8 @@ import {
   type DuckKey,
   type Stage,
   type Media,
+  type BlendMode,
+  type ClipMask,
   RENDER_CSS,
 } from "@uncut/core";
 
@@ -61,6 +63,13 @@ export interface LayerBase {
   readonly geometry?: Geometry;
   /** The box's opacity (transform.opacity, opacity keys) for each frame from f0; absent when always 1. */
   readonly alpha?: ReadonlyArray<number>;
+  /**
+   * A clip's shape mask (D326) in output px from its box's top-left: one for every frame from f0
+   * when keyed, else one for all. Applied in the box, after its corners.
+   */
+  readonly clipMask?: ReadonlyArray<ClipMask>;
+  /** A clip's blend mode onto what's below (D326); absent is normal. */
+  readonly blend?: BlendMode;
 }
 
 /**

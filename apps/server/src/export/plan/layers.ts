@@ -95,6 +95,7 @@ function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, s
     ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}),
     ...(layer.blur ? { blur: layer.blur.slice(a, b) } : {}),
     ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}),
+    ...(layer.clipMask && layer.clipMask.length > 1 ? { clipMask: layer.clipMask.slice(a, b) } : {}),
   };
   if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
   if (layer.kind === "graphic")

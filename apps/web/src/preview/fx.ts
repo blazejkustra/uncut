@@ -9,24 +9,44 @@
 // left, edges smeared, as rgbashift), sharpen (core's 3×3 kernel over 16, edges mirrored, as
 // convolution), glow (a thresholded copy, Gaussian-blurred, screened on). Blur is CSS on the canvas
 // (D133's maths); vignette, grain and letterbox are core's HTML over it.
-import { colourLut, shakeWindow, shakeZoom, type ClipFx, type ColourLut } from "@uncut/core/fx";
+// D326: a chroma key (core keyAlpha and despill) on the picture before everything else, and a
+// shape mask (core maskCoverage, in the clip's box) multiplied into the alpha at the end.
+import { colourLut, keyChroma, maskAt, shakeWindow, shakeZoom, spillChannel, type ClipFx, type ClipMask, type ColourLut } from "@uncut/core/fx";
+import type { ClipBox } from "@uncut/core/box";
+import type { Item } from "@uncut/core/types";
 
 const VERTEX = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
 // The picture as the effects see it: where output pixel q (centre, picture px) samples the source,
-// after the shake's window and the mirror.
+// after the shake's window and the mirror, keyed.
 const SOURCE = `
 uniform sampler2D uSrc;
 uniform vec2 uSize;
 uniform vec2 uZoomed;
 uniform vec2 uWin;
 uniform bool uMirror;
+uniform bool uKey;
+uniform vec2 uKeyChroma;
+uniform float uKeyTolerance;
+uniform float uKeySoftness;
+uniform float uSpill;
+uniform int uSpillChannel;
+vec4 keyed(vec4 c) {
+  if (!uKey) return c;
+  float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec2 chroma = vec2((c.b - y) / 1.8556, (c.r - y) / 1.5748);
+  float a = clamp((distance(chroma, uKeyChroma) - uKeyTolerance) / uKeySoftness, 0.0, 1.0);
+  vec3 rgb = c.rgb;
+  if (uSpillChannel == 1) rgb.g = max(0.0, rgb.g - uSpill*max(0.0, rgb.g - 0.5*(rgb.r + rgb.b)));
+  if (uSpillChannel == 2) rgb.b = max(0.0, rgb.b - uSpill*max(0.0, rgb.b - 0.5*(rgb.r + rgb.g)));
+  return vec4(rgb, c.a*a);
+}
 vec4 picture(vec2 q) {
   vec2 uv = (q + uWin) / uZoomed;
   if (uMirror) uv.x = 1.0 - uv.x;
-  return texture(uSrc, uv);
+  return keyed(texture(uSrc, uv));
 }`;
 
 /** Block averages for pixelate: one texel per block. */
@@ -164,7 +184,33 @@ uniform sampler2D uImg;
 uniform sampler2D uGlow;
 uniform bool uUseGlow;
 uniform vec2 uDim;
+uniform bool uMask;
+uniform bool uMaskEllipse;
+uniform bool uMaskInvert;
+uniform vec2 uMaskScale;
+uniform vec2 uMaskOffset;
+uniform vec2 uMaskAt;
+uniform vec2 uMaskSize;
+uniform float uMaskRadius;
+uniform float uMaskFeather;
 out vec4 outColor;
+// Core maskCoverage at picture pixel q, the mask in the box's canvas px.
+float coverage(vec2 q) {
+  vec2 h = 0.5*uMaskSize;
+  vec2 d = q*uMaskScale + uMaskOffset - (uMaskAt + h);
+  float sd;
+  if (uMaskEllipse) {
+    float k0 = length(d / h);
+    float k1 = length(d / (h*h));
+    sd = k1 > 0.0 ? k0*(k0 - 1.0) / k1 : -min(h.x, h.y);
+  } else {
+    float r = min(uMaskRadius, min(h.x, h.y));
+    vec2 w = abs(d) - (h - r);
+    sd = length(max(w, 0.0)) + min(max(w.x, w.y), 0.0) - r;
+  }
+  float c = clamp(0.5 - sd / uMaskFeather, 0.0, 1.0);
+  return uMaskInvert ? 1.0 - c : c;
+}
 void main() {
   vec2 q = vec2(gl_FragCoord.x, uDim.y - gl_FragCoord.y);
   vec4 px = texelFetch(uImg, ivec2(q), 0);
@@ -173,8 +219,9 @@ void main() {
     vec3 g = texture(uGlow, q / uDim).rgb;
     c = 1.0 - (1.0 - c)*(1.0 - g);
   }
-  // The source's alpha kept (a still's transparency), premultiplied for the canvas.
-  outColor = vec4(c*px.a, px.a);
+  // The source's alpha kept (a still's transparency, the key's), times the mask, premultiplied for the canvas.
+  float a = uMask ? px.a*coverage(q) : px.a;
+  outColor = vec4(c*a, a);
 }`;
 
 /**
@@ -194,6 +241,68 @@ export const frameKeyOf = (source: TexImageSource): string | undefined =>
       : undefined;
 
 type Program = { readonly program: WebGLProgram; readonly uniforms: Map<string, WebGLUniformLocation | null> };
+
+/**
+ * A clip's shape mask for one draw (D326): the mask at this frame in the box's canvas px, and where
+ * the picture sits in the box (box px = picture px · scale + offset).
+ */
+export interface MaskFrame {
+  readonly mask: ClipMask;
+  readonly scale: readonly [number, number];
+  readonly offset: readonly [number, number];
+}
+
+const SPILL_CHANNELS = { green: 1, blue: 2 } as const;
+
+type Uniforms = Record<string, number | boolean | ReadonlyArray<number> | { int: number | ReadonlyArray<number> }>;
+
+/** The key's uniforms (off when the clip has none). */
+function keyUniforms(fx: ClipFx): Uniforms {
+  if (!fx.key) return { uKey: false };
+  const k = keyChroma(fx.key);
+  const ch = spillChannel(fx.key);
+  return {
+    uKey: true,
+    uKeyChroma: [k.cb, k.cr],
+    uKeyTolerance: fx.key.tolerance,
+    uKeySoftness: fx.key.softness,
+    uSpill: fx.key.spill,
+    uSpillChannel: { int: ch ? SPILL_CHANNELS[ch] : 0 },
+  };
+}
+
+/** The mask's uniforms (off without one); its feather at least a picture pixel. */
+function maskUniforms(m: MaskFrame | undefined): Uniforms {
+  if (!m) return { uMask: false };
+  return {
+    uMask: true,
+    uMaskEllipse: m.mask.shape === "ellipse",
+    uMaskInvert: m.mask.invert,
+    uMaskScale: m.scale,
+    uMaskOffset: m.offset,
+    uMaskAt: [m.mask.x, m.mask.y],
+    uMaskSize: [m.mask.w, m.mask.h],
+    uMaskRadius: m.mask.radius,
+    uMaskFeather: Math.max(m.mask.feather, m.scale[0], m.scale[1]),
+  };
+}
+
+/** A clip's mask at `local` frames from its start, for its picture drawn at w × h in `box` (undefined without one). */
+export function maskFrame(
+  item: Pick<Item, "keys">,
+  fx: ClipFx,
+  box: ClipBox,
+  size: { readonly w: number; readonly h: number },
+  local: number,
+  fps: number,
+): MaskFrame | undefined {
+  if (!fx.mask) return undefined;
+  const c = box.content;
+  return { mask: maskAt(fx.mask, item.keys, local, box, fps), scale: [c.w / size.w, c.h / size.h], offset: [c.x - box.x, c.y - box.y] };
+}
+
+/** What a mask draw adds to the redraw check. */
+export const maskKey = (m: MaskFrame | undefined) => (m ? JSON.stringify(m) : "");
 type Target = { readonly tex: WebGLTexture; readonly fbo: WebGLFramebuffer; w: number; h: number };
 
 /** One WebGL2 context drawing a clip's picture with its effects into its canvas. */
@@ -319,7 +428,7 @@ export class FxRenderer {
     return p;
   }
 
-  private use(p: Program, values: Record<string, number | boolean | ReadonlyArray<number> | { int: number | ReadonlyArray<number> }>) {
+  private use(p: Program, values: Uniforms) {
     const gl = this.gl;
     gl.useProgram(p.program);
     for (const [k, v] of Object.entries(values)) {
@@ -387,7 +496,17 @@ export class FxRenderer {
    *Draws `source` (a <video> or <img>) with `fx` into the canvas at w × h (whole px). `k` is px
    *per canvas px (1 in the preview; less in a thumbnail), `t` the moment (s) from the clip's start.
    */
-  render(source: TexImageSource, fx: ClipFx, w: number, h: number, t: number, k = 1, key?: string, output: WebGLFramebuffer | null = null): boolean {
+  render(
+    source: TexImageSource,
+    fx: ClipFx,
+    w: number,
+    h: number,
+    t: number,
+    k = 1,
+    key?: string,
+    output: WebGLFramebuffer | null = null,
+    mask?: MaskFrame,
+  ): boolean {
     const gl = this.gl;
     this.output = output;
     if (this.lost || gl.isContextLost()) {
@@ -396,7 +515,7 @@ export class FxRenderer {
     }
     // The same frame with the same effects at the same size (a paused clip re-rendered): nothing to do.
     const frame = frameKeyOf(source);
-    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}` : "";
+    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}|${maskKey(mask)}` : "";
     if (sig && sig === this.last && this.drawn) return true;
     this.last = "";
     if (!this.shared && this.canvas.width !== w) this.canvas.width = w;
@@ -423,7 +542,7 @@ export class FxRenderer {
       zoomed = [zw, zh];
       win = [o.x, o.y];
     }
-    const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true };
+    const pictureUniforms = { uSrc: { int: 0 }, uSize: [w, h], uZoomed: zoomed, uWin: win, uMirror: fx.mirror === true, ...keyUniforms(fx) };
     // Pixelate: block averages first.
     const block = fx.pixelate ? Math.max(1, Math.round(fx.pixelate * k)) : 1;
     let blocks: Target | undefined;
@@ -504,7 +623,7 @@ export class FxRenderer {
     }
     this.bind(0, img.tex);
     if (glow) this.bind(1, glow.tex);
-    this.use(this.program("final", FINAL), { uImg: { int: 0 }, uGlow: { int: 1 }, uUseGlow: !!glow, uDim: [w, h] });
+    this.use(this.program("final", FINAL), { uImg: { int: 0 }, uGlow: { int: 1 }, uUseGlow: !!glow, uDim: [w, h], ...maskUniforms(mask) });
     this.draw(undefined, w, h);
     this.drawn = true;
     this.last = sig;

@@ -10,7 +10,8 @@
 //   renderer draws (the sample picture, then the selected clip's frame), each look's different;
 //   a click puts a look on the selected clip (one edit), a drag onto a timeline clip adds an
 //   effect there; the Inspector's filter intensity, Adjust and an effect's setting are one edit
-//   each. Screenshots test-output/effects-panel.png, effects-inspector.png.
+//   each; a mask's W and X key and a blend's mode (D326) too. Screenshots test-output/effects-panel.png,
+//   effects-inspector.png, effects-matte-inspector.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -97,8 +98,21 @@ const CASES: ReadonlyArray<Case> = [
     transform: { scale: 0.5 },
     min: 0.95,
   },
+  // D326: masks with a feather and inverted, a blend over the canvas grey, a key of the teal block.
+  {
+    name: "mask-ellipse-feather",
+    effects: [{ module: "effect.mask", params: { shape: "ellipse", x: 160, y: 90, w: 960, h: 540, feather: 40 } }],
+    min: SSIM_LOOKS,
+  },
+  {
+    name: "mask-rect-invert",
+    effects: [{ module: "effect.mask", params: { shape: "rectangle", x: 200, y: 120, w: 600, h: 400, radius: 60, feather: 8, invert: true } }],
+    min: SSIM_LOOKS,
+  },
+  { name: "blend-multiply", effects: [{ module: "effect.blend", params: { mode: "multiply" } }], min: SSIM_LOOKS },
+  { name: "key-teal", effects: [{ module: "effect.chroma-key", params: { color: "#2a9d8f", tolerance: 0.08, softness: 0.05 } }], min: SSIM_LOOKS },
 ];
-const PLAIN = ["effect.vignette", "effect.letterbox", "effect.zoom-pulse", "effect.blur", "effect.grain"];
+const PLAIN = ["effect.vignette", "effect.letterbox", "effect.zoom-pulse", "effect.blur", "effect.grain", "effect.blend"];
 const viaCanvas = (c: Case) => c.canvas ?? (!!c.effects && !PLAIN.includes(String(c.effects[0]!.module)));
 
 let root = "";
@@ -422,6 +436,37 @@ test(
     await page.click("[data-testid=insp-adjust-reset]");
     await waitRevision(r + 1);
     assert.ok(!effectsOf("c0")!.some((e) => e.module === "effect.color"));
+
+    // D326: a mask from its tile covers the middle of the box; its W field and its X diamond are one
+    // edit each, as is the blend's mode.
+    const paramsOf = (module: string) => effectsOf("c0")!.find((e) => e.module === module)!.params;
+    await page.click("[data-testid=rail-effects]");
+    r = await revision();
+    await page.click("[data-testid=effect-tile][data-module='effect.mask']");
+    await waitRevision(r + 1);
+    assert.deepEqual(paramsOf("effect.mask"), { shape: "rectangle", invert: false, x: 256, y: 144, w: 768, h: 432, radius: 0, feather: 0 });
+    r = await revision();
+    await page.click("[data-testid=effect-tile][data-module='effect.blend']");
+    await waitRevision(r + 1);
+    await page.click("[data-testid=tab-inspector]");
+    await page.waitForSelector("[data-testid=insp-mask]");
+    await setField("insp-mask-w", "500");
+    assert.equal((paramsOf("effect.mask") as { w: number }).w, 500);
+    r = await revision();
+    await page.click("[data-testid=insp-key][data-prop=maskX]");
+    await waitRevision(r + 1);
+    assert.ok(
+      onDisk()
+        .tracks[0]!.items.find((i) => i.id === "c0")!
+        .keys!.some((k) => k.maskX === 256),
+      "a mask X key at the playhead",
+    );
+    r = await revision();
+    await page.select("[data-testid=insp-effect-mode-value]", "multiply");
+    await waitRevision(r + 1);
+    assert.deepEqual(paramsOf("effect.blend"), { mode: "multiply" });
+    await page.waitForFunction(() => document.querySelector<HTMLElement>(".pv-box[data-item=c0]")!.style.mixBlendMode === "multiply");
+    await page.screenshot({ path: out("effects-matte-inspector.png") });
 
     // A drag onto another clip in the timeline adds the effect there.
     await page.click("[data-testid=rail-effects]");

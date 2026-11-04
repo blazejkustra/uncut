@@ -7,7 +7,9 @@ import {
   ADJUST_INFO,
   adjustOf,
   effectInfo,
+  effectOptions,
   effectParams,
+  MASK,
   LOOK,
   lookInfo,
   planAdjust,
@@ -16,18 +18,23 @@ import {
   planRemoveEffect,
   planSetLook,
   type AdjustKey,
+  type EffectInfo,
+  type EffectOption,
 } from "@uncut/core/fx";
+import type { ModuleUse } from "@uncut/core/types";
 import { planShader, planShaderValues, SHADER, shaderUseOf } from "@uncut/core/shaders";
 import type { Item } from "@uncut/core/types";
 import { AtSign, RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
-import type { PreviewDraft } from "../preview/playback.ts";
+import { getPlayback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
+import { clipState, maskKeyOf, maskValues, planMaskValue } from "../timeline/clip.ts";
+import { KeyButton } from "./clip.tsx";
 import { type ProjectModel } from "../state/project.ts";
 import { actions } from "../state/store.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { Prop, Section, SliderNum, Toggle } from "./controls.tsx";
-import { send, showDraft, type PlanResult } from "./fields.tsx";
+import { NumberField, send, showDraft, type PlanResult } from "./fields.tsx";
 
 /** A slider that drafts while it moves and sends one edit on release. */
 export function Live({
@@ -189,56 +196,145 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
       <ShaderEditor project={project} item={item} locked={locked} />
       {others.length > 0 && (
         <Section title="Effects" testId="insp-effects" remember="effects">
-          {others.map((e) => {
-            const info = effectInfo(e.module)!;
-            const params = effectParams(e.module, e.params);
-            return (
-              <div key={e.module} className={`fx-entry${e.bypass ? " off" : ""}`} data-testid="insp-effect" data-module={e.module} data-off={e.bypass === true}>
-                <div className="fx-entry-head">
-                  <span className="grow">{info.name}</span>
-                  {/* D264 (#77): this effect as a chip in the Agent tab's composer. */}
-                  <Tooltip label={`Add ${info.name.toLowerCase()} to the agent chat`}>
-                    <button className="icon-btn" data-testid="insp-effect-add-to-chat" onClick={() => actions.addEffectToChat(item.id, e.module)}>
-                      <AtSign />
-                    </button>
-                  </Tooltip>
-                  <Power item={item} module={e.module} off={e.bypass === true} name={info.name.toLowerCase()} testId="insp-effect-power" disabled={locked} />
-                  <Tooltip label={`Remove ${info.name.toLowerCase()}`}>
-                    <button
-                      className="icon-btn"
-                      data-testid="insp-effect-remove"
-                      disabled={locked}
-                      onClick={() => send((p) => planRemoveEffect(p, item.id, e.module))}
-                    >
-                      <X />
-                    </button>
-                  </Tooltip>
-                </div>
-                {info.params.map((d) => (
-                  <Prop
-                    key={d.key}
-                    label={d.name}
-                    testId={`insp-effect-${d.key}`}
-                    onReset={params[d.key] !== d.default && !locked ? () => send((p) => planEffect(p, item.id, e.module, { [d.key]: d.default })) : undefined}
-                  >
-                    <Live
-                      project={project}
-                      value={round(params[d.key]!, d.step)}
-                      min={d.min}
-                      max={d.max}
-                      step={d.step}
-                      {...(d.unit ? { unit: d.unit } : {})}
-                      testId={`insp-effect-${d.key}-value`}
-                      disabled={locked}
-                      plan={(p, v) => planEffect(p, item.id, e.module, { [d.key]: v })}
-                    />
-                  </Prop>
-                ))}
-              </div>
-            );
-          })}
+          {others.map((e) => (
+            <EffectEntry key={e.module} project={project} item={item} entry={e} info={effectInfo(e.module)!} locked={locked} />
+          ))}
         </Section>
       )}
+    </div>
+  );
+}
+
+/** One effect in the Effects section: its head (chat, on/off, remove), its options (D326), then its numbers. */
+function EffectEntry({ project, item, entry, info, locked }: { project: ProjectModel; item: Item; entry: ModuleUse; info: EffectInfo; locked: boolean }) {
+  const params = effectParams(entry.module, entry.params);
+  const options = effectOptions(entry.module, entry.params);
+  return (
+    <div className={`fx-entry${entry.bypass ? " off" : ""}`} data-testid="insp-effect" data-module={entry.module} data-off={entry.bypass === true}>
+      <div className="fx-entry-head">
+        <span className="grow">{info.name}</span>
+        {/* D264 (#77): this effect as a chip in the Agent tab's composer. */}
+        <Tooltip label={`Add ${info.name.toLowerCase()} to the agent chat`}>
+          <button className="icon-btn" data-testid="insp-effect-add-to-chat" onClick={() => actions.addEffectToChat(item.id, entry.module)}>
+            <AtSign />
+          </button>
+        </Tooltip>
+        <Power item={item} module={entry.module} off={entry.bypass === true} name={info.name.toLowerCase()} testId="insp-effect-power" disabled={locked} />
+        <Tooltip label={`Remove ${info.name.toLowerCase()}`}>
+          <button
+            className="icon-btn"
+            data-testid="insp-effect-remove"
+            disabled={locked}
+            onClick={() => send((p) => planRemoveEffect(p, item.id, entry.module))}
+          >
+            <X />
+          </button>
+        </Tooltip>
+      </div>
+      {info.options?.map((o) => (
+        <Prop key={o.key} label={o.name} testId={`insp-effect-${o.key}`}>
+          <OptionControl
+            option={o}
+            value={options[o.key]!}
+            disabled={locked}
+            onCommit={(v) => send((p) => planEffect(p, item.id, entry.module, { [o.key]: v }))}
+          />
+        </Prop>
+      ))}
+      {entry.module === MASK ? (
+        <MaskFields project={project} item={item} params={params} locked={locked} />
+      ) : (
+        info.params.map((d) => (
+          <Prop
+            key={d.key}
+            label={d.name}
+            testId={`insp-effect-${d.key}`}
+            onReset={params[d.key] !== d.default && !locked ? () => send((p) => planEffect(p, item.id, entry.module, { [d.key]: d.default })) : undefined}
+          >
+            <Live
+              project={project}
+              value={round(params[d.key]!, d.step)}
+              min={d.min}
+              max={d.max}
+              step={d.step}
+              {...(d.unit ? { unit: d.unit } : {})}
+              testId={`insp-effect-${d.key}-value`}
+              disabled={locked}
+              plan={(p, v) => planEffect(p, item.id, entry.module, { [d.key]: v })}
+            />
+          </Prop>
+        ))
+      )}
+    </div>
+  );
+}
+
+/** A colour well, a list of choices or a switch for an effect's non-number param (one edit each). */
+function OptionControl({
+  option,
+  value,
+  disabled,
+  onCommit,
+}: {
+  option: EffectOption;
+  value: string | boolean;
+  disabled: boolean;
+  onCommit: (v: string | boolean) => void;
+}) {
+  const testId = `insp-effect-${option.key}-value`;
+  if (option.kind === "color") return <ShaderColor value={String(value)} testId={testId} disabled={disabled} onCommit={onCommit} />;
+  if (option.kind === "toggle") return <Toggle testId={testId} label={option.name} value={value === true} disabled={disabled} onChange={onCommit} />;
+  return (
+    <select className="field input" data-testid={testId} value={String(value)} disabled={disabled} onChange={(e) => onCommit(e.target.value)}>
+      {option.choices.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+const MASK_FIELDS = [
+  ["x", "X"],
+  ["y", "Y"],
+  ["w", "W"],
+  ["h", "H"],
+  ["radius", "Radius"],
+  ["feather", "Feather"],
+] as const;
+
+/**
+ * A mask's shape in canvas px from the clip box's top-left (D326): x, y, w and h at the playhead,
+ * each with a keyframe diamond (a keyed value is edited at the playhead), then radius and feather.
+ */
+function MaskFields({ project, item, params, locked }: { project: ProjectModel; item: Item; params: Record<string, number>; locked: boolean }) {
+  const frame = usePlayback((s) => Math.round(s.frame));
+  const state = clipState(project, item.id, frame);
+  const now = maskValues(project, item.id, frame);
+  if (!state || !now) return null;
+  const value = (key: string) => (key in now ? now[key as keyof typeof now] : Math.round(params[key]!));
+  const field = (key: (typeof MASK_FIELDS)[number][0], label: string) => {
+    const prop = maskKeyOf(key);
+    return (
+      <Fragment key={key}>
+        <NumberField
+          label={label}
+          testId={`insp-mask-${key}`}
+          value={value(key)}
+          min={key === "x" || key === "y" ? undefined : 0}
+          disabled={locked}
+          onCommit={(v) => v !== undefined && send((p) => planMaskValue(p, item.id, key, v, getPlayback().frame))}
+        />
+        {prop && <KeyButton project={project} item={item} prop={prop} local={state.local} inside={state.inside} disabled={locked} />}
+      </Fragment>
+    );
+  };
+  return (
+    <div data-testid="insp-mask">
+      <div className="field-row key-row">{MASK_FIELDS.slice(0, 2).map(([k, l]) => field(k, l))}</div>
+      <div className="field-row key-row">{MASK_FIELDS.slice(2, 4).map(([k, l]) => field(k, l))}</div>
+      <div className="field-row">{MASK_FIELDS.slice(4).map(([k, l]) => field(k, l))}</div>
     </div>
   );
 }

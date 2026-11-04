@@ -31,8 +31,9 @@ export type Ease = "linear" | "in" | "out" | "inOut";
 export type KeyEase = Ease | SpringName;
 /** The fps keyed springs run at when the caller has no canvas fps (D192). */
 export const DEFAULT_KEY_FPS = 30;
-export type KeyProp = "x" | "y" | "scale" | "opacity";
-export const KEY_PROPS: ReadonlyArray<KeyProp> = ["x", "y", "scale", "opacity"];
+/** The box's keyed properties, and a mask's (D326: maskX, maskY, maskW, maskH, fx/matte.ts). */
+export type KeyProp = "x" | "y" | "scale" | "opacity" | "maskX" | "maskY" | "maskW" | "maskH";
+export const KEY_PROPS: ReadonlyArray<KeyProp> = ["x", "y", "scale", "opacity", "maskX", "maskY", "maskW", "maskH"];
 export const FITS: ReadonlyArray<Fit> = ["contain", "cover", "fill"];
 
 /** The eases a key may name (cubic; the same curve as the text moves' ease-out). */

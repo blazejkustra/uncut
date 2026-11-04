@@ -68,6 +68,7 @@ export type { AudioGraph, AudioOptions } from "./plan/audio.ts";
 export { untaggedFilter, sourceFramePick, frameLookup, cornerMask, boxGraph, videoSource, shaderSourceArgs } from "./plan/video.ts";
 export type { CommandOptions } from "./plan/video.ts";
 export { planLuts, fxGraph } from "./plan/fx.ts";
+export { keyGraph, maskGraph, blendGraph } from "./plan/matte.ts";
 export { exportCommand, silentFailure } from "./plan/command.ts";
 export {
   loudnessCommand,

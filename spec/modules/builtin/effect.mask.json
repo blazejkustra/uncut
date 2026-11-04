@@ -1,0 +1,79 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.mask",
+  "kind": "effect",
+  "name": "Mask",
+  "description": "Shows the clip inside a rectangle or ellipse",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "shape": {
+        "enum": [
+          "rectangle",
+          "ellipse"
+        ],
+        "default": "rectangle",
+        "description": "Shape"
+      },
+      "invert": {
+        "type": "boolean",
+        "default": false,
+        "description": "Invert: show the clip outside the shape instead"
+      },
+      "x": {
+        "type": "number",
+        "minimum": -10000,
+        "maximum": 10000,
+        "default": 0,
+        "description": "X: the shape's left edge, canvas px from the clip box's left edge (keys: maskX)"
+      },
+      "y": {
+        "type": "number",
+        "minimum": -10000,
+        "maximum": 10000,
+        "default": 0,
+        "description": "Y: the shape's top edge, canvas px from the clip box's top edge (keys: maskY)"
+      },
+      "w": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10000,
+        "default": 0,
+        "description": "Width in canvas px; 0 is the box's width (keys: maskW)"
+      },
+      "h": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10000,
+        "default": 0,
+        "description": "Height in canvas px; 0 is the box's height (keys: maskH)"
+      },
+      "radius": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 5000,
+        "default": 0,
+        "description": "Corner radius in canvas px (rectangle)"
+      },
+      "feather": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 500,
+        "default": 0,
+        "description": "Feather: the soft edge's width in canvas px, centred on the edge"
+      }
+    }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "square-dashed"
+  }
+}

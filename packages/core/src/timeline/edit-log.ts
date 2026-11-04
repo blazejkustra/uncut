@@ -3,6 +3,7 @@
 // "You made N edits by hand" line in the Agent tab.
 import { componentInfo } from "../visual/components.ts";
 import { fxWords } from "../visual/fx.ts";
+import { KEY_PROPS } from "../visual/box.ts";
 import { DUCK, effectName, effectSummary, LIMITER, targetWords } from "../audio/effects.ts";
 import type { Id, LogEntry, Op, Project, Session } from "./types.ts";
 
@@ -210,7 +211,7 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     else if (key === "keys") {
       // Keyframes (D75): which properties are keyed, at which times.
       const keys = Array.isArray(value) ? (value as ReadonlyArray<Record<string, unknown>>) : [];
-      const props = ["x", "y", "scale", "opacity"].filter((p) => keys.some((k) => typeof k[p] === "number"));
+      const props = KEY_PROPS.filter((p) => keys.some((k) => typeof k[p] === "number"));
       parts.push(
         props.length
           ? `keys ${props

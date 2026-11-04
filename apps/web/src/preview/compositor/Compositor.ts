@@ -98,6 +98,12 @@ export class Compositor extends CompositorBase {
         (v.item.type === "text" && typeof v.item.text === "string"),
     );
     const z = new Map(drawn.map((v, i) => [v.item.id, i + 1]));
+    // D326: a blend mode needs the canvas colour as backdrop in this stacking context. Only then: a
+    // background here changes how the GPU compositor's canvas is composited (issue #12).
+    const blends = drawn.some((v) => v.item.type === "clip" && this.effectsOf(v.item)?.blend);
+    const stage = this.mediaLayer.parentElement;
+    const stageBackground = blends ? background : "";
+    if (stage && stage.style.background !== stageBackground) stage.style.background = stageBackground;
     // D221: the bottom run of layers the GPU compositor draws (behind its setting); the rest stays DOM.
     const gpuOn = gpuCompositorOn() && !this.gpuBroken;
     // A context the browser took back (too many WebGL contexts on the page) is made again.

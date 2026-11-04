@@ -81,11 +81,7 @@ test("D136: every effect, the look and Adjust have a manifest whose params are t
     assert.equal(m.name, e.name);
     assert.deepEqual(validateModule(m), [], e.id);
     const props = m.params.properties as Record<string, { minimum: number; maximum: number; default: number }>;
-    assert.deepEqual(
-      Object.keys(props),
-      e.params.map((p) => p.key),
-      e.id,
-    );
+    assert.deepEqual(Object.keys(props), [...(e.options ?? []).map((o) => o.key), ...e.params.map((p) => p.key)], e.id);
     for (const p of e.params)
       assert.deepEqual([props[p.key]!.minimum, props[p.key]!.maximum, props[p.key]!.default], [p.min, p.max, p.default], `${e.id} ${p.key}`);
   }
@@ -109,7 +105,12 @@ test("D136: projects with looks and effects validate; a wrong look or param is r
   const all: Item["effects"] = [
     { module: "effect.look", params: { look: "teal-orange", intensity: 0.7 } },
     { module: "effect.color", params: { exposure: 0.4, vibrance: -0.2 } },
-    ...EFFECTS.map((e) => ({ module: e.id, ...(e.params.length ? { params: Object.fromEntries(e.params.map((p) => [p.key, p.default])) } : {}) })),
+    ...EFFECTS.map((e) => ({
+      module: e.id,
+      ...(e.params.length || e.options?.length
+        ? { params: Object.fromEntries([...(e.options ?? []).map((o) => [o.key, o.default]), ...e.params.map((p) => [p.key, p.default])]) }
+        : {}),
+    })),
   ];
   assert.deepEqual(validateProject(project(all), modules), []);
   assert.ok(validateProject(project([{ module: "effect.look", params: { look: "sparkly" } }]), modules).length > 0, "unknown look");

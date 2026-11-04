@@ -12,6 +12,8 @@
 // - overlay effects, drawn by Chromium on both sides over the picture inside the box: vignette,
 //   film grain, letterbox bars (fxOverlayInner / fxOverlayHtml).
 // - zoom pulse: the box's zoom, frame by frame (fxBox, through D75's keyed-scale path).
+// - D326's alpha path and blend (fx/matte.ts): chroma key on the picture before every other picture
+//   effect, the shape mask in the box after its corners, the blend mode onto what's below.
 // effect.stabilize stays valid but isn't drawn.
 //
 // Colour: every pointwise change (look at its intensity, Adjust, invert) is a function on
@@ -34,8 +36,30 @@ export {
   effectInfo,
   DRAWN_FX,
   effectParams,
+  effectOptions,
+  CHROMA_KEY,
+  BLEND,
+  MASK,
 } from "./fx/defs.ts";
-export type { AdjustKey, Adjust, AdjustInfo, Rgb3, Curve, LookDef, LookInfo, EffectParam, EffectGroup, EffectInfo } from "./fx/defs.ts";
+export type { AdjustKey, Adjust, AdjustInfo, Rgb3, Curve, LookDef, LookInfo, EffectParam, EffectOption, EffectGroup, EffectInfo } from "./fx/defs.ts";
+export {
+  BLEND_MODES,
+  blendInfo,
+  blendChannel,
+  chromaOf,
+  hexRgb,
+  keyChroma,
+  keyAlpha,
+  keyAlphaExpr,
+  spillChannel,
+  despill,
+  MASK_KEYS,
+  maskAt,
+  scaleMask,
+  maskCoverage,
+  maskCoverageExpr,
+} from "./fx/matte.ts";
+export type { BlendMode, BlendInfo, ChromaKey, ClipMask, ClipMaskShape, MaskKeyProp } from "./fx/matte.ts";
 export { colourFn, colourLut, cubeText, lutAt, posterize } from "./fx/colour.ts";
 export { lutTable, MAX_PROJECT_LUTS, parseCube } from "./fx/cube.ts";
 export type { ColourSpec, ColourLut } from "./fx/colour.ts";

@@ -1,0 +1,37 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.blend",
+  "kind": "effect",
+  "name": "Blend mode",
+  "description": "Screen, multiply or overlay onto the tracks below",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "enum": [
+          "normal",
+          "screen",
+          "multiply",
+          "overlay",
+          "add",
+          "lighten",
+          "darken"
+        ],
+        "default": "screen",
+        "description": "Mode: how the clip's colour meets what's under it"
+      }
+    }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "layers"
+  }
+}

@@ -13,6 +13,7 @@ import {
   effectParams,
   LOOK,
   lookInfo,
+  MASK,
   planAdjust,
   planEffect,
   planRemoveEffect,
@@ -256,7 +257,8 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
                         </button>
                       </Tooltip>
                     </div>
-                    {info.params.map((d) => (
+                    {/* A mask's shape is the clip's own box's (D326): set one clip at a time. */}
+                    {(module === MASK ? [] : info.params).map((d) => (
                       <Prop key={d.key} label={d.name} testId={`multi-effect-${d.key}`}>
                         <Live
                           project={project}

@@ -21,7 +21,7 @@ import type { ModuleUse } from "@uncut/core/types";
 import { Ban, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { FxRenderer } from "../preview/fx.ts";
+import { FxRenderer, type MaskFrame } from "../preview/fx.ts";
 import { previewRunner, whenRunner } from "../preview/shader.ts";
 import { shaderFrameBytes, shaderModuleCode, shaderParamBytes, shaderValues, SHADER, type ShaderDef } from "@uncut/core/shaders";
 import { usePlayback } from "../preview/playback.ts";
@@ -106,6 +106,13 @@ function clipPicture(id: string | undefined): HTMLVideoElement | HTMLImageElemen
 
 type Source = { el: TexImageSource; w: number; h: number; key: string };
 
+/** The mask tile's shape (D326): a soft rounded rectangle over the middle of the thumbnail. */
+const thumbMask = (w: number, h: number): MaskFrame => ({
+  mask: { shape: "rectangle", invert: false, x: w * 0.2, y: h * 0.2, w: w * 0.6, h: h * 0.6, radius: h * 0.12, feather: h * 0.05 },
+  scale: [1, 1],
+  offset: [0, 0],
+});
+
 /** A tile's thumbnail: its effect drawn on the source, overlays (vignette, grain, bars) on top. */
 function FxThumb({ fx, source, testId }: { fx: ClipFx | undefined; source: Source; testId: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -117,7 +124,8 @@ function FxThumb({ fx, source, testId }: { fx: ClipFx | undefined; source: Sourc
     const g = canvas.getContext("2d")!;
     canvas.width = THUMB.width;
     canvas.height = THUMB.height;
-    if (r && fx && needsPicturePass(fx) && r.render(source.el, fx, THUMB.width, THUMB.height, 0.2, k)) g.drawImage(r.canvas, 0, 0);
+    const mask = fx?.mask ? thumbMask(THUMB.width, THUMB.height) : undefined;
+    if (r && fx && needsPicturePass(fx) && r.render(source.el, fx, THUMB.width, THUMB.height, 0.2, k, undefined, null, mask)) g.drawImage(r.canvas, 0, 0);
     else g.drawImage(source.el as CanvasImageSource, 0, 0, THUMB.width, THUMB.height);
     canvas.dataset.drawn = source.key;
   }, [fx, source, k]);

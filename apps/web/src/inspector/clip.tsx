@@ -32,7 +32,7 @@ const FITS: ReadonlyArray<readonly [Fit, string, string]> = [
 ];
 
 /** A keyframe diamond (D75): filled with a key at the playhead, outlined when the property has keys elsewhere. */
-function KeyButton({
+export function KeyButton({
   item,
   prop,
   local,

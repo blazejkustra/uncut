@@ -6,7 +6,8 @@
 // Keys: a property with keys is edited at the playhead (the key there changes, or a key is added
 // there); a property without keys edits the transform. The diamonds add or remove a key at the
 // playhead.
-import { baseBox, clipBox, EASES, keysOf, type ClipBox, type Ease, type Fit, type KeyProp, type Rect } from "@uncut/core/box";
+import { baseBox, clipBox, EASES, KEY_PROPS, keysOf, type ClipBox, type Ease, type Fit, type KeyProp, type Rect } from "@uncut/core/box";
+import { clipFx, MASK, MASK_KEYS, maskAt, planEffect, type MaskKeyProp } from "@uncut/core/fx";
 import { componentBox, componentInfo, componentRest, isDrawnComponent } from "@uncut/core/components";
 import { pictureMedia } from "@uncut/core/timeline";
 import type { FieldSet, Item } from "@uncut/core/types";
@@ -30,7 +31,16 @@ export interface BoxPatch {
   readonly radius?: number;
 }
 
-export const PROP_NAMES: Readonly<Record<KeyProp, string>> = { x: "X", y: "Y", scale: "scale", opacity: "opacity" };
+export const PROP_NAMES: Readonly<Record<KeyProp, string>> = {
+  x: "X",
+  y: "Y",
+  scale: "scale",
+  opacity: "opacity",
+  maskX: "mask X",
+  maskY: "mask Y",
+  maskW: "mask width",
+  maskH: "mask height",
+};
 const FIT_NAMES: Readonly<Record<Fit, string>> = { contain: "contain", cover: "cover", fill: "fill" };
 
 /** Whether an item draws in a box: a clip of video or still media, or a drawn component (D76). */
@@ -93,7 +103,7 @@ function removeKey(keys: ReadonlyArray<Key>, prop: KeyProp, frame: number): Arra
       const { [prop]: _gone, ...rest } = k;
       return rest as Key;
     })
-    .filter((k) => KEYED.some((p) => typeof k[p] === "number"));
+    .filter((k) => KEY_PROPS.some((p) => typeof k[p] === "number"));
 }
 
 /** A transform without its defaults (scale 1, opacity 1, radius 0, fit contain), or null when nothing is left. */
@@ -185,15 +195,59 @@ export function planToggleKey(project: ProjectModel, itemId: string, prop: KeyPr
     const keys = removeKey(item.keys ?? [], prop, local);
     return planUpdate(project, itemId, { keys: keys.length ? keys : null }, `Remove ${PROP_NAMES[prop]} key at ${secs(local, fps)}`);
   }
-  const value = prop === "x" ? Math.round(box.x) : prop === "y" ? Math.round(box.y) : prop === "scale" ? round2(box.scale) : round2(box.opacity);
+  const mask = maskProp(prop) ? maskNow(project, item, local, box) : undefined;
+  const value = mask
+    ? Math.round(mask[MASK_KEYS[prop as MaskKeyProp]])
+    : prop === "x"
+      ? Math.round(box.x)
+      : prop === "y"
+        ? Math.round(box.y)
+        : prop === "scale"
+          ? round2(box.scale)
+          : round2(box.opacity);
   return planUpdate(project, itemId, { keys: setKey(item.keys ?? [], prop, local, value) }, `Add ${PROP_NAMES[prop]} key at ${secs(local, fps)}`);
+}
+
+const maskProp = (prop: KeyProp): prop is MaskKeyProp => Object.hasOwn(MASK_KEYS, prop);
+
+/** A clip's mask (D326) at `local` frames from its start, keys applied, in the box's canvas px. */
+function maskNow(project: ProjectModel, item: Item, local: number, box: ClipBox) {
+  const fx = clipFx({ type: item.type, effects: (item.effects ?? []).filter((e) => e.module === MASK) });
+  return fx?.mask ? maskAt(fx.mask, item.keys, local, box, project.canvas.fps) : undefined;
+}
+
+/** The mask's x, y, w and h at the playhead as the Inspector shows them (whole px). */
+export function maskValues(project: ProjectModel, itemId: string, frame: number): Readonly<Record<"x" | "y" | "w" | "h", number>> | undefined {
+  const s = clipState(project, itemId, frame);
+  const m = s ? maskNow(project, s.item, s.local, s.box) : undefined;
+  return m ? { x: Math.round(m.x), y: Math.round(m.y), w: Math.round(m.w), h: Math.round(m.h) } : undefined;
+}
+
+/** The key prop of a mask value. */
+export const maskKeyOf = (key: string): MaskKeyProp | undefined => (Object.keys(MASK_KEYS) as Array<MaskKeyProp>).find((p) => MASK_KEYS[p] === key);
+
+/**
+ * Change a mask value (D326): a keyed x, y, w or h changes its key at the playhead (adding one
+ * there), anything else the mask's params.
+ */
+export function planMaskValue(project: ProjectModel, itemId: string, key: string, value: number | string | boolean, frame: number): Plan | Problem {
+  const prop = maskKeyOf(key);
+  const s = clipState(project, itemId, frame);
+  if (!prop || !s || typeof value !== "number" || !keysOf(s.item.keys, prop).length) return planEffect(project, itemId, MASK, { [key]: value });
+  const keys = setKey(s.item.keys ?? [], prop, s.local, Math.round(value));
+  return planUpdate(project, itemId, { keys }, `Set ${PROP_NAMES[prop]} (key at ${secs(s.local, project.canvas.fps)})`);
 }
 
 /** Back to the full frame, contain, no zoom, no keys. */
 export function planResetBox(project: ProjectModel, itemId: string): Plan | Problem {
   const placed = findItem(project, itemId);
   if (!placed) return { problem: "That clip isn't in the project any more." };
-  const set: FieldSet = { ...(placed.item.transform ? { transform: null } : {}), ...(placed.item.keys ? { keys: null } : {}) };
+  // A mask's keys (D326) stay: they key the mask, not the box.
+  const maskKeys = (placed.item.keys ?? [])
+    .map((k) => Object.fromEntries(Object.entries(k).filter(([p]) => !(KEYED as ReadonlyArray<string>).includes(p))) as Key)
+    .filter((k) => KEY_PROPS.some((p) => typeof k[p] === "number"));
+  const keys = maskKeys.length ? maskKeys : null;
+  const set: FieldSet = { ...(placed.item.transform ? { transform: null } : {}), ...(placed.item.keys && !sameJson(keys, placed.item.keys) ? { keys } : {}) };
   return planUpdate(project, itemId, set, `Reset ${boxNoun(placed.item)} position and size`);
 }
 

@@ -36,6 +36,8 @@ import {
   cubeText,
   moveBox,
   canvasBox,
+  maskAt,
+  scaleMask,
 } from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
 import {
@@ -49,6 +51,8 @@ import {
   placementOf,
   fxGraph,
   boxGraph,
+  maskGraph,
+  blendGraph,
 } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
 import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
@@ -428,11 +432,28 @@ export async function openFrameSession(
             graph.push(
               `[${k}:v:0]${pick}null[e${k}]`,
               ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts),
-              ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps),
+              ...boxGraph([p], `s${k}`, `u${k}`, project.canvas.fps),
             );
-          } else graph.push(`[${k}:v:0]${pick}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          } else graph.push(`[${k}:v:0]${pick}null[s${k}]`, ...boxGraph([p], `s${k}`, `u${k}`, project.canvas.fps));
+          // D326: the shape mask in the box, then the blend mode onto what's below.
+          if (effects?.mask) {
+            const mask = maskAt(effects.mask, v.item.keys, local, baseBox(v.item, project.canvas, media.probe), project.canvas.fps);
+            graph.push(...maskGraph([scaleMask(mask, W / cw, H / ch)], p.w, p.h, `u${k}`, `r${k}`, project.canvas.fps, 1));
+          } else graph.push(`[u${k}]null[r${k}]`);
           graph.push(`[r${k}]format=rgba${fade}${blur}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
-          graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
+          if (effects?.blend)
+            graph.push(
+              ...blendGraph(
+                { mode: effects.blend, at: `:x=${p.x}:y=${p.y}`, f0: 0, f1: 1, frames: 1, format: "rgba", rgb: true },
+                base,
+                `l${k}`,
+                `b${k}`,
+                W,
+                H,
+                project.canvas.fps,
+              ),
+            );
+          else graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;
           await overlay();
           continue;

@@ -8,8 +8,8 @@ import { scrubCacheOn } from "../../settings/scrub.ts";
 import { ScrubCache, liftsTone, convertsPrimaries } from "../scrub.ts";
 import { VIDEO_UNTONE_FILTER, ensureUntoneFilter } from "../tone.ts";
 import { GpuCompositor, plainColour } from "../gpu.ts";
-import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
-import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
+import { type ClipFx, blendInfo, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
+import { FxRenderer, frameKeyOf, maskFrame, maskKey, presentedFrames, type MaskFrame } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
 import {
@@ -333,13 +333,13 @@ export abstract class CompositorBase {
    * into the clip's 2D canvas (the Effects panel's thumbnails do the same). The copy keeps the last
    * picture, so a paused clip whose frame hasn't changed isn't drawn again.
    */
-  protected drawShared(copy: FxCopy, source: PictureEl, fx: ClipFx, w: number, h: number, t: number, key: string | undefined): boolean {
+  protected drawShared(copy: FxCopy, source: PictureEl, fx: ClipFx, w: number, h: number, t: number, key: string | undefined, mask?: MaskFrame): boolean {
     const r = this.fxShared;
     if (!r || r.lost) return false;
     const frame = frameKeyOf(source);
-    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}` : "";
+    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}|${maskKey(mask)}` : "";
     if (sig && sig === copy.sig && copy.drawn) return true;
-    if (!r.render(source, fx, w, h, t, 1)) return false;
+    if (!r.render(source, fx, w, h, t, 1, undefined, null, mask)) return false;
     const c = copy.canvas;
     if (c.width !== w) c.width = w;
     if (c.height !== h) c.height = h;
@@ -369,6 +369,9 @@ export abstract class CompositorBase {
     // SVG stills don't take looks or effects (D138; the planners refuse them too).
     const fx = fxSkips(media) ? undefined : this.effectsOf(item);
     const picture = !this.fxBroken && needsPicturePass(fx);
+    // D326: the blend mode onto what's below (the whole box: picture, effects and overlays).
+    const blend = fx?.blend ? (blendInfo(fx.blend)?.css ?? "") : "";
+    if (wrap.style.mixBlendMode !== blend) wrap.style.mixBlendMode = blend;
     let shown: HTMLElement = el;
     // A shader effect (D213) runs first, on the picture; its canvas is then the picture.
     const use = fxSkips(media) ? undefined : this.shaderUseOf(item);
@@ -422,8 +425,10 @@ export abstract class CompositorBase {
       const size = fxPictureSize(box, media?.probe);
       const t = (Math.floor(frame) - start) / fps;
       const key = shaded ? undefined : this.fxOf.get(item.id)?.key;
+      const mask = maskFrame(item, fx, box, size, Math.floor(frame) - start, fps);
       const ok =
-        pictureReady(el) && (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key));
+        pictureReady(el) &&
+        (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key, null, mask) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key, mask));
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
       const drawn = ok || (r ? r.drawn && !r.lost : copy!.drawn && !this.fxShared?.lost);
       el.style.visibility = drawn || shaded ? "hidden" : "";
@@ -665,7 +670,7 @@ export abstract class CompositorBase {
     // D265: a shader draws on its own WebGPU canvas, which the compositor then reads as the picture.
     if (this.shaderUseOf(item) && shaderProblem()) return false;
     const fx = this.effectsOf(item);
-    return !fx || !hasOverlay(fx);
+    return !fx || (!hasOverlay(fx) && !fx.blend && !fx.mask);
   }
 
   render() {

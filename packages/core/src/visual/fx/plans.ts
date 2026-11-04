@@ -1,7 +1,23 @@
-import type { Item, ModuleUse } from "../../timeline/types.ts";
+import type { Item, MediaProbe, ModuleUse } from "../../timeline/types.ts";
+import { baseBox } from "../box.ts";
 import { SHADER } from "../shaders.ts";
 import { fxSkips } from "./clipFx.ts";
-import { type LookDef, LOOK, lookInfo, num, type AdjustKey, ADJUST, adjustOf, NO_ADJUST, ADJUST_KEYS, ADJUST_INFO, effectInfo, effectParams } from "./defs.ts";
+import {
+  type LookDef,
+  LOOK,
+  lookInfo,
+  num,
+  type AdjustKey,
+  ADJUST,
+  adjustOf,
+  NO_ADJUST,
+  ADJUST_KEYS,
+  ADJUST_INFO,
+  effectInfo,
+  effectParams,
+  effectOptions,
+  MASK,
+} from "./defs.ts";
 
 // ---- edits ----
 
@@ -11,15 +27,25 @@ type Plan =
 
 interface Target {
   readonly luts?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** The canvas, for a new mask's default shape (D326); without it the mask covers the box. */
+  readonly canvas?: { readonly width: number; readonly height: number };
   readonly tracks: ReadonlyArray<{
     readonly kind: string;
     readonly locked?: boolean;
-    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name">>;
+    readonly items: ReadonlyArray<Pick<Item, "id" | "type" | "effects" | "media" | "locked" | "name" | "transform">>;
   }>;
-  readonly media?: ReadonlyArray<{ readonly id: string; readonly kind: string; readonly name?: string; readonly path?: string }>;
+  readonly media?: ReadonlyArray<{
+    readonly id: string;
+    readonly kind: string;
+    readonly name?: string;
+    readonly path?: string;
+    readonly probe?: Pick<MediaProbe, "width" | "height">;
+  }>;
 }
 
-function clipOf(project: Target, id: string): { item: Pick<Item, "id" | "type" | "effects" | "name">; name: string } | { problem: string } {
+type ClipOf = { item: Pick<Item, "id" | "type" | "effects" | "name" | "transform">; name: string; probe?: Pick<MediaProbe, "width" | "height"> | undefined };
+
+function clipOf(project: Target, id: string): ClipOf | { problem: string } {
   for (const t of project.tracks)
     for (const it of t.items) {
       if (it.id !== id) continue;
@@ -28,7 +54,7 @@ function clipOf(project: Target, id: string): { item: Pick<Item, "id" | "type" |
       // SVG stills are drawn by Chromium in the export, not decoded: looks and effects don't apply to them (D138).
       if (fxSkips(media)) return { problem: "Looks and effects don't apply to SVG images." };
       if (t.locked || it.locked) return { problem: "That clip is locked: unlock it to change its effects." };
-      return { item: it, name: it.name ?? media.name ?? it.id };
+      return { item: it, name: it.name ?? media.name ?? it.id, probe: media.probe };
     }
   return { problem: "Pick a clip first." };
 }
@@ -110,28 +136,48 @@ export function planAdjust(project: Target, itemId: string, patch: Partial<Recor
 export const adjustWord = (key: AdjustKey, v: number) =>
   key === "exposure" ? `${v > 0 ? "+" : ""}${Math.round(v * 100) / 100} EV` : `${v > 0 ? "+" : ""}${Math.round(v * 100)}`;
 
+type EffectValues = Record<string, number | string | boolean>;
+
+/** A new mask's shape (D326): the middle 60 % of the clip's box, whole canvas px. */
+function defaultMask(project: Target, c: ClipOf): EffectValues {
+  if (!project.canvas) return {};
+  const box = baseBox(c.item, project.canvas, c.probe);
+  return { x: Math.round(box.w * 0.2), y: Math.round(box.h * 0.2), w: Math.round(box.w * 0.6), h: Math.round(box.h * 0.6) };
+}
+
+/** An entry's params as written: its options and numbers with defaults filled in and clamped. */
+const effectValues = (module: string, params: unknown): EffectValues => ({ ...effectOptions(module, params), ...effectParams(module, params) });
+
+function valueWord(info: NonNullable<ReturnType<typeof effectInfo>>, key: string, v: number | string | boolean): string | undefined {
+  const option = info.options?.find((o) => o.key === key);
+  if (option?.kind === "choice") return option.choices.find((c) => c.id === v)?.name.toLowerCase();
+  if (option) return typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+  const p = info.params.find((d) => d.key === key);
+  return p && typeof v === "number" ? `${Math.round(v * 100) / 100}${p.unit ? ` ${p.unit}` : ""}` : undefined;
+}
+
 /** Add an effect to a clip (with its defaults), or with `params` change the one it has. */
-export function planEffect(project: Target, itemId: string, module: string, params?: Record<string, number>): Plan {
+export function planEffect(project: Target, itemId: string, module: string, params?: EffectValues): Plan {
   const c = clipOf(project, itemId);
   const info = effectInfo(module);
   if (!info) return { problem: `There's no effect called ${module}.` };
   if ("problem" in c) return c;
   const list = [...(c.item.effects ?? [])];
   const at = list.findIndex((e) => e.module === module);
-  const base = at >= 0 ? effectParams(module, list[at]!.params) : effectParams(module, {});
-  const next = effectParams(module, { ...base, ...params });
-  const entry = { module, ...(info.params.length ? { params: next } : {}), ...(at >= 0 && list[at]!.bypass ? { bypass: true } : {}) };
+  const base = at >= 0 ? effectValues(module, list[at]!.params) : effectValues(module, module === MASK ? defaultMask(project, c) : {});
+  const next = effectValues(module, { ...base, ...params });
+  const hasParams = info.params.length > 0 || (info.options?.length ?? 0) > 0;
+  const entry = { module, ...(hasParams ? { params: next } : {}), ...(at >= 0 && list[at]!.bypass ? { bypass: true } : {}) };
   if (at >= 0) {
     if (!params) return { problem: `${c.name} already has ${info.name.toLowerCase()}.` };
     list[at] = entry;
     const keys = Object.keys(params);
-    const p = keys.length === 1 ? info.params.find((d) => d.key === keys[0]) : undefined;
+    const name = keys.length === 1 ? (info.params.find((d) => d.key === keys[0])?.name ?? info.options?.find((o) => o.key === keys[0])?.name) : undefined;
+    const word = keys.length === 1 ? valueWord(info, keys[0]!, next[keys[0]!]!) : undefined;
     return setEffects(
       itemId,
       list,
-      p
-        ? `Set ${info.name.toLowerCase()} ${p.name.toLowerCase()} on ${c.name} to ${Math.round(next[p.key]! * 100) / 100}${p.unit ? ` ${p.unit}` : ""}`
-        : `Change ${info.name.toLowerCase()} on ${c.name}`,
+      name && word ? `Set ${info.name.toLowerCase()} ${name.toLowerCase()} on ${c.name} to ${word}` : `Change ${info.name.toLowerCase()} on ${c.name}`,
     );
   }
   list.push(entry);
@@ -202,9 +248,10 @@ export function fxWords(effects: unknown): string {
       }
       const info = effectInfo(e.module);
       if (!info) return e.module;
-      const p = effectParams(e.module, e.params);
-      const first = info.params[0];
-      return `${info.name.toLowerCase()}${first ? ` ${Math.round(p[first.key]! * 100) / 100}${first.unit ? ` ${first.unit}` : ""}` : ""}${e.bypass ? " (off)" : ""}`;
+      const v = effectValues(e.module, e.params);
+      const first = info.options?.[0] ?? info.params[0];
+      const word = first ? valueWord(info, first.key, v[first.key]!) : undefined;
+      return `${info.name.toLowerCase()}${word ? ` ${word}` : ""}${e.bypass ? " (off)" : ""}`;
     })
     .join(", ");
 }

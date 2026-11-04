@@ -1,4 +1,5 @@
 import type { ColourLut } from "./colour.ts";
+import { BLEND_MODES } from "./matte.ts";
 export const LOOK = "effect.look";
 export const ADJUST = "effect.color";
 export const STABILIZE = "effect.stabilize";
@@ -222,7 +223,19 @@ export interface EffectParam {
   readonly unit?: string;
 }
 
-export type EffectGroup = "picture" | "overlay" | "motion";
+/** A param that isn't a number (D326): a colour (#rrggbb), one of a few choices, or a switch. */
+export type EffectOption =
+  | { readonly key: string; readonly name: string; readonly kind: "color"; readonly default: string }
+  | {
+      readonly key: string;
+      readonly name: string;
+      readonly kind: "choice";
+      readonly choices: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+      readonly default: string;
+    }
+  | { readonly key: string; readonly name: string; readonly kind: "toggle"; readonly default: boolean };
+
+export type EffectGroup = "picture" | "overlay" | "motion" | "composite";
 
 export interface EffectInfo {
   /** Its module id (spec/modules/builtin/<id>.json). */
@@ -231,7 +244,13 @@ export interface EffectInfo {
   readonly description: string;
   readonly group: EffectGroup;
   readonly params: ReadonlyArray<EffectParam>;
+  /** Its params that aren't numbers, shown before the numbers. */
+  readonly options?: ReadonlyArray<EffectOption>;
 }
+
+export const CHROMA_KEY = "effect.chroma-key";
+export const BLEND = "effect.blend";
+export const MASK = "effect.mask";
 
 /** The built-in effects, in the panel's order. Lengths are canvas pixels. */
 export const EFFECTS: ReadonlyArray<EffectInfo> = [
@@ -327,6 +346,53 @@ export const EFFECTS: ReadonlyArray<EffectInfo> = [
     group: "overlay",
     params: [{ key: "ratio", name: "Ratio", min: 1.6, max: 3, step: 0.01, default: 2.39 }],
   },
+  {
+    id: CHROMA_KEY,
+    name: "Chroma key",
+    description: "Removes a green screen or any colour you pick",
+    group: "composite",
+    options: [{ key: "color", name: "Key colour", kind: "color", default: "#00ff00" }],
+    params: [
+      { key: "tolerance", name: "Tolerance", min: 0, max: 1, step: 0.01, default: 0.25 },
+      { key: "softness", name: "Softness", min: 0.01, max: 1, step: 0.01, default: 0.1 },
+      { key: "spill", name: "Spill removal", min: 0, max: 1, step: 0.01, default: 0.5 },
+    ],
+  },
+  {
+    id: BLEND,
+    name: "Blend mode",
+    description: "Screen, multiply or overlay onto the tracks below",
+    group: "composite",
+    options: [{ key: "mode", name: "Mode", kind: "choice", choices: BLEND_MODES.map((b) => ({ id: b.id, name: b.name })), default: "screen" }],
+    params: [],
+  },
+  {
+    id: MASK,
+    name: "Mask",
+    description: "Shows the clip inside a rectangle or ellipse",
+    group: "composite",
+    options: [
+      {
+        key: "shape",
+        name: "Shape",
+        kind: "choice",
+        choices: [
+          { id: "rectangle", name: "Rectangle" },
+          { id: "ellipse", name: "Ellipse" },
+        ],
+        default: "rectangle",
+      },
+      { key: "invert", name: "Invert", kind: "toggle", default: false },
+    ],
+    params: [
+      { key: "x", name: "X", min: -10000, max: 10000, step: 1, default: 0, unit: "px" },
+      { key: "y", name: "Y", min: -10000, max: 10000, step: 1, default: 0, unit: "px" },
+      { key: "w", name: "Width", min: 0, max: 10000, step: 1, default: 0, unit: "px" },
+      { key: "h", name: "Height", min: 0, max: 10000, step: 1, default: 0, unit: "px" },
+      { key: "radius", name: "Corner radius", min: 0, max: 5000, step: 1, default: 0, unit: "px" },
+      { key: "feather", name: "Feather", min: 0, max: 500, step: 1, default: 0, unit: "px" },
+    ],
+  },
 ];
 
 export const effectInfo = (id: string | undefined) => EFFECTS.find((e) => e.id === id);
@@ -338,5 +404,18 @@ export function effectParams(id: string, params: unknown): Record<string, number
   const p = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
   const out: Record<string, number> = {};
   for (const d of effectInfo(id)?.params ?? []) out[d.key] = num(p[d.key], d.min, d.max, d.default);
+  return out;
+}
+
+/** An effect's non-number params (D326) with defaults filled in: a colour is #rrggbb, a choice one of its ids. */
+export function effectOptions(id: string, params: unknown): Record<string, string | boolean> {
+  const p = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
+  const out: Record<string, string | boolean> = {};
+  for (const o of effectInfo(id)?.options ?? []) {
+    const v = p[o.key];
+    if (o.kind === "color") out[o.key] = typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : o.default;
+    else if (o.kind === "choice") out[o.key] = typeof v === "string" && o.choices.some((c) => c.id === v) ? v : o.default;
+    else out[o.key] = typeof v === "boolean" ? v : o.default;
+  }
   return out;
 }
