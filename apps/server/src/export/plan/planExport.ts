@@ -35,6 +35,9 @@ import {
   fitRect,
   colourLut,
   sourceAt,
+  isRamped,
+  reverseRange,
+  type ReverseRange,
   hasOverlay,
   fxOverlayHtml,
   animationAt,
@@ -66,6 +69,12 @@ import { constantGain } from "./gain.ts";
 
 // ---- the plan ----
 
+/** A ramped clip's source seconds for `count` frames from local frame `from`, each after the first's (D327). */
+function rampTimes(project: Project, item: Item, from: number, count: number): Array<number> {
+  const first = sourceAt(project, item, from);
+  return Array.from({ length: count }, (_, k) => sourceAt(project, item, from + k) - first);
+}
+
 export interface PlanOptions {
   /** The file of a media item (relative paths resolved against the project folder). */
   readonly mediaPath: (media: Media) => string;
@@ -82,12 +91,14 @@ export interface PlanOptions {
   readonly burnCaptions?: boolean | undefined;
   /** D291: motion blur on graphics (the project's samples and shutter; an item's motionBlur false opts out). Default off. */
   readonly motionBlur?: boolean | undefined;
+  /** D327: the reversed copy of a media range (the exporter makes it before the plan runs). */
+  readonly reversedFile?: ((media: Media, range: ReverseRange) => string | undefined) | undefined;
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
 export function planExport(
   project: Project,
-  { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false }: PlanOptions,
+  { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false, reversedFile }: PlanOptions,
 ): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
@@ -98,6 +109,13 @@ export function planExport(
     const path = mediaPath(media);
     files.set(media.id, { media, path });
     return path;
+  };
+  /** The file an item reads its media from: a reversed clip's reversed copy (D327; undefined when there's none), else the media's. */
+  const itemFile = (item: Item, media: Media) => {
+    const original = fileOf(media);
+    if (!item.reverse) return original;
+    const range = reverseRange(project, item);
+    return range ? reversedFile?.(media, range) : undefined;
   };
   const aspect = project.canvas.width / project.canvas.height;
   const warnings: Array<string> = [];
@@ -227,7 +245,11 @@ export function planExport(
         return;
       }
       if (isMedia) {
-        const path = fileOf(media);
+        const path = itemFile(item, media);
+        if (path === undefined) {
+          warnings.push(`${name(item)} plays backwards from a reversed copy that couldn't be made, so it isn't drawn.`);
+          return;
+        }
         // The box at every frame (D75), moved by a push or zoom (D79): plain frames (no transform,
         // no move) keep the full-frame chain.
         // A zoom pulse (D136) is in the box too.
@@ -275,6 +297,7 @@ export function planExport(
                 file: path,
                 source: sourceAt(project, item, f0 - start),
                 speed: item.speed ?? 1,
+                ...(isRamped(item) ? { times: rampTimes(project, item, f0 - start, f1 - f0) } : {}),
                 fills: fills(media),
                 ...geometry,
                 ...layerFx,
@@ -385,10 +408,12 @@ export function planExport(
       const source = Math.max(0, sourceAt(project, item, from - start));
       const length = item.loop ? media.probe?.frames : undefined;
       const cycle = length && (item.speed ?? 1) === 1 ? { cycle: { samples: Math.round((length * 48000) / fps), offset: Math.round(source * 48000) } } : {};
+      const file = itemFile(item, media);
+      if (file === undefined) return;
       audio.push({
         item,
         track: track.id,
-        file: fileOf(media),
+        file,
         from,
         to: span.to,
         source,

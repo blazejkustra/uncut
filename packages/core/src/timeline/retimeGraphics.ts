@@ -43,6 +43,7 @@ function playsSource(project: Project, item: Item) {
 /** Old frames of `old` that `now` shows, if `now` is a piece of it (same source, same speed, inside its range). */
 function pieceOf(project: Project, old: Item, oldStart: number, now: Item, nowStart: number): Segment | undefined {
   if (old.type !== now.type || old.media !== now.media || (old.speed ?? 1) !== (now.speed ?? 1)) return undefined;
+  if (old.speedKeys || now.speedKeys || old.reverse || now.reverse) return undefined;
   if (!playsSource(project, now))
     return old.id === now.id && old.duration === now.duration ? { from: oldStart, to: oldStart + old.duration, shift: oldStart - nowStart } : undefined;
   const offset = Math.round(((now.in ?? 0) - (old.in ?? 0)) / (now.speed ?? 1));

@@ -37,6 +37,7 @@ import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, run, ffmpeg
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
+import { ensureReversed, type ReverseTarget } from "../../media/reversed.ts";
 import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
 /** How often a step's frame count goes to the dialog, at most (ms). */
@@ -81,6 +82,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>,
     css: string = RASTER_CSS,
     reviewPage?: string,
+    reversed: ReadonlyArray<ReverseTarget> = [],
   ) => {
     let plan = planned;
     const started = Date.now();
@@ -112,6 +114,11 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       stage = "missing-media";
       const missing = await missingMedia(plan);
       if (missing) throw new Error(missing);
+      // D327: the reversed copies reversed clips read, made now when the preview hasn't yet.
+      for (const [k, target] of reversed.entries()) {
+        step("reverse", k, reversed.length);
+        await ensureReversed(target, { ffmpeg: bin, fps: project.canvas.fps, signal });
+      }
       stage = "rasterise";
       const caps = await capsOf(bin);
       if (plan.buses.some((b) => b.stages.some((s) => s.kind === "denoise"))) plan = { ...plan, denoiseLag: await denoiseLagOf(bin) };

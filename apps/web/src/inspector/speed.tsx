@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { ProjectModel } from "../state/project.ts";
 import { actions } from "../state/store.ts";
 import { Group, NumberField } from "./fields.tsx";
+import { SpeedRampEditor } from "./speedRamp.tsx";
 
 /** Whether an item has a speed: a clip or audio item playing video or sound. */
 export const hasSpeed = (project: ProjectModel, item: Item) => {
@@ -15,8 +16,9 @@ export const hasSpeed = (project: ProjectModel, item: Item) => {
   return !!media && media.kind !== "image";
 };
 
-export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
-  const speed = item.speed ?? 1;
+export function SpeedEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const speed = item.speedKeys?.length ? undefined : (item.speed ?? 1);
+  const video = item.type === "clip" && project.media.find((m) => m.id === item.media)?.kind === "video";
   return (
     <div data-testid="speed-editor">
       <div className="group">
@@ -24,9 +26,9 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
           {SPEED_PRESETS.map((s) => (
             <button
               key={s}
-              className={`small-btn ${Math.abs(s - speed) < 1e-6 ? "active" : ""}`}
+              className={`small-btn ${speed !== undefined && Math.abs(s - speed) < 1e-6 ? "active" : ""}`}
               data-testid={`insp-speed-${s}`}
-              aria-pressed={Math.abs(s - speed) < 1e-6}
+              aria-pressed={speed !== undefined && Math.abs(s - speed) < 1e-6}
               disabled={locked}
               onClick={() => void actions.setSpeed(item.id, s)}
             >
@@ -34,29 +36,34 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
             </button>
           ))}
         </div>
-        <div className="field-row">
-          <NumberField
-            label="×"
-            testId="insp-speed-custom"
-            value={Math.round(speed * 1000) / 1000}
-            step={0.05}
-            min={SPEED_RANGE.min}
-            max={SPEED_RANGE.max}
-            disabled={locked}
-            onCommit={(v) => v !== undefined && void actions.setSpeed(item.id, v)}
-          />
-        </div>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            data-testid="insp-keep-pitch"
-            checked={item.keepPitch !== false}
-            disabled={locked}
-            onChange={(e) => void actions.setSpeed(item.id, speed, e.target.checked)}
-          />
-          Keep pitch
-        </label>
+        {speed !== undefined && (
+          <>
+            <div className="field-row">
+              <NumberField
+                label="×"
+                testId="insp-speed-custom"
+                value={Math.round(speed * 1000) / 1000}
+                step={0.05}
+                min={SPEED_RANGE.min}
+                max={SPEED_RANGE.max}
+                disabled={locked}
+                onCommit={(v) => v !== undefined && void actions.setSpeed(item.id, v)}
+              />
+            </div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                data-testid="insp-keep-pitch"
+                checked={item.keepPitch !== false}
+                disabled={locked}
+                onChange={(e) => void actions.setSpeed(item.id, speed, e.target.checked)}
+              />
+              Keep pitch
+            </label>
+          </>
+        )}
       </div>
+      {video && <SpeedRampEditor project={project} item={item} locked={locked} />}
     </div>
   );
 }

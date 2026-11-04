@@ -228,6 +228,9 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     } else if (key === "effects") parts.push(fxWords(value));
     else if (key === "loop") parts.push(value === true ? "looped" : "not looped");
     else if (key === "hold") parts.push(value === true ? "holding its last frame" : "not holding its last frame");
+    else if (key === "speedKeys")
+      parts.push(Array.isArray(value) && value.length ? `a speed ramp of ${value.length} key${value.length === 1 ? "" : "s"}` : "no speed ramp");
+    else if (key === "reverse") parts.push(value === true ? "playing backwards" : "playing forwards");
     else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;
       const one = (k: "in" | "out") =>

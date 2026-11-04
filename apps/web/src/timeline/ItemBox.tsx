@@ -1,6 +1,6 @@
 // One item on a timeline lane (its box, name, length, trim and fade handles) and the volume line
 // of items with sound (D83). Split out of Timeline.tsx.
-import { Lock, VolumeX } from "lucide-react";
+import { Lock, Undo2, VolumeX } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { speedLabel } from "@uncut/core/arrange";
 import { type CaptionCard } from "@uncut/core/captions";
@@ -210,9 +210,10 @@ function ItemBoxView({
         )}
       </span>
       {elementsBar}
-      {(item.locked || item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
+      {(item.locked || item.mute || item.reverse || item.speedKeys?.length || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
         <span className="clip-badge" data-testid="clip-badge">
-          {item.speed !== undefined && item.speed !== 1 && speedLabel(item.speed)}
+          {item.speedKeys?.length ? "Ramp" : item.speed !== undefined && item.speed !== 1 && speedLabel(item.speed)}
+          {item.reverse && <Undo2 data-testid="clip-reverse" aria-label="Reversed" />}
           {item.mute && <VolumeX />}
           {item.locked && <Lock data-testid="clip-lock" aria-label="Locked: right-click to unlock" />}
         </span>

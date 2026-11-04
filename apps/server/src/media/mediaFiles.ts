@@ -204,9 +204,15 @@ export const layer = Layer.unwrap(
           const request = yield* HttpServerRequest.HttpServerRequest;
           const url = authorised(request);
           if (!url) return unauthorized();
-          const id = decode(url.pathname.slice(PROXY_PATH.length + 1));
-          if (!id || !MEDIA_ID.test(id)) return notFound();
-          const path = yield* proxies.proxyFor(id);
+          const [id, range, ...rest] = url.pathname
+            .slice(PROXY_PATH.length + 1)
+            .split("/")
+            .map(decode);
+          if (!id || !MEDIA_ID.test(id) || rest.length) return notFound();
+          // D327: a reversed copy of a range of it (from-to, media frames).
+          const span = range === undefined ? undefined : /^(\d+)-(\d+)$/.exec(range);
+          if (range !== undefined && !span) return notFound();
+          const path = span ? yield* proxies.reversedFor(id, Number(span[1]), Number(span[2])) : yield* proxies.proxyFor(id);
           if (!path) return notFound();
           return yield* serveFile(request, path);
         }),

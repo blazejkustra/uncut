@@ -4,6 +4,9 @@ import { join } from "node:path";
 import {
   type Project,
   type Media,
+  type Item,
+  type ReverseRange,
+  reverseRange,
   motionBlurDefault,
   itemMotionBlur,
   subFrameTimes,
@@ -86,6 +89,8 @@ export interface FrameSessionOptions {
    * the export tests compare with the export's.
    */
   readonly downscale?: boolean;
+  /** D327: the reversed copies of reversed clips, made before the session (media/reversed.ts). */
+  readonly reversedFile?: ((media: Media, range: ReverseRange) => string | undefined) | undefined;
 }
 
 export interface FrameSession {
@@ -126,8 +131,9 @@ export async function renderFramesWith(
   width: number,
   signal: AbortSignal,
   css: string = RASTER_CSS,
+  options: FrameSessionOptions = {},
 ): Promise<Array<RenderedFrame>> {
-  const session = await openFrameSession(bin, unsized, mediaPath, graphics, signal, css);
+  const session = await openFrameSession(bin, unsized, mediaPath, graphics, signal, css, options);
   try {
     return await session.render(frames, width);
   } finally {
@@ -177,6 +183,10 @@ export async function openFrameSession(
   }
   const rs = raster;
   const { width: cw, height: ch } = project.canvas;
+  const reversedOf = (item: Item, m: Media) => {
+    const range = reverseRange(project, item);
+    return range ? options.reversedFile?.(m, range) : undefined;
+  };
   const urls = new Map<string, string>();
   // Components' media references as placeholders, swapped for data: URLs before drawing (as the export does).
   const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
@@ -191,7 +201,7 @@ export async function openFrameSession(
       got = (async () => {
         const small = options.downscale && W * 2 <= cw ? { outWidth: W, outHeight: H } : undefined;
         const background = join(temp, `bg-${W}.png`);
-        const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src) });
+        const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src), reversedFile: options.reversedFile });
         await rs.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background, ...small });
         const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
         return { background, untagged, small };
@@ -253,9 +263,14 @@ export async function openFrameSession(
         const pick = sourceFramePick(v.source, project.canvas.fps, v.item.type === "clip" && v.item.hold === true && !v.item.loop);
         const local = f - (starts.get(v.item.id) ?? 0);
         const svg = v.item.type === "clip" && isSvg(media) && !!v.box;
-        if (v.item.type === "clip" && media && media.kind === "video")
-          input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
-        else if (svg) {
+        if (v.item.type === "clip" && media && media.kind === "video") {
+          const file = v.item.reverse ? reversedOf(v.item, media) : mediaPath(media);
+          if (file === undefined) {
+            notes.push(`the reversed clip "${v.item.name ?? v.item.id}" isn't drawn: its reversed copy couldn't be made`);
+            continue;
+          }
+          input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", file];
+        } else if (svg) {
           // An SVG (D76): drawn by Chromium in its box, as the export does.
           const png = join(temp, `w${W}-f${f}-${k}.png`);
           await draw(svgClipHtml(v.item, v.box!, mediaToken(media!.id), v.opacity), png);

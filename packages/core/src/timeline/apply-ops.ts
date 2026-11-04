@@ -9,6 +9,7 @@ import { itemUsesMedia } from "./mediaPlan.ts";
 import { canUnnest, flattenSequences } from "./nesting.ts";
 import { gapOf } from "./rules.ts";
 import { lockedContextProblem, lockedSectionProblem, unlockProblem } from "./sections.ts";
+import { inShift, localForSource, shiftSpeedKeys, trimSpeedKeys } from "./speedRamp.ts";
 import type { Actor, Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
@@ -143,7 +144,8 @@ function trimItem(project: Draft, item: DraftItem, edge: "start" | "end", frames
       const at = frames > 0 ? graphicTime(item, frames) : Math.max(0, (item.in ?? 0) + Math.round(frames * (item.speed ?? 1)));
       if (at > 0 || item.in !== undefined) item.in = at;
       if (item.skips) setSkips(item, skipsFrom(item.skips, frames));
-    } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+    } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + inShift(item, frames);
+    if (item.speedKeys) item.speedKeys = trimSpeedKeys(shiftSpeedKeys(item.speedKeys, frames), item.duration);
     if (item.start !== undefined) item.start += frames;
     if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
     // Keys stay on their moment: they shift with the new start, and ones now before it go.
@@ -159,6 +161,7 @@ function trimItem(project: Draft, item: DraftItem, edge: "start" | "end", frames
       item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
     }
   } else {
+    if (item.speedKeys) item.speedKeys = trimSpeedKeys(item.speedKeys, item.duration);
     if (item.keys?.some((k) => k.frame > item.duration))
       item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + frames).filter((k) => k.frame <= item.duration);
     if (item.skips)
@@ -199,10 +202,10 @@ function rolledItem(project: Project, op: Op): Array<string> {
 function slipItem(project: Draft, item: DraftItem, frames: number) {
   const timed = (item.type === "clip" || item.type === "audio") && item.media && hasSourceTime(project, item);
   if (!timed) throw new EditError(`"${item.id}" has no media time to slip: only clips and sounds with video or audio slip`);
-  const next = (item.in ?? 0) + Math.round(frames * (item.speed ?? 1));
+  const next = (item.in ?? 0) + inShift(item, frames);
   if (next < 0)
     throw new EditError(
-      `Slipping "${item.id}" by ${frames} would start before its media (it can go back ${Math.floor((item.in ?? 0) / (item.speed ?? 1))} frames)`,
+      `Slipping "${item.id}" by ${frames} would start before its media (it can go back ${Math.floor(-localForSource(item, -(item.in ?? 0)))} frames)`,
     );
   item.in = next;
 }
@@ -342,7 +345,11 @@ function applyOp(project: Draft, op: Op) {
       second.id = op.newId;
       second.duration = item.duration - op.at;
       if (item.type === "graphic") second.in = graphicTime(item, op.at);
-      else if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + Math.round(op.at * (item.speed ?? 1));
+      else if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + inShift(item, op.at);
+      if (item.speedKeys) {
+        second.speedKeys = trimSpeedKeys(shiftSpeedKeys(item.speedKeys, op.at), second.duration);
+        item.speedKeys = trimSpeedKeys(item.speedKeys, op.at);
+      }
       if (item.skips) {
         setSkips(second, skipsFrom(item.skips, op.at));
         setSkips(

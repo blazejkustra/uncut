@@ -2,7 +2,8 @@ import type { ProjectSnapshot } from "@uncut/contracts";
 import { type Connection, type CallError, type Result, isTransportError } from "../connection.ts";
 import { playback, getPlayback } from "../../preview/playback.ts";
 import { type Plan, draftOf, findItem, withOverlayRipple } from "../../timeline/edit.ts";
-import { planSetSpeed } from "@uncut/core/arrange";
+import { planReverse, planSetSpeed, planSpeedRamp } from "@uncut/core/arrange";
+import type { SpeedKey } from "@uncut/core/speedRamp";
 import { type ShaderDef, SHADER, shaderUseOf } from "@uncut/core/shaders";
 import type { ProjectModel, Planned } from "../project.ts";
 import { call, refreshRecents, plainError } from "./server.ts";
@@ -203,7 +204,18 @@ export function itemEdit(
 
 /** A speed change (G9, D125); with linked overlays on (F11, D156), what's over a main clip follows its footage. */
 export function speedPlan(project: ProjectModel, itemId: string, speed: number, keepPitch?: boolean): Plan | { readonly problem: string } {
-  const plan = planSetSpeed(project, itemId, speed, keepPitch);
+  return withOverlaysFollowing(project, itemId, planSetSpeed(project, itemId, speed, keepPitch));
+}
+
+/** A speed ramp (D327): a preset, keys or null (normal speed); overlays follow like a speed change. */
+export function rampPlan(project: ProjectModel, itemId: string, ramp: string | ReadonlyArray<SpeedKey> | null): Plan | { readonly problem: string } {
+  return withOverlaysFollowing(project, itemId, planSpeedRamp(project, itemId, ramp));
+}
+
+/** Reverse a clip or play it forwards (D327). */
+export const reversePlan = (project: ProjectModel, itemId: string, reverse: boolean) => planReverse(project, itemId, reverse);
+
+function withOverlaysFollowing(project: ProjectModel, itemId: string, plan: Plan | { readonly problem: string }): Plan | { readonly problem: string } {
   if ("problem" in plan || !getPlayback().linkOverlays || findItem(project, itemId)?.track.role !== "main") return plan;
   return withOverlayRipple(project, plan);
 }

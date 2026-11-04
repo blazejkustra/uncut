@@ -334,6 +334,22 @@
             "in": { "$ref": "#/$defs/frame" },
             "speed": { "type": "number", "exclusiveMinimum": 0, "description": "Playback rate of the media (D125): 2 plays twice as fast, so the clip covers twice the media frames per timeline frame." },
             "keepPitch": { "type": "boolean", "description": "D125: false lets a sped-up or slowed-down sound change pitch (like tape); absent or true keeps the pitch." },
+            "speedKeys": {
+              "type": "array",
+              "minItems": 1,
+              "description": "D327: a speed ramp. The clip's speed over its own frames: held before the first key and after the last, eased between two by the ease of the key it leaves. Wins over speed. The clip plays the integral of the curve, so its media stretch is the area under it. A split or trimmed piece keeps keys outside its frames (negative or past its end) so its curve stays the same. A ramped clip plays without its sound.",
+              "items": {
+                "type": "object",
+                "required": ["frame", "speed"],
+                "additionalProperties": false,
+                "properties": {
+                  "frame": { "type": "integer", "description": "Frames from the clip's start (may be outside the clip)." },
+                  "speed": { "type": "number", "minimum": 0.1, "maximum": 10 },
+                  "ease": { "enum": ["linear", "in", "out", "inOut"], "description": "Shapes the change from this key to the next (default linear; in, out and inOut are cubic)." }
+                }
+              }
+            },
+            "reverse": { "type": "boolean", "description": "D327: the clip plays its media backwards. Its in counts from the media's end (in 0 = the media's last frame first). Not with loop or hold." },
             "mute": { "type": "boolean", "description": "D123: the clip's own sound is off (Detach audio sets it; its sound then lives on an audio item). Absent = it plays its media's sound." },
             "linkedTo": { "$ref": "#/$defs/id", "description": "D215: a clip off the main track that follows a main clip (a take's other picture, Put on Main sets it): its start, length, speed, splits and cuts, its in point moved by as much as that clip's (its own offset kept); it goes when that clip goes. Moving, trimming or splitting it unlinks it." },
             "loop": { "type": "boolean", "description": "The media starts over from its beginning when the clip runs past its end." },

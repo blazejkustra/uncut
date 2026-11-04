@@ -44,7 +44,7 @@ test("D285: the edit ops stay strict in the schema; every op's shape is in the d
   assert.match(edit.description, /docs_read edits/);
   // A shape spells out required and optional fields and enums.
   assert.equal(OP_SHAPES.trim_item, '{"op":"trim_item", item, edge: "start"|"end", frames}');
-  assert.equal(OP_SHAPES.set_speed, '{"op":"set_speed", item, speed, keepPitch?}');
+  assert.equal(OP_SHAPES.set_speed, '{"op":"set_speed", item, speed?, keepPitch?, ramp?, reverse?}');
 });
 
 test("D285: long tool explanations live in their docs_read topic; the tool keeps a pointer", () => {

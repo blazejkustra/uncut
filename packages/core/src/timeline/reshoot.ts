@@ -3,6 +3,7 @@
 // running past its end, which the timeline rules refuse (media-range): those are trimmed to the new
 // end, or held on its last frame (D94), in the same edit, each with a warning the caller passes on.
 import type { Id, Item, Media, MediaProbe, Op, Project } from "./types.ts";
+import { localForSource, sourceSpan } from "./speedRamp.ts";
 
 export type Overrun = "trim" | "hold";
 
@@ -45,10 +46,9 @@ export function planReshoot(
       }
       if (!frames || media.kind === "image" || item.loop || (item.type === "clip" && item.hold)) continue;
       const from = item.in ?? 0;
-      const speed = item.speed ?? 1;
-      const used = from + item.duration * speed;
+      const used = from + sourceSpan(item);
       if (used <= frames) continue;
-      const fits = Math.floor((frames - from) / speed);
+      const fits = Math.floor(localForSource(item, frames - from));
       if (item.type === "clip" && (overrun === "hold" || fits < 1)) {
         ops.push({ op: "update_item", item: item.id, set: { hold: true } });
         warnings.push(`The new take is ${secs(used - frames, fps)} shorter than ${label} needs, so it holds the take's last frame for the rest.`);

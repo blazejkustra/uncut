@@ -51,6 +51,7 @@ import { capsOf, withPictureSizes } from "./exporter/ffmpeg.ts";
 import { projectGraphics } from "./exporter/graphics.ts";
 import { makeDuckEnvelopes } from "./exporter/duckEnvelopes.ts";
 import { makeRunJob } from "./exporter/runJob.ts";
+import { pinReversed, readyReversed, reversedResolver, reverseTargets } from "../media/reversed.ts";
 import { REVIEW_VIDEO, reviewFolderFor, reviewManifest, reviewPageHtml } from "./exporter/reviewPage.ts";
 import { makePreviewLoudness } from "./exporter/previewLoudness.ts";
 import { makeMixMeasure, type MixTraces } from "./exporter/mixMeasure.ts";
@@ -287,8 +288,11 @@ export const layer = Layer.effect(
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
         const burnCaptions = input.burnCaptions !== false;
         const motionBlur = input.motionBlur ?? motionBlurDefault(project, input.quality);
+        // D327: reversed clips read reversed copies; the job makes the missing ones before it renders.
+        const reversed = yield* Effect.promise(() => reverseTargets(sized, dir, mediaPath));
+        const reversedFile = reversedResolver(reversed);
         const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) =>
-          planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur });
+          planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur, reversedFile });
         const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
@@ -331,6 +335,7 @@ export const layer = Layer.effect(
           return [...jobs.filter((j) => !finished.includes(j)), ...finished.slice(-MAX_JOBS_KEPT), job];
         });
         // One at a time, outside the request: a dropped connection doesn't stop it.
+        const releaseReversed = pinReversed(reversed);
         queue = queue
           .then(async () => {
             if (controller.signal.aborted) return; // cancelled while queued: already marked
@@ -347,11 +352,15 @@ export const layer = Layer.effect(
               envelopes,
               RASTER_CSS + fonts.kitCss,
               reviewPage,
+              reversed,
             );
             await running;
             running = undefined;
           })
-          .finally(() => controllers.delete(id));
+          .finally(() => {
+            controllers.delete(id);
+            releaseReversed();
+          });
         return { jobId: id };
       });
 
@@ -377,7 +386,12 @@ export const layer = Layer.effect(
         return yield* Effect.tryPromise({
           try: async (signal) => {
             const { graphics, fonts } = await projectGraphics(config, dir, project);
-            return renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss);
+            const { reversedFile, release } = await readyReversed(bin, project, dir, mediaPath, signal);
+            try {
+              return await renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss, { reversedFile });
+            } finally {
+              release();
+            }
           },
           catch: (error) => new ExportError({ reason: "missing-media", message: (error as Error).message }),
         });
@@ -396,8 +410,15 @@ export const layer = Layer.effect(
               try: async () => {
                 const { graphics, fonts } = await projectGraphics(config, dir, project);
                 const life = new AbortController();
-                const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, options);
-                return { session, life };
+                const { reversedFile, release } = await readyReversed(bin, project, dir, mediaPath, life.signal);
+                const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, {
+                  ...options,
+                  reversedFile,
+                }).catch((error: unknown) => {
+                  release();
+                  throw error;
+                });
+                return { session, life, release };
               },
               catch: failed,
             }),
@@ -409,10 +430,11 @@ export const layer = Layer.effect(
                   Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
                 rehearse: (budgetMs) => Effect.tryPromise({ try: (signal) => session.rehearse(budgetMs, { signal }), catch: failed }),
               }),
-            ({ session, life }) =>
+            ({ session, life, release }) =>
               Effect.promise(async () => {
                 life.abort();
                 await session.close();
+                release();
               }),
           );
         }),

@@ -48,6 +48,7 @@ import { duckCurvesOf } from "./ducking.ts";
 
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { mediaUrl } from "../state/store.ts";
+import { reversedSrc } from "../preview/compositor/media.ts";
 import { RAMP_S, wanted, reachable, startedAt, WARM_S, PREROLL_S, seek, DRIFT_S } from "./mix/elements.ts";
 import type { MixState } from "./mix/levels.ts";
 import { MixGraph } from "./mix/graph.ts";
@@ -118,7 +119,7 @@ export class Mix extends MixGraph {
 
   private ownElement(item: Item, project: ProjectModel): HTMLAudioElement | undefined {
     const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
-    const src = media ? mediaUrl(media.id, media.path) : undefined;
+    const src = media ? (item.reverse ? reversedSrc(project, item) : mediaUrl(media.id, media.path)) : undefined;
     if (!src) return undefined;
     let el = this.own.get(item.id);
     if (el && el.dataset.src === src) return el;

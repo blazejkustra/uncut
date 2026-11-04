@@ -3,6 +3,7 @@
 // Browser-safe (no node:fs, no ajv), so the renderer checks a drag's planned result with the same
 // rules the server's validator uses (D52) before showing it as droppable.
 import { overlaps } from "../visual/transitions.ts";
+import { isRamped, sourceSpan } from "./speedRamp.ts";
 import type { Item, ItemType, Media, Problem, Project, Track } from "./types.ts";
 
 const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>> = {
@@ -111,17 +112,23 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
           const needsAudio = item.type === "audio" || item.type === "captions";
           if (needsAudio && !(m.kind === "audio" || m.probe?.hasAudio)) errors.push(err("media-kind", ipath, `"${mediaId}" has no audio`));
           if (!needsAudio && m.kind === "audio") errors.push(err("media-kind", ipath, `"${mediaId}" is audio-only`));
-          const used = (item.in ?? 0) + item.duration * (item.speed ?? 1);
+          const used = (item.in ?? 0) + sourceSpan(item);
           if (
             m.kind !== "image" &&
             m.probe?.frames &&
             !item.loop &&
             !(item.type === "clip" && item.hold) &&
             item.type !== "captions" &&
-            used > m.probe.frames
+            used > m.probe.frames + (isRamped(item) ? 1e-6 : 0)
           ) {
-            errors.push(err("media-range", ipath, `uses frames up to ${used} but "${mediaId}" has ${m.probe.frames}`));
+            errors.push(
+              err("media-range", ipath, `uses frames up to ${isRamped(item) ? Math.round(used * 100) / 100 : used} but "${mediaId}" has ${m.probe.frames}`),
+            );
           }
+          // D327: ramps and reverse play video clips straight through their media.
+          if ((isRamped(item) || item.reverse) && (item.type !== "clip" || m.kind !== "video" || item.loop || item.hold))
+            errors.push(err("speed-ramp", ipath, `${item.reverse ? "reverse" : "a speed ramp"} needs a video clip that doesn't loop or hold`));
+          if (item.reverse && !m.probe?.frames) errors.push(err("speed-ramp", ipath, `reverse needs the length of "${mediaId}"`));
         }
       }
 

@@ -78,6 +78,21 @@ export function frameLookup(values: ReadonlyArray<number>, v: string, slot = 9):
   return `st(${slot},${v});${tree(0, runs.length - 1)}`;
 }
 
+/**
+ * A speed ramp's timestamps (D327): ffmpeg's setpts for a decoded frame `T` seconds after the seek
+ * point (`pre` before the layer's source): the first layer frame whose source time (`times`, core's
+ * per-frame values) is at or after it, so fps (round=up) then shows on each frame the last source
+ * frame starting at or before its source time (+0.0001 s), as with a constant speed (D38).
+ */
+export function rampPts(times: ReadonlyArray<number>, pre: number, fps: number, slot = 9): string {
+  const tree = (lo: number, hi: number): string => {
+    if (lo > hi) return String(lo);
+    const mid = (lo + hi) >> 1;
+    return `if(gte(${n(times[mid]!)},ld(${slot})),${tree(lo, mid - 1)},${tree(mid + 1, hi)})`;
+  };
+  return `st(${slot},T-${n(pre + 0.0001)});${tree(0, times.length - 1)}/${n(fps)}/TB`;
+}
+
 export const same = (values: ReadonlyArray<number>) => values.every((x) => x === values[0]);
 
 /**
@@ -173,7 +188,8 @@ export function videoSource(
   // or before its source time (round=up), like the preview's <video> (D38).
   // A held clip (D94) seeks up to 2 s early, so a probe that overstates the stream still leaves frames to clone.
   const pre = layer.cycle ? 0 : Math.min(layer.last !== undefined ? 2 : 1, layer.source);
-  const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + (frames / fps) * layer.speed + 1;
+  const reach = layer.times ? (layer.times.at(-1) ?? 0) + 1 / fps : (frames / fps) * layer.speed;
+  const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + reach + 1;
   const inputs = [
     ...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []),
     ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]),
@@ -182,7 +198,8 @@ export function videoSource(
     "-i",
     layer.file,
   ];
-  const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
+  const timing = layer.times && !layer.cycle ? `setpts='${rampPts(layer.times, pre, fps)}'` : `setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
+  const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}${timing}`;
   // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
   // are padded with clones of the last one (before fps picks, so even a slice that starts at or
   // past the stream's end has a frame to show).

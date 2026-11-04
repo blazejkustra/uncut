@@ -9,6 +9,7 @@ import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
 import type { ProjectSnapshot, ProxyState } from "@uncut/contracts";
+import type { Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -24,6 +25,7 @@ import { Projects } from "../project/projects.ts";
 import { posterKey } from "./media.ts";
 import { runProbe } from "./probe.ts";
 import { localInputs } from "./localInputs.ts";
+import { ReverseQueue } from "./reversed.ts";
 
 export const proxyDir = (projectDir: string) => join(projectDir, ".cache", "proxies");
 export const proxyName = (id: string, key: string) => `${id}--${key}.mp4`;
@@ -386,6 +388,8 @@ export interface ProxiesShape {
   readonly states: Stream.Stream<ReadonlyArray<ProxyState>>;
   /** The proxy file of a media item of the open project, when it is made. */
   readonly proxyFor: (id: string) => Effect.Effect<string | undefined>;
+  /** D327: the reversed copy of media frames [from, to) of a media item, when it is made. */
+  readonly reversedFor: (id: string, from: number, to: number) => Effect.Effect<string | undefined>;
 }
 
 export class Proxies extends Context.Service<Proxies, ProxiesShape>()("uncut/Proxies") {}
@@ -407,11 +411,26 @@ export const layer = Layer.effect(
       return which(name, process.env.PATH ?? "");
     };
     const ffmpeg = tool("ffmpeg");
+    // The preview proxies and the reversed copies (D327) share one list of states.
+    let proxyStates: ReadonlyArray<ProxyState> = [];
+    let reverseStates: ReadonlyArray<ProxyState> = [];
+    const publish = () => Effect.runSync(SubscriptionRef.set(ref, [...proxyStates, ...reverseStates]));
+    const reversed = new ReverseQueue({
+      ffmpeg,
+      exportBusy: exporter.busy,
+      onChange: (states) => {
+        reverseStates = states;
+        publish();
+      },
+    });
     const queue = new ProxyQueue({
       ffmpeg,
       ffprobe: tool("ffprobe"),
       exportBusy: exporter.busy,
-      onChange: (states) => Effect.runSync(SubscriptionRef.set(ref, states)),
+      onChange: (states) => {
+        proxyStates = states;
+        publish();
+      },
       hardware: async () => {
         const bin = await ffmpeg();
         if (!bin) return false;
@@ -419,9 +438,27 @@ export const layer = Layer.effect(
         return r.kind === "done" && /\bh264_videotoolbox\b/.test(r.stdout);
       },
     });
-    yield* Effect.addFinalizer(() => Effect.sync(() => queue.shutdown()));
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        queue.shutdown();
+        reversed.shutdown();
+      }),
+    );
     // Exports come first (D55): no proxy starts while one is queued or running.
-    yield* Effect.forkScoped(Stream.runForEach(exporter.jobs, (jobs) => Effect.sync(() => queue.setExportBusy(jobs.some((j) => EXPORT_BUSY.has(j.phase))))));
+    yield* Effect.forkScoped(
+      Stream.runForEach(exporter.jobs, (jobs) =>
+        Effect.sync(() => {
+          queue.setExportBusy(jobs.some((j) => EXPORT_BUSY.has(j.phase)));
+          reversed.pump();
+        }),
+      ),
+    );
+    // Reversed clips need their copies whatever the proxies setting: the preview can't play backwards.
+    yield* Effect.forkScoped(
+      Stream.runForEach(projects.changes, (snapshot: ProjectSnapshot | null) =>
+        Effect.promise(() => reversed.sync(snapshot?.dir, snapshot?.project as Project | undefined)),
+      ),
+    );
     if (!proxiesOff()) {
       // Every change of the open project (an import, a relink, an edit) reconciles its proxies:
       // a stat per video, ffprobe once per file as it is.
@@ -436,6 +473,10 @@ export const layer = Layer.effect(
         ),
       );
     }
-    return Proxies.of({ states: SubscriptionRef.changes(ref), proxyFor: (id) => Effect.promise(() => queue.proxyFor(id)) });
+    return Proxies.of({
+      states: SubscriptionRef.changes(ref),
+      proxyFor: (id) => Effect.promise(() => queue.proxyFor(id)),
+      reversedFor: (id, from, to) => Effect.promise(() => reversed.fileFor(id, from, to)),
+    });
   }),
 );

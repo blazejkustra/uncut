@@ -55,7 +55,19 @@ export const proxyUrl = (id: string, key: string) => {
   return url ? `${url}&v=${encodeURIComponent(key)}` : undefined;
 };
 /** D212: a media item's proxy state in the open project. */
-export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId);
+export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId && !p.reverse);
+/** D327: the state of the reversed copy of media frames [from, to) of a media item. */
+export const reversedOf = (s: AppStateShape, mediaId: string, range: { readonly from: number; readonly to: number }) =>
+  s.proxies.find((p) => p.mediaId === mediaId && p.reverse?.from === range.from && p.reverse.to === range.to);
+/** D327: the reversed copy of a range of a media item (tagged with the key of the file it was made from). */
+export const reversedUrl = (id: string, range: { readonly from: number; readonly to: number }, key: string) => {
+  const url = serverUrl(PROXY_PATH, id);
+  if (!url) return undefined;
+  const u = new URL(url);
+  u.pathname = `${u.pathname}/${range.from}-${range.to}`;
+  u.searchParams.set("v", key);
+  return u.href;
+};
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
 /** A sound of the bundled sound-effects pack (D134), for the Sound effects tab's preview. */
 export const sfxUrl = (file: string) => serverUrl(SFX_FILE_PATH, file);

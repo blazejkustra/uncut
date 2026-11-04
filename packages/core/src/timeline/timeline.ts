@@ -215,7 +215,7 @@ export function visualsAt(
       // A main-track transition owns the blend at its cut: the in/out animation on that side is skipped.
       const anim = animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut });
       opacity *= anim.opacity;
-      const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
+      const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas, tracks: project.tracks }, item, f - start) : 0;
       const media = pictureMedia(project, item);
       // A zoom pulse (D136) is the clip's box zoom at this frame.
       const own = media

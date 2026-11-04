@@ -1,5 +1,6 @@
 import { transitionSeconds } from "../../../timeline/transitionLength.ts";
 import { type AgentUiPanel } from "@uncut/contracts";
+import type { SpeedKey } from "@uncut/core/speedRamp";
 import { playback, getPlayback } from "../../../preview/playback.ts";
 import {
   planSplit,
@@ -25,7 +26,7 @@ import { draggedComponentProps, planAddComponent, planAddGraphic } from "../../.
 import { planRemoveGainKey } from "../../../audio/sound.ts";
 import { planRemoveMedia, planFitToVideo } from "@uncut/core/mediaPlan";
 import { set, state, online, projectOf } from "../core.ts";
-import { addPlanned, adding, timelineEdit, itemEdit, shaderDefOf, speedPlan } from "../edits.ts";
+import { addPlanned, adding, timelineEdit, itemEdit, shaderDefOf, speedPlan, rampPlan, reversePlan } from "../edits.ts";
 import { call, plainError } from "../server.ts";
 import { nextPanelSeq } from "../agentUi.ts";
 
@@ -170,6 +171,10 @@ export const timelineActions = {
     itemEdit((project) => planShaderValues(project, itemId, values)),
   /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
   setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => speedPlan(project, itemId, speed, keepPitch)),
+  /** A speed ramp (D327): a preset name, keys of the clip's own, or null for normal speed. */
+  setSpeedRamp: (itemId: string, ramp: string | ReadonlyArray<SpeedKey> | null) => itemEdit((project) => rampPlan(project, itemId, ramp)),
+  /** Reverse a clip or play it forwards (D327). */
+  setReverse: (itemId: string, reverse: boolean) => itemEdit((project) => reversePlan(project, itemId, reverse)),
   /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */
   renameItem: (itemId: string, name: string) =>
     itemEdit(() => ({

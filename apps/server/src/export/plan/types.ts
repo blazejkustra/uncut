@@ -111,6 +111,8 @@ export type VisualLayer =
        * are decoded once and repeated (ffmpeg's loop filter), frame f0 showing frame `offset` of them.
        */
       readonly cycle?: { readonly length: number; readonly offset: number };
+      /** A speed ramp (D327): for each frame from f0, its source time (s) after `source` (core sourceAt), so `speed` is unused. */
+      readonly times?: ReadonlyArray<number>;
       /** A held clip (D94): the source time (s) of its media's last frame, where its source stops. */
       readonly last?: number;
       readonly fx?: LayerFx;

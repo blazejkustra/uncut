@@ -17,7 +17,8 @@ import {
   type TextLook,
   planInsertText,
 } from "@uncut/core";
-import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed, planReplaceRange } from "@uncut/core/arrange";
+import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed, planReplaceRange, planReverse, planSpeedRamp } from "@uncut/core/arrange";
+import type { SpeedKey } from "@uncut/core/speedRamp";
 import { withoutDecisionIds } from "./decisionIds.ts";
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
@@ -236,9 +237,42 @@ export function expandTextLooks(
   return { ops: out };
 }
 
+/** set_speed's ops: a constant speed (D125) or a ramp, then a direction (D327). */
+function speedOps(project: Project, op: Record<string, unknown>): { ops: ReadonlyArray<Op> } | { problem: string } {
+  const item = op.item as string;
+  if (op.speed !== undefined && op.ramp !== undefined) return { problem: "give speed or ramp, not both." };
+  if (op.keepPitch !== undefined && op.speed === undefined) return { problem: "keepPitch goes with a speed." };
+  if (op.speed === undefined && op.ramp === undefined && op.reverse === undefined) return { problem: "give speed, ramp or reverse." };
+  if (op.speed !== undefined && typeof op.speed !== "number") return { problem: "speed must be a number from 0.1 to 10." };
+  if (op.keepPitch !== undefined && typeof op.keepPitch !== "boolean") return { problem: "keepPitch must be true or false." };
+  if (op.reverse !== undefined && typeof op.reverse !== "boolean") return { problem: "reverse must be true or false." };
+  const ramp = op.ramp;
+  const keys = Array.isArray(ramp) && ramp.every((k) => !!k && typeof k === "object" && Object.keys(k).every((f) => ["frame", "speed", "ease"].includes(f)));
+  if (ramp !== undefined && !(ramp === null || typeof ramp === "string" || keys))
+    return { problem: "ramp must be a preset name, keys [{frame, speed, ease?}] or null." };
+  const ops: Array<Op> = [];
+  if (op.speed !== undefined) {
+    const plan = planSetSpeed(project, item, op.speed as number, op.keepPitch as boolean | undefined);
+    if ("problem" in plan) return plan;
+    ops.push(...plan.ops);
+  } else if (ramp !== undefined) {
+    const plan = planSpeedRamp(project, item, ramp as string | ReadonlyArray<SpeedKey> | null);
+    if ("problem" in plan) return plan;
+    ops.push(...plan.ops);
+  }
+  if (typeof op.reverse === "boolean") {
+    const now = ops.length ? applyEdit(createSession(project), { actor: "agent", ops }).project : project;
+    const plan = planReverse(now, item, op.reverse);
+    if ("problem" in plan) return plan;
+    ops.push(...plan.ops);
+  }
+  return { ops };
+}
+
 /**
- * timeline_edit's ops with each detach_audio (D123), set_speed (D125), put_on_main (D215) and replace_range (issue #118)
- * expanded into the edit ops that do it (core planDetachAudio / planSetSpeed / planPutOnMain / planReplaceRange),
+ * timeline_edit's ops with each detach_audio (D123), set_speed (D125; ramp and reverse D327), put_on_main (D215) and
+ * replace_range (issue #118) expanded into the edit ops that do it (core planDetachAudio / planSetSpeed / planSpeedRamp /
+ * planReverse / planPutOnMain / planReplaceRange),
  * planned against the project as the ops before it leave it. Other ops pass through.
  */
 export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
@@ -259,7 +293,7 @@ export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>):
           ? ["op", "item", "frame"]
           : op.op === "replace_range"
             ? ["op", "item", "from", "to", "media", "in", "id"]
-            : ["op", "item", "speed", "keepPitch"];
+            : ["op", "item", "speed", "keepPitch", "ramp", "reverse"];
     const extra = Object.keys(op).filter((k) => !allowed.includes(k));
     if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
     if (typeof op.item !== "string") return { problem: `${where}: item must be an item id.` };
@@ -302,11 +336,9 @@ export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>):
       if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
       out.push(...plan.ops);
     } else {
-      if (typeof op.speed !== "number") return { problem: `${where}: speed must be a number from 0.1 to 10.` };
-      if (op.keepPitch !== undefined && typeof op.keepPitch !== "boolean") return { problem: `${where}: keepPitch must be true or false.` };
-      const plan = planSetSpeed(now, op.item, op.speed, op.keepPitch as boolean | undefined);
-      if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
-      out.push(...plan.ops);
+      const speed = speedOps(now, op);
+      if ("problem" in speed) return { problem: `${where}: ${speed.problem}` };
+      out.push(...speed.ops);
     }
   }
   return { ops: out };

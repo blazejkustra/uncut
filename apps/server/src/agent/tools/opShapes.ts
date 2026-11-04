@@ -29,7 +29,7 @@ const CONVENIENCE: ReadonlyArray<{ readonly op: string; readonly def: string; re
   },
   { op: "put_on_main", def: "putOnMain", line: "moves a picture off Main onto it at the nearest cut; a take's microphone and other parts get linked under it" },
   { op: "detach_audio", def: "detachAudio", line: "moves a clip's sound to its own audio item and mutes the clip" },
-  { op: "set_speed", def: "setSpeed", line: "changes a clip's or audio item's speed (0.1 to 10) and its length with it" },
+  { op: "set_speed", def: "setSpeed", line: "speed 0.1 to 10, a ramp or reverse; length follows" },
   {
     op: "replace_range",
     def: "replaceRange",

@@ -6,6 +6,7 @@ import { type CutWord, ceilF, plural, floorF, spansFor, localRange, freeId, kept
 import { type SpeechSegment, type SpeechEnvelope, speechEdges } from "./speech.ts";
 import { fillersOf, type Pause, pausesOf, tailFrames, handleFrames } from "./fillers.ts";
 import { soundParts } from "./editWords.ts";
+import { isRamped, sourceFrames, sourceSpan } from "../../timeline/speedRamp.ts";
 
 export interface CutTranscript {
   readonly words: ReadonlyArray<CutWord>;
@@ -157,7 +158,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   } else {
     for (const id of new Set(request.items)) {
       const at = where.get(id);
-      if (!at || (at.item.type !== "clip" && at.item.type !== "audio") || at.item.media !== mediaId) continue;
+      if (!at || (at.item.type !== "clip" && at.item.type !== "audio") || at.item.media !== mediaId || at.item.reverse) continue;
       // A linked item cuts its clip (it follows): they share their frames (start, length, speed).
       const link = at.item.linkedTo ? where.get(at.item.linkedTo) : undefined;
       const linked =
@@ -182,13 +183,13 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   /** Whether a clip plays any frame word i covers. */
   const touches = (item: Item, i: number) => {
     const inF = item.in ?? 0;
-    return floorF(words[i]!.start * fps) < inF + item.duration * (item.speed ?? 1) && ceilF(words[i]!.end * fps) > inF;
+    return floorF(words[i]!.start * fps) < inF + sourceSpan(item) && ceilF(words[i]!.end * fps) > inF;
   };
   /** Whether a clip plays word i (its middle frame). */
   const plays = (item: Item, i: number) => {
     const mid = floorF(((words[i]!.start + words[i]!.end) / 2) * fps);
     const inF = item.in ?? 0;
-    return mid >= inF && mid < inF + item.duration * (item.speed ?? 1);
+    return mid >= inF && mid < inF + sourceSpan(item);
   };
 
   // Each clip's stretches, as local frames; the same media stretch in several clips is one cut.
@@ -205,16 +206,15 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     for (const sp of spansFor(words, removed, fillerWords, kept, (i) => touches(item, i), pauses, fps, length, tight, heard)) {
       const [a, b] = localRange(item, sp.from, sp.to);
       if (b <= a) {
-        if ((item.speed ?? 1) !== 1) for (const i of sp.words) if (plays(item, i)) slowWords.add(i);
+        if ((item.speed ?? 1) !== 1 || isRamped(item)) for (const i of sp.words) if (plays(item, i)) slowWords.add(i);
         continue;
       }
       ranges.push([a, b]);
       for (const i of sp.words) cutWords.add(i);
       // Reported as the media frames really removed, one entry per set of words (or pause).
       const inF = item.in ?? 0;
-      const speed = item.speed ?? 1;
-      const mFrom = Math.round(inF + a * speed);
-      const mTo = Math.round(inF + b * speed);
+      const mFrom = Math.round(inF + sourceFrames(item, a));
+      const mTo = Math.round(inF + sourceFrames(item, b));
       const key = sp.words.length ? `w${[...new Set(sp.words)].sort((x, y) => x - y).join(",")}` : `${sp.from}-${sp.to}`;
       const entry =
         byStretch.get(key) ??

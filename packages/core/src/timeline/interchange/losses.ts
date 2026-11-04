@@ -12,6 +12,8 @@ export function itemLosses(item: Item): ReadonlyArray<string> {
   if (item.keys?.length) lost.push(`${name}'s keyframes are left out.`);
   if (item.transform && Object.keys(item.transform).length) lost.push(`${name}'s position, size and opacity are left out.`);
   if (item.speed !== undefined && item.speed !== 1) lost.push(`${name} plays at normal speed: its speed change is left out.`);
+  if (item.speedKeys?.length) lost.push(`${name} plays at normal speed: its speed ramp is left out.`);
+  if (item.reverse) lost.push(`${name} plays forwards: its reverse is left out.`);
   if (item.animation) lost.push(`${name}'s animation is left out.`);
   if (item.loop) lost.push(`${name}'s loop is left out.`);
   return lost;

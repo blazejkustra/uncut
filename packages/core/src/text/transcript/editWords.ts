@@ -1,5 +1,6 @@
 import { gapOf, resolveStarts } from "../../timeline/rules.ts";
 import type { Project, Item, Track } from "../../timeline/types.ts";
+import { localForSource, sourceSpan } from "../../timeline/speedRamp.ts";
 import { type CutWord, floorF, ceilF } from "./cutSpans.ts";
 
 /** The words under the main track in edit order, as the Transcript panel lists them (what you'd hear). */
@@ -145,12 +146,12 @@ export function editWords(
   };
   /** The words `src` plays, placed from timeline frame `t` (clipped to it), listed under `clip`. */
   const walk = (src: Item, t: number, clip: string) => {
-    const words = src.media ? transcripts.get(src.media) : undefined;
+    // D327: a reversed clip plays its words backwards; none of them are said there.
+    const words = src.media && !src.reverse ? transcripts.get(src.media) : undefined;
     if (!words) return;
     const inF = src.in ?? 0;
-    const speed = src.speed ?? 1;
     const lo = inF / fps;
-    const hi = (inF + src.duration * speed) / fps;
+    const hi = (inF + sourceSpan(src)) / fps;
     const { mid, sorted } = midsOf(words);
     let first = 0;
     if (sorted) {
@@ -171,8 +172,8 @@ export function editWords(
         continue;
       }
       if (c < lo) continue;
-      const start = Math.max(0, Math.floor((floorF(w.start * fps) - inF) / speed));
-      const end = Math.min(src.duration, Math.max(start + 1, Math.ceil((ceilF(w.end * fps) - inF) / speed)));
+      const start = Math.max(0, Math.floor(localForSource(src, floorF(w.start * fps) - inF)));
+      const end = Math.min(src.duration, Math.max(start + 1, Math.ceil(localForSource(src, ceilF(w.end * fps) - inF))));
       out.push({ clip, media: src.media!, index, start: t + start, end: t + end, ...(src.id !== clip ? { via: src.id } : {}) });
     }
   };

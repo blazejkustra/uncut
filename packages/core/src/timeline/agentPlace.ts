@@ -13,6 +13,7 @@ import { busySpans, isFree, takenIds } from "./arrange.ts";
 import { fitsTrackKind, resolveStarts } from "./rules.ts";
 import { overlaps } from "../visual/transitions.ts";
 import type { Item, Op, Problem, Project, Track } from "./types.ts";
+import { localForSource } from "./speedRamp.ts";
 
 export const PLACE_MODES = ["after", "free-track", "ripple"] as const;
 export type PlaceMode = (typeof PLACE_MODES)[number];
@@ -132,8 +133,7 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
         h.missingIn ? `"${h.item.id}" has ${h.hasBefore} frame${h.hasBefore === 1 ? "" : "s"} of media before its in-point (${h.missingIn} missing)` : "",
         h.missingOut ? `"${h.prev.id}" has ${h.hasAfter} after its out-point (${h.missingOut} missing)` : "",
       ].filter(Boolean);
-      const speed = h.item.speed ?? 1;
-      const trimIn = h.missingIn ? Math.ceil(h.missingIn / speed) : 0;
+      const trimIn = h.missingIn ? Math.ceil(localForSource(h.item, h.missingIn) - 1e-9) : 0;
       const trimOut = h.missingOut;
       const trims = [
         trimIn ? `${trimIn} frame${trimIn === 1 ? "" : "s"} off the start of "${h.item.id}"` : "",
@@ -363,7 +363,7 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
       if (!at) return undefined;
       const m = /has (\d+)/.exec(p.message);
       const frames = m ? Number(m[1]) : undefined;
-      const room = frames !== undefined ? Math.max(1, Math.floor((frames - (at.item.in ?? 0)) / (at.item.speed ?? 1))) : undefined;
+      const room = frames !== undefined ? Math.max(1, Math.floor(localForSource(at.item, frames - (at.item.in ?? 0)))) : undefined;
       return room !== undefined
         ? `Make it at most ${room} frames long from in ${at.item.in ?? 0}, or set hold: true (freeze the last frame) or loop: true.`
         : undefined;

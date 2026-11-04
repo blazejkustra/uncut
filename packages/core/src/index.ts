@@ -645,4 +645,27 @@ export type {
   RuleSpec,
 } from "./plugins/contributions.ts";
 export { canvasForClip, nearestCanvasFps } from "./timeline/canvasMatch.ts";
+export {
+  inShift,
+  isRamped,
+  localAtSeconds,
+  localForSource,
+  presetKeys,
+  presetOf,
+  RAMP_EASES,
+  RAMP_PRESETS,
+  RAMP_SPEED,
+  rampProblem,
+  REVERSE_STEP_S,
+  reversedSeconds,
+  reverseProblem,
+  reverseRange,
+  shiftSpeedKeys,
+  sourceFrames,
+  sourceSpan,
+  speedAt,
+  speedKeysOf,
+  trimSpeedKeys,
+} from "./timeline/speedRamp.ts";
+export type { RampEase, RampPreset, ReverseRange, SpeedKey } from "./timeline/speedRamp.ts";
 export { CANVAS_FPS } from "./timeline/types.ts";

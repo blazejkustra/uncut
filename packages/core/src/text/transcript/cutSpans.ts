@@ -1,6 +1,7 @@
 import { keyDbAt } from "../../audio/audio.ts";
 import { takenIds } from "../../timeline/arrange/place.ts";
 import type { Project, Item, Op, TimedModule } from "../../timeline/types.ts";
+import { localForSource } from "../../timeline/speedRamp.ts";
 import { type Pause, tailFrames, handleFrames } from "./fillers.ts";
 
 export interface CutWord {
@@ -150,9 +151,8 @@ export function spansFor(
 /** Local frames [a, b) of a clip that show media frames [from, to) (at the clip's speed). */
 export function localRange(item: Item, from: number, to: number): [number, number] {
   const inF = item.in ?? 0;
-  const speed = item.speed ?? 1;
-  const a = Math.max(0, Math.ceil((from - inF) / speed - 1e-9));
-  const b = Math.min(item.duration, Math.ceil((to - inF) / speed - 1e-9));
+  const a = Math.max(0, Math.ceil(localForSource(item, from - inF) - 1e-9));
+  const b = Math.min(item.duration, Math.ceil(localForSource(item, to - inF) - 1e-9));
   return [a, b];
 }
 

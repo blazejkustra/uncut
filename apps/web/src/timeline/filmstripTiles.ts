@@ -2,19 +2,24 @@
 // at the lane's height; it shows the frame of the media at the cell's left edge, following the
 // clip's in point, speed, loop and hold the way the waveform does (Waveform.tsx).
 import type { FilmstripLayout } from "@uncut/contracts";
+import { isRamped, sourceFrames, type SpeedKey } from "@uncut/core/speedRamp";
 
 export interface TileClip {
   readonly in?: number | undefined;
   readonly duration: number;
   readonly speed?: number | undefined;
   readonly loop?: boolean | undefined;
+  readonly speedKeys?: ReadonlyArray<SpeedKey> | undefined;
+  readonly reverse?: boolean | undefined;
 }
 
 /** The media time (s) at `x` px into a clip drawn `width` px wide. */
 export function mediaTimeAt(clip: TileClip, fps: number, x: number, width: number, mediaSeconds: number): number {
   const from = (clip.in ?? 0) / fps;
-  const length = (clip.duration * (clip.speed ?? 1)) / fps;
-  let t = from + (width > 0 ? x / width : 0) * length;
+  const share = width > 0 ? x / width : 0;
+  let t = isRamped(clip) ? from + sourceFrames(clip, share * clip.duration) / fps : from + share * ((clip.duration * (clip.speed ?? 1)) / fps);
+  // D327: a reversed clip's in counts from the media's end.
+  if (clip.reverse && mediaSeconds > 0) t = Math.max(0, mediaSeconds - t);
   // Looped media starts over; held (or plain) media stays on its last frame (the tile clamp).
   if (clip.loop && mediaSeconds > 0 && t >= mediaSeconds) t -= Math.floor(t / mediaSeconds) * mediaSeconds;
   return t;

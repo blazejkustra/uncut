@@ -1,6 +1,20 @@
 import { applyEdit, createSession } from "../apply-ops.ts";
 import { layout } from "../timeline.ts";
 import { soundMedia } from "../../audio/audio.ts";
+import {
+  isRamped,
+  localForSource,
+  presetKeys,
+  RAMP_EASES,
+  RAMP_PRESETS,
+  RAMP_SPEED,
+  rampProblem,
+  reverseProblem,
+  sourceFrames,
+  sourceSpan,
+  trimSpeedKeys,
+  type SpeedKey,
+} from "../speedRamp.ts";
 import type { Project, Id, Track, Item, Op } from "../types.ts";
 import { freeAudioTrack, isFree, uniqueIn, nextName, tryOps, takenIds } from "./place.ts";
 
@@ -40,6 +54,8 @@ export function planDetachAudio(
   const { track, item } = found;
   if (item.type !== "clip") return { problem: "Only a clip's sound can be detached." };
   if (item.mute) return { problem: "This clip's sound is already off (detached or muted)." };
+  if (isRamped(item)) return { problem: "A clip with a speed ramp plays without its sound, so there's none to detach." };
+  if (item.reverse) return { problem: "A reversed clip's sound can't be detached: play it forwards first." };
   const media = soundMedia(project, item);
   if (!media) return { problem: "This clip has no sound to detach." };
   const locked = lockProblem(track, item);
@@ -104,14 +120,10 @@ export const speedLabel = (speed: number) => `${Math.round(speed * 100) / 100}×
  * so its length on the timeline becomes duration × old speed / new speed (a main clip's neighbours
  * ripple; on a free track it must still fit before the next item). Volume and box keys and
  * animations scale with it, fades are kept within the new length. `keepPitch` false lets the
- * pitch follow the speed (absent: unchanged). Checked with the timeline rules.
+ * pitch follow the speed (absent: unchanged). Checked with the timeline rules. A speed ramp
+ * (D327) is replaced by the constant speed.
  */
-export function planSetSpeed(
-  project: Project,
-  itemId: Id,
-  speed: number,
-  keepPitch?: boolean,
-): { readonly ops: ReadonlyArray<Op>; readonly summary: string; readonly duration: number } | { readonly problem: string } {
+export function planSetSpeed(project: Project, itemId: Id, speed: number, keepPitch?: boolean): RetimePlan | { readonly problem: string } {
   const found = locate(project, itemId);
   if (!found) return { problem: "That item isn't in the project any more." };
   const { track, item } = found;
@@ -122,17 +134,44 @@ export function planSetSpeed(
   if (locked) return { problem: locked };
   if (!Number.isFinite(speed) || speed < SPEED_RANGE.min || speed > SPEED_RANGE.max)
     return { problem: `Pick a speed from ${SPEED_RANGE.min}× to ${SPEED_RANGE.max}×.` };
+  const ramped = isRamped(item);
   const old = item.speed ?? 1;
   const next = Math.round(speed * 1000) / 1000;
-  const ratio = old / next;
-  let duration = Math.max(1, Math.round(item.duration * ratio));
+  let duration = Math.max(1, Math.round(ramped ? sourceSpan(item) / next : item.duration * (old / next)));
   const frames = media.probe?.frames;
   const from = item.in ?? 0;
   if (frames && !item.loop && !(item.type === "clip" && item.hold) && from + duration * next > frames)
     duration = Math.max(1, Math.floor((frames - from) / next));
-  const scale = (f: number) => Math.min(duration, Math.round(f * ratio));
-  const set: Record<string, unknown> = { speed: next === 1 ? null : next, duration };
+  const set: Record<string, unknown> = { speed: next === 1 ? null : next, duration, ...(ramped ? { speedKeys: null } : {}) };
   if (keepPitch !== undefined) set.keepPitch = keepPitch ? null : false;
+  if (next === old && keepPitch === undefined && !ramped) return { ops: [], summary: "", duration: item.duration };
+  const summary = next === old && !ramped ? (keepPitch === false ? "Pitch follows speed" : "Keep pitch") : `Speed ${speedLabel(next)}`;
+  return retimed(project, found, duration, set, summary, "at that speed", ramped ? duration / item.duration : old / next);
+}
+
+export interface RetimePlan {
+  readonly ops: ReadonlyArray<Op>;
+  readonly summary: string;
+  readonly duration: number;
+}
+
+/**
+ * An update that gives an item a new length on the timeline (`set` with its new duration and
+ * timing): volume and box keys and animations scale with it, fades stay within it, and a main
+ * transition that no longer fits goes.
+ */
+function retimed(
+  project: Project,
+  found: NonNullable<ReturnType<typeof locate>>,
+  duration: number,
+  fields: Record<string, unknown>,
+  summary: string,
+  why: string,
+  ratio = duration / found.item.duration,
+): RetimePlan | { readonly problem: string } {
+  const { track, item } = found;
+  const scale = (f: number) => Math.min(duration, Math.round(f * ratio));
+  const set: Record<string, unknown> = { ...fields, duration };
   if (item.keys?.length) set.keys = item.keys.map((k) => ({ ...k, frame: scale(k.frame) }));
   if (item.gainKeys?.length) set.gainKeys = item.gainKeys.map((k) => ({ ...k, frame: scale(k.frame) }));
   if (item.animation)
@@ -143,27 +182,101 @@ export function planSetSpeed(
   const fadeOut = item.fadeOut ? Math.min(item.fadeOut, duration - (fadeIn ?? 0)) : undefined;
   if (item.fadeIn !== undefined) set.fadeIn = fadeIn ?? null;
   if (item.fadeOut !== undefined) set.fadeOut = fadeOut && fadeOut > 0 ? fadeOut : null;
-  if (next === old && keepPitch === undefined) return { ops: [], summary: "", duration: item.duration };
   const ops: Array<Op> = [{ op: "update_item", item: item.id, set }];
   // A main transition that no longer fits goes (the cut stays).
   const draft = tryOps(project, ops);
   if ("problem" in draft && track.role === "main") {
     const drop: Array<Op> = [];
-    const index = found.index;
     if (item.transitionIn) drop.push({ op: "set_transition", item: item.id, transition: null });
-    const after = track.items[index + 1];
+    const after = track.items[found.index + 1];
     if (after?.transitionIn) drop.push({ op: "set_transition", item: after.id, transition: null });
     const retry = tryOps(project, [...drop, ...ops]);
     if ("problem" in retry) return retry;
-    return { ops: [...drop, ...ops], summary: `Speed ${speedLabel(next)}`, duration };
+    return { ops: [...drop, ...ops], summary, duration };
   }
-  if ("problem" in draft)
-    return /overlaps/.test(draft.problem) ? { problem: "There's no room on this track for it at that speed: move the next item first." } : draft;
-  return { ops, summary: next === old ? (keepPitch === false ? "Pitch follows speed" : "Keep pitch") : `Speed ${speedLabel(next)}`, duration };
+  if ("problem" in draft) return /overlaps/.test(draft.problem) ? { problem: `There's no room on this track for it ${why}: move the next item first.` } : draft;
+  return { ops, summary, duration };
+}
+
+/** The local length at which `keys(duration)` plays `span` media frames, at most `room` (the media left). */
+function rampLength(keysFor: (duration: number) => ReadonlyArray<SpeedKey>, span: number, room: number): number {
+  const played = (d: number) => sourceFrames({ speedKeys: keysFor(d) }, d);
+  let duration = Math.max(1, Math.round(span));
+  for (let pass = 0; pass < 4; pass++) duration = Math.max(1, Math.round((duration * span) / Math.max(1e-9, played(duration))));
+  while (duration > 1 && played(duration) > room) duration--;
+  return duration;
+}
+
+/**
+ * A speed ramp on a clip (D327): a preset (RAMP_PRESETS, its keys placed over the clip's new
+ * length), keys of its own (local frames) or null (back to normal speed). The clip keeps playing the
+ * same stretch of its media, so its length becomes the curve's: the local length whose integral is
+ * that stretch. Keys, fades and animations scale as for a speed change. A ramped clip is silent.
+ */
+export function planSpeedRamp(project: Project, itemId: Id, ramp: string | ReadonlyArray<SpeedKey> | null): RetimePlan | { readonly problem: string } {
+  const found = locate(project, itemId);
+  if (!found) return { problem: "That item isn't in the project any more." };
+  const { track, item } = found;
+  const locked = lockProblem(track, item);
+  if (locked) return { problem: locked };
+  if (ramp === null) {
+    if (!isRamped(item)) return { ops: [], summary: "", duration: item.duration };
+    return planSetSpeed(project, itemId, 1);
+  }
+  const problem = rampProblem(project, item);
+  if (problem) return { problem };
+  const preset = typeof ramp === "string" ? RAMP_PRESETS[ramp] : undefined;
+  if (typeof ramp === "string" && !preset) return { problem: `There's no ramp called "${ramp}": pick ${Object.keys(RAMP_PRESETS).join(", ")}.` };
+  if (Array.isArray(ramp)) {
+    const bad = ramp.find(
+      (k) => !Number.isInteger(k.frame) || !(k.speed >= RAMP_SPEED.min && k.speed <= RAMP_SPEED.max) || (k.ease !== undefined && !RAMP_EASES.includes(k.ease)),
+    );
+    if (bad || !ramp.length)
+      return {
+        problem: `Each key needs a whole frame, a speed from ${RAMP_SPEED.min}× to ${RAMP_SPEED.max}× and an ease of ${RAMP_EASES.join(", ")} (or none).`,
+      };
+  }
+  const media = project.media.find((m) => m.id === item.media)!;
+  const span = sourceSpan(item);
+  const room = media.probe?.frames ? media.probe.frames - (item.in ?? 0) : Infinity;
+  const keysFor = (d: number) => (preset ? presetKeys(preset, d) : (ramp as ReadonlyArray<SpeedKey>).map((k) => ({ ...k })));
+  let duration = preset ? rampLength(keysFor, span, room) : Math.max(1, Math.round(localForSource({ speedKeys: keysFor(item.duration) }, span)));
+  const speedKeys = keysFor(duration);
+  while (duration > 1 && sourceFrames({ speedKeys }, duration) > room) duration--;
+  return retimed(
+    project,
+    found,
+    duration,
+    { speed: null, speedKeys: preset ? speedKeys : trimSpeedKeys(speedKeys, duration) },
+    `Speed ramp ${preset?.label ?? ""}`.trim(),
+    "with that ramp",
+  );
+}
+
+/**
+ * Reverse a clip (D327) or play it forwards again: the same stretch of its media, the other way.
+ * A reversed clip's in point counts from its media's end, so it is converted here.
+ */
+export function planReverse(project: Project, itemId: Id, reverse: boolean): RetimePlan | { readonly problem: string } {
+  const found = locate(project, itemId);
+  if (!found) return { problem: "That item isn't in the project any more." };
+  const { track, item } = found;
+  const locked = lockProblem(track, item);
+  if (locked) return { problem: locked };
+  if (!!item.reverse === reverse) return { ops: [], summary: "", duration: item.duration };
+  const problem = reverseProblem(project, item);
+  if (problem) return { problem };
+  const length = project.media.find((m) => m.id === item.media)!.probe!.frames!;
+  // Floored, so the stretch read the other way still ends within the media.
+  const at = Math.max(0, Math.floor(length - (item.in ?? 0) - sourceSpan(item) + 1e-9));
+  const ops: Array<Op> = [{ op: "update_item", item: item.id, set: { reverse: reverse ? true : null, in: at } }];
+  const draft = tryOps(project, ops);
+  if ("problem" in draft) return draft;
+  return { ops, summary: reverse ? "Reverse" : "Play forwards", duration: item.duration };
 }
 
 /** Ops that move, cut or retime an item itself (a linked sound touched like this goes its own way). */
-const RETIME_KEYS = new Set(["start", "in", "duration", "speed", "media", "loop"]);
+const RETIME_KEYS = new Set(["start", "in", "duration", "speed", "speedKeys", "reverse", "media", "loop"]);
 const retimes = (op: Op): string | undefined => {
   if (op.op === "move_item" || op.op === "trim_item" || op.op === "split_item" || op.op === "slip_item" || op.op === "roll_edit") return op.item;
   if (op.op === "update_item" && Object.keys(op.set).some((k) => RETIME_KEYS.has(k))) return op.item;

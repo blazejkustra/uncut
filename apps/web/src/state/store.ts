@@ -40,6 +40,8 @@ export {
   mediaUrl,
   proxyUrl,
   proxyOf,
+  reversedOf,
+  reversedUrl,
   sfxUrl,
   folderSoundUrl,
   libraryPreviewUrl,

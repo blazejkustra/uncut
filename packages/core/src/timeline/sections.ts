@@ -8,6 +8,7 @@ import { captionCards } from "../text/captions.ts";
 import { KEY_PROPS, keyAt } from "../visual/box.ts";
 import { layout } from "./timeline.ts";
 import type { Item, Op, Problem, Project, Section } from "./types.ts";
+import { sourceFrames } from "./speedRamp.ts";
 
 // Fields that say nothing about what plays (names, ids, grouping, the item's own lock) or that the
 // content descriptor below gives in timeline frames instead (where it starts, how long, its in point).
@@ -74,7 +75,7 @@ function itemContent(project: Project, item: Item, track: string, start: number,
     track,
     from: a,
     to: b,
-    ...(timed ? { src: Math.round(((item.in ?? 0) + (a - start) * (item.speed ?? 1)) * 1000) / 1000 } : {}),
+    ...(timed ? { src: Math.round(((item.in ?? 0) + sourceFrames(item, a - start)) * 1000) / 1000 } : {}),
     rest,
     ...(item.type === "captions" ? { cards: cardsIn(project, item, from, to) } : {}),
     keys: keyedValues(project, item, start, a, b),

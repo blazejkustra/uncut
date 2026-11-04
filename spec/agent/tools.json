@@ -1763,11 +1763,10 @@
       "type": "object",
       "required": [
         "op",
-        "item",
-        "speed"
+        "item"
       ],
       "additionalProperties": false,
-      "description": "Change the speed of a clip or an audio item: 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default).",
+      "description": "Change the speed of a clip or an audio item: 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default). Video clips also take ramp instead of speed (D327, a velocity edit): a preset (montage, hero, bullet, flashIn, flashOut), keys [{frame, speed 0.1 to 10, ease?}] in the clip's frames (held before the first and after the last, eased between two by the ease of the key it leaves: linear, in, out, inOut) or null for normal speed; the clip keeps the same stretch of media and its duration becomes the curve's; a ramped clip is silent. reverse true plays a video clip backwards, false forwards again (with a speed or a ramp too). Neither ramp nor reverse on looped or held clips.",
       "properties": {
         "op": {
           "const": "set_speed"
@@ -1781,6 +1780,12 @@
           "maximum": 10
         },
         "keepPitch": {
+          "type": "boolean"
+        },
+        "ramp": {
+          "description": "A preset name, keys or null (D327)."
+        },
+        "reverse": {
           "type": "boolean"
         }
       }

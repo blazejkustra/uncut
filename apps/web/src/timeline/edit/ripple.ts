@@ -1,5 +1,6 @@
 // Overlays following main-track changes (F11) and grouping (D157), for the timeline planners (edit.ts).
 import type { Op } from "@uncut/core/types";
+import { localForSource, sourceFrames } from "@uncut/core/speedRamp";
 import { type ProjectModel, layoutOf, type Track } from "../../state/project.ts";
 import { type Plan, draftOf, withGroups, findItem, type Placed, lockOf } from "./base.ts";
 
@@ -27,7 +28,14 @@ export function withOverlayRipple<P extends Plan>(project: ProjectModel, plan: P
   const end1 = endOf(mainAfter, now);
   const changed = mainBefore.items.some((i) => {
     const j = mainAfter.items.find((x) => x.id === i.id);
-    return !j || j.duration !== i.duration || (j.speed ?? 1) !== (i.speed ?? 1) || (j.in ?? 0) !== (i.in ?? 0) || before.get(i.id) !== now.get(i.id);
+    return (
+      !j ||
+      j.duration !== i.duration ||
+      (j.speed ?? 1) !== (i.speed ?? 1) ||
+      JSON.stringify(j.speedKeys) !== JSON.stringify(i.speedKeys) ||
+      (j.in ?? 0) !== (i.in ?? 0) ||
+      before.get(i.id) !== now.get(i.id)
+    );
   });
   if (!changed) return plan;
   /** Where frame `f` of the old timeline plays in the new one. */
@@ -39,8 +47,8 @@ export function withOverlayRipple<P extends Plan>(project: ProjectModel, plan: P
       if (!next) return f;
       const s1 = now.get(next.id) ?? 0;
       // The source frame under f, and where it is in the clip now.
-      const source = (clip.in ?? 0) + (f - s0) * (clip.speed ?? 1);
-      const local = (source - (next.in ?? 0)) / (next.speed ?? 1);
+      const source = (clip.in ?? 0) + sourceFrames(clip, f - s0);
+      const local = localForSource(next, source - (next.in ?? 0));
       return s1 + Math.min(next.duration - 1, Math.max(0, Math.round(local)));
     }
     return f >= end0 ? f + (end1 - end0) : f;

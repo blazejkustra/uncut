@@ -173,6 +173,10 @@ export interface Item {
   // clip, audio: playback rate (D125); keepPitch false lets the pitch follow it.
   readonly speed?: number;
   readonly keepPitch?: boolean;
+  /** Clips (D327): a speed ramp, speed over the clip's local frames (speedRamp.ts); wins over `speed`. */
+  readonly speedKeys?: ReadonlyArray<{ readonly frame: Frame; readonly speed: number; readonly ease?: "linear" | "in" | "out" | "inOut" }>;
+  /** Clips (D327): plays its media backwards; `in` then counts from the media's end. */
+  readonly reverse?: boolean;
   /** Clip, audio (D123): makes no sound. Detach audio sets it on the clip whose sound went to an audio item. */
   readonly mute?: boolean;
   /**

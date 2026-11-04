@@ -28,6 +28,7 @@
 // master.gainDb, masterGain below; its own −60 dB cutoff). Both are linear, so the export pans each
 // item's layer by its track's pan and applies the master volume once after amix: the same sound.
 import { overlaps } from "../visual/transitions.ts";
+import { isRamped, reversedSeconds, sourceFrames } from "../timeline/speedRamp.ts";
 import type { Item, Project, Track } from "../timeline/types.ts";
 
 export const SILENCE_DB = -60;
@@ -72,7 +73,8 @@ export function fadeAt(item: Pick<Item, "duration" | "fadeIn" | "fadeOut">, loca
 
 /** The item's media, if the item can make sound: an audio item, or a clip whose media has audio; never a muted one (D123: a clip whose sound was detached). */
 export function soundMedia(project: Pick<Project, "media">, item: Item) {
-  if ((item.type !== "clip" && item.type !== "audio") || item.mute) return undefined;
+  // D327: a clip with a speed ramp plays without its sound.
+  if ((item.type !== "clip" && item.type !== "audio") || item.mute || isRamped(item)) return undefined;
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   if (!media || media.kind === "image") return undefined;
   if (media.kind === "audio" || media.probe?.hasAudio) return media;
@@ -101,9 +103,11 @@ export function audioSpan(
 }
 
 /** Where in its media an item is `local` frames after its start, in seconds (looped audio wraps). */
-export function sourceAt(project: Pick<Project, "media" | "canvas">, item: Item, local: number): number {
+export function sourceAt(project: Pick<Project, "media" | "canvas"> & { readonly tracks?: Project["tracks"] }, item: Item, local: number): number {
   const fps = project.canvas.fps;
-  let frames = (item.in ?? 0) + local * (item.speed ?? 1);
+  let frames = (item.in ?? 0) + sourceFrames(item, local);
+  // D327: a reversed clip reads its reversed copy, whose seconds start at its range's end.
+  if (item.reverse && item.type === "clip") return reversedSeconds(project, item, frames) ?? frames / fps;
   const length = item.loop || item.hold ? project.media.find((m) => m.id === item.media)?.probe?.frames : undefined;
   if (length && length > 0 && frames >= length) frames = item.loop ? frames % length : length - 1;
   return frames / fps;
@@ -113,7 +117,7 @@ export function sourceAt(project: Pick<Project, "media" | "canvas">, item: Item,
 export function heldPast(project: Pick<Project, "media">, item: Item, local: number): boolean {
   if (!item.hold || item.loop || item.type !== "clip") return false;
   const length = project.media.find((m) => m.id === item.media)?.probe?.frames;
-  return !!length && (item.in ?? 0) + local * (item.speed ?? 1) >= length;
+  return !!length && (item.in ?? 0) + sourceFrames(item, local) >= length;
 }
 
 /** Whether a track holds anything that can make sound (a clip with sound or an audio item). */

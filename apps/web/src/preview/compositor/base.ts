@@ -22,6 +22,7 @@ import {
   placeContent,
   px,
   previewSrc,
+  reversedSrc,
   wanted,
   reachable,
   SCRUB_SETTLE_MS,
@@ -482,9 +483,10 @@ export abstract class CompositorBase {
   /** The element for a clip, made on first use; replaced if the clip now shows other media. */
   protected elementFor(item: Item, kind: "video" | "image"): MediaEl | undefined {
     const media = item.media ? this.project?.media.find((m) => m.id === item.media) : undefined;
-    const src = media ? previewSrc(media, kind) : undefined;
-    if (!src || !media) return undefined;
+    const src = media && this.project ? (item.reverse ? reversedSrc(this.project, item) : previewSrc(media, kind)) : undefined;
     let el = this.els.get(item.id);
+    if (!src && el) this.drop(item.id);
+    if (!src || !media) return undefined;
     if (el && el.dataset.src === src) return el;
     if (el) this.drop(item.id);
     if (kind === "image") {

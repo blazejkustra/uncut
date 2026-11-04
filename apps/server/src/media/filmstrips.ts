@@ -315,7 +315,7 @@ export const layer = Layer.unwrap(
       }),
     );
     // D212: which media have a proxy on the way (their strip waits for it).
-    let proxyStates: ReadonlyArray<{ readonly mediaId: string; readonly phase: string }> = [];
+    let proxyStates: ReadonlyArray<{ readonly mediaId: string; readonly phase: string; readonly reverse?: unknown }> = [];
     yield* Effect.forkScoped(Stream.runForEach(proxies.states, (states) => Effect.sync(() => void (proxyStates = states))));
 
     return HttpRouter.add(
@@ -340,7 +340,7 @@ export const layer = Layer.unwrap(
         const dir = open.dir;
         const proxy = yield* proxies.proxyFor(id);
         // Its proxy is being made: wait for it rather than decode the heavy original now.
-        if (!proxy && proxyStates.some((p) => p.mediaId === id && (p.phase === "queued" || p.phase === "running"))) {
+        if (!proxy && proxyStates.some((p) => p.mediaId === id && !p.reverse && (p.phase === "queued" || p.phase === "running"))) {
           return HttpServerResponse.text("Filmstrip unavailable: waiting for the preview proxy", { status: 503, headers: { ...CORS, "retry-after": "10" } });
         }
         const probe = media.probe;

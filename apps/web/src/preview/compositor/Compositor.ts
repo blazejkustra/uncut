@@ -1,4 +1,5 @@
-import { heldPast } from "@uncut/core/audio";
+import { heldPast, sourceAt } from "@uncut/core/audio";
+import { localAtSeconds, speedAt } from "@uncut/core/speedRamp";
 import { type Visual, visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
 import { graphicInfo, graphicLocal } from "@uncut/core/graphics";
@@ -15,7 +16,7 @@ import { gpuCompositorOn } from "../../settings/gpu.ts";
 import { GpuCompositor, plainColour, type GpuPicture } from "../gpu.ts";
 import { needsPicturePass, fxPictureSize, fxSkips } from "@uncut/core/fx";
 import { shaderTime } from "@uncut/core/shaders";
-import { px, transitionCanvas, setBlur, placeBox, placePicture, drive, seek, irisClip, wanted } from "./media.ts";
+import { px, transitionCanvas, setBlur, placeBox, placePicture, drive, seek, irisClip, wanted, reversePending } from "./media.ts";
 
 import { CompositorBase } from "./base.ts";
 
@@ -327,9 +328,11 @@ export class Compositor extends CompositorBase {
     if (!scrubCacheOn() && this.scrub.lru.size) this.scrub.clear();
     this.scrubbed.clear();
     this.scrubAimed.clear();
+    const pending: Array<{ id: string; text: string; z: string }> = [];
     clips.forEach((c) => {
       const media = mediaKind(c.item)!;
       const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
+      if (!el && c.item.reverse) pending.push({ id: c.item.id, text: reversePending(project, c.item), z: String(z.get(c.item.id)) });
       if (!el) return;
       const wrap = this.boxes.get(c.item.id)!;
       wrap.classList.toggle("sel-clip", c.item.id === selected);
@@ -384,10 +387,12 @@ export class Compositor extends CompositorBase {
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       // A held clip (D94) past its media's end sits paused on the last frame.
-      if (scrubbed.seek)
-        drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
+      const local = frame - starts.get(c.item.id)!;
+      // D327: a ramped clip's rate follows its curve; paused, it is seeked to the curve's frame.
+      if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, local), speedAt(c.item, local), c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
+    this.showReverseNotes(pending);
     this.warmBudget = 1;
     for (const id of this.fxWarmed) if (!aheads.some((a) => a.id === id)) this.fxWarmed.delete(id);
     for (const ahead of aheads) {
@@ -400,31 +405,31 @@ export class Compositor extends CompositorBase {
         wrap.style.zIndex = "0";
         if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
         const from = starts.get(ahead.id)! - preroll(ahead);
-        const speed = ahead.speed ?? 1;
+        const speed = speedAt(ahead, 0);
         // Just before it starts (while playing) it already runs, out of sight and silent, so the
-        // cut doesn't wait for the decoder to start (picture and sound).
-        const early = (ahead.in ?? 0) + (frame - starts.get(ahead.id)!) * speed;
+        // cut doesn't wait for the decoder to start (picture and sound). Source seconds (sourceAt).
+        const early = sourceAt(project, ahead, frame - starts.get(ahead.id)!);
         // Issue #12 (D265): starting to run is never a seek back. Paused, it waits at its first frame
         // (stepping onto the cut shows it at once); made while playing, it waits where its run starts
         // (PREROLL_S before that), so the run just starts. One waiting at its first frame when playback
         // starts stays there and starts running at its cut (its decoder already holds that frame). Before,
         // the run began with a seek PREROLL_S back: a second decoder start on a long-GOP file right
         // before the cut, which stalled the clip playing on screen into a drift seek.
-        const first = ((ahead.in ?? 0) - preroll(ahead) * speed) / fps + 0.0001;
+        const first = sourceAt(project, ahead, -preroll(ahead)) + 0.0001;
         const parked = el.paused && !el.seeking && el.readyState >= 2;
         if (playing && from - frame <= PREROLL_S * fps && early >= 0) {
-          const lead = el.currentTime - early / fps;
+          const lead = el.currentTime - early;
           if (parked && lead > -0.1 && lead <= 0.5 / fps) {
             if (el.playbackRate !== speed || el.preservesPitch !== (ahead.keepPitch !== false)) {
               el.playbackRate = speed;
               el.preservesPitch = ahead.keepPitch !== false;
             }
             el.play().catch(() => {});
-          } else if (!(parked && lead > 0 && el.currentTime <= first + 0.05)) drive(el, early / fps, true, speed, ahead.keepPitch !== false);
+          } else if (!(parked && lead > 0 && el.currentTime <= first + 0.05)) drive(el, early, true, speed, ahead.keepPitch !== false);
         } else {
           if (!el.paused) el.pause();
           if (!playing) seek(el, first);
-          else if (!wanted.has(el)) seek(el, Math.max(0, (ahead.in ?? 0) - (preroll(ahead) + PREROLL_S * fps) * speed) / fps + 0.0001);
+          else if (!wanted.has(el)) seek(el, Math.max(0, sourceAt(project, ahead, -(preroll(ahead) + PREROLL_S * fps))) + 0.0001);
         }
       }
     }
@@ -562,6 +567,29 @@ export class Compositor extends CompositorBase {
     return r.width > 0 ? (r.width * dpr) / width : (this.frameEl.clientWidth / width) * dpr;
   }
 
+  private reverseNotes = new Map<string, HTMLDivElement>();
+
+  /** D327: a reversed clip whose reversed copy isn't made yet says so where it would be. */
+  private showReverseNotes(pending: ReadonlyArray<{ readonly id: string; readonly text: string; readonly z: string }>) {
+    for (const [id, note] of this.reverseNotes) {
+      if (pending.some((p) => p.id === id)) continue;
+      note.remove();
+      this.reverseNotes.delete(id);
+    }
+    for (const p of pending) {
+      let note = this.reverseNotes.get(p.id);
+      if (!note) {
+        note = document.createElement("div");
+        note.className = "pv-missing";
+        note.dataset.reversePending = p.id;
+        this.mediaLayer.append(note);
+        this.reverseNotes.set(p.id, note);
+      }
+      if (note.textContent !== p.text) note.textContent = p.text;
+      note.style.zIndex = p.z;
+    }
+  }
+
   /** Where the top fully visible video really is, so the clock can follow a late decoder. */
   protected follow(f: number) {
     const project = this.shown();
@@ -573,6 +601,6 @@ export class Compositor extends CompositorBase {
     if (!top) return undefined;
     const el = this.els.get(top.item.id);
     if (!(el instanceof HTMLVideoElement) || el.paused || el.seeking || el.readyState < 3) return undefined;
-    return starts.get(top.item.id)! + (el.currentTime * project.canvas.fps - (top.item.in ?? 0)) / (top.item.speed ?? 1);
+    return starts.get(top.item.id)! + localAtSeconds(project, top.item, el.currentTime);
   }
 }

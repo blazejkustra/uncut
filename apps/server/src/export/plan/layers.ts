@@ -107,6 +107,10 @@ function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, s
       cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length },
       source: ((layer.cycle.offset + a) % layer.cycle.length) / fps,
     };
+  if (layer.kind === "video" && layer.times) {
+    const times = layer.times.slice(a, b);
+    return { ...layer, ...common, source: layer.source + times[0]!, times: times.map((t) => t - times[0]!) };
+  }
   if (layer.kind === "video") return { ...layer, ...common, source: Math.min(source ?? layer.source + (a * layer.speed) / fps, layer.last ?? Infinity) };
   return { ...layer, ...common };
 }

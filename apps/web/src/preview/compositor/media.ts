@@ -1,7 +1,9 @@
 import type { ClipBox } from "@uncut/core/box";
 import type { Visual } from "@uncut/core/timeline";
 import { irisRadius, maskClipPath } from "@uncut/core/transitions";
-import { proxyOf, getState, proxyUrl, mediaUrl } from "../../state/store.ts";
+import { reverseRange } from "@uncut/core/speedRamp";
+import type { Item, Project } from "@uncut/core/types";
+import { proxyOf, getState, proxyUrl, mediaUrl, reversedOf, reversedUrl } from "../../state/store.ts";
 import { proxiesOn } from "../../settings/proxies.ts";
 
 /** Renderers kept for reuse when clips with effects leave the canvas (D136). */
@@ -48,6 +50,23 @@ export const pictureReady = (el: PictureEl) =>
 export function previewSrc(media: { readonly id: string; readonly path: string }, kind: "video" | "image") {
   const proxy = kind === "video" && proxiesOn() ? proxyOf(getState(), media.id) : undefined;
   return proxy?.phase === "done" && proxy.key ? proxyUrl(media.id, proxy.key) : mediaUrl(media.id, media.path);
+}
+
+/** D327: a reversed clip plays its reversed copy, once the server has made it (undefined until then). */
+export function reversedSrc(project: Pick<Project, "media" | "canvas">, item: Item) {
+  const range = reverseRange(project, item);
+  const state = range && item.media ? reversedOf(getState(), item.media, range) : undefined;
+  return range && state?.phase === "done" && state.key ? reversedUrl(item.media!, range, state.key) : undefined;
+}
+
+/** D327: what a reversed clip's preview says until its copy is there. */
+export function reversePending(project: Pick<Project, "media" | "canvas">, item: Item): string {
+  const range = reverseRange(project, item);
+  const state = range && item.media ? reversedOf(getState(), item.media, range) : undefined;
+  if (!range) return "Uncut doesn't know this video's length, so it can't reverse it";
+  if (state?.phase === "failed") return `Couldn't reverse this clip${state.error ? `: ${state.error}` : ""}`;
+  if (state?.waiting === "export") return "Preparing the reversed clip after the export…";
+  return state?.phase === "running" ? `Preparing the reversed clip ${Math.round((state.progress ?? 0) * 100)}%` : "Preparing the reversed clip…";
 }
 
 export const wanted = new WeakMap<HTMLVideoElement, number>();
