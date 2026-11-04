@@ -442,6 +442,7 @@ test(
       [360, 800],
     ] as const) {
       const v = await visitor("US", w, h);
+      await v.page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
       await v.page.goto(`${base}/`, { waitUntil: "networkidle0" });
       const heights = () =>
         v.page.evaluate(() => [".agent-pb", ".critic-pb", ".tl-stage", ".tx-stage"].map((s) => document.querySelector<HTMLElement>(s)!.offsetHeight));
