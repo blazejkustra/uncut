@@ -70,7 +70,7 @@ export function pickIdentity(identities: ReadonlyArray<Identity>, wanted?: strin
 /**
  * electron-builder's arguments for the signed app (run in apps/desktop). The identity goes by its
  * SHA-1 (electron-builder refuses a "Developer ID Application:" prefix). osx-sign signs every
- * Mach-O in the bundle (helpers, frameworks, dylibs, crashpad, Resources/bin/uncut-media) with the
+ * Mach-O in the bundle (helpers, frameworks, dylibs, crashpad, Resources/bin/uncut-media and uncut-vision) with the
  * hardened runtime and, since no `timestamp` is set, Apple's secure timestamp. notarize=false:
  * this script notarizes, electron-builder must not try on its own when APPLE_* variables are set.
  */

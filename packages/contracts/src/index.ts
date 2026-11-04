@@ -156,3 +156,21 @@ export {
 export { TemplateInfo, TemplateFilled, TemplateError } from "./templates.ts";
 export { WsRpcGroup } from "./rpc/group.ts";
 export type { ServerConnection } from "./rpc/group.ts";
+export {
+  VISION_OUTPUTS,
+  VisionOutput,
+  MATTE_MODES,
+  MatteMode,
+  FRAME_EPSILON_S,
+  MatteInfo,
+  FaceBox,
+  FacesResult,
+  TrackFrame,
+  TrackResult,
+  VisionError,
+  parseMatteInfo,
+  parseFaces,
+  parseTrack,
+  clipBox,
+  frameAt,
+} from "./vision.ts";

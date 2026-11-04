@@ -131,6 +131,10 @@ export interface PluginsShape {
   readonly host: PluginHost;
   /** #107: the allowed generator plugins that run (kind generator), with their manifests, after a fresh scan. */
   readonly generatorPlugins: Effect.Effect<ReadonlyArray<PluginCaller & { readonly manifest: Record<string, unknown> }>>;
+  /** D325: the analyzer plugins that run (kind analyzer), whether the user allowed each, with their manifests and versions, bundled first, after a fresh scan. */
+  readonly analyzerPlugins: Effect.Effect<
+    ReadonlyArray<PluginCaller & { readonly version: string; readonly allowed: boolean; readonly manifest: Record<string, unknown> }>
+  >;
 }
 
 /** Who answered a plugin call: what Uncut needs to decide what to do with its declaration. */
@@ -265,6 +269,17 @@ export const layer = Layer.effect(
         const allowed = discovery.plugins.filter((p) => p.kind === "generator" && p.runs && isApproved(p, approvals[p.id]) && !installing.has(p.id));
         return [...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => ({
           ...callerOf(p),
+          manifest: p.manifest as unknown as Record<string, unknown>,
+        }));
+      }),
+      analyzerPlugins: Effect.gen(function* () {
+        yield* refresh;
+        const approvals = yield* settings.pluginApprovals;
+        const found = discovery.plugins.filter((p) => p.kind === "analyzer" && p.runs && !installing.has(p.id));
+        return [...found.filter((p) => p.source === "bundled"), ...found.filter((p) => p.source !== "bundled")].map((p) => ({
+          ...callerOf(p),
+          version: p.version,
+          allowed: isApproved(p, approvals[p.id]),
           manifest: p.manifest as unknown as Record<string, unknown>,
         }));
       }),

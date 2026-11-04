@@ -27,6 +27,8 @@ native/media/target/
 # The bundled media tools (node native/tools/build.ts).
 native/tools/out/
 native/tools/work/
+# The Apple Vision helper (node native/vision/build.ts).
+native/vision/out/
 # D258: the plugins the desktop build lays out for electron-builder.
 apps/desktop/stage/
 

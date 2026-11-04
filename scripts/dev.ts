@@ -8,6 +8,7 @@ const run = (cmd: string, args: ReadonlyArray<string>) => {
 };
 
 run("node", ["native/media/build-release.ts"]);
+run("node", ["native/vision/build.ts"]);
 run("node", ["apps/server/scripts/build.ts"]);
 run("node", ["apps/desktop/scripts/build.ts"]);
 

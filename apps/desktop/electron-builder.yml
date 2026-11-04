@@ -29,6 +29,9 @@ extraResources:
     to: server/mcp.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
+  # The Apple Vision helper of plugins/apple-vision (node native/vision/build.ts, D325); the plugin finds it beside its own folder.
+  - from: ../../native/vision/out/uncut-vision
+    to: bin/uncut-vision
   # ffmpeg, ffprobe and whisper-cli with their licences (node native/tools/build.ts). A plain `pnpm dist`
   # without them leaves them out and uses what's installed; `pnpm dist:signed` refuses to.
   - from: ../../native/tools/out

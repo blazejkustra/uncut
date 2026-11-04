@@ -1,0 +1,22 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "apple.vision",
+  "kind": "analyzer",
+  "name": "Apple Vision (on this Mac)",
+  "icon": "icon.svg",
+  "version": "0.1.0",
+  "description": "Cuts out people and subjects, finds faces and follows objects in your footage with macOS's own Vision framework. Runs on this Mac: no network, no download.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
+  "requires": {
+    "platforms": ["macos-arm64", "macos-x64"]
+  },
+  "capabilities": ["media:read", "project:write", "process:spawn", "gpu"],
+  "analyzer": {
+    "inputs": ["video"],
+    "outputs": ["matte", "faces", "track"],
+    "backend": "system"
+  }
+}

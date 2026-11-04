@@ -33,6 +33,7 @@ import { Plugins } from "../plugins/plugins.ts";
 import { Whisper } from "./whisper.ts";
 import { type AnalysisTarget, type AnalysisResult, targetOf, cachedFor } from "./queue/cache.ts";
 import { type RequestOptions, type Requested, AnalysisQueue } from "./queue/queue.ts";
+import { VisionAnalysis } from "./vision/vision.ts";
 export { SILENCE_DB, SILENCE_MIN_S, NO_AUDIO, loudnessArgs, RmsEnvelope, LoudnessLog, analyzeLoudness, isResult } from "./loudness/loudness.ts";
 export type { SilenceRange, LoudnessResult } from "./loudness/loudness.ts";
 export {
@@ -118,6 +119,8 @@ export interface AnalysisShape {
     analyzer: Analyzer,
     omit?: ReadonlyArray<string>,
   ) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
+  /** D325: mattes, faces and tracks from whichever vision module runs here. */
+  readonly vision: VisionAnalysis;
 }
 
 export class Analysis extends Context.Service<Analysis, AnalysisShape>()("uncut/Analysis") {}
@@ -150,6 +153,14 @@ export const layer = Layer.effect(
       ),
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => queue.shutdown()));
+    const vision = new VisionAnalysis({
+      candidates: () => Effect.runPromise(plugins.analyzerPlugins),
+      call: (id, tool, args, { signal, onProgress }) => Effect.runPromise(plugins.callPlugin(id, tool, args, { signal, onProgress })),
+      ffmpeg: async () => {
+        await config.shellReady;
+        return which("ffmpeg", process.env.PATH ?? "");
+      },
+    });
     // Exports come first (D55): no analysis starts while one is queued or running.
     yield* Effect.forkScoped(Stream.runForEach(exporter.jobs, (jobs) => Effect.sync(() => queue.setExportBusy(jobs.some((j) => EXPORT_BUSY.has(j.phase))))));
     // A project that closes (or another that opens) takes its waiting and running jobs with it.
@@ -212,6 +223,7 @@ export const layer = Layer.effect(
       cancel: (jobId) => Effect.sync(() => queue.cancel(jobId)),
       request: (target, analyzer, options) => queue.request(target, analyzer, options),
       job: (jobId) => queue.job(jobId),
+      vision,
     });
   }),
 );

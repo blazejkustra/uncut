@@ -146,6 +146,7 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.deepEqual(readdirSync(whisper).sort(), ["icon.svg", "server.ts", "uncut.module.json", "whisper.ts"]);
   for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
   assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), [
+    "apple-vision",
     "argent-capture",
     "catalog",
     "uncut-elevenlabs",
