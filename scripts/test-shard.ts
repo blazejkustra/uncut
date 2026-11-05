@@ -7,7 +7,11 @@
 // and result is known. Writes test-output/shard-<n>.json (durations for the next update of
 // test/durations.json) and a table to $GITHUB_STEP_SUMMARY.
 //
-//   node scripts/test-shard.ts --shard 0 --of 5 [--retries 1] [--list]
+//   node scripts/test-shard.ts --shard 0 --of 5 [--retries 1] [--file-limit-s 900] [--list]
+//
+// `--file-limit-s N`: a file still running after N s fails, and it and everything it started are
+// killed. A sync call blocked on a stuck child can't reach a test's own timeout, and a fast file's
+// output only shows once it ends.
 //
 // `--retries N`: an app file that fails is run again up to N times. Every retry is printed, annotated
 // (::warning::) and listed in the summary as a flake, so a retry never hides a failure silently. Fast
@@ -23,6 +27,7 @@ const arg = (name: string, fallback?: string) => {
 const shard = Number(arg("shard", "0"));
 const of = Number(arg("of", "1"));
 const retries = Number(arg("retries", "0"));
+const fileLimitSeconds = Number(arg("file-limit-s", "900"));
 const listOnly = process.argv.includes("--list");
 if (!Number.isInteger(shard) || !Number.isInteger(of) || of < 1 || shard < 0 || shard >= of) throw new Error(`bad --shard ${shard} --of ${of}`);
 
@@ -69,16 +74,33 @@ if (listOnly) {
   process.exit(0);
 }
 
+const killProcessGroup = (leader: number) => {
+  try {
+    process.kill(-leader, "SIGKILL");
+  } catch {}
+};
+
 // Skipped tests (the spec reporter's "﹣ name # reason" lines), for the summary.
 const skippedTests: Array<string> = [];
 /** Runs one file; its output is printed as it comes (`live`) or all at once at the end, in a group. */
 const runFile = (file: string, title: string, live: boolean, env: NodeJS.ProcessEnv = {}) =>
   new Promise<number>((done) => {
     if (live) console.log(`::group::${title}`);
-    const child = spawn(process.execPath, ["--test", "--test-reporter=spec", file], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
+    const child = spawn(process.execPath, ["--test", "--test-force-exit", "--test-reporter=spec", file], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...env },
+      detached: true,
+    });
     const kept: Array<Buffer> = [];
     let rest = "";
     const out = (chunk: Buffer) => (live ? process.stdout.write(chunk) : kept.push(chunk));
+    const killGroup = () => killProcessGroup(child.pid!);
+    const limit = setTimeout(() => {
+      out(Buffer.from(`# ${file} is still running after ${fileLimitSeconds} s: killing it and what it started\n`));
+      killGroup();
+    }, fileLimitSeconds * 1000);
+    // Whatever the file left behind holds the output pipes open, and "close" waits for those.
+    child.once("exit", killGroup);
     child.stderr.on("data", out);
     child.stdout.on("data", (chunk: Buffer) => {
       out(chunk);
@@ -87,6 +109,7 @@ const runFile = (file: string, title: string, live: boolean, env: NodeJS.Process
       for (const line of lines) if (/^\s*﹣ /.test(line)) skippedTests.push(`${file}: ${line.trim().slice(2)}`);
     });
     child.once("close", (code, signal) => {
+      clearTimeout(limit);
       if (!live) {
         console.log(`::group::${title}`);
         process.stdout.write(Buffer.concat(kept));
