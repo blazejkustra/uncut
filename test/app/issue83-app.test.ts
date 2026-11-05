@@ -7,8 +7,9 @@
 //   0.3 dB, and at least 4 dB of noise taken out.
 // - Preview ≈ export, live: the preview's master output recorded while the noisy voice plays with
 //   noise removal on, against the export's mix of the same project.json (planExport + audioGraph):
-//   every 0.25 s window within 2.5 dB (1.5 dB where the voice speaks), LUFS within 1 dB, and the
-//   noise between the words as quiet as the export's.
+//   aligned to the sample, every 0.25 s window within 2.5 dB (1.5 dB where the voice speaks), LUFS
+//   within 1 dB, and the noise between the words within 2.5 dB of the export's and within 0.5 dB of
+//   what the denoiser leaves offline.
 // - Noise removal's latency compensated (D262): with an undenoised copy of the voice on another
 //   track (hard right), the denoised voice lands within 3 ms of it (no ±0.6 s search: one
 //   cross-correlation over ±30 ms); ten On/Off toggles leave one denoise processor
@@ -234,6 +235,25 @@ function lufsOf(left: Float32Array, right: Float32Array, sr: number, file: strin
   );
   return Number(/Integrated loudness:\s+I:\s+(-?[\d.]+) LUFS/.exec(rr.stderr)![1]);
 }
+/**
+ * The samples (±10 ms) that line `pre` from `s0` up with `ref` exactly, by cross-correlation over the
+ * words: a window starting where a word ends is 18 dB louder with 0.7 ms of the word in it. The words'
+ * hard edges keep the voice's 4.5 ms period from tying the search.
+ */
+function sampleLag(ref: Float32Array, pre: Float32Array, s0: number, sr: number) {
+  const from = Math.round(1.4 * sr);
+  const to = Math.round(6.3 * sr);
+  const maxLag = Math.round(0.01 * sr);
+  let bestLag = 0;
+  let bestC = -Infinity;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let c = 0;
+    for (let i = from; i < to; i++) c += ref[i]! * (pre[s0 + lag + i] ?? 0);
+    if (c > bestC) ((bestC = c), (bestLag = lag));
+  }
+  assert.ok(Math.abs(bestLag) < maxLag, `the sample alignment hit its limit (${bestLag} samples)`);
+  return bestLag;
+}
 /** The capture aligned to project time (as effects-app does, D83): the clock from the drawn frames, refined against `ref` by ±0.6 s of 50 ms levels. */
 function align(cap: NonNullable<Awaited<ReturnType<typeof record>>>, ref: Float32Array) {
   const sr = cap.sampleRate;
@@ -254,11 +274,12 @@ function align(cap: NonNullable<Awaited<ReturnType<typeof record>>>, ref: Float3
     if (err < best.err) best = { lag, err };
   }
   assert.ok(Math.abs(best.lag) < 0.6 - 0.005, `the alignment search hit its limit (lag ${best.lag.toFixed(3)} s)`);
-  const s0 = startIndex(best.lag);
+  const fine = sampleLag(ref, pre.left, startIndex(best.lag), sr);
+  const s0 = startIndex(best.lag) + fine;
   assert.ok(s0 + 0.5 * sr >= 0 && s0 + 8.25 * sr <= pre.left.length, `the recording covers 0.5–8.25 s (start ${s0}, ${pre.left.length} samples)`);
-  return { pre, s0, lag: best.lag };
+  return { pre, s0, lag: best.lag + fine / sr };
 }
-const inSpeech = (t0: number, t1: number) => SPEECH.some(([a, b]) => t1 > a - 0.05 && t0 < b + 0.05);
+const inSpeech = (t0: number, t1: number, margin = 0) => SPEECH.some(([a, b]) => t1 > a - margin && t0 < b + margin);
 
 test(
   "issue #83: noise removal heard in the preview ≈ the export, the loudness target heard, and the redesigned effect popovers",
@@ -403,19 +424,26 @@ test(
           const p = dB(rmsOf(live[ch], s0 + k * W4, W4));
           const d = Math.abs(e - p);
           const speech = inSpeech(t, t + 0.25);
+          const nearSpeech = inSpeech(t, t + 0.25, 0.05);
           if (d > worst.all) Object.assign(worst, { all: d, at: `${ch} ${t.toFixed(2)} s: export ${e.toFixed(2)} dB, preview ${p.toFixed(2)} dB` });
           if (speech) worst.speech = Math.max(worst.speech, d);
-          else if (ch === "left") ((noisePre += p), (noiseEx += e), noiseN++);
+          else if (ch === "left" && !nearSpeech) ((noisePre += p), (noiseEx += e), noiseN++);
         }
       }
       const lPre = lufsOf(live.left.subarray(s0 + sr / 2, s0 + 8.25 * sr), live.right.subarray(s0 + sr / 2, s0 + 8.25 * sr), sr, "denoise-pre");
       const lExp = lufsOf(exMix.left.subarray(sr / 2, 8.25 * sr), exMix.right.subarray(sr / 2, 8.25 * sr), sr, "denoise-exp");
       console.log(
-        `live with noise removal: worst window ${worst.all.toFixed(2)} dB (${worst.at}), in speech ${worst.speech.toFixed(2)} dB; between words preview ${(noisePre / noiseN).toFixed(2)} vs export ${(noiseEx / noiseN).toFixed(2)} dB; LUFS ${lPre} vs ${lExp}; lag ${lag.toFixed(3)} s`,
+        `live with noise removal: worst window ${worst.all.toFixed(2)} dB (${worst.at}), in speech ${worst.speech.toFixed(2)} dB; between words preview ${(noisePre / noiseN).toFixed(2)} vs export ${(noiseEx / noiseN).toFixed(2)} dB; LUFS ${lPre} vs ${lExp}; lag ${lag.toFixed(5)} s`,
       );
       assert.ok(worst.all <= 2.5, `preview vs export, worst 0.25 s window: ${worst.at}`);
       assert.ok(worst.speech <= 1.5, `preview vs export where the voice speaks: ${worst.speech.toFixed(2)} dB`);
-      assert.ok(Math.abs(noisePre / noiseN - noiseEx / noiseN) <= 2, "the hiss between the words: preview ≈ export");
+      const hissGap = noisePre / noiseN - noiseEx / noiseN;
+      const offlineGap = offline.noisePre - offline.noiseEx;
+      assert.ok(Math.abs(hissGap) <= 2.5, `the hiss between the words: preview ≈ export (${hissGap.toFixed(2)} dB apart)`);
+      assert.ok(
+        Math.abs(hissGap - offlineGap) <= 0.5,
+        `the hiss between the words is what the denoiser leaves offline: ${hissGap.toFixed(2)} dB over the export live, ${offlineGap.toFixed(2)} offline`,
+      );
       assert.ok(
         noisePre / noiseN <= offline.noiseIn - 4,
         `the hiss is down in the live preview too (${(noisePre / noiseN).toFixed(2)} dB vs ${offline.noiseIn.toFixed(2)} in the file)`,
