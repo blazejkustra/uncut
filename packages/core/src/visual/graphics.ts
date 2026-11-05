@@ -176,6 +176,9 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
 <script>${GRAPHIC_ELEMENTS_BOOT}</script>
 <script>(() => {
   const frames = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+  // An <img> painted before its picture is decoded keeps a different raster from one decoded already,
+  // so a frame drawn first in a fresh document differed from the same frame drawn after others.
+  const imagesDecoded = () => Promise.all([...document.images].map((img) => img.decode().catch(() => {})));
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
   let fonts;
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
@@ -228,6 +231,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
       await draw(t);
     }
     await window.__uncutMedia.held();
+    if (!dry) await imagesDecoded();
     if (!dry) await frames();
     window.__uncutMedia.sweep();
     return true;
