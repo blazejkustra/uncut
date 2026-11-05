@@ -158,10 +158,10 @@ const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0)
 /**
  * In the page: a recorder of what the preview presents, as the frame on screen changes. Video frames
  * by rVFC (while the scrub canvas is hidden, else they're under it); canvas frames when it shows or
- * its data-sample changes (timed at the next animation frame, when it's painted); the <video>'s last
- * presented frame when the canvas hides (it's on screen from then, without a new rVFC: a frame the
- * <video> presented under the canvas); and what's on screen when `t0` is set by the next
- * pointerdown/keydown (a click on the frame already shown).
+ * its data-sample changes (timed at the next animation frame, when it's painted); the <video>'s
+ * frame when the canvas hides, read from its picture (it's on screen from then, and a frame it reached
+ * while hidden under the canvas may never get an rVFC); and what's on screen when `t0` is set by the
+ * next pointerdown/keydown (a click on the frame already shown).
  */
 async function installRecorder() {
   await page.evaluate((fps) => {
@@ -171,8 +171,6 @@ async function installRecorder() {
     const canvas = () => document.querySelector<HTMLCanvasElement>("canvas[data-scrub=c1]");
     const isUp = (c: HTMLCanvasElement | null): c is HTMLCanvasElement => !!c && c.style.visibility !== "hidden";
     let watched: HTMLVideoElement | undefined;
-    // The watched <video>'s last presented frame (by rVFC), whether or not the canvas covered it.
-    let lastVideo: number | undefined;
     // `at`: when it was drawn (it's presented with the next rendering step); `late`: the next
     // animation frame after that, which overcounts by a frame when the draw ran in one already.
     const push = (frame: number, kind: Ev["kind"]) => {
@@ -183,7 +181,7 @@ async function installRecorder() {
     const start = () => {
       w.rec = { t0: performance.now(), events: [] };
       const c = canvas();
-      const now = isUp(c) ? Math.round(Number(c.dataset.time) * fps) : lastVideo;
+      const now = isUp(c) ? Math.round(Number(c.dataset.time) * fps) : watched && watched.readyState >= 2 ? barOf(watched) : undefined;
       if (now !== undefined) w.rec.events.push({ at: w.rec.t0, late: w.rec.t0, frame: now, kind: isUp(c) ? "canvas" : "video" });
     };
     document.addEventListener("pointerdown", start, { capture: true });
@@ -192,11 +190,22 @@ async function installRecorder() {
       const loop = () =>
         v.requestVideoFrameCallback((now, meta) => {
           if (v !== watched) return;
-          lastVideo = Math.round(meta.mediaTime * fps);
-          if (!isUp(canvas())) w.rec.events.push({ at: now, frame: lastVideo, kind: "video" });
+          if (!isUp(canvas())) w.rec.events.push({ at: now, frame: Math.round(meta.mediaTime * fps), kind: "video" });
           loop();
         });
       loop();
+    };
+    // What's on screen now: the canvas when it's up, else the video, read from its barcode.
+    const probe = document.createElement("canvas");
+    probe.width = 160;
+    probe.height = 90;
+    const ctx = probe.getContext("2d", { willReadFrequently: true })!;
+    const barOf = (picture: HTMLCanvasElement | HTMLVideoElement) => {
+      ctx.drawImage(picture, 0, 0, 160, 90);
+      const row = ctx.getImageData(0, 8, 160, 1).data;
+      let bar = 0;
+      for (let i = 0; i < 10; i++) if (row[(8 + 16 * i) * 4]! > 128) bar |= 1 << i;
+      return bar;
     };
     // One observer over the document (a canvas made or replaced, e.g. by the proxy switch, is seen from its first draw).
     let wasUp = false;
@@ -204,8 +213,9 @@ async function installRecorder() {
       const c = canvas();
       if (!c || !records.some((r) => r.target === c)) return;
       const up = isUp(c);
+      const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]");
       if (up) push(Math.round(Number(c.dataset.time) * fps), "canvas");
-      else if (wasUp && lastVideo !== undefined) push(lastVideo, "video");
+      else if (wasUp && v && v.readyState >= 2) push(barOf(v), "video");
       wasUp = up;
     });
     observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-sample", "style"] });
@@ -213,25 +223,16 @@ async function installRecorder() {
       const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]");
       if (v && v !== watched) {
         watched = v;
-        lastVideo = undefined;
         watchVideo(v);
       }
       setTimeout(attach, 30);
     };
     attach();
-    // What's on screen now: the canvas when it's up, else the video, read from its barcode.
-    const probe = document.createElement("canvas");
-    probe.width = 160;
-    probe.height = 90;
-    const ctx = probe.getContext("2d", { willReadFrequently: true })!;
     w.shownFrame = () => {
       const c = canvas();
       const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]")!;
       const up = c && c.style.visibility !== "hidden";
-      ctx.drawImage(up ? c : v, 0, 0, 160, 90);
-      const row = ctx.getImageData(0, 8, 160, 1).data;
-      let bar = 0;
-      for (let i = 0; i < 10; i++) if (row[(8 + 16 * i) * 4]! > 128) bar |= 1 << i;
+      const bar = barOf(up ? c : v);
       return { frame: up ? Math.round(Number(c.dataset.time) * fps) : Math.round(v.currentTime * fps - 0.5), kind: up ? "canvas" : "video", bar };
     };
   }, FPS);
