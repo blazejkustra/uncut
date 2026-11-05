@@ -228,6 +228,13 @@ export function unlockApps({ path = LOCK } = {}) {
  * `cleanEnv`: start from only `env` (what launchd gives a Finder-launched app), not the test's environment.
  */
 /** A TCP port nothing is listening on right now (the OS picks it). */
+/** `env` for starting the app's binary: without ELECTRON_RUN_AS_NODE, which makes it start as plain Node. */
+export function appEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out = { ...env };
+  delete out.ELECTRON_RUN_AS_NODE;
+  return out;
+}
+
 export const freePort = () =>
   new Promise<number>((resolvePort, reject) => {
     const server = createServer();

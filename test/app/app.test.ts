@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { appEnv, launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -179,7 +179,7 @@ test("the packaged server creates, edits and reopens a project (schemas and modu
 test("one app per profile: a second launch with the same data dir exits, another data dir runs alongside", T, async () => {
   const first = await launch();
   // Same UNCUT_DATA_DIR (so the same Electron profile): the second instance hands over and exits.
-  const second = spawnSync(APP, [], { env: { ...process.env, UNCUT_DATA_DIR: join(scratch, "data"), UNCUT_CDP: "" }, timeout: 20000 });
+  const second = spawnSync(APP, [], { env: appEnv({ ...process.env, UNCUT_DATA_DIR: join(scratch, "data"), UNCUT_CDP: "" }), timeout: 20000 });
   assert.equal(second.status, 0, "the second instance exits by itself");
   assert.equal(first.proc.exitCode, null, "the first keeps running");
   // A different data dir is a different profile: both run.

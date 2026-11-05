@@ -3,14 +3,14 @@
 // one already); an edit there leaves the first project as it was; giving the open project again
 // brings its window forward instead of a third; closing a window ends its server and the other
 // window keeps working; quitting ends every server.
-import { test, before, after } from "node:test";
+import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { clickWhenReady, freePort, launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { appEnv, clickWhenReady, freePort, launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = !existsSync(APP) ? `packaged app not built: run pnpm dist to create ${APP}` : false;
@@ -69,7 +69,7 @@ const alive = (pid: number) => {
 async function secondLaunch(args: ReadonlyArray<string>) {
   const port = await freePort();
   const child = spawn(APP, [...args], {
-    env: { ...process.env, ...env(), UNCUT_TEST_BACKGROUND: "1", UNCUT_TELEMETRY: "off", UNCUT_CDP: String(port) },
+    env: appEnv({ ...process.env, ...env(), UNCUT_TEST_BACKGROUND: "1", UNCUT_TELEMETRY: "off", UNCUT_CDP: String(port) }),
     stdio: "ignore",
   });
   const code = await new Promise<number | null>((r) => child.once("exit", (c) => r(c)));
@@ -103,8 +103,11 @@ before(async () => {
   writeProject(projectA(), "Alpha");
   writeProject(projectB(), "Beta");
 });
-after(async () => {
+afterEach(async () => {
   await app?.close();
+  app = undefined;
+});
+after(() => {
   unlockApps();
   if (root) rmSync(root, { recursive: true, force: true });
 });
