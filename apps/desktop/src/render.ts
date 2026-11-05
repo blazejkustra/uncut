@@ -278,6 +278,8 @@ const messageOf = (error: unknown): string => {
 };
 
 const reply = (msg: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ uncut: "render", ...msg })}\n`);
+// A write to the server once it's gone fails (EPIPE): nobody is left to draw for.
+process.stdout.on("error", () => app.exit(0));
 
 // Never share the app's profile (Chromium locks it) and never write to the user's. The server
 // passes a folder it removes once this process is gone (--uncut-profile=…, so even a SIGKILL
