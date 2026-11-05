@@ -453,15 +453,27 @@ test(
       // ---- D262: the denoised voice lands with an undenoised copy of it ----
       // Ref (hard right) unmuted: left is the denoised voice, right − left is Ref's raw voice (the
       // voice is centred: 1 on both sides). Uncompensated their lag is DENOISE_FFT samples (21–23 ms).
-      // The two <audio> elements can't start closer than the bound: play() has no start time, and
-      // their starts land up to about 2.5 ms apart, stable for the take.
+      // The two <audio> elements start together but not sample-locked: play() has no start time, and
+      // now and then one starts a render quantum or two (2.7 or 5.3 ms) after the other, undenoised
+      // tracks too. That is per take, so the bound holds the median of three.
       await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
       rev = await savedAfter(page, rev);
-      const capRef = await record(page);
-      const left = f32(capRef.left);
-      const lagMs = hissLagMs(left, minus(f32(capRef.right), left), capRef.sampleRate);
-      console.log(`denoised voice vs its undenoised copy: ${lagMs.toFixed(2)} ms (uncompensated ${((DENOISE_FFT / capRef.sampleRate) * 1000).toFixed(1)} ms)`);
-      assert.ok(Math.abs(lagMs) < 3, `the denoised voice lags its undenoised copy by ${lagMs.toFixed(2)} ms`);
+      const lags: Array<number> = [];
+      let refRate = 0;
+      for (let take = 0; take < 3; take++) {
+        const capRef = await record(page);
+        const left = f32(capRef.left);
+        refRate = capRef.sampleRate;
+        lags.push(hissLagMs(left, minus(f32(capRef.right), left), refRate));
+      }
+      const lagMs = [...lags].sort((a, b) => a - b)[1]!;
+      console.log(
+        `denoised voice vs its undenoised copy: ${lags.map((l) => l.toFixed(2)).join(", ")} ms (uncompensated ${((DENOISE_FFT / refRate) * 1000).toFixed(1)} ms)`,
+      );
+      assert.ok(
+        Math.abs(lagMs) < 3,
+        `the denoised voice lags its undenoised copy by ${lagMs.toFixed(2)} ms (median of ${lags.map((l) => l.toFixed(2)).join(", ")})`,
+      );
       await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
       rev = await savedAfter(page, rev);
 
