@@ -24,7 +24,8 @@ const ffprobePath = hasFfmpeg ? execFileSync("/bin/sh", ["-c", "command -v ffpro
 const hasVt = hasFfmpeg && /\bh264_videotoolbox\b/.test(execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }));
 const skipFf = hasFfmpeg ? false : "needs ffmpeg";
 
-const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
+const FFMPEG_LIMIT = { timeout: 120000, killSignal: "SIGKILL" } as const;
+const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args], FFMPEG_LIMIT);
 /** A 4K long-GOP H.264 clip (keyframe every 120 frames) of `seconds`, picture `src` (a lavfi source). */
 const make4k = (file: string, seconds = 1, src = "testsrc2") =>
   ff(
@@ -39,8 +40,9 @@ const make4k = (file: string, seconds = 1, src = "testsrc2") =>
     "-t",
     String(seconds),
     "-c:v",
-    hasVt ? "h264_videotoolbox" : "libx264",
-    ...(hasVt ? ["-b:v", "20M"] : ["-preset", "ultrafast"]),
+    "libx264",
+    "-preset",
+    "ultrafast",
     "-g",
     "120",
     "-pix_fmt",
