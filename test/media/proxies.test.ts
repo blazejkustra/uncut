@@ -1,10 +1,11 @@
 // D212: automatic preview proxies (issue #12).
 // - Which footage gets one (4K, HEVC, long-GOP above 30 Mb/s) and how it is encoded.
-// - The queue in process with the real ffmpeg: a proxy keyed like the posters (id--key.mp4), 1280 px,
-//   the original's frame count; a changed original makes it stale at once and gets a new one (the
+// - The queue in process with the real ffmpeg on libx264 (what it tests is the queue, not the encoder):
+//   a proxy keyed like the posters (id--key.mp4), 1280 px, the original's frame count; a changed original makes it stale at once and gets a new one (the
 //   old file goes); nothing starts while an export is busy; light footage gets none.
-// - On the bundled server: media.proxies reports it, GET /media/proxy serves it (token, 404 for
-//   the rest), and the export reads the original even when the proxy is replaced by red frames.
+// - On the bundled server (VideoToolbox when this ffmpeg has it, as in the app): media.proxies reports
+//   it, GET /media/proxy serves it (token, 404 for the rest), and the export reads the original even
+//   when the proxy is replaced by red frames.
 // - Only the preview route reads proxies: export, render_frames and analysis never import them.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +22,6 @@ import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const ffmpegPath = hasFfmpeg ? execFileSync("/bin/sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).trim() : "";
 const ffprobePath = hasFfmpeg ? execFileSync("/bin/sh", ["-c", "command -v ffprobe"], { encoding: "utf8" }).trim() : "";
-const hasVt = hasFfmpeg && /\bh264_videotoolbox\b/.test(execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }));
 const skipFf = hasFfmpeg ? false : "needs ffmpeg";
 
 const FFMPEG_LIMIT = { timeout: 120000, killSignal: "SIGKILL" } as const;
@@ -119,7 +119,7 @@ test("D212: the queue makes a keyed proxy, replaces it when the original changes
       ffprobe: async () => ffprobePath,
       exportBusy: () => busy,
       onChange: (s) => (states = s),
-      hardware: async () => hasVt,
+      hardware: async () => false,
     });
     const media = [
       { id: "m-big", kind: "video", path: "media/Big.MP4" },

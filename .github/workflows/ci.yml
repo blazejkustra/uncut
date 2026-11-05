@@ -141,7 +141,10 @@ jobs:
             native/media/target
           key: app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'native/media/Cargo.lock') }}
           restore-keys: app-${{ runner.os }}-${{ runner.arch }}-
-      # The tests use Homebrew's ffmpeg, with the software encoders; the bundled-tools job checks the LGPL one the app ships.
+      # The tests use Homebrew's ffmpeg, which has VideoToolbox too: Draft and Standard exports, the
+      # server's proxies and several fixtures encode with h264_videotoolbox on the runner's VM. A wedged
+      # session fails its file at test-shard's --file-limit-s instead of holding the job. The
+      # bundled-tools job checks the LGPL ffmpeg the app ships.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
       # The fast tests start the bundled server and media core (pnpm build, part of dist); the app
