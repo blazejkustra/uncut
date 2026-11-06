@@ -3,8 +3,11 @@
 // publishes it as a prerelease the release never sees.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { bundleIdFor, channelOf, feedFileFor, nightlyVersion, productNameFor } from "../../apps/desktop/src/channel.ts";
 import { BUNDLE_ID, UPDATER_CACHE_DIR, updaterCacheDirFor, updaterConfigYaml } from "../../apps/desktop/src/updater/policy.ts";
@@ -73,4 +76,68 @@ test("the nightly workflow publishes a signed prerelease with the nightly feed, 
   assert.doesNotMatch(yml, /--draft/, "the updater never reads drafts");
   const release = readFileSync(".github/workflows/release.yml", "utf8");
   assert.match(release, /tags: \["v\*", "!v\*-nightly\.\*"\]/);
+});
+
+/** The workflow's check step, run against a stand-in gh: the last nightly's commit and how many green CI runs the exact commit has. */
+const nightlyCheck = (event: string, { lastNightlySha = "old", greenRuns = "0" }) => {
+  const steps = yaml.load(readFileSync(".github/workflows/nightly.yml", "utf8")).jobs.check.steps;
+  const dir = mkdtempSync(join(tmpdir(), "uncut-nightly-check-"));
+  const output = join(dir, "output");
+  writeFileSync(
+    join(dir, "gh"),
+    `#!/bin/bash
+echo "$*" >> "${dir}/calls"
+case "$*" in
+  "release list"*) echo v0.0.5-nightly.20261031.1 ;;
+  *"/commits/"*) echo ${lastNightlySha} ;;
+  *"/actions/workflows/ci.yml/runs"*) echo ${greenRuns} ;;
+  *) exit 1 ;;
+esac
+`,
+  );
+  chmodSync(join(dir, "gh"), 0o755);
+  writeFileSync(output, "");
+  const r = spawnSync("bash", ["-e", "-c", steps[0].run], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      GITHUB_EVENT_NAME: event,
+      GITHUB_SHA: "abc123",
+      GITHUB_REPOSITORY: "o/r",
+      GITHUB_OUTPUT: output,
+    },
+  });
+  const calls = existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8") : "";
+  const build = readFileSync(output, "utf8").trim();
+  rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, stdout: r.stdout, build, calls };
+};
+
+test("a scheduled nightly builds only when CI passed on the exact commit", () => {
+  const green = nightlyCheck("schedule", { greenRuns: "1" });
+  assert.equal(green.status, 0);
+  assert.equal(green.build, "build=true");
+  assert.match(green.calls, /actions\/workflows\/ci\.yml\/runs\?head_sha=abc123&branch=main/);
+
+  const notGreen = nightlyCheck("schedule", { greenRuns: "0" });
+  assert.equal(notGreen.status, 0);
+  assert.equal(notGreen.build, "build=false");
+  assert.match(notGreen.stdout, /^::notice::CI has not passed on main at abc123/m);
+});
+
+test("no new commits skip the nightly before CI is asked, and a run by hand always builds", () => {
+  const same = nightlyCheck("schedule", { lastNightlySha: "abc123", greenRuns: "1" });
+  assert.equal(same.build, "build=false");
+  assert.doesNotMatch(same.calls, /actions\/workflows/);
+
+  const byHand = nightlyCheck("workflow_dispatch", { greenRuns: "0" });
+  assert.equal(byHand.build, "build=true");
+  assert.equal(byHand.calls, "");
+});
+
+test("the nightly's check can read CI's runs", () => {
+  const job = yaml.load(readFileSync(".github/workflows/nightly.yml", "utf8")).jobs.check;
+  assert.deepEqual(job.permissions, { contents: "read", actions: "read" });
+  assert.match(job.steps[0].run, /select\(\.event != "pull_request" and \.conclusion == "success"\)/);
 });

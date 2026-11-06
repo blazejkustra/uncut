@@ -1,0 +1,27 @@
+{
+  "export": [
+    "apps/desktop/src/render.ts",
+    "apps/desktop/src/renderMedia.ts",
+    "apps/desktop/src/renderScan.ts",
+    "apps/server/src/agent/tools/exportVideo.ts",
+    "apps/server/src/export/",
+    "apps/web/src/panels/ExportDialog.tsx",
+    "apps/web/src/panels/exportDialog/",
+    "apps/web/src/panels/exportRange.ts",
+    "apps/web/src/panels/exportSpans.ts",
+    "native/media/",
+    "native/tools/",
+    "packages/contracts/src/export.ts",
+    "packages/core/src/export.ts",
+    "packages/core/src/visual/"
+  ],
+  "preview": ["apps/web/src/preview/", "packages/core/src/visual/"],
+  "audio": ["apps/server/src/agent/agentMix.ts", "apps/web/src/audio/", "apps/web/src/inspector/audio.tsx", "packages/core/src/audio/"],
+  "project data": [
+    "apps/desktop/src/projectPath.ts",
+    "apps/server/src/project/",
+    "packages/core/src/timeline/apply-ops.ts",
+    "packages/core/src/timeline/types.ts",
+    "packages/core/src/timeline/validate.ts"
+  ]
+}
