@@ -13,6 +13,9 @@ import { analysisDir } from "../queue/cache.ts";
 /** Bumped when the cache's layout or a result's meaning changes, so older files are redone. */
 export const VISION_CACHE_VERSION = 1;
 
+/** Bumped when the matte Uncut keeps changes (2: made steady, D332), so older mattes are redone; written in the matte's info as `result`. */
+export const MATTE_RESULT_VERSION = 2;
+
 export const visionDir = (projectDir: string, fp: string) => join(analysisDir(projectDir), fp, "vision");
 
 export interface VisionRequest {
@@ -39,6 +42,7 @@ export function visionKey(fp: string, request: VisionRequest): string {
     box ?? null,
     request.module.id,
     request.module.version,
+    ...(request.output === "matte" ? [MATTE_RESULT_VERSION] : []),
   ];
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
 }
@@ -98,6 +102,7 @@ export async function findCovering<T>(
     const module = (raw as { module?: unknown }).module;
     if (!sameModule(module, request.module)) continue;
     if (request.mode !== undefined && (raw as { mode?: unknown }).mode !== request.mode) continue;
+    if (request.output === "matte" && (raw as { result?: unknown }).result !== MATTE_RESULT_VERSION) continue;
     const parsed = parse(raw);
     if (!("value" in parsed) || !covers(parsed.value as { start: number; end: number }, request.start, request.end)) continue;
     const files = { video: json.replace(/\.json$/, ".mkv"), json };

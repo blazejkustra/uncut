@@ -11,7 +11,7 @@ import { validateModule } from "../../packages/core/src/index.ts";
 
 import { NO_PROVIDER, pickProvider, platformOf, type VisionCandidate } from "../../apps/server/src/analysis/vision/providers.ts";
 import { visionDir, visionFiles, visionKey } from "../../apps/server/src/analysis/vision/visionCache.ts";
-import { VisionAnalysis, VisionFailure, type VisionCallResult } from "../../apps/server/src/analysis/vision/vision.ts";
+import { VisionAnalysis, VisionFailure, type VisionCallResult, type VisionDeps } from "../../apps/server/src/analysis/vision/vision.ts";
 import { fingerprint } from "../../apps/server/src/analysis/analysis.ts";
 
 const APPLE = JSON.parse(readFileSync(resolve("plugins/apple-vision/uncut.module.json"), "utf8")) as Record<string, unknown>;
@@ -318,6 +318,76 @@ test("cache: a matte is made once and reused, also for a renamed file; another m
       false,
       "info without its video doesn't count",
     );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("steady matte (D332): Uncut keeps the stabiliser's matte, its progress follows the module's, and an older matte isn't reused", async () => {
+  const f = fixture();
+  try {
+    const module = fakeModule();
+    const asked: Array<Record<string, unknown>> = [];
+    const make = (stabilise: VisionDeps["stabilise"]) =>
+      new VisionAnalysis({
+        candidates: async () => [candidate("apple.vision", ["matte"], ["macos-arm64"])],
+        call: module.call,
+        ffmpeg: async () => "/usr/bin/true",
+        platform: "macos-arm64",
+        stabilise,
+      });
+    const vision = make(async (input, { onProgress }) => {
+      asked.push({ ...input });
+      assert.equal(readFileSync(input.matte, "utf8"), "matte bytes");
+      writeFileSync(input.out, "steady bytes");
+      onProgress?.(1);
+    });
+    const progress: Array<number> = [];
+    const made = await vision.matte(
+      { dir: f.project, path: f.media },
+      { start: 1, end: 1.1, mode: "person" },
+      { signal: signal(), onProgress: (p) => progress.push(p) },
+    );
+    assert.equal(readFileSync(made.video, "utf8"), "steady bytes");
+    assert.equal(asked[0]!.source, f.media);
+    assert.equal(asked[0]!.ffmpeg, "/usr/bin/true");
+    assert.equal((asked[0]!.info as { frames: number }).frames, 3);
+    assert.deepEqual(progress, [0.4, 1]);
+    const folder = visionDir(f.project, await fingerprint(f.media));
+    assert.equal(readdirSync(folder).filter((n) => n.endsWith(".part")).length, 0, "no .part files left");
+    assert.equal(JSON.parse(readFileSync(made.video.replace(/\.mkv$/, ".json"), "utf8")).result, 2);
+
+    const sidecar = made.video.replace(/\.mkv$/, ".json");
+    const older = JSON.parse(readFileSync(sidecar, "utf8"));
+    delete older.result;
+    const oldBase = join(folder, `matte-${"c".repeat(24)}`);
+    writeFileSync(`${oldBase}.json`, JSON.stringify({ ...older, start: 0, end: 4 }));
+    writeFileSync(`${oldBase}.mkv`, "old matte");
+    const inside = await vision.matte({ dir: f.project, path: f.media }, { start: 2, end: 3, mode: "person" }, { signal: signal() });
+    assert.equal(inside.cached, false, "a matte made before D332 covers the range but is redone");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("steady matte (D332): a stabiliser that fails says so and leaves nothing", async () => {
+  const f = fixture();
+  try {
+    const vision = new VisionAnalysis({
+      candidates: async () => [candidate("apple.vision", ["matte"], ["macos-arm64"])],
+      call: fakeModule().call,
+      ffmpeg: async () => "/usr/bin/true",
+      platform: "macos-arm64",
+      stabilise: async (input) => {
+        writeFileSync(input.out, "half");
+        throw new Error("ffmpeg couldn't read the video: Invalid data");
+      },
+    });
+    await assert.rejects(
+      vision.matte({ dir: f.project, path: f.media }, { start: 1, end: 1.1, mode: "person" }, { signal: signal() }),
+      (e: VisionFailure) => e.reason === "failed" && e.message === "Uncut couldn't make the matte steady: ffmpeg couldn't read the video: Invalid data",
+    );
+    assert.equal(existsSync(visionDir(f.project, await fingerprint(f.media))), false);
   } finally {
     f.cleanup();
   }

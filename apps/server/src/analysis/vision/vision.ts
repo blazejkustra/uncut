@@ -20,7 +20,8 @@ import { writeAtomic } from "../../project/atomicWrite.ts";
 import { Cancelled } from "../analysisRunner.ts";
 import { fingerprint } from "../queue/cache.ts";
 import { type Platform, type VisionCandidate, pickProvider, platformOf } from "./providers.ts";
-import { type VisionRequest, findCovering, readCachedJson, readCachedMatte, visionFiles } from "./visionCache.ts";
+import type { StabiliseInput, StabiliseOptions } from "./stabiliseMatte.ts";
+import { MATTE_RESULT_VERSION, type VisionRequest, findCovering, readCachedJson, readCachedMatte, visionFiles } from "./visionCache.ts";
 
 export interface VisionCallResult {
   readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
@@ -41,6 +42,8 @@ export interface VisionDeps {
   /** The ffmpeg binary (undefined: not installed). */
   readonly ffmpeg: () => Promise<string | undefined>;
   readonly platform?: Platform | undefined;
+  /** Makes the module's matte steady before it's kept (D332: stabiliseMatte); without it the module's matte is kept as it is. */
+  readonly stabilise?: ((input: StabiliseInput, options: StabiliseOptions) => Promise<void>) | undefined;
 }
 
 /** A media file of the open project. */
@@ -74,6 +77,9 @@ interface JsonAsk<T> {
   readonly parse: (raw: unknown) => { readonly value: T } | { readonly problem: string };
   readonly args: Record<string, unknown>;
 }
+
+/** The share of a matte's progress the module's run takes when Uncut then makes it steady. */
+const MODULE_SHARE = 0.8;
 
 /** A refusal or failure in one sentence (no provider, a bad range, the module's own error). */
 export class VisionFailure extends Error {
@@ -137,13 +143,16 @@ export class VisionAnalysis {
     const ffmpeg = await this.deps.ffmpeg();
     if (!ffmpeg) throw new VisionFailure("failed", "ffmpeg isn't installed, and Uncut needs it to write the matte (brew install ffmpeg).");
     const part = await this.partFor(files.video);
+    const steady = await this.partFor(files.video);
+    const stabilise = this.deps.stabilise;
+    const share = stabilise ? MODULE_SHARE : 1;
     let made = false;
     try {
       const answer = (await this.callTool(
         provider,
         "matte",
         { media: target.path, start: range.start, end: range.end, mode: range.mode, out: part, ffmpeg },
-        options,
+        { ...options, onProgress: (f) => options.onProgress?.(share * f) },
       )) as Record<string, unknown> | undefined;
       const { width, height, fps, frames, times } = answer ?? {};
       const parsed = parseMatteInfo({
@@ -159,13 +168,24 @@ export class VisionAnalysis {
         module: request.module,
       });
       if ("problem" in parsed) throw new VisionFailure("failed", `${provider.name} answered a matte Uncut can't use: ${parsed.problem}`);
+      if (stabilise) await this.makeSteady(stabilise, { ffmpeg, source: target.path, matte: part, out: steady, info: parsed.value }, options);
       await this.stillSame(target.path, fp);
-      await rename(part, files.video);
-      await writeAtomic(files.json, `${JSON.stringify(parsed.value)}\n`);
+      await rename(stabilise ? steady : part, files.video);
+      await writeAtomic(files.json, `${JSON.stringify({ ...parsed.value, result: MATTE_RESULT_VERSION })}\n`);
       made = true;
       return { video: files.video, info: parsed.value, cached: false };
     } finally {
+      await this.dropPart(steady, made);
       await this.dropPart(part, made);
+    }
+  }
+
+  private async makeSteady(stabilise: NonNullable<VisionDeps["stabilise"]>, input: StabiliseInput, { signal, onProgress }: VisionOptions) {
+    try {
+      await stabilise(input, { signal, onProgress: (f) => onProgress?.(MODULE_SHARE + (1 - MODULE_SHARE) * f) });
+    } catch (error) {
+      if (signal.aborted) throw new Cancelled();
+      throw new VisionFailure("failed", `Uncut couldn't make the matte steady: ${(error as Error).message}`);
     }
   }
 
