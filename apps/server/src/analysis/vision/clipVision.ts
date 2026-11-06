@@ -13,6 +13,7 @@ import { CUTOUT, FACE_BLUR, effectOptions, visionProblem, visionRange, type Face
 import { flattenSequences } from "@uncut/core/nesting";
 
 import { run } from "../../export/exporter/ffmpeg.ts";
+import { unblurredLabel } from "../../export/plan/vision.ts";
 import { VisionFailure, type VisionAnalysis } from "./vision.ts";
 
 export type ClipVisionOutput = "matte" | "faces" | "track";
@@ -382,7 +383,7 @@ export function unblurredClips(project: Project, ready: Pick<ReadyVision, "made"
         ? undefined
         : (ready.failed.get(requestId(media.id, request)) ?? "it wasn't analysed")
       : visionProblem(flat, item, "faces");
-    if (why) out.push(`"${item.name ?? media.name ?? item.id}" (${why.replace(/\.$/, "")})`);
+    if (why) out.push(unblurredLabel(item.name ?? media.name ?? item.id, why));
   }
   return out;
 }

@@ -58,7 +58,7 @@ import {
   blendGraph,
 } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
-import { clipVision, layerFaceMasks, type VisionLookup } from "../plan/vision.ts";
+import { clipVision, layerFaceMasks, unblurredLabel, unblurredStop, type VisionLookup } from "../plan/vision.ts";
 import { faceMaskFrame } from "./faceMasks.ts";
 import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
@@ -120,6 +120,27 @@ export interface FrameSession {
   /** Stop the rasteriser and the media source, remove the temp folder. */
   readonly close: () => Promise<void>;
 }
+
+/** D328: the face-blurred clips `frames` of a flattened project show whose faces weren't found, named with why. */
+export function unblurredOnFrames(project: Project, frames: ReadonlyArray<number>, lookup: VisionLookup | undefined): Array<string> {
+  const { starts, duration } = layout(project);
+  const out = new Set<string>();
+  for (const requested of frames) {
+    const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
+    for (const { item } of visualsAt(project, starts, f)) {
+      const media = item.type === "clip" ? project.media.find((m) => m.id === item.media) : undefined;
+      const effects = media ? clipFx(item, project.luts) : undefined;
+      if (!media || !effects?.faceBlur) continue;
+      clipVision(project, item, media, effects, f - (starts.get(item.id) ?? 0), 1, lookup, (output, why) => {
+        if (output === "faces") out.add(unblurredLabel(item.name ?? media.name ?? item.id, why));
+      });
+    }
+  }
+  return [...out];
+}
+
+const unblurredFramesStop = (clips: ReadonlyArray<string>) =>
+  `${unblurredStop("These frames weren't drawn", clips)} Frames without ${clips.length === 1 ? "it" : "them"} can still be drawn.`;
 
 /**
  * Frames of the edit as JPEGs, built the way export builds them: the canvas colour, then every
@@ -230,6 +251,8 @@ export async function openFrameSession(
     o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean } = {},
   ): Promise<Array<RenderedFrame>> => {
     if (closed) throw new Error("The frame session is closed.");
+    const unblurred = unblurredOnFrames(project, frames, options.vision);
+    if (unblurred.length) throw new Error(unblurredFramesStop(unblurred));
     const call = o.signal ? AbortSignal.any([signal, o.signal]) : signal;
     const onCallAbort = () => void raster?.close();
     o.signal?.addEventListener("abort", onCallAbort, { once: true });

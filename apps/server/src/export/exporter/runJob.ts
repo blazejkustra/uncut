@@ -40,7 +40,7 @@ import { track } from "../../telemetry/telemetry.ts";
 import { ensureReversed, type ReverseTarget } from "../../media/reversed.ts";
 import { readyVision, unblurredClips, visionResolver } from "../../analysis/vision/clipVision.ts";
 import type { VisionAnalysis } from "../../analysis/vision/vision.ts";
-import type { VisionLookup } from "../plan/vision.ts";
+import { type VisionLookup, unblurredStop } from "../plan/vision.ts";
 import { writeFaceMasks } from "./faceMasks.ts";
 import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
@@ -132,10 +132,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       const ready = await readyVision(vision, project, job.projectDir, { signal, onStep: (done, total) => step("vision", done, total) });
       releaseVision = ready.release;
       const unblurred = unblurredClips(project, ready);
-      if (unblurred.length)
-        throw new Error(
-          `The export stopped so faces aren't shown unblurred: ${unblurred.join(", ")} ${unblurred.length === 1 ? "has face blur, but its faces" : "have face blur, but their faces"} couldn't be found.`,
-        );
+      if (unblurred.length) throw new Error(unblurredStop("The export stopped", unblurred));
       if (ready.made.size || ready.failed.size) {
         const again = replan(envelopesNow, visionResolver(ready));
         if ("problem" in again) throw new Error(again.problem);

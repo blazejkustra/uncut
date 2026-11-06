@@ -92,6 +92,13 @@ export function clipVision(
   return { effects: Object.keys(drawn).length ? drawn : undefined, ...out };
 }
 
+/** A face-blurred clip whose faces weren't found, by name with why, as the export and the frames name it (D328). */
+export const unblurredLabel = (name: string, why: string) => `"${name}" (${why.replace(/\.$/, "")})`;
+
+/** D328: the sentence refusing to show `clips`' faces unblurred, after `lead` ("The export stopped"). */
+export const unblurredStop = (lead: string, clips: ReadonlyArray<string>) =>
+  `${lead} so faces aren't shown unblurred: ${clips.join(", ")} ${clips.length === 1 ? "has face blur, but its faces" : "have face blur, but their faces"} couldn't be found.`;
+
 /** The faces of each frame as masks on the effects' picture (w × h px, `k` px per canvas px). */
 export const layerFaceMasks = (faces: ReadonlyArray<ReadonlyArray<FaceSample>>, fx: ClipFx, w: number, h: number, k: number): Array<Array<ClipMask>> =>
   faces.map((f) => (fx.faceBlur ? faceMasks(f, fx.faceBlur, w, h, k) : []));
