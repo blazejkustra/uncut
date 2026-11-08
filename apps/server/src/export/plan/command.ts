@@ -239,7 +239,15 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // A blend mode (D326) blends onto everything below; a transparent export draws it normally.
     if (layer.blend && !opts.video?.alpha)
       graph.push(
-        ...blendGraph({ mode: layer.blend, at, f0: layer.f0, f1: layer.f1, frames: plan.frames, format: "yuv444p" }, base, `l${k}`, `b${k + 1}`, W, H, fps),
+        ...blendGraph(
+          { mode: layer.blend, at, f0: layer.f0, f1: layer.f1, frames: frameCount, start: first, format: "yuv444p" },
+          base,
+          `l${k}`,
+          `b${k + 1}`,
+          W,
+          H,
+          fps,
+        ),
       );
     else graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=${fmt}:repeatlast=0${at}[b${k + 1}]`);
     base = `b${k + 1}`;

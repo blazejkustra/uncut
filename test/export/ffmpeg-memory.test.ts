@@ -195,3 +195,106 @@ test("an export split into time chunks matches the one-run export frame for fram
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+const worstFramePsnr = (a: string, b: string) => {
+  const r = spawnSync("ffmpeg", ["-i", a, "-i", b, "-lavfi", "[0:v][1:v]psnr=stats_file=-", "-f", "null", "-"], { encoding: "utf8" });
+  const frames = r.stdout.trim().split("\n");
+  assert.ok(frames.length > 1, r.stderr.slice(-500));
+  return Math.min(...frames.map((l) => Number(/psnr_avg:(\S+)/.exec(l)?.[1]?.replace("inf", "Infinity"))));
+};
+
+/** A clip blended (screen) from frame 20 over the main clip, and four short clips that split the export at 15, 20, 30 and 45. */
+const seamProject = (a: string, b: string): Project =>
+  ({
+    format: "uncut/0",
+    name: "Seams",
+    canvas: { width: 320, height: 180, fps: 30 },
+    media: [a, b].map((path, i) => ({
+      id: `m${i}`,
+      kind: "video",
+      name: `${i}.mp4`,
+      path,
+      probe: { frames: 300, fps: 30, width: 320, height: 180, hasAudio: true },
+    })),
+    tracks: [
+      {
+        id: "top",
+        kind: "video",
+        name: "Top",
+        items: [
+          {
+            id: "t",
+            type: "clip",
+            media: "m1",
+            start: 20,
+            in: 0,
+            duration: 40,
+            transform: { scale: 0.6 },
+            effects: [{ module: "effect.blend", params: { mode: "screen" } }],
+          },
+        ],
+      },
+      {
+        id: "mid",
+        kind: "video",
+        name: "Mid",
+        items: [0, 1, 2, 3].map((i) => ({ id: `s${i}`, type: "clip", media: "m0", start: i * 15, in: i * 5, duration: 15, transform: { scale: 0.3 } })),
+      },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "u", type: "clip", media: "m0", in: 0, duration: 60 }] },
+    ],
+  }) as unknown as Project;
+
+/** The seam project exported in one run and in chunks of two layers, with `video` options; the files are in `root`. */
+async function seamExports(root: string, video: { readonly fps?: number } = {}) {
+  const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", "-threads", "2", ...args]);
+  const clip = (name: string, hue: number) => {
+    const file = join(root, name);
+    ff(
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc2=size=320x180:rate=30:d=10,hue=h=${hue}`,
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=r=48000:d=10",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-shortest",
+      file,
+    );
+    return file;
+  };
+  const background = join(root, "bg.png");
+  ff("-f", "lavfi", "-i", "color=c=black:s=320x180", "-frames:v", "1", background);
+  const plan = planExport(seamProject(clip("a.mp4", 0), clip("b.mp4", 120)), { mediaPath: (m) => m.path, width: 320, height: 180 }) as ExportPlan;
+  assert.deepEqual(
+    chunkRanges(plan.visuals, plan.frames, 2).map((r) => r.start),
+    [0, 15, 20, 30, 45],
+  );
+  const caps = await capsOf("ffmpeg");
+  const encode = async (name: string, maxLayers: number) => {
+    const output = join(root, `${name}.mp4`);
+    const options = { background, rasters: new Map(), caps, quality: "high" as const, output, video: { ...video, encoder: "software" as const } };
+    const temp = mkdtempSync(join(root, `${name}-`));
+    const r = await encodeChunked({ bin: "ffmpeg", caps, plan, options, temp, signal: new AbortController().signal, progress: () => () => {}, maxLayers });
+    assert.equal(r.code, 0, r.stderr.slice(-500));
+    return output;
+  };
+  return { whole: await encode("whole", 100), chunked: await encode("chunked", 2) };
+}
+
+test("a blend mode that starts inside a chunk is drawn as in the one-run export", { skip: hasFfmpeg ? false : "needs ffmpeg", timeout: 120000 }, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-seams-")));
+  try {
+    const { whole, chunked } = await seamExports(root);
+    const worst = worstFramePsnr(chunked, whole);
+    assert.ok(worst > 35, `worst frame PSNR ${worst}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
