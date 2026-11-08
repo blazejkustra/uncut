@@ -69,8 +69,8 @@ function SourcePicture({ media, fps, online }: { media: MediaItem; fps: number; 
   const proxy = useSyncExternalStore(subscribeApp, () => proxyOf(getState(), media.id));
   const proxiesOn = useProxiesOn();
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
-  useMediaElement(ref);
   const src = media.kind === "video" && proxiesOn && proxy?.phase === "done" && proxy.key ? proxyUrl(media.id, proxy.key) : mediaUrl(media.id, media.path);
+  useMediaElement(ref, src);
   const onDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(MEDIA_DRAG_TYPE, media.id);
     const range = markedRange(getSource(), fps, media.probe?.frames);
@@ -107,8 +107,8 @@ function SourcePicture({ media, fps, online }: { media: MediaItem; fps: number; 
   );
 }
 
-/** The element follows the viewer: plays and pauses with it, jumps on a seek, and reports where it is while playing. */
-function useMediaElement(ref: RefObject<HTMLMediaElement | null>) {
+/** The element follows the viewer: plays and pauses with it, jumps on a seek, and reports where it is while playing. A new `src` is a new element. */
+function useMediaElement(ref: RefObject<HTMLMediaElement | null>, src: string | undefined) {
   const playing = useSource((s) => s.playing);
   const seek = useSource((s) => s.seek);
   useEffect(() => {
@@ -117,14 +117,14 @@ function useMediaElement(ref: RefObject<HTMLMediaElement | null>) {
     const to = getSource().time;
     if (el.readyState >= 1) el.currentTime = to;
     else el.addEventListener("loadedmetadata", () => (el.currentTime = to), { once: true });
-  }, [ref, seek]);
+  }, [ref, seek, src]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (!playing) return el.pause();
     el.play().catch(() => source.ended());
     return followWhilePlaying(el);
-  }, [ref, playing]);
+  }, [ref, playing, src]);
 }
 
 function followWhilePlaying(el: HTMLMediaElement) {

@@ -89,7 +89,8 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0, 
   if (main.locked) return { problem: "The main track is locked. Unlock it to add clips." };
   const mainEnd = mainEndOf(project);
   const itemId = uniqueId(project, "clip");
-  const stretch = media.kind === "image" ? { in: 0, duration: defaultFrames("still", fps) } : (range ? { in: range.in, duration: range.frames } : { in: 0, duration: frames! });
+  const stretch =
+    media.kind === "image" ? { in: 0, duration: defaultFrames("still", fps) } : range ? { in: range.in, duration: range.frames } : { in: 0, duration: frames! };
   return {
     ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, ...stretch } }],
     summary: `Add ${media.name} to the timeline`,

@@ -135,6 +135,20 @@ test("Space over a media tile opens it in the source viewer and plays it; Space 
   assert.equal(await viewerMedia(), "m-b");
 });
 
+test("Space over another tile while one plays opens and plays that one", { skip, timeout: 60000 }, async () => {
+  await hoverTile("m-a");
+  await page.keyboard.press("Space");
+  await waitViewer("m-a");
+  await page.waitForFunction(() => document.querySelector<HTMLVideoElement>("[data-testid=source-video]")!.currentTime > 0.3, { timeout: 5000 });
+  await hoverTile("m-b");
+  await page.keyboard.press("Space");
+  await waitViewer("m-b");
+  assert.equal(await viewerPlaying(), true);
+  await page.waitForFunction(() => document.querySelector<HTMLVideoElement>("[data-testid=source-video]")!.currentTime > 0.3, { timeout: 5000 });
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=source-play]")?.dataset.playing !== "true", { timeout: 5000 });
+});
+
 test("I and O mark the file in the viewer, and Add puts In to Out at the end of the main track", { skip, timeout: 60000 }, async () => {
   await waitViewer("m-b");
   await clickScrub(0.2);
