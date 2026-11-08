@@ -47,14 +47,14 @@ test("a PR touching audio gets a warning and a summary line, and still passes", 
   withTempDir((dir) => {
     const r = macVerification(dir, "apps/web/src/audio/audio.ts");
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^::warning::needs Mac verification: this PR touches audio$/m);
+    assert.match(r.stdout, /^::warning::needs Mac verification: this PR touches audio, so test it on a real Mac before merging$/m);
     assert.match(r.summary, /needs Mac verification/);
     assert.match(r.summary, /audio: `apps\/web\/src\/audio\/audio\.ts`/);
   }));
 
 test("a file shared by export and preview names both areas", () =>
   withTempDir((dir) => {
-    assert.match(macVerification(dir, "packages/core/src/visual/render.ts").stdout, /touches export, preview$/m);
+    assert.match(macVerification(dir, "packages/core/src/visual/render.ts").stdout, /touches export, preview, so test/m);
   }));
 
 test("a PR elsewhere gets no warning", () =>

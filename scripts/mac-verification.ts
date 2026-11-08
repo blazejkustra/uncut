@@ -27,8 +27,13 @@ const touched = Object.entries(areas).flatMap(([area, paths]) => {
 
 if (touched.length) {
   const names = touched.map((t) => t.area).join(", ");
-  console.log(`::warning::needs Mac verification: this PR touches ${names}`);
-  const lines = [`**needs Mac verification**: this PR touches ${names}.`, "", ...touched.flatMap((t) => t.files.map((f) => `- ${t.area}: \`${f}\``)), ""];
+  console.log(`::warning::needs Mac verification: this PR touches ${names}, so test it on a real Mac before merging`);
+  const lines = [
+    `**needs Mac verification**: this PR touches ${names}, so test it on a real Mac before merging.`,
+    "",
+    ...touched.flatMap((t) => t.files.map((f) => `- ${t.area}: \`${f}\``)),
+    "",
+  ];
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
 } else {
   console.log("No export, preview, audio or project data paths touched.");
