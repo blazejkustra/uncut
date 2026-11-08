@@ -259,7 +259,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   // prores_ks takes its colour tags from the frames, unlike the bitstream filters of the delivery codecs.
   const tags = isProRes(codec) ? ",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv" : "";
   const restart = opts.range ? ",setpts=PTS-STARTPTS" : "";
-  graph.push(`[${base}]format=${pictures.output}${tags},fps=${fps},trim=end_frame=${frameCount}${restart}${outFps ? `,fps=${n(outFps)}` : ""}[vout]`);
+  graph.push(`[${base}]format=${pictures.output}${tags},fps=${fps},trim=end_frame=${frameCount}${outFps ? `,fps=${n(outFps)}` : ""}${restart}[vout]`);
   const pictureArgs = [
     ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
     "-pix_fmt",

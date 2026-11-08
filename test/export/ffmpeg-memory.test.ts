@@ -298,3 +298,16 @@ test("a blend mode that starts inside a chunk is drawn as in the one-run export"
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a chunked export at another frame rate keeps the one-run export's frames", { skip: hasFfmpeg ? false : "needs ffmpeg", timeout: 120000 }, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-seams-")));
+  try {
+    const { whole, chunked } = await seamExports(root, { fps: 25 });
+    assert.equal(frameCount(whole), 50);
+    assert.equal(frameCount(chunked), 50);
+    const worst = worstFramePsnr(chunked, whole);
+    assert.ok(worst > 35, `worst frame PSNR ${worst}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
