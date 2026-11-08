@@ -198,7 +198,9 @@ const frameKey = (s: GpuPicture["source"]) =>
       ? `i${s.currentSrc}`
       : s.classList.contains("pv-scrub")
         ? `c${s.dataset.scrub}|${s.dataset.sample}`
-        : `c${performance.now()}`;
+        : s.classList.contains("pv-play")
+          ? `p${s.dataset.play}|${s.dataset.frames}`
+          : `c${performance.now()}`;
 
 /** Where a picture of size n lands in rect r with an object-fit (centred, as CSS's default object-position). */
 export function fitInto(r: Rect, n: { w: number; h: number }, fit: string): Rect {
