@@ -60,10 +60,11 @@ export interface BlendPlace {
   readonly mode: BlendMode;
   /** The overlay position of the layer on the canvas (":x=…:y=…" or ""). */
   readonly at: string;
-  /** The frames the layer covers [f0, f1), and how many frames the graph has. */
+  /** The frames the layer covers [f0, f1), and how many frames the graph has from its first, `start` (default 0). */
   readonly f0: number;
   readonly f1: number;
   readonly frames: number;
+  readonly start?: number;
   /** The pixel format the result is made in. */
   readonly format: string;
   /** The layer and base are RGB already (render_frames), else BT.709 limited-range YUV. */
@@ -80,14 +81,15 @@ export function blendGraph(p: BlendPlace, base: string, layer: string, output: s
   const mode = blendInfo(p.mode)?.ffmpeg ?? "normal";
   const toRgb = p.rgb ? "" : "scale=in_color_matrix=bt709:in_range=tv:out_range=pc,";
   const back = p.rgb ? "" : "scale=out_color_matrix=bt709:out_range=tv,";
+  const start = p.start ?? 0;
   return [
-    `color=c=black@0:s=${W}x${H}:r=${fps},format=${p.rgb ? "rgba" : "yuva444p"},trim=end_frame=${p.frames},settb=1/${fps},setpts=N[${o}z]`,
+    `color=c=black@0:s=${W}x${H}:r=${fps},format=${p.rgb ? "rgba" : "yuva444p"},trim=end_frame=${p.frames},settb=1/${fps},setpts=N+${start}[${o}z]`,
     `[${o}z][${layer}]overlay=eof_action=pass:format=${p.rgb ? "rgb" : "yuv444"}:repeatlast=0${p.at}[${o}f]`,
     `[${o}f]${toRgb}format=gbrap,split=2[${o}c][${o}a]`,
     `[${o}c]format=gbrp[${o}s]`,
     `[${o}a]alphaextract[${o}m]`,
     `[${base}]${toRgb}format=gbrp,split=2[${o}b][${o}d]`,
-    `[${o}b][${o}s]blend=all_mode=${mode}:enable='between(n,${p.f0},${p.f1 - 1})'[${o}x]`,
+    `[${o}b][${o}s]blend=all_mode=${mode}:enable='between(n,${p.f0 - start},${p.f1 - 1 - start})'[${o}x]`,
     `[${o}x][${o}m]alphamerge[${o}y]`,
     `[${o}d][${o}y]overlay=eof_action=pass:format=gbrp:repeatlast=0,${back}format=${p.format}[${output}]`,
   ];

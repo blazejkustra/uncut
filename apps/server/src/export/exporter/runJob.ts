@@ -18,7 +18,6 @@ import {
 
 import { shadeLayers } from "../shaderPass.ts";
 import {
-  exportCommand,
   planLoudness,
   RASTER_CSS,
   graphFileArgs,
@@ -33,7 +32,8 @@ import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasteriz
 import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeInto, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
 import { REVIEW_PAGE } from "./reviewPage.ts";
-import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, run, ffmpegError, encodeArgs } from "./ffmpeg.ts";
+import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, ffmpegError, guardedRun } from "./ffmpeg.ts";
+import { encodeChunked } from "./chunkedEncode.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
@@ -174,13 +174,14 @@ export const makeRunJob = (ctx: RunJobCtx) => {
           : await planLoudness(plan, job.targetLufs, async (pass, name) => {
               const graphFile = join(temp!, name);
               await writeFile(graphFile, pass.graph);
-              const r = await run(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], signal);
+              const r = await guardedRun(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], signal);
               if (r.code !== 0) throw new Error(`Measuring the loudness failed: ${ffmpegError(r.stderr)}`);
               return r.stderr;
             });
 
       stage = "encode";
-      const partial = join(temp, `export.${codecExtension(job.codec ?? "h264")}`);
+      const workFolder = temp;
+      const partial = join(workFolder, `export.${codecExtension(job.codec ?? "h264")}`);
       // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
       const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
       let subtitles: { file: string; language: string; show: boolean } | undefined;
@@ -193,12 +194,11 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       const luts = await writeLuts(plan, temp);
       const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps, alpha: job.alpha };
       const total = plan.frames / plan.fps;
-      const graphFile = join(temp, "graph.txt");
       const softwareBin = await ffmpegWith(bin, softwareEncoder(job.codec));
       const encode = async (encoderBin: string, choice: typeof video) => {
         const encoderCaps = await capsOf(encoderBin);
         const encoderPlan = plan.denoiseLag === undefined ? plan : { ...plan, denoiseLag: await denoiseLagOf(encoderBin) };
-        const cmd = exportCommand(encoderPlan, {
+        const options = {
           untagged,
           background,
           rasters,
@@ -212,21 +212,21 @@ export const makeRunJob = (ctx: RunJobCtx) => {
           luts,
           shaded,
           faceMasks,
-        });
-        await writeFile(graphFile, cmd.graph);
+        };
         const renderStart = Date.now();
         patch(job.id, { phase: "rendering", progress: 0 });
         let lastPatch = 0;
-        return run(encoderBin, encodeArgs(cmd, graphFileArgs(encoderCaps, graphFile)), signal, (line) => {
+        const progress = (offset: number) => (line: string) => {
           const m = /^out_time_us=(\d+)/.exec(line);
           if (!m) return;
-          const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
+          const progress = Math.min(0.999, (offset + Number(m[1]) / 1e6) / total);
           const now = Date.now();
           if (now - lastPatch < 200) return;
           lastPatch = now;
           const elapsed = (now - renderStart) / 1000;
           patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
-        });
+        };
+        return encodeChunked({ bin: encoderBin, caps: encoderCaps, plan: encoderPlan, options, temp: workFolder, signal, progress });
       };
       const encoderBin = wantsSoftware(job.quality, video) ? (softwareBin ?? bin) : bin;
       const hardware = usesHardware(job.quality, await capsOf(encoderBin), video);

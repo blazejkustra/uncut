@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { faceCoverage, faceMasks, facesAt, matteAlpha, type FaceFrames, type Item, type Project, type Track } from "../../packages/core/src/index.ts";
-import { exportCommand, planExport, silentFailure } from "../../apps/server/src/export/exportPlan.ts";
+import { chunkRanges, exportCommand, planExport, silentFailure } from "../../apps/server/src/export/exportPlan.ts";
+import { encodeChunked } from "../../apps/server/src/export/exporter/chunkedEncode.ts";
 import { writeFaceMasks } from "../../apps/server/src/export/exporter/faceMasks.ts";
 import type { VisionLookup } from "../../apps/server/src/export/plan/vision.ts";
 
@@ -289,4 +290,90 @@ test("without a matte the clip is drawn unkeyed, with the reason as a warning", 
   );
   const layer = plan.visuals.find((l) => l.item.id === "t1")!;
   assert.ok(layer.kind === "video" && !layer.matte);
+});
+
+/** `p` with three short clips on a track between, so chunks of two layers split it at frames 10 and 20. */
+const withSeams = (p: Project): Project => ({
+  ...p,
+  tracks: [
+    p.tracks[0]!,
+    {
+      id: "mid",
+      kind: "video",
+      name: "Mid",
+      items: [0, 1, 2].map((i) => ({
+        id: `s${i}`,
+        type: "clip" as const,
+        media: "m-under",
+        start: i * 10,
+        in: i * 10,
+        duration: 10,
+        transform: { scale: 0.2 },
+      })),
+    },
+    ...p.tracks.slice(1),
+  ],
+});
+
+/** Each frame's PSNR of `a` against `b`. */
+const framePsnrs = (a: string, b: string) => {
+  const r = spawnSync("ffmpeg", ["-i", a, "-i", b, "-lavfi", "[0:v][1:v]psnr=stats_file=-", "-f", "null", "-"], { encoding: "utf8" });
+  return r.stdout
+    .trim()
+    .split("\n")
+    .map((l) => Number(/psnr_avg:(\S+)/.exec(l)?.[1]?.replace("inf", "Infinity")));
+};
+
+/** `p` exported as ProRes 422 in chunks of `maxLayers` layers (100: one run). */
+async function exportedFile(name: string, p: Project, vision: VisionLookup, maxLayers: number): Promise<string> {
+  const plan = planExport(p, { mediaPath: (m) => m.path, width: W, height: H, vision });
+  if ("problem" in plan) throw new Error(plan.problem);
+  if (maxLayers < 100)
+    assert.deepEqual(
+      chunkRanges(plan.visuals, plan.frames, maxLayers).map((r) => r.start),
+      [0, 10, 20],
+    );
+  const temp = mkdtempSync(join(dir, `${name}-`));
+  const background = join(temp, "bg.png");
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H}`, "-frames:v", "1", background]);
+  const signal = new AbortController().signal;
+  const faceMasks = await writeFaceMasks("ffmpeg", plan, temp, signal);
+  const caps = { encoders: new Set(["prores_ks"]), videotoolboxDecode: false, major: 8 };
+  const output = join(dir, `${name}.mov`);
+  const video = { codec: "prores422" as const, encoder: "software" as const };
+  const options = { background, rasters: new Map(), caps, quality: "high" as const, output, faceMasks, video };
+  const r = await encodeChunked({ bin: "ffmpeg", caps, plan, options, temp, signal, progress: () => () => {}, maxLayers });
+  assert.equal(r.code, 0, r.stderr.slice(-800));
+  return output;
+}
+
+/** The effect's chunked export against its one-run export, and the one-run export against `plain` (the effect with nothing to do). */
+async function acrossSeams(name: string, effects: Item["effects"], plain: VisionLookup) {
+  const p = withSeams(project(effects));
+  const whole = await exportedFile(`${name}-whole`, p, lookup, 100);
+  const chunked = await exportedFile(`${name}-chunked`, p, lookup, 2);
+  const untouched = await exportedFile(`${name}-plain`, p, plain, 100);
+  return { chunked: framePsnrs(chunked, whole), effect: framePsnrs(whole, untouched) };
+}
+
+const AFTER_SEAMS = [10, 11, 15, 20, 21, 29];
+
+test("face blur across chunk seams: every frame after a seam is blurred as in the one-run export", { skip }, async () => {
+  const blur = { module: "effect.face-blur", params: { amount: 8, shape: "ellipse", feather: 6, padding: 0.1 } };
+  const { chunked, effect } = await acrossSeams("faces-seams", [blur], () => ({ faces: { frames: [] } }));
+  assert.equal(chunked.length, 30);
+  for (const f of AFTER_SEAMS) {
+    assert.ok(effect[f]! < 35, `frame ${f}: the one-run export blurs a face (${effect[f]!.toFixed(1)} dB from no faces)`);
+    assert.ok(chunked[f]! > 45, `frame ${f}: chunked is ${chunked[f]!.toFixed(1)} dB from the one-run export`);
+  }
+});
+
+test("background removal across chunk seams: the matte lines up after each seam as in the one-run export", { skip }, async () => {
+  const cutout = { module: "effect.cutout", params: { mode: "person", softness: 1, shrink: 0 } };
+  const { chunked, effect } = await acrossSeams("cutout-seams", [cutout], () => ({ problem: "no matte" }));
+  assert.equal(chunked.length, 30);
+  for (const f of AFTER_SEAMS) {
+    assert.ok(effect[f]! < 35, `frame ${f}: the one-run export cuts out (${effect[f]!.toFixed(1)} dB from no matte)`);
+    assert.ok(chunked[f]! > 45, `frame ${f}: chunked is ${chunked[f]!.toFixed(1)} dB from the one-run export`);
+  }
 });

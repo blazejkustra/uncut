@@ -2,6 +2,7 @@ import type { Ramp, VisualLayer, Quality, Placement } from "./types.ts";
 import { n } from "./num.ts";
 import type { RasterOutput, Caps, VideoChoice } from "./codec.ts";
 import type { AudioOptions } from "./audio.ts";
+import type { FrameRange } from "./chunks.ts";
 
 export const fadeFilters = (ramps: ReadonlyArray<Ramp>, fps: number) =>
   ramps.map((r) => `fade=t=${r.type}:st=${n(Math.max(0, r.st) / fps)}:d=${n(r.d / fps)}:alpha=1`);
@@ -31,6 +32,8 @@ export interface CommandOptions {
   readonly loudnorm?: string | undefined;
   readonly loudness?: AudioOptions | undefined;
   readonly output: string;
+  /** Only these frames, picture only (a chunk of a split export, joined by muxCommand); absent: the whole export. */
+  readonly range?: FrameRange | undefined;
   /** The colour tables (D136) by key (core colourLut): .cube files the exporter wrote. */
   readonly luts?: ReadonlyMap<string, string> | undefined;
   /** Shaded layers' pictures (D213): the file of the frames the rasteriser drew, by layer. */

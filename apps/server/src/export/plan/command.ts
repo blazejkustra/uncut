@@ -1,4 +1,4 @@
-import { codecExtension, isProRes, maskGeq } from "@uncut/core";
+import { codecExtension, isProRes, maskGeq, type ExportCodec } from "@uncut/core";
 import type { ExportPlan, Placement, VisualLayer } from "./types.ts";
 import { type CommandOptions, fadeFilters, alphaFilters, boxGraph, videoSource, same, placeAt, rampPts } from "./video.ts";
 import { fxGraph, type VisionInputs } from "./fx.ts";
@@ -15,7 +15,9 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   const pictures = pictureFormats(opts.video);
   const toYuv = (alpha: boolean) => `scale=w=${W}:h=${H}:out_color_matrix=bt709:out_range=tv,format=${alpha ? pictures.alpha : pictures.plain}`;
   const backdrop = opts.video?.alpha ? `${toYuv(true)},lutyuv=a=0` : toYuv(false);
-  graph.push(`[0:v]${backdrop},loop=loop=${plan.frames - 1}:size=1:start=0,settb=1/${fps},setpts=N[b0]`);
+  const first = opts.range?.start ?? 0;
+  const frameCount = (opts.range?.end ?? plan.frames) - first;
+  graph.push(`[0:v]${backdrop},loop=loop=${frameCount - 1}:size=1:start=0,settb=1/${fps},setpts=N${first ? `+${first}` : ""}[b0]`);
   let base = "b0";
   /** The box (D75) and then the clip's shape mask in it (D326). */
   const boxed = (layer: ExportPlan["visuals"][number], geo: ReadonlyArray<Placement>, input: string, output: string) =>
@@ -237,7 +239,15 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // A blend mode (D326) blends onto everything below; a transparent export draws it normally.
     if (layer.blend && !opts.video?.alpha)
       graph.push(
-        ...blendGraph({ mode: layer.blend, at, f0: layer.f0, f1: layer.f1, frames: plan.frames, format: "yuv444p" }, base, `l${k}`, `b${k + 1}`, W, H, fps),
+        ...blendGraph(
+          { mode: layer.blend, at, f0: layer.f0, f1: layer.f1, frames: frameCount, start: first, format: "yuv444p" },
+          base,
+          `l${k}`,
+          `b${k + 1}`,
+          W,
+          H,
+          fps,
+        ),
       );
     else graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=${fmt}:repeatlast=0${at}[b${k + 1}]`);
     base = `b${k + 1}`;
@@ -248,21 +258,61 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   const codec = opts.video?.codec ?? "h264";
   // prores_ks takes its colour tags from the frames, unlike the bitstream filters of the delivery codecs.
   const tags = isProRes(codec) ? ",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv" : "";
-  graph.push(`[${base}]format=${pictures.output}${tags},fps=${fps},trim=end_frame=${plan.frames}${outFps ? `,fps=${n(outFps)}` : ""}[vout]`);
-  const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudness ?? opts.loudnorm);
-  inputs.push(...audio.inputs);
-  graph.push(...audio.filters);
-  // The soft subtitle track (D105): the last input, its own stream (cue times are the edit's).
-  const subtitleInput = inputs.filter((a) => a === "-i").length;
-  if (opts.subtitles) inputs.push("-f", "srt", "-i", opts.subtitles.file);
-  for (const input of late) {
-    graph.push(input.line(inputs.filter((a) => a === "-i").length));
-    inputs.push(...input.args);
+  const restart = opts.range ? ",setpts=PTS-STARTPTS" : "";
+  graph.push(`[${base}]format=${pictures.output}${tags},fps=${fps},trim=end_frame=${frameCount}${outFps ? `,fps=${n(outFps)}` : ""}${restart}[vout]`);
+  const pictureArgs = [
+    ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
+    "-pix_fmt",
+    pictures.output,
+    ...COLOUR_TAGS,
+    // The graph already makes one frame per 1/fps; ffmpeg's own constant-frame-rate pass would
+    // shift the picture by a frame when inputs are seeked (seen on the DJI clip), so it's off.
+    "-fps_mode",
+    "passthrough",
+  ];
+  const addLateInputs = () => {
+    for (const input of late) {
+      graph.push(input.line(inputs.filter((a) => a === "-i").length));
+      inputs.push(...input.args);
+    }
+  };
+  if (opts.range) {
+    addLateInputs();
+    return {
+      inputs,
+      graph: graph.join(";\n"),
+      outputArgs: ["-map", "[vout]", ...pictureArgs, "-an", "-t", n(frameCount / fps), "-f", codecExtension(codec), opts.output],
+    };
   }
-  const audioCodec = isProRes(codec) ? ["-c:a", "pcm_s24le"] : ["-c:a", "aac", "-b:a", opts.quality === "draft" ? "128k" : "192k"];
-  const outputArgs = [
-    "-map",
-    "[vout]",
+  const sound = soundAndSubtitles(plan, opts, plan.visuals.length + 1);
+  inputs.push(...sound.inputs);
+  graph.push(...sound.filters);
+  addLateInputs();
+  const outputArgs = ["-map", "[vout]", ...sound.maps, ...pictureArgs, ...sound.codecArgs, ...containerArgs(plan, codec, opts.output)];
+  return { inputs, graph: graph.join(";\n"), outputArgs };
+}
+
+const COLOUR_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"];
+
+const containerArgs = (plan: ExportPlan, codec: ExportCodec, output: string) => [
+  "-t",
+  n(plan.frames / plan.fps),
+  "-movflags",
+  isProRes(codec) ? "+faststart+write_colr" : "+faststart",
+  "-f",
+  codecExtension(codec),
+  output,
+];
+
+/** The mix (audioGraph, its inputs from `first`) and the soft subtitle track (D105) of an export. */
+function soundAndSubtitles(plan: ExportPlan, opts: CommandOptions, first: number) {
+  const codec = opts.video?.codec ?? "h264";
+  const audio = audioGraph(plan, first, opts.loudness ?? opts.loudnorm);
+  const inputs = [...audio.inputs];
+  // The soft subtitle track: the last input, its own stream (cue times are the edit's).
+  const subtitleInput = first + audio.inputs.filter((a) => a === "-i").length;
+  if (opts.subtitles) inputs.push("-f", "srt", "-i", opts.subtitles.file);
+  const maps = [
     "-map",
     "[aout]",
     ...(opts.subtitles
@@ -277,33 +327,23 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
           opts.subtitles.show ? "default" : "0",
         ]
       : []),
-    ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
-    "-pix_fmt",
-    pictures.output,
-    "-colorspace",
-    "bt709",
-    "-color_primaries",
-    "bt709",
-    "-color_trc",
-    "bt709",
-    "-color_range",
-    "tv",
-    // The graph already makes one frame per 1/fps; ffmpeg's own constant-frame-rate pass would
-    // shift the picture by a frame when inputs are seeked (seen on the DJI clip), so it's off.
-    "-fps_mode",
-    "passthrough",
-    ...audioCodec,
-    "-ar",
-    "48000",
-    "-t",
-    n(plan.frames / fps),
-    "-movflags",
-    isProRes(codec) ? "+faststart+write_colr" : "+faststart",
-    "-f",
-    codecExtension(codec),
-    opts.output,
   ];
-  return { inputs, graph: graph.join(";\n"), outputArgs };
+  const audioCodec = isProRes(codec) ? ["-c:a", "pcm_s24le"] : ["-c:a", "aac", "-b:a", opts.quality === "draft" ? "128k" : "192k"];
+  return { inputs, filters: audio.filters, maps, codecArgs: [...audioCodec, "-ar", "48000"] };
+}
+
+/**
+ * A split export's last step: its chunks' pictures (`list`, an ffmpeg concat list of the files
+ * exportCommand made with `range`) joined as they are, with the whole export's mix and subtitles.
+ */
+export function muxCommand(plan: ExportPlan, opts: CommandOptions, list: string): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
+  const codec = opts.video?.codec ?? "h264";
+  const sound = soundAndSubtitles(plan, opts, 1);
+  return {
+    inputs: ["-f", "concat", "-safe", "0", "-i", list, ...sound.inputs],
+    graph: sound.filters.join(";\n"),
+    outputArgs: ["-map", "0:v:0", ...sound.maps, "-c:v", "copy", ...COLOUR_TAGS, ...sound.codecArgs, ...containerArgs(plan, codec, opts.output)],
+  };
 }
 
 /**

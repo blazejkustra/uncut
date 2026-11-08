@@ -4,7 +4,7 @@ import { type SheetLayout, sheetHtml } from "../../agent/agentFootage.ts";
 import { sourceFramePick } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
 import { makeTemp } from "./files.ts";
-import { capsOf, run, ffmpegError } from "./ffmpeg.ts";
+import { capsOf, run, guardedRun, ffmpegError } from "./ffmpeg.ts";
 
 /** The contact sheet's grid drawn by a rasteriser of its own, as a JPEG. */
 export async function drawSheet(cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout): Promise<Buffer> {
@@ -74,7 +74,7 @@ export async function mediaFramesWith(
       const file = join(temp, `cell-${i}.jpg`);
       const pullAt = async (at: number) => {
         const pick = sourceFramePick(at, fps);
-        const r = await run(
+        const r = await guardedRun(
           bin,
           [
             "-hide_banner",
