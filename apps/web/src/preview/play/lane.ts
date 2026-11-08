@@ -1,4 +1,4 @@
-// D311 playback engine (play/engine.ts): one lane decodes one clip's stretch of a file, from the
+// D333 playback engine (play/engine.ts): one lane decodes one clip's stretch of a file, from the
 // keyframe before `from` up to `until`, into a short queue of upright ImageBitmaps in presentation
 // order. Frames before `from` (the GOP's lead-in) and after `until` are closed without a copy. The
 // queue holds at most `capacity` frames, counting the ones it keeps that are still in the decoder:

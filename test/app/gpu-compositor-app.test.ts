@@ -191,7 +191,7 @@ async function playFrom(label: string, from: number) {
         const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")];
         const q0 = videos.map((v) => v.getVideoPlaybackQuality());
         const presented = videos.map(() => 0);
-        // D311: a clip the playback engine draws presents its frames in its play canvas (its <video> stays paused).
+        // D333: a clip the playback engine draws presents its frames in its play canvas (its <video> stays paused).
         const playFrames = () => videos.map((v) => Number(v.parentElement?.querySelector<HTMLCanvasElement>("canvas[data-play]")?.dataset.frames ?? 0));
         const played0 = playFrames();
         let stop = false;

@@ -30,7 +30,7 @@ export interface GlitchLayer {
 /**
  * One layer in one sample: drawn, drawn with its effects, z-index, media time (s), frames presented,
  * seeking, and the media time of the picture on screen (`pt`: a <video>'s last presented frame, or
- * the decoded frame a D311 play canvas holds).
+ * the decoded frame a D333 play canvas holds).
  */
 export interface LayerSample {
   readonly d: boolean;
@@ -199,7 +199,7 @@ export function countGlitches(samples: ReadonlyArray<GlitchSample>, layers: Read
 /**
  * Starts sampling the preview in the page, once per animation frame, for `ids` (clips' and texts'
  * item ids). What counts as drawn: a clip's box with a <video> that has a frame (or an <img> that's
- * loaded) shown, or its effects, scrub or play canvas (D311) shown (a shown effects canvas also counts
+ * loaded) shown, or its effects, scrub or play canvas (D333) shown (a shown effects canvas also counts
  * as "with effects"; so does a layer the GPU compositor draws); a graphic's iframe shown once it has
  * drawn a render(t) (its media time: the last one it drew); a text's element in the text layer, not hidden.
  */

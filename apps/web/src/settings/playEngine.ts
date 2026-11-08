@@ -1,4 +1,4 @@
-// D311: "Decode playback ahead", remembered on this Mac (localStorage, like "Use proxies for
+// D333: "Decode playback ahead", remembered on this Mac (localStorage, like "Use proxies for
 // preview"). On (the default): while playing, the preview draws clips from frames decoded ahead with
 // WebCodecs (preview/play/engine.ts); off, every clip plays on its <video>.
 import { useSyncExternalStore } from "react";

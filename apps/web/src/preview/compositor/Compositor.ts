@@ -1,6 +1,6 @@
 import { heldPast, sourceAt } from "@uncut/core/audio";
 import { localAtSeconds, speedAt } from "@uncut/core/speedRamp";
-import { type Visual, visualsAt } from "@uncut/core/timeline";
+import { visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
 import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
@@ -296,7 +296,7 @@ export class Compositor extends CompositorBase {
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio && apart) this.mix.unshow(c.item.id, el);
       else if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
-      // D311: the engine draws it while playing; paused, its <video> is seeked to the frame as any other's.
+      // D333: the engine draws it while playing; paused, its <video> is seeked to the frame as any other's.
       if (decodes && playing) {
         if (!el.paused) el.pause();
         return;
@@ -314,7 +314,7 @@ export class Compositor extends CompositorBase {
     for (const ahead of aheads) {
       if (clips.some((c) => c.item.id === ahead.id)) continue;
       if (!gpuOn) this.warmFx(ahead);
-      // D311: the engine decodes its first frames ahead instead.
+      // D333: the engine decodes its first frames ahead instead.
       if (playing && this.decoded.decodes(ahead.id)) continue;
       const apart = this.decoded.soundApart(ahead, project);
       const el = this.elementFor(ahead, "video", { apart });
@@ -481,7 +481,7 @@ export class Compositor extends CompositorBase {
     }
   }
 
-  /** D311: a clip the engine draws: its decoded frame while playing; paused, its last one until the <video> or scrub canvas (`other`) has the frame. */
+  /** D333: a clip the engine draws: its decoded frame while playing; paused, its last one until the <video> or scrub canvas (`other`) has the frame. */
   protected decodedPicture(id: string, el: HTMLVideoElement, t: number, playing: boolean, other: HTMLElement) {
     return playing ? this.decoded.playing(id, el, t) : this.decoded.resting(id, el, t, other);
   }

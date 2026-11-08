@@ -1,4 +1,4 @@
-// D311: how well the preview keeps up with playback, from the glitch probe's samples
+// D333: how well the preview keeps up with playback, from the glitch probe's samples
 // (preview-glitches.ts), as numbers to compare engines with. Pure, unit-tested in
 // test/media/playback-bench.test.ts. Per layer and sample while playing (inside the layer, past its
 // edges and the first `settleMs`), the picture on screen (`pt`) against the source time the playhead

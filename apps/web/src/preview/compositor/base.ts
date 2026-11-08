@@ -102,7 +102,7 @@ export abstract class CompositorBase {
   protected gpuBroken = false;
   // The layers the GPU compositor drew last (a new frame of theirs needs a render, as for effects).
   protected onGpu = new Set<string>();
-  // D311: the playback engine, and the play canvases it draws clips into.
+  // D333: the playback engine, and the play canvases it draws clips into.
   protected readonly decoded = new DecodedPictures(() => this.render());
   // Graphics (D78): their iframes, pooled per file.
   protected readonly graphics: GraphicLayers;
@@ -510,7 +510,7 @@ export abstract class CompositorBase {
   }
 
   /**
-   * The element for a clip, made on first use; replaced if the clip now shows other media. D311:
+   * The element for a clip, made on first use; replaced if the clip now shows other media. D333:
    * `lazy`, the playback engine draws it now, so a <video> made then loads nothing yet; `apart`, its
    * sound comes from the mix's own <audio>.
    */

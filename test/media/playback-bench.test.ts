@@ -1,4 +1,4 @@
-// D311: the fast-cut benchmark's scoring (test/helpers/playback-bench.ts) on made-up samples: a
+// D333: the fast-cut benchmark's scoring (test/helpers/playback-bench.ts) on made-up samples: a
 // layer on time scores clean, a held picture counts as frozen time and dropped frames, a cut whose
 // picture comes late counts its latency, and a playhead slower than the wall clock is clock slip.
 import { test } from "node:test";
@@ -35,7 +35,7 @@ const onTime = (id: string, frame: number) => {
   return (l.in! + frame - l.start) / FPS;
 };
 
-test("D311: a layer on time scores clean", () => {
+test("D333: a layer on time scores clean", () => {
   const r = benchPlayback(run(onTime), layers, { fps: FPS, settleMs: 0 });
   assert.equal(r.late, 0);
   assert.equal(r.frozenMs, 0);
@@ -45,7 +45,7 @@ test("D311: a layer on time scores clean", () => {
   assert.ok(r.clockSlipMs < 20, `slip ${r.clockSlipMs}`);
 });
 
-test("D311: a picture held for 10 frames is frozen time, and its frames are dropped", () => {
+test("D333: a picture held for 10 frames is frozen time, and its frames are dropped", () => {
   const r = benchPlayback(
     run((id, frame) => (id === "a" && frame >= 10 && frame < 20 ? onTime("a", 10) : onTime(id, frame))),
     layers,
@@ -56,7 +56,7 @@ test("D311: a picture held for 10 frames is frozen time, and its frames are drop
   assert.ok(r.late > 0);
 });
 
-test("D311: a cut whose picture comes 200 ms late counts its latency; one never on time is counted apart", () => {
+test("D333: a cut whose picture comes 200 ms late counts its latency; one never on time is counted apart", () => {
   const late = benchPlayback(
     run((id, frame, t) => (id === "b" && t < 1000 + 1200 ? undefined : onTime(id, frame))),
     layers,
@@ -73,7 +73,7 @@ test("D311: a cut whose picture comes 200 ms late counts its latency; one never 
   assert.equal(never.neverOnTime, 1);
 });
 
-test("D311: a playhead at half speed slips behind the wall clock", () => {
+test("D333: a playhead at half speed slips behind the wall clock", () => {
   const r = benchPlayback(run(onTime, 2), layers, { fps: FPS, settleMs: 0 });
   assert.ok(r.clockSlipMs > 900, `slip ${r.clockSlipMs}`);
 });

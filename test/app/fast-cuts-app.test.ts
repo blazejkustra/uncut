@@ -1,4 +1,4 @@
-// D311: the preview keeps up with fast cuts, on the packaged app (run invisibly and muted). The
+// D333: the preview keeps up with fast cuts, on the packaged app (run invisibly and muted). The
 // project plays originals (no proxies): 720p H.264 without B-frames (as proxies are), 1080p60 H.264
 // with a 2 s GOP, 4K HEVC and 1440p H.264 with B-frames, two with sound; 48 main-track cuts of 0.2
 // to 0.5 s at random in-points, then 6 s where three picture-in-picture tracks cut just as fast over
@@ -159,7 +159,7 @@ after(async () => {
 });
 
 const engineStats = () =>
-  page.evaluate(() => (globalThis as { __uncutPlay?: { stats: () => unknown } }).__uncutPlay?.stats?.() ?? "no D311 engine in this build");
+  page.evaluate(() => (globalThis as { __uncutPlay?: { stats: () => unknown } }).__uncutPlay?.stats?.() ?? "no D333 engine in this build");
 
 async function playThrough(label: string) {
   await page.keyboard.press("Home");
@@ -218,7 +218,7 @@ async function openProject(gpu: boolean) {
 
 for (const gpu of [true, false]) {
   const label = gpu ? "gpu" : "dom";
-  test(`D311: ${MAIN_CUTS} fast cuts and a stacked section play without falling behind (${label})`, { skip, timeout: 300000 }, async () => {
+  test(`D333: ${MAIN_CUTS} fast cuts and a stacked section play without falling behind (${label})`, { skip, timeout: 300000 }, async () => {
     await openProject(gpu);
     try {
       const r = await playThrough(label);

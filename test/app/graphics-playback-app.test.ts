@@ -1,4 +1,4 @@
-// D311: the preview keeps up with a short-form project full of HTML graphics, on the packaged app
+// D333: the preview keeps up with a short-form project full of HTML graphics, on the packaged app
 // (run invisibly and muted). The project is shaped like a real promo: 9:16 720x1280 at 30 fps, a
 // watermark graphic back to back over everything, label and overlay graphics (some under a second,
 // a run of four back to back), a split-screen video under a split overlay that draws footage with
@@ -427,7 +427,7 @@ async function stopGraphicProbe() {
 }
 
 const engineStats = () =>
-  page.evaluate(() => (globalThis as { __uncutPlay?: { stats: () => unknown } }).__uncutPlay?.stats?.() ?? "no D311 engine in this build");
+  page.evaluate(() => (globalThis as { __uncutPlay?: { stats: () => unknown } }).__uncutPlay?.stats?.() ?? "no D333 engine in this build");
 
 const layersOf = (kinds: ReadonlyArray<Kind>): Array<GlitchLayer> =>
   placed.filter((p) => kinds.includes(p.kind)).map((p) => ({ id: p.id, kind: "video", track: p.track, start: p.start, duration: p.duration, in: p.in }));

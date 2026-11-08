@@ -1,4 +1,4 @@
-// D311 playback engine (play/engine.ts): one file opened with mediabunny, its video track's packets
+// D333 playback engine (play/engine.ts): one file opened with mediabunny, its video track's packets
 // and the decoder configuration that decodes them here. Anything it can't take (no video track, a
 // codec WebCodecs refuses here such as ProRes, HDR, a container mediabunny can't read) is "broken"
 // and its clips play on the <video> path. mediabunny rather than mp4box.js: it reads by byte ranges
@@ -10,7 +10,7 @@ import { namedColour } from "../scrub/colour.ts";
 import { cachedSize } from "../scrub/frames.ts";
 
 /** Bytes of the file mediabunny keeps read (shared by every lane of the file). */
-const READ_CACHE = 48 * 1024 * 1024;
+const READ_CACHE = 16 * 1024 * 1024;
 
 export class PlaySource {
   state: "loading" | "ready" | "broken" = "loading";

@@ -1,4 +1,4 @@
-// D311: the playback engine's demuxer (mediabunny, apps/web/src/preview/play/source.ts) picks the
+// D333: the playback engine's demuxer (mediabunny, apps/web/src/preview/play/source.ts) picks the
 // frame <video> shows at a time, as the scrub cache's index does: for H.264 with B-frames (an edit
 // list), HEVC long-GOP and a .mov, the packet shown at each frame's time is the frame ffmpeg decodes
 // there, and its key packet is a keyframe at or before it. WebM, which the scrub cache can't index,
@@ -59,13 +59,13 @@ async function picksShownFrames(file: string, fps: number) {
   }
 }
 
-test("D311: H.264 with B-frames: the packet shown at each frame's time is ffmpeg's frame there", { skip }, async () => {
+test("D333: H.264 with B-frames: the packet shown at each frame's time is ffmpeg's frame there", { skip }, async () => {
   const file = join(dir, "bframes.mp4");
   ff("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-t", "3", "-c:v", "libx264", "-bf", "3", "-g", "45", "-pix_fmt", "yuv420p", file);
   await picksShownFrames(file, 30);
 });
 
-test("D311: HEVC long-GOP (hvc1) and a .mov pick the same frames", { skip }, async () => {
+test("D333: HEVC long-GOP (hvc1) and a .mov pick the same frames", { skip }, async () => {
   const hevc = join(dir, "hevc.mp4");
   const encoder = /\bhevc_videotoolbox\b/.test(encoders)
     ? ["-c:v", "hevc_videotoolbox", "-b:v", "4M"]
@@ -78,7 +78,7 @@ test("D311: HEVC long-GOP (hvc1) and a .mov pick the same frames", { skip }, asy
 });
 
 test(
-  "D311: WebM (VP9), which the scrub cache can't index, demuxes with a decoder config",
+  "D333: WebM (VP9), which the scrub cache can't index, demuxes with a decoder config",
   { skip: skip || (!/\blibvpx-vp9\b/.test(encoders) && "needs libvpx-vp9") },
   async () => {
     const file = join(dir, "clip.webm");
@@ -93,7 +93,7 @@ test(
   },
 );
 
-test("D311: the decoder's colour space fills in what the file leaves out as Chromium's <video> reads it", () => {
+test("D333: the decoder's colour space fills in what the file leaves out as Chromium's <video> reads it", () => {
   assert.deepEqual(namedColour({}, 360), { matrix: "smpte170m", primaries: "smpte170m", transfer: "smpte170m", fullRange: false });
   assert.deepEqual(namedColour({ fullRange: false }, 1080), { matrix: "bt709", primaries: "bt709", transfer: "bt709", fullRange: false });
   assert.deepEqual(namedColour({ matrix: "bt470bg", fullRange: true }, 1080), {

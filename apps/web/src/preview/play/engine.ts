@@ -1,4 +1,4 @@
-// D311: the preview's playback engine. A <video> per clip only starts seeking and decoding when the
+// D333: the preview's playback engine. A <video> per clip only starts seeking and decoding when the
 // playhead reaches its cut, so dense cuts stalled, froze on the last frame or drifted. Here the
 // preview demuxes the files itself (mediabunny, play/source.ts) and decodes with WebCodecs ahead of
 // the playhead: every clip on screen and the next ones within LOOKAHEAD_S on any track get a lane
@@ -15,6 +15,8 @@
 // - Sound: a clip whose file the engine can draw is heard through the mix's own <audio> (audio.ts),
 //   kept to the same clock, so its sound never hands over at a play or a cut and its <video> never
 //   decodes while playing.
+import { isRamped } from "@uncut/core/speedRamp";
+import type { Item } from "../../state/project.ts";
 import { Lane, type Decoded } from "./lane.ts";
 import { PlaySource } from "./source.ts";
 
@@ -31,6 +33,12 @@ const PRIMING = 4;
 const RESHARPEN = 1.5;
 /** A clip on screen this far (s) past its lane's newest frame starts a new lane there. */
 const RESTART_S = 0.5;
+
+/** A clip the engine may draw: played forward from its own file at one steady speed up to 4×, not looped. */
+export const engineDraws = (item: Item) => {
+  const speed = item.speed ?? 1;
+  return !item.loop && !item.reverse && !isRamped(item) && speed > 0 && speed <= 4;
+};
 
 export interface LaneWant {
   /** The clip's item id. */

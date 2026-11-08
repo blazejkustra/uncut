@@ -36,7 +36,7 @@ export function decoderColour(c: StreamColour | undefined, height: number): Vide
 }
 
 /**
- * D311: decoderColour for a colour space a demuxer has already named (mediabunny's): what it leaves
+ * D333: decoderColour for a colour space a demuxer has already named (mediabunny's): what it leaves
  * out read as Chromium's <video> reads it, so a played frame looks as the paused one does.
  */
 export function namedColour(c: VideoColorSpaceInit, height: number): VideoColorSpaceInit {

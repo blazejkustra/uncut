@@ -1,11 +1,11 @@
-// D311: the compositor's side of the playback engine (play/engine.ts): which clips it draws, the
+// D333: the compositor's side of the playback engine (play/engine.ts): which clips it draws, the
 // lanes each render asks for, and each clip's play canvas (canvas[data-play] over its hidden
 // <video>), which holds the decoded frame the playback clock asks for.
 import type { Visual } from "@uncut/core/timeline";
 import { overlaps } from "@uncut/core/transitions";
 import type { Item, ProjectModel } from "../../state/project.ts";
 import { playEngineOn } from "../../settings/playEngine.ts";
-import { LOOKAHEAD_S, PlayEngine } from "../play/engine.ts";
+import { engineDraws, LOOKAHEAD_S, PlayEngine } from "../play/engine.ts";
 import { SCRUB_MAX_SIDE } from "../scrub/frames.ts";
 import { previewSrc, reachable } from "./media.ts";
 
@@ -48,10 +48,9 @@ export class DecodedPictures {
     (globalThis as { __uncutPlay?: unknown }).__uncutPlay = { stats: () => ({ ...playStats, ...this.engine.stats() }) };
   }
 
-  /** The file the engine draws a clip from, when it does: a video it decodes, played forward at up to 4×, not looped. */
+  /** The file the engine draws a clip from, when it does: a video it decodes (engineDraws). */
   urlFor(item: Item, media: Media | undefined): string | undefined {
-    if (!playEngineOn() || !media || media.kind !== "video" || item.loop) return undefined;
-    if (!(speedOf(item) > 0 && speedOf(item) <= 4)) return undefined;
+    if (!playEngineOn() || !media || media.kind !== "video" || !engineDraws(item)) return undefined;
     const url = previewSrc(media, "video");
     return url && this.engine.source(url).state === "ready" ? url : undefined;
   }

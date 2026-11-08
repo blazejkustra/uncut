@@ -132,7 +132,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   // D212: a proxy that's ready (or the setting turned) swaps the clip's element for the other file.
   const proxies = useSyncExternalStore(subscribeApp, () => getState().proxies);
   const useProxies = useProxiesOn();
-  // D221: the scrub cache, the playback engine (D311) or the GPU compositor turned on or off draws again.
+  // D221: the scrub cache, the playback engine (D333) or the GPU compositor turned on or off draws again.
   const scrubCache = useScrubCacheOn();
   const playEngine = usePlayEngineOn();
   const gpu = useGpuCompositorOn();

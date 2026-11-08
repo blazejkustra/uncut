@@ -1,5 +1,5 @@
 // A decoded VideoFrame copied into an ImageBitmap at the cached size, turned upright: the scrub cache
-// (D221) and the playback engine (D311) keep these instead of VideoFrames, so a decoder's frames go
+// (D221) and the playback engine (D333) keep these instead of VideoFrames, so a decoder's frames go
 // back to it at once and paused and played frames are the same pixels.
 import { cachedSize } from "./scrub/frames.ts";
 
