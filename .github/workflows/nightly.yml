@@ -27,10 +27,14 @@ env:
   KEEP: 10
 
 jobs:
-  # A scheduled run builds only when main moved since the last nightly; a run by hand always builds.
+  # A scheduled run builds only when main moved since the last nightly and CI passed on that exact
+  # commit; a run by hand always builds.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       build: ${{ steps.check.outputs.build }}
     steps:
@@ -43,8 +47,14 @@ jobs:
           if [ -n "$LAST" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$LAST" --jq .sha)" = "$GITHUB_SHA" ]; then
             echo "::notice::No commits since $LAST: no nightly tonight."
             echo "build=false" >> "$GITHUB_OUTPUT"
-          else
+            exit 0
+          fi
+          PASSED="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&branch=main&per_page=100" --jq '[.workflow_runs[] | select(.event != "pull_request" and .conclusion == "success")] | length')"
+          if [ "$PASSED" -gt 0 ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CI has not passed on main at $GITHUB_SHA (still running, failed or cancelled): no nightly tonight."
+            echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
   nightly:
