@@ -21,27 +21,47 @@ function mediaLimit(project: ProjectModel, item: Item) {
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 const signed = (frames: number) => `${frames > 0 ? "+" : ""}${frames} ${Math.abs(frames) === 1 ? "frame" : "frames"}`;
 
+export interface SlipLimits {
+  readonly placed: Placed;
+  /** How far the item can slip, in its own frames: `lo` ≤ 0 (earlier media) ≤ `hi` (later). */
+  readonly lo: number;
+  readonly hi: number;
+}
+
+/** How far `itemId` can slip, or why it can't (the Slip tool and the slip view, slipView.ts, share these). */
+export function slipLimits(project: ProjectModel, itemId: string): SlipLimits | { readonly problem: string } {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That item isn't in the project any more." };
+  const locked = lockOf(placed);
+  if (locked) return { problem: locked };
+  const { item } = placed;
+  const { timed, frames } = mediaLimit(project, item);
+  if (!timed || !item.media || (item.type !== "clip" && item.type !== "audio")) return { problem: "Only clips and sounds with video or audio slip." };
+  const speed = item.speed ?? 1;
+  const from = item.in ?? 0;
+  const lo = Math.min(0, -Math.floor(from / speed));
+  const hi = Math.max(0, frames === undefined ? Infinity : Math.floor((frames - from) / speed - item.duration));
+  if (lo === 0 && hi === 0) return { problem: "This clip already shows all its media: trim it to have frames to slip." };
+  return { placed, lo, hi };
+}
+
+/** Slip `itemId` by `frames` of its own (> 0: later media), clamped to the media at both ends. */
+export function planSlipBy(project: ProjectModel, itemId: string, frames: number): SlipRollPlan | { readonly problem: string } {
+  const limits = slipLimits(project, itemId);
+  if ("problem" in limits) return limits;
+  const { placed, lo, hi } = limits;
+  const slip = clamp(Math.round(frames), lo, hi);
+  const tip = `Slip ${signed(slip)}`;
+  if (slip === 0) return { ops: [], summary: "", at: placed.start, tip };
+  return { ops: [{ op: "slip_item", item: placed.item.id, frames: slip }], summary: `Slip ${placed.item.id}`, at: placed.start, tip };
+}
+
 /**
  * Slip: `delta` frames of pointer to the right pull the picture right, so earlier frames show, as
  * on a filmstrip. Clamped to the media at both ends.
  */
 export function planSlip(project: ProjectModel, itemId: string, delta: number): SlipRollPlan | { readonly problem: string } {
-  const placed = findItem(project, itemId);
-  if (!placed) return { problem: "That item isn't in the project any more." };
-  const locked = lockOf(placed);
-  if (locked) return { problem: locked };
-  const { item, start } = placed;
-  const { timed, frames } = mediaLimit(project, item);
-  if (!timed || !item.media || (item.type !== "clip" && item.type !== "audio")) return { problem: "Only clips and sounds with video or audio slip." };
-  const speed = item.speed ?? 1;
-  const from = item.in ?? 0;
-  const lo = -Math.floor(from / speed);
-  const hi = frames === undefined ? Infinity : Math.floor((frames - from) / speed - item.duration);
-  if (lo >= 0 && hi <= 0) return { problem: "This clip already shows all its media: trim it to have frames to slip." };
-  const slip = clamp(-Math.round(delta), Math.min(lo, 0), Math.max(hi, 0));
-  const tip = `Slip ${signed(slip)}`;
-  if (slip === 0) return { ops: [], summary: "", at: start, tip };
-  return { ops: [{ op: "slip_item", item: item.id, frames: slip }], summary: `Slip ${item.id}`, at: start, tip };
+  return planSlipBy(project, itemId, -Math.round(delta));
 }
 
 /** The item whose end is `placed`'s start, for a roll pressed on its left half. */
