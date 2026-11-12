@@ -33,6 +33,8 @@ const PRIMING = 4;
 const RESHARPEN = 1.5;
 /** A clip on screen this far (s) past its lane's newest frame starts a new lane there. */
 const RESTART_S = 0.5;
+/** Before its first frame, a lane is kept for a clip up to this far (s) past where it started: a new lane would decode its GOP again. */
+const LEAD_IN_S = 2;
 
 /** A clip the engine may draw: played forward from its own file at one steady speed up to 4×, not looped. */
 export const engineDraws = (item: Item) => {
@@ -57,6 +59,7 @@ export class PlayEngine {
   private readonly lanes = new Map<string, Lane>();
   private wanted = new Set<string>();
   private shown = new Set<string>();
+  private asked = new Map<string, number>();
   // The bytes this render's lanes may hold at most.
   private planned = 0;
   private scratch: OffscreenCanvas | undefined;
@@ -90,6 +93,7 @@ export class PlayEngine {
   begin() {
     this.wanted = new Set();
     this.shown = new Set();
+    this.asked = new Map();
     this.planned = 0;
   }
 
@@ -106,6 +110,7 @@ export class PlayEngine {
       return false;
     }
     this.wanted.add(w.key);
+    this.asked.set(w.key, w.from);
     this.planned += bytes;
     if (w.shown) this.shown.add(w.key);
     if (lane && this.fits(lane, source, w)) {
@@ -146,6 +151,16 @@ export class PlayEngine {
     this.counts.peakBytes = Math.max(this.counts.peakBytes, bytes);
   }
 
+  /** Whether one of these clips has a lane still decoding up to the frame it was asked for. */
+  starting(keys: Iterable<string>) {
+    for (const key of keys) {
+      const lane = this.lanes.get(key);
+      if (lane?.state !== "running") continue;
+      if (lane.held === 0 || lane.newest < (this.asked.get(key) ?? 0) - lane.source.frameS) return true;
+    }
+    return false;
+  }
+
   stats() {
     const lanes = [...this.lanes.values()];
     return {
@@ -170,7 +185,7 @@ export class PlayEngine {
       lane.state !== "failed" &&
       Math.abs(lane.until - w.until) < 1e-3 &&
       lane.side * RESHARPEN >= w.side &&
-      lane.covers(w.from, RESTART_S)
+      lane.covers(w.from, lane.held === 0 && lane.state === "running" ? LEAD_IN_S : RESTART_S)
     );
   }
 

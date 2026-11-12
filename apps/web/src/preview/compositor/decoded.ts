@@ -13,6 +13,8 @@ type Media = ProjectModel["media"][number];
 
 /** Paused, how long the playhead rests before its frames are decoded for playback (scrubbing has the scrub cache's decoders first). */
 const PRIME_REST_MS = 1000;
+/** The start gate also waits for the clips starting this soon (s). */
+const GATE_AHEAD_S = 0.5;
 
 interface PlayView {
   readonly canvas: HTMLCanvasElement;
@@ -37,6 +39,7 @@ export class DecodedPictures {
   private readonly shown = new Set<string>();
   // The clips the last plan gave a lane: on screen, their picture comes from it while playing.
   private laned = new Set<string>();
+  private gated = new Set<string>();
   private lastFrame = Number.NaN;
   private movedAt = 0;
   private primeTimer = 0;
@@ -86,19 +89,30 @@ export class DecodedPictures {
     if (!playing && !running && now - this.movedAt < PRIME_REST_MS) return this.primeLater();
     this.engine.begin();
     this.laned = new Set();
+    this.gated = new Set();
     if (running && !playing) return this.engine.end();
     for (const c of clips) {
       const url = this.urlFor(c.item, mediaOf(project, c.item));
       const content = c.box?.content ?? { w: project.canvas.width, h: project.canvas.height };
       const side = sideOnScreen(Math.max(content.w, content.h), scale);
-      if (url && this.engine.want({ key: c.item.id, url, from: Math.max(0, c.source), until: clipEnd(c.item, project), side, shown: true }))
+      if (url && this.engine.want({ key: c.item.id, url, from: Math.max(0, c.source), until: clipEnd(c.item, project), side, shown: true })) {
         this.laned.add(c.item.id);
+        this.gated.add(c.item.id);
+      }
     }
     const side = sideOnScreen(Math.max(project.canvas.width, project.canvas.height), scale);
-    for (const { item, url } of this.upcoming(project, starts, frame, clips)) {
-      if (this.engine.want({ key: item.id, url, from: firstFrame(item, project), until: clipEnd(item, project), side, shown: false })) this.laned.add(item.id);
+    const soon = frame + GATE_AHEAD_S * project.canvas.fps;
+    for (const { item, url, start } of this.upcoming(project, starts, frame, clips)) {
+      if (!this.engine.want({ key: item.id, url, from: firstFrame(item, project), until: clipEnd(item, project), side, shown: false })) continue;
+      this.laned.add(item.id);
+      if (start <= soon) this.gated.add(item.id);
     }
     this.engine.end();
+  }
+
+  /** The start gate: a clip on screen, or starting within GATE_AHEAD_S, whose lane hasn't its first frame yet. */
+  starting() {
+    return this.engine.starting(this.gated);
   }
 
   /** Whether the engine draws this clip now (it has a lane): its <video> stays paused while playing. */
