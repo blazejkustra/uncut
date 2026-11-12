@@ -1,0 +1,2 @@
+/* The In to Out range over the lanes. */
+.tl-range-band { position: absolute; top: 44px; bottom: 0; z-index: 2; background: rgb(109 140 255 / 7%); border-inline: 1px solid rgb(109 140 255 / 35%); pointer-events: none; }

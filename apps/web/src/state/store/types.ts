@@ -137,6 +137,8 @@ export interface AppStateShape {
   readonly mediaFocus?: { readonly id: string; readonly seq: number };
   // The export dialog (D34) and the server's export jobs; the one this window started last.
   readonly exportOpen: boolean;
+  // The range the export dialog opens on ("Export this range" on the timeline); the whole timeline when unset.
+  readonly exportRange?: "marks";
   readonly exportJobs: ReadonlyArray<ExportJob>;
   readonly exportJobId?: string;
   // The folder the last export went to (this session), offered for the next one.
