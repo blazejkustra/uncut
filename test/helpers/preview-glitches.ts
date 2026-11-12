@@ -23,6 +23,8 @@ export interface GlitchLayer {
   readonly duration: number;
   /** Source frame at the clip's start (videos). */
   readonly in?: number;
+  /** Source frames per timeline frame (a clip's steady speed; 1 when unset). */
+  readonly speed?: number;
   /** Whether it has picture effects (an effects canvas should show it). */
   readonly fx?: boolean;
 }
