@@ -157,7 +157,9 @@ test("a drag on the ruler marks In to Out; a click moves the playhead; the handl
 
   const click = await rulerAt(300);
   await page.mouse.click(click.x, click.y);
-  await page.waitForFunction(() => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) - 300) <= 2, { timeout: 5000 });
+  await page.waitForFunction(() => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) - 300) <= 2, {
+    timeout: 5000,
+  });
   assert.deepEqual(await marks(), range, "a click leaves the marks");
 
   const handle = (await (await page.$("[data-testid=playhead] .playhead-handle"))!.boundingBox())!;
@@ -190,7 +192,10 @@ test("right-click a range: Add range to chat, twice; Export this range; Clear ra
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-chip]").length === 2, { timeout: 5000 });
   const labels = await chips();
   assert.equal(labels.length, 2, `two range chips: ${labels.join(", ")}`);
-  assert.ok(labels.every((l) => /\d+:\d\d(\.\d)?–\d+:\d\d(\.\d)?/.test(l)), `timecode ranges: ${labels.join(", ")}`);
+  assert.ok(
+    labels.every((l) => /\d+:\d\d(\.\d)?–\d+:\d\d(\.\d)?/.test(l)),
+    `timecode ranges: ${labels.join(", ")}`,
+  );
   for (const l of labels) assert.ok((await draft()).includes(l), `${l} in the message`);
   await sleep(200);
   await page.screenshot({ path: shot("chips") });
