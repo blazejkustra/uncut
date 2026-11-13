@@ -16,9 +16,9 @@ const setTrackNote = (itemId: string, note: string | undefined) => {
 
 export const exportActions = {
   /** ⌘E / the Export button: the export dialog, with ffmpeg checked (it shows the fix when missing). */
-  openExport() {
+  openExport(range?: "marks") {
     if (!state.snapshot) return;
-    set({ exportOpen: true });
+    set({ exportOpen: true, exportRange: range });
     if (state.setupChecks?.find((c) => c.id === "ffmpeg")?.status !== "ready") void actions.checkSetup();
   },
   closeExport: () => set({ exportOpen: false }),

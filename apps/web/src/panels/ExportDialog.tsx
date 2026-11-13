@@ -31,7 +31,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { shortPath } from "../state/format.ts";
 import { CheckRow } from "../onboarding/Onboarding.tsx";
-import { actions, useApp, type Project } from "../state/store.ts";
+import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { frameTimecode } from "../state/format.ts";
 import { layoutOf } from "../state/project.ts";
 import { usePlayback } from "../preview/playback.ts";
@@ -126,7 +126,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const selectedId = usePlayback((x) => x.selected);
   const also = usePlayback((x) => x.also);
   const { marks, selection } = exportSpans(project, { markIn, markOut, selected: selectedId, also });
-  const [rangeKind, setRangeKind] = useState<RangeKind>("all");
+  const [rangeKind, setRangeKind] = useState<RangeKind>(() => getState().exportRange ?? "all");
   const [custom, setCustom] = useState<{ from: number; to: number }>(() => marks ?? { from: 0, to: end });
   // Marks or a selection that went away (an undo, the agent) fall back to the whole timeline, visibly.
   const effective = effectiveRange(rangeKind, { marks, selection, custom });

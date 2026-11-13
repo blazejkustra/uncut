@@ -290,46 +290,74 @@ function addTrackEntries(project: ProjectModel, off: boolean, near?: Track): Men
   ];
 }
 
-/** Right-click on empty timeline (a lane's background or below the tracks) at `frame`. */
-/** D183: right-click on the ruler or the playhead: that moment, or the In/Out range, into the chat. */
-export function rulerMenu(
-  project: ProjectModel,
-  frame: number,
-  marks: { readonly markIn?: number | undefined; readonly markOut?: number | undefined; readonly end: number },
-  online: boolean,
-): MenuItems {
-  const hasRange = marks.markIn !== undefined || marks.markOut !== undefined;
-  const start = marks.markIn ?? 0;
-  const end = marks.markOut ?? marks.end;
-  const redo = (project.sections ?? []).some((s) => s.state === "redo");
+export interface Marks {
+  readonly markIn?: number | undefined;
+  readonly markOut?: number | undefined;
+  readonly end: number;
+}
+
+/** The In to Out range (an unset mark is the start or the end), or undefined without marks. */
+export function markedSpan(marks: Marks): { readonly start: number; readonly end: number } | undefined {
+  if (marks.markIn === undefined && marks.markOut === undefined) return undefined;
+  return { start: marks.markIn ?? 0, end: marks.markOut ?? marks.end };
+}
+
+export const insideMarks = (marks: Marks, frame: number) => {
+  const span = markedSpan(marks);
+  return !!span && frame >= span.start && frame <= span.end;
+};
+
+const clearMarks = () => {
+  playback.setMark("in", undefined);
+  playback.setMark("out", undefined);
+};
+
+/** The marked range into the chat, to the export dialog, or gone. */
+function rangeEntries(span: { readonly start: number; readonly end: number }): MenuItems {
+  const empty = span.end <= span.start;
   return [
+    { id: "add-range-to-chat", label: "Add range to chat", ...keyHint("addToChat"), disabled: empty, run: () => actions.addRangeToChat(span.start, span.end) },
+    { id: "export-range", label: "Export this range…", disabled: empty, run: () => actions.openExport("marks") },
+    { id: "clear-range", label: "Clear range", run: clearMarks },
+  ];
+}
+
+/**
+ * D183: right-click on the ruler or the playhead: that moment, or the In/Out range, into the chat.
+ * Inside the marked range its own entries come first.
+ */
+export function rulerMenu(project: ProjectModel, frame: number, marks: Marks, online: boolean): MenuItems {
+  const span = markedSpan(marks);
+  const redo = (project.sections ?? []).some((s) => s.state === "redo");
+  const moment: MenuItems = [
     // Issue #118: start playback where the user pointed, not where the playhead was.
     { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
-    "-",
     { id: "add-moment-to-chat", label: "Add this moment to chat", run: () => actions.addMomentToChat(frame) },
-    ...(hasRange ? [{ id: "add-range-to-chat", label: "Add range to chat", disabled: end <= start, run: () => actions.addRangeToChat(start, end) }] : []),
-    // Issue #118: In to Out locked (nothing there may move or change) or flagged for the agent to redo.
-    ...(hasRange
-      ? [
-          "-" as const,
-          {
-            id: "lock-range",
-            label: "Lock In to Out",
-            disabled: !online || end <= start,
-            run: () => void actions.timelineEdit(planMarkSection(project, start, end, "locked")),
-          },
-          {
-            id: "redo-range",
-            label: "Mark In to Out as not OK",
-            disabled: !online || end <= start,
-            run: () => void actions.timelineEdit(planMarkSection(project, start, end, "redo")),
-          },
-        ]
-      : []),
-    ...(redo
-      ? [{ id: "lock-rest", label: "Lock everything not marked to redo", disabled: !online, run: () => void actions.timelineEdit(planLockRest(project)) }]
-      : []),
   ];
+  // Issue #118: In to Out locked (nothing there may move or change) or flagged for the agent to redo.
+  const range: MenuItems = span
+    ? [
+        ...rangeEntries(span),
+        "-",
+        {
+          id: "lock-range",
+          label: "Lock In to Out",
+          disabled: !online || span.end <= span.start,
+          run: () => void actions.timelineEdit(planMarkSection(project, span.start, span.end, "locked")),
+        },
+        {
+          id: "redo-range",
+          label: "Mark In to Out as not OK",
+          disabled: !online || span.end <= span.start,
+          run: () => void actions.timelineEdit(planMarkSection(project, span.start, span.end, "redo")),
+        },
+      ]
+    : [];
+  const rest: MenuItems = redo
+    ? [{ id: "lock-rest", label: "Lock everything not marked to redo", disabled: !online, run: () => void actions.timelineEdit(planLockRest(project)) }]
+    : [];
+  const ordered = insideMarks(marks, frame) ? [range, moment, rest] : [moment, range, rest];
+  return ordered.filter((group) => group.length).flatMap((group, i) => (i ? ["-" as const, ...group] : group));
 }
 
 /** Issue #118: right-click a marked section on the ruler: unlock or unflag it, ask the agent about it, lock the rest. */
@@ -369,10 +397,13 @@ export function reviewNoteMenu(note: ReviewNote, online: boolean): MenuItems {
   ];
 }
 
-export function emptyMenu(project: ProjectModel, frame: number, track: Track | undefined, online: boolean): MenuItems {
+/** Right-click on empty timeline (a lane's background or below the tracks) at `frame`; inside the marked range, its entries first. */
+export function emptyMenu(project: ProjectModel, frame: number, track: Track | undefined, online: boolean, marks?: Marks): MenuItems {
   const off = !online;
   const label = track ? itemsLabel(project, track) : undefined;
+  const span = marks && insideMarks(marks, frame) ? markedSpan(marks) : undefined;
   return [
+    ...(span ? [...rangeEntries(span), "-" as const] : []),
     { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
     "-",
     { id: "paste-here", label: "Paste here", shortcut: "⌘V", disabled: off || !clipboardItems().length, run: () => void paste(frame) },

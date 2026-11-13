@@ -73,6 +73,7 @@ import { makeLaneDrop } from "./gestures/laneDrop.ts";
 import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
 import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import "./range.css";
 
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand, slip: MoveHorizontal, roll: Columns2 };
 
@@ -266,7 +267,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
 
   const toolPress = makeToolPress({ project, ppf, online, lanesRef, bodyRef, frameAt, setBlade, setPanning });
 
-  const { scrub, onEmptyDown } = makeScrubMarquee({ project, ppf, lanesRef, frameAt, setScrubSnap, setMarquee });
+  const { onRulerDown, onEmptyDown } = makeScrubMarquee({ project, ppf, lanesRef, frameAt, setScrubSnap, setMarquee });
 
   /** Issue #118: skim the frame under the pointer (no button held, not panning); past the project's end, stop. */
   const skim = (e: React.PointerEvent) => {
@@ -315,7 +316,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
   const onEmptyMenu = (e: React.MouseEvent, track?: Track) => {
     if (e.target !== e.currentTarget) return;
     e.preventDefault();
-    openMenu(e.clientX, e.clientY, emptyMenu(project, Math.max(0, Math.round(frameAt(e.clientX))), track, online), "Timeline");
+    openMenu(e.clientX, e.clientY, emptyMenu(project, Math.max(0, Math.round(frameAt(e.clientX))), track, online, { markIn, markOut, end }), "Timeline");
   };
 
   // Issue #118: items are memoised (ItemBox) and don't compare their handlers, so these read the
@@ -464,7 +465,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
             <div
               className="tl-ruler"
               data-testid="ruler"
-              onPointerDown={scrub}
+              onPointerDown={onRulerDown}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -496,6 +497,9 @@ function TimelineView({ project }: { project: ProjectModel }) {
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} bodyWidth={visible} />
               <Skimmer ppf={ppf} />
             </div>
+            {markIn !== undefined && markOut !== undefined && markOut > markIn && (
+              <div className="tl-range-band" data-testid="range-band" style={{ left: markIn * ppf, width: (markOut - markIn) * ppf }} />
+            )}
             {dropSpan && (
               <div
                 className="tl-drop-ghost"

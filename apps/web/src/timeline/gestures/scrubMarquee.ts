@@ -3,7 +3,7 @@ import type React from "react";
 import { getBeats } from "../../audio/beats.ts";
 import { SNAP_PX, snapPlayhead } from "../edit.ts";
 import { getPlayback, playback } from "../../preview/playback.ts";
-import type { ProjectModel } from "../../state/project.ts";
+import { layoutOf, type ProjectModel } from "../../state/project.ts";
 import { DRAG_PX } from "../ItemBox.tsx";
 import { type Marquee, selectionIds } from "./dragView.ts";
 import type { LaneGeometry } from "./lanes.ts";
@@ -34,6 +34,51 @@ export function makeScrubMarquee(ctx: ScrubMarqueeCtx) {
     const move = (ev: PointerEvent) => seek(ev);
     const up = () => {
       setScrubSnap(undefined);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
+  /** The frame under the pointer, snapped like the playhead (⌘ or the magnet off: not). */
+  const snappedAt = (ev: { clientX: number; metaKey: boolean }) => {
+    const frame = frameAt(ev.clientX);
+    return getPlayback().snapping && !ev.metaKey ? snapPlayhead(project, frame, { beats: getBeats().map, ppf }, SNAP_PX / ppf) : { frame };
+  };
+
+  /**
+   * Press on the ruler: on the playhead's handle it scrubs; elsewhere a click moves the playhead
+   * there and a drag marks In to Out over the frames it covers (drawn as it goes, the preview
+   * showing the frame under the pointer).
+   */
+  const onRulerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    if ((e.target as Element).closest(".playhead")) return scrub(e);
+    e.preventDefault();
+    playback.pause();
+    const end = layoutOf(project).end;
+    const clampFrame = (frame: number) => Math.max(0, Math.min(end, Math.round(frame)));
+    const anchor = clampFrame(snappedAt(e).frame);
+    playback.seek(anchor);
+    const x0 = e.clientX;
+    let marking = false;
+    const move = (ev: PointerEvent) => {
+      if (!marking && Math.abs(ev.clientX - x0) < DRAG_PX) return;
+      marking = true;
+      const snapped = snappedAt(ev);
+      const frame = clampFrame(snapped.frame);
+      setScrubSnap(snapped.snapAt);
+      playback.hover(frame);
+      if (frame === anchor) return;
+      playback.setMark("in", Math.min(anchor, frame));
+      playback.setMark("out", Math.max(anchor, frame));
+    };
+    const up = () => {
+      setScrubSnap(undefined);
+      if (marking) playback.hover(undefined);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -102,5 +147,5 @@ export function makeScrubMarquee(ctx: ScrubMarqueeCtx) {
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
-  return { scrub, onEmptyDown };
+  return { scrub, onRulerDown, onEmptyDown };
 }

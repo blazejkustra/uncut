@@ -303,7 +303,7 @@ function TopBar({
         data-testid="export-button"
         data-running={running}
         disabled={!online}
-        onClick={actions.openExport}
+        onClick={() => actions.openExport()}
       >
         <Share />
         {running && job ? exportButtonText(job) : "Export"}
