@@ -117,6 +117,7 @@ export abstract class CompositorBase {
     // Shader effects (D213) draw once the WebGPU runner is known (or the badge says why not).
     this.offRunner = whenRunner(() => this.render());
     playback.setFollower((f) => this.follow(f));
+    playback.setStartGate(() => this.starting());
     setCurrentMix(this.mix);
     this.mix.setApart((item) => this.decoded.soundApart(item, this.shown()));
     // Issue #55: the mix's AudioContext made while idle, not in the first frame of playback.
@@ -131,6 +132,7 @@ export abstract class CompositorBase {
     this.offRunner();
     for (const id of [...this.shaderCanvas.keys()]) this.dropShader(id);
     playback.setFollower(undefined);
+    playback.setStartGate(undefined);
     for (const id of [...this.els.keys()]) this.drop(id);
     for (const r of this.fxPool.splice(0)) r.dispose();
     this.fxShared?.dispose();
@@ -716,4 +718,5 @@ export abstract class CompositorBase {
 
   protected abstract draw(): void;
   protected abstract follow(f: number): number | undefined;
+  protected abstract starting(): boolean;
 }

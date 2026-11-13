@@ -30,6 +30,11 @@ export interface PlaybackState {
   /** Fractional while playing; whole frames when paused. */
   readonly frame: number;
   readonly playing: boolean;
+  /**
+   * Playing, but the clock waits at its frame until the clips on screen have their picture (the start
+   * gate), at most START_HOLD_MS after play or a jump while playing; the sound waits with it.
+   */
+  readonly waiting: boolean;
   /** Frames of the project: playback runs over [0, frames - 1] and stops on the last frame. */
   readonly frames: number;
   /**
@@ -109,6 +114,7 @@ let state: PlaybackState = {
   trackPick: undefined,
   frame: 0,
   playing: false,
+  waiting: false,
   frames: 1,
   end: 0,
   fps: 30,
@@ -152,14 +158,26 @@ const ZOOM_MAX = 400;
 let clock = { f0: 0, t0: 0 };
 let raf = 0;
 let follower: ((frame: number) => number | undefined) | undefined;
+// The preview's start gate: true while a clip on screen has no picture at the playhead yet.
+let gate: (() => boolean) | undefined;
+let holdUntil = 0;
+/** The longest the clock waits for the pictures after play or a jump while playing. */
+export const START_HOLD_MS = 1000;
 
 function tick(now: number) {
   if (!state.playing) return;
+  if (state.waiting) {
+    clock = { f0: clock.f0, t0: now };
+    if (now < holdUntil && gate?.()) {
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+  }
   // A rAF timestamp is the frame's start, which can be a little before the performance.now()
   // taken in play(); never step back before where playback started.
   let f = clock.f0 + (Math.max(0, now - clock.t0) * state.fps * state.rate) / 1000;
   if (f <= 0 && state.rate < 0) {
-    set({ frame: 0, playing: false, rate: 1 });
+    set({ frame: 0, playing: false, waiting: false, rate: 1 });
     return;
   }
   const videoFrame = state.rate === 1 ? follower?.(f) : undefined;
@@ -168,11 +186,18 @@ function tick(now: number) {
     f = videoFrame;
   }
   if (f >= state.frames - 1) {
-    set({ frame: state.frames - 1, playing: false, rate: 1 });
+    set({ frame: state.frames - 1, playing: false, waiting: false, rate: 1 });
     return;
   }
-  set({ frame: f });
+  set(state.waiting ? { frame: f, waiting: false } : { frame: f });
   raf = requestAnimationFrame(tick);
+}
+
+/** While playing, the playhead jumped to f: the clock starts there, at 1× behind the start gate. */
+function playJump(f: number): Partial<PlaybackState> {
+  clock = { f0: f, t0: performance.now() };
+  holdUntil = clock.t0 + START_HOLD_MS;
+  return { waiting: state.rate === 1 };
 }
 
 export const playback = {
@@ -193,7 +218,7 @@ export const playback = {
     const last = frames - 1;
     if (state.playing && state.frame >= last) {
       cancelAnimationFrame(raf);
-      set({ frames, end, fps, frame: last, playing: false });
+      set({ frames, end, fps, frame: last, playing: false, waiting: false });
     } else set({ frames, end, fps, frame: clamp(state.frame, 0, lastPosition({ frames, end })) });
   },
 
@@ -203,6 +228,7 @@ export const playback = {
     set({
       frame: 0,
       playing: false,
+      waiting: false,
       selected: undefined,
       trackPick: undefined,
       cut: undefined,
@@ -223,19 +249,20 @@ export const playback = {
     if (state.playing) {
       // A new speed (J/L pressed again): carry on from here.
       clock = { f0: state.frame, t0: performance.now() };
-      return set({ rate });
+      return set({ rate, waiting: false });
     }
     // At the end, play starts over (backwards: from the end).
     const frame = rate > 0 && state.frame >= state.frames - 1 ? 0 : rate < 0 && state.frame <= 0 ? lastPosition(state) : state.frame;
     clock = { f0: frame, t0: performance.now() };
-    set({ frame, playing: true, rate, hover: undefined, hoverMedia: undefined });
+    holdUntil = clock.t0 + START_HOLD_MS;
+    set({ frame, playing: true, waiting: rate === 1, rate, hover: undefined, hoverMedia: undefined });
     raf = requestAnimationFrame(tick);
   },
 
   pause() {
     if (!state.playing) return;
     cancelAnimationFrame(raf);
-    set({ playing: false, frame: Math.floor(state.frame), rate: 1 });
+    set({ playing: false, waiting: false, frame: Math.floor(state.frame), rate: 1 });
   },
 
   /** L: play forward, faster with each press (1, 2, 4, 8×); J the same backwards. K pauses. */
@@ -266,10 +293,10 @@ export const playback = {
   /** Move the playhead (whole frames). While playing, playback carries on from there. */
   seek(frame: number) {
     const f = clamp(Math.round(frame), 0, lastPosition(state));
-    if (state.playing) clock = { f0: f, t0: performance.now() };
+    const jump = state.playing ? playJump(f) : {};
     // Issue #118: a seek while skimming (the arrow keys, Home, a marker) shows the playhead's frame
     // again; the pointer's next move over the timeline skims on.
-    set(state.hover !== undefined ? { frame: f, hover: undefined } : { frame: f });
+    set(state.hover !== undefined ? { frame: f, hover: undefined, ...jump } : { frame: f, ...jump });
   },
 
   step(frames: number) {
@@ -284,6 +311,11 @@ export const playback = {
   toEnd() {
     playback.pause();
     playback.seek(state.end);
+  },
+
+  /** The preview's start gate (true: a clip on screen has no picture yet); undefined unregisters. */
+  setStartGate(fn: (() => boolean) | undefined) {
+    gate = fn;
   },
 
   /** The preview's video follower; undefined unregisters. */

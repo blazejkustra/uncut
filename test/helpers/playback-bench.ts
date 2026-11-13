@@ -109,7 +109,7 @@ export function benchPlayback(samples: ReadonlyArray<GlitchSample>, layers: Read
         closeVisit(l.id);
         continue;
       }
-      const want = ((l.in ?? 0) + (s.frame - l.start)) / fps;
+      const want = ((l.in ?? 0) + (s.frame - l.start) * (l.speed ?? 1)) / fps;
       let v = visits.get(l.id);
       if (!v) {
         v = { enteredAt: s.t, onTimeAt: undefined, shown: new Set(), firstFrame: Math.round(want * fps), lastFrame: Math.round(want * fps), held: undefined };

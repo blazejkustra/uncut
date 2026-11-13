@@ -42,11 +42,13 @@ export class Compositor extends CompositorBase {
     const gpuScale = gpuCompositorOn() && !this.gpuBroken ? deviceScale : 1;
     const background = canvasBackground(project);
     if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
-    const { frame: playhead, playing: running, rate, selected, hover } = getPlayback();
+    const { frame: playhead, playing: running, waiting, rate, selected, hover } = getPlayback();
     // Issue #118: while paused, the frame skimmed on the timeline is drawn instead of the playhead's.
     const frame = !running && hover !== undefined ? hover : playhead;
     // Shuttling (J/L at another speed, G3): the videos are seeked per frame, like scrubbing, and silent.
     const playing = running && rate === 1;
+    // Behind the start gate the clock waits: the engine decodes, the <video>s and the sound stay at the frame.
+    const moving = playing && !waiting;
     const fps = project.canvas.fps;
     const { starts } = layoutOf(project);
     const visible = visualsAt(project, starts, frame);
@@ -235,6 +237,7 @@ export class Compositor extends CompositorBase {
     this.scrubbed.clear();
     this.scrubAimed.clear();
     const pending: Array<{ id: string; text: string; z: string }> = [];
+    this.gated = [];
     clips.forEach((c) => {
       const media = mediaKind(c.item)!;
       const decodes = media.kind === "video" && this.decoded.decodes(c.item.id);
@@ -247,7 +250,7 @@ export class Compositor extends CompositorBase {
       // D221: paused or shuttling, a video's picture may be its cached frame (a canvas over it).
       const scrubbed =
         el instanceof HTMLVideoElement && !(decodes && playing)
-          ? this.scrubPicture(c.item.id, el, c.source + 0.0001, playing, running && rate !== 1 ? rate : 0)
+          ? this.scrubPicture(c.item.id, el, c.source + 0.0001, moving, running && rate !== 1 ? rate : 0)
           : { pic: el, seek: true };
       const decodedPic = el instanceof HTMLVideoElement && decodes ? this.decodedPicture(c.item.id, el, c.source + 0.0001, playing, scrubbed.pic) : undefined;
       const pic = decodedPic ?? scrubbed.pic;
@@ -305,7 +308,8 @@ export class Compositor extends CompositorBase {
       // A held clip (D94) past its media's end sits paused on the last frame.
       const local = frame - starts.get(c.item.id)!;
       // D327: a ramped clip's rate follows its curve; paused, it is seeked to the curve's frame.
-      if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, local), speedAt(c.item, local), c.item.keepPitch !== false);
+      if (waiting && pic === el) this.gated.push(el);
+      if (scrubbed.seek) drive(el, c.source, moving && !heldPast(project, c.item, local), speedAt(c.item, local), c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
     this.showReverseNotes(pending);
@@ -337,7 +341,7 @@ export class Compositor extends CompositorBase {
         // before the cut, which stalled the clip playing on screen into a drift seek.
         const first = sourceAt(project, ahead, -preroll(ahead)) + 0.0001;
         const parked = el.paused && !el.seeking && el.readyState >= 2;
-        if (playing && from - frame <= PREROLL_S * fps && early >= 0) {
+        if (moving && from - frame <= PREROLL_S * fps && early >= 0) {
           const lead = el.currentTime - early;
           if (parked && lead > -0.1 && lead <= 0.5 / fps) {
             if (el.playbackRate !== speed || el.preservesPitch !== (ahead.keepPitch !== false)) {
@@ -436,7 +440,7 @@ export class Compositor extends CompositorBase {
     }
     this.decoded.finish();
     // Sound after picture: the mix uses the <video> elements made above.
-    this.mix.render(project, frame, playing);
+    this.mix.render(project, frame, moving);
     this.frameEl.dataset.frame = String(Math.floor(frame));
     if (!running && hover !== undefined) this.frameEl.dataset.hover = "true";
     else delete this.frameEl.dataset.hover;
@@ -514,6 +518,14 @@ export class Compositor extends CompositorBase {
       if (note.textContent !== p.text) note.textContent = p.text;
       note.style.zIndex = p.z;
     }
+  }
+
+  // The <video>s on screen that are their clip's picture while the start gate holds.
+  private gated: Array<HTMLVideoElement> = [];
+
+  /** The start gate: a clip on screen whose picture at the playhead isn't there yet (its lane's first frame, or its <video> still seeking). */
+  protected starting() {
+    return this.decoded.starting() || this.gated.some((v) => v.seeking || v.readyState < 2);
   }
 
   /** Where the top fully visible video really is, so the clock can follow a late decoder. */
