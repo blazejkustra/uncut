@@ -15,6 +15,7 @@ import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "
 import { nearbyKey } from "../timeline/clip.ts";
 import { findItem, withGroups } from "../timeline/edit.ts";
 import { toolKeys, type Tool } from "../timeline/tools.ts";
+import { slipOpen } from "../timeline/slip/slipView.ts";
 import { actionFor, keymap, keyOf, keysOf, type ActionId, type ShortcutId } from "./keymap.ts";
 
 /** A row's current keys (issue #78, D257: the keymap in editor/keymap.ts), for tooltips and lists. */
@@ -90,7 +91,7 @@ export function useEditorKeys(fps: number) {
   useEffect(() => {
     const s = () => getState();
     const uninstall = installFocusRules();
-    const dialog = () => s().newProjectOpen || s().setupOpen || s().exportOpen || s().settingsOpen || s().shortcutsOpen;
+    const dialog = () => s().newProjectOpen || s().setupOpen || s().exportOpen || s().settingsOpen || s().shortcutsOpen || slipOpen();
     // #48: Space plays unless a text field is really being typed in (editor/focus.ts); a list, a
     // slider or a field focused for the user doesn't take it.
     const space = (e: KeyboardEvent) => e.code === "Space" && !e.metaKey && !e.altKey && !e.ctrlKey;
