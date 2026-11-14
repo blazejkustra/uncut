@@ -155,8 +155,38 @@ test("a double click opens the slip view: moves are its own until Done, which is
   // A click on the strip, left of the window: the window jumps there.
   await open();
   const strip = (await (await page.$("[data-testid=slip-strip]"))!.boundingBox())!;
+  const pre = await page.evaluate(() => {
+    const el = document.querySelector("[data-testid=slip-strip]");
+    return { content: !!el?.querySelector(".slip-content"), visible: el?.getAttribute("data-visible"), w: (el as HTMLElement)?.clientWidth };
+  });
   await page.mouse.click(strip.x + strip.width * 0.1, strip.y + strip.height / 2);
-  await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=slip-window]")?.dataset.offset) < -100, { timeout: 5000 });
+  try {
+    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=slip-window]")?.dataset.offset) < -100, { timeout: 5000 });
+  } catch (err) {
+    await page.screenshot({ path: resolve("test-output", "slip-diag.png") });
+    const diag = await page.evaluate(
+      (x, y) => {
+        const s = document.querySelector("[data-testid=slip-strip]");
+        const w = document.querySelector<HTMLElement>("[data-testid=slip-window]");
+        const hit = document.elementFromPoint(x, y);
+        return {
+          modal: !!document.querySelector("[data-testid=slip-modal]"),
+          content: !!s?.querySelector(".slip-content"),
+          visible: s?.getAttribute("data-visible"),
+          rect: JSON.stringify(s?.getBoundingClientRect()),
+          hit: hit ? `${hit.tagName}.${hit.className}` : null,
+          offset: w?.dataset.offset,
+          start: w?.dataset.start,
+          readOnly: document.querySelector("[data-testid=slip-read-only]")?.textContent,
+          from: x,
+        };
+      },
+      strip.x + strip.width * 0.1,
+      strip.y + strip.height / 2,
+    );
+    console.log("SLIPDIAG", JSON.stringify({ pre, clicked: strip, diag, fromIn: from }));
+    throw err;
+  }
   const slipped = await windowAt();
   // The picture above is the window's first frame.
   await page.waitForFunction(
