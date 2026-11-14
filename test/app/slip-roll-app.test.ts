@@ -1,6 +1,8 @@
 // Slip and roll on the packaged app: the tools' keys under two keymaps' defaults, a drag with each
-// tool as one undoable edit, and nothing else on the timeline moving.
-// Screenshot: test-output/slip-roll-timeline.png.
+// tool as one undoable edit, and nothing else on the timeline moving. The slip view: a double click
+// on a clip opens its whole media with the clip's part as a window; ← / →, ⌘Z and a click on the
+// strip move it without touching the project, Esc leaves it, Done slips once (one ⌘Z).
+// Screenshots: test-output/slip-roll-timeline.png, test-output/slip-view.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -115,4 +117,92 @@ test("Y slips and N rolls by dragging on the timeline, one undo each", { skip, t
   assert.equal(clip("c2").in! - 300, clip("c1").duration - 150);
   await page.keyboard.press("v");
   await pressed("select");
+});
+
+test("a double click opens the slip view: moves are its own until Done, which is one undo", { skip, timeout: 90000 }, async () => {
+  const windowAt = () => page.$eval("[data-testid=slip-window]", (el) => Number((el as HTMLElement).dataset.offset));
+  const offsetIs = (n: number) =>
+    page.waitForFunction((want) => document.querySelector<HTMLElement>("[data-testid=slip-window]")?.dataset.offset === String(want), { timeout: 5000 }, n);
+  const open = async () => {
+    const box = (await (await page.$(selector("c2")))!.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { clickCount: 2 });
+    await page.waitForSelector("[data-testid=slip-modal]", { timeout: 5000 });
+  };
+  // The test before leaves the cut before c2 rolled: c2 starts where it left it.
+  const from = clip("c2").in!;
+  const others = [clip("c1").in, clip("c1").duration, clip("c2").duration, clip("c3").in];
+  await open();
+  assert.equal(await page.$("[data-testid=item-rename]"), null, "a double click on a clip slips it, not renames it");
+  assert.equal(await page.$eval("[data-testid=slip-window]", (el) => (el as HTMLElement).dataset.start), String(from));
+  await page.waitForSelector("[data-testid=slip-strip] [data-testid=filmstrip][data-ready=true]", { timeout: 30000 });
+  await page.waitForSelector("[data-testid=slip-video]", { timeout: 5000 });
+
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowRight");
+  await offsetIs(3);
+  await undo();
+  await offsetIs(2);
+  await page.keyboard.down("Meta");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("z");
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Meta");
+  await offsetIs(3);
+  assert.equal(clip("c2").in, from, "nothing changes until Done");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=slip-modal]"), { timeout: 5000 });
+  assert.equal(clip("c2").in, from, "Esc leaves the clip as it was");
+
+  // A click on the strip, left of the window: the window jumps there.
+  await open();
+  const strip = (await (await page.$("[data-testid=slip-strip]"))!.boundingBox())!;
+  const pre = await page.evaluate(() => {
+    const el = document.querySelector("[data-testid=slip-strip]");
+    return { content: !!el?.querySelector(".slip-content"), visible: el?.getAttribute("data-visible"), w: (el as HTMLElement)?.clientWidth };
+  });
+  await page.mouse.click(strip.x + strip.width * 0.1, strip.y + strip.height / 2);
+  try {
+    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=slip-window]")?.dataset.offset) < -100, { timeout: 5000 });
+  } catch (err) {
+    await page.screenshot({ path: resolve("test-output", "slip-diag.png") });
+    const diag = await page.evaluate(
+      (x, y) => {
+        const s = document.querySelector("[data-testid=slip-strip]");
+        const w = document.querySelector<HTMLElement>("[data-testid=slip-window]");
+        const hit = document.elementFromPoint(x, y);
+        return {
+          modal: !!document.querySelector("[data-testid=slip-modal]"),
+          content: !!s?.querySelector(".slip-content"),
+          visible: s?.getAttribute("data-visible"),
+          rect: JSON.stringify(s?.getBoundingClientRect()),
+          hit: hit ? `${hit.tagName}.${hit.className}` : null,
+          offset: w?.dataset.offset,
+          start: w?.dataset.start,
+          readOnly: document.querySelector("[data-testid=slip-read-only]")?.textContent,
+          from: x,
+        };
+      },
+      strip.x + strip.width * 0.1,
+      strip.y + strip.height / 2,
+    );
+    console.log("SLIPDIAG", JSON.stringify({ pre, clicked: strip, diag, fromIn: from }));
+    throw err;
+  }
+  const slipped = await windowAt();
+  // The picture above is the window's first frame.
+  await page.waitForFunction(
+    (fps) => {
+      const v = document.querySelector<HTMLVideoElement>("[data-testid=slip-video]");
+      return !!v && !v.seeking && v.readyState >= 2 && Math.abs(v.currentTime - (Number(v.dataset.frame) + 0.5) / fps) < 0.01;
+    },
+    { timeout: 5000 },
+    FPS,
+  );
+  await page.mouse.move(5, 5);
+  await page.screenshot({ path: resolve("test-output", "slip-view.png") });
+  await page.click("[data-testid=slip-done]");
+  await until(() => clip("c2").in === from + slipped);
+  await page.waitForFunction(() => !document.querySelector("[data-testid=slip-modal]"), { timeout: 5000 });
+  assert.deepEqual([clip("c1").in, clip("c1").duration, clip("c2").duration, clip("c3").in], others, "nothing else moves");
+  await undo();
+  await until(() => clip("c2").in === from);
 });

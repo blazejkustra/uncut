@@ -83,10 +83,13 @@ function useStrip(media: MediaItem, wanted: boolean): Strip | undefined {
   return url ? (cache.get(url) ?? undefined) : undefined;
 }
 
+// What a strip scrolls in: the timeline's body, or the slip view's strip (slip/SlipDialog.tsx).
+const SCROLLERS = ".bottom-body, .slip-strip";
+
 /** The part of `el` (px from its left edge) inside its scrolling timeline body, or undefined when none of it is. */
 function shownSpan(el: HTMLElement): { left: number; right: number; height: number } | undefined {
   const r = el.getBoundingClientRect();
-  const body = el.closest(".bottom-body")?.getBoundingClientRect();
+  const body = el.closest(SCROLLERS)?.getBoundingClientRect();
   const left = Math.max(r.left, body?.left ?? 0, 0);
   const right = Math.min(r.right, body?.right ?? window.innerWidth, window.innerWidth);
   const top = Math.max(r.top, body?.top ?? 0);
@@ -136,7 +139,7 @@ export function ClipFilmstrip({
       if (!frame) frame = requestAnimationFrame(measure);
     };
     measure();
-    const body = el.closest(".bottom-body");
+    const body = el.closest(SCROLLERS);
     body?.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     const io = new IntersectionObserver(schedule, { threshold: [0, 1] });

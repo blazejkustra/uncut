@@ -49,6 +49,7 @@ import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
+import { slip, slipSubject } from "./slip/slipView.ts";
 import { elementBlocks } from "@uncut/core/graphicElements";
 import { ItemBox } from "./ItemBox.tsx";
 import { ElementRows } from "./ElementRows.tsx";
@@ -564,6 +565,11 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         onContextMenu={(e) => live.current.onItemMenu(e, item)}
                         onDoubleClick={() => {
                           const now = live.current;
+                          // A clip or sound with video or audio: the slip view (read only when it can't slip).
+                          if (slipSubject(now.project, item.id, now.online)) {
+                            const snapshot = getState().snapshot;
+                            return slip.open(item.id, { baseRevision: snapshot?.revision, dir: snapshot?.dir });
+                          }
                           const lane = now.project.tracks.find((t) => t.id === track.id);
                           if (now.online && lane && !lane.locked && item.type !== "captions") setRenaming(item.id);
                         }}

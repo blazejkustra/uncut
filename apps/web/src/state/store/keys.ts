@@ -5,6 +5,7 @@ import { justClosedProject } from "./actions/project.ts";
 import { environmentsUsable, flagOn } from "../../settings/labs.ts";
 import { panels } from "../../editor/layout.ts";
 import { linkImportReady, openLinkImport } from "../../panels/library/linkImport.ts";
+import { slip, slipOpen } from "../../timeline/slip/slipView.ts";
 
 export function runCommand(command: MenuCommand) {
   // The way to another environment works while this one is away.
@@ -44,9 +45,10 @@ const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "url", "t
 export const isTextEntry = (el: EventTarget | null) =>
   el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(el.type)) || (el instanceof HTMLElement && el.isContentEditable);
 
-// In a text field ⌘Z undoes typing; elsewhere it undoes the last project change.
+// In a text field ⌘Z undoes typing; in the slip view, its last move; elsewhere the last project change.
 function undoOrRedo(kind: "undo" | "redo") {
   if (isTextEntry(document.activeElement)) document.execCommand(kind);
+  else if (slipOpen()) slip[kind]();
   else void actions[kind]();
 }
 

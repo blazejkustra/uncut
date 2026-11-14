@@ -1,0 +1,38 @@
+/* The slip view (SlipDialog.tsx): the window's first frame, the whole media as a strip, the window on it. */
+.slip-modal { width: min(960px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 16px; }
+.slip-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.slip-title { font-size: 15px; color: var(--muted); }
+.slip-title b { color: var(--fg); font-weight: 600; }
+.slip-times { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.slip-delta { color: var(--muted); font-size: 12px; }
+
+.slip-picture { background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; height: min(42vh, 360px); }
+.slip-picture video { height: 100%; width: 100%; object-fit: contain; }
+
+.slip-strip-wrap { display: flex; flex-direction: column; gap: 8px; }
+.slip-strip { position: relative; height: 76px; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--bg); scrollbar-width: thin; }
+.slip-strip.audio { height: 64px; }
+.slip-content { position: relative; height: 100%; cursor: pointer; overflow: hidden; touch-action: none; user-select: none; }
+.slip-strip.read-only .slip-content { cursor: default; }
+.slip-film { position: absolute; inset: 0; }
+.slip-film .strip { position: absolute; inset: 0; background-size: auto 100%; background-repeat: repeat-x; }
+.slip-film .film-cell { position: absolute; top: 0; bottom: 0; background-repeat: no-repeat; }
+.slip-wave { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.slip-wave.under { top: auto; height: 22px; background: rgb(0 0 0 / 45%); }
+.slip-wave canvas { width: 100%; height: 100%; display: block; }
+
+/* The window: the media outside it dimmed, its edges fixed (it only slides). */
+.slip-window {
+  position: absolute; top: 0; bottom: 0; box-sizing: border-box; border: 3px solid var(--warn); border-radius: 6px;
+  box-shadow: 0 0 0 100000px rgb(0 0 0 / 55%); cursor: grab; pointer-events: none;
+}
+.slip-content:active .slip-window { cursor: grabbing; }
+.slip-strip.read-only .slip-window { border-style: dashed; }
+.slip-was { position: absolute; top: 2px; bottom: 2px; box-sizing: border-box; border: 1px dashed rgb(255 255 255 / 55%); border-radius: 4px; pointer-events: none; z-index: 1; }
+
+.slip-zoom { display: flex; align-items: center; gap: 2px; }
+.slip-zoom .btn { padding: 0 8px; }
+.slip-length { margin-left: auto; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.slip-foot { display: flex; align-items: center; gap: 8px; }
+.slip-note { margin-right: auto; color: var(--muted); font-size: 12px; }
