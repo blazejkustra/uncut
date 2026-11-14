@@ -1,6 +1,7 @@
 // The playback clock's start gate, without the app: after play, or a jump while playing, the clock
 // waits at its frame while the preview says a clip on screen has no picture yet, then runs from that
-// frame; it never waits longer than START_HOLD_MS, and shuttling never waits.
+// frame; it never waits longer than START_HOLD_MS, and shuttling never waits. clockFrame reads the
+// clock between animation frames.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -76,5 +77,29 @@ test("shuttling never waits", () => {
   assert.equal(getPlayback().waiting, false);
   frameAt(500);
   assert.equal(getPlayback().frame, 130);
+  playback.pause();
+});
+
+test("clockFrame is where the clock is now, not where the last animation frame left the playhead", () => {
+  start();
+  ready = true;
+  frameAt(100);
+  frameAt(1100);
+  assert.equal(getPlayback().frame, 130);
+  // A render that took 150 ms after its frame was read: the clock is 4.5 frames on.
+  now = 1250;
+  assert.equal(playback.clockFrame(), 134.5);
+  assert.equal(getPlayback().frame, 130, "the playhead itself moves only on the next animation frame");
+  // Waiting at the start gate, paused or shuttling: the playhead's frame.
+  ready = false;
+  playback.seek(500);
+  now = 1600;
+  assert.equal(playback.clockFrame(), 500);
+  playback.pause();
+  now = 2000;
+  assert.equal(playback.clockFrame(), 500);
+  start(2);
+  now = 500;
+  assert.equal(playback.clockFrame(), 100);
   playback.pause();
 });

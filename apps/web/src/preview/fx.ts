@@ -18,6 +18,7 @@ import { colourLut, keyChroma, maskAt, shakeWindow, shakeZoom, spillChannel, typ
 import type { Cutout } from "@uncut/core/vision";
 import type { ClipBox } from "@uncut/core/box";
 import type { Item } from "@uncut/core/types";
+import { uploadable } from "./stillBitmap.ts";
 
 const VERTEX = `#version 300 es
 in vec2 aPos;
@@ -651,7 +652,8 @@ export class FxRenderer {
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      // A still's bitmap, decoded ahead (stillBitmap.ts): from the <img> this decoded it again, ~60 ms.
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadable(source));
     } catch {
       // A source it may not read (another origin without CORS) or not decoded yet.
       this.drawn = false;
