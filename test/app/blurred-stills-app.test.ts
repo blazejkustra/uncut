@@ -157,7 +157,11 @@ interface Half {
   over25: number;
   over50: number;
   worstMs: number;
-  /** Timeline frames the playhead skipped (stepped more than one at a time). */
+  /**
+   * Timeline frames the playhead skipped after a late animation frame (over 25 ms). A 60 fps clock
+   * drifts in phase against the display's refresh, and while its frame boundaries sit on the refresh
+   * the playhead steps 0 then 2 at ordinary gaps for a second or two, in either half: not a stall.
+   */
   skipped: number;
 }
 
@@ -245,7 +249,7 @@ async function playThrough() {
       // Past the first half second of play (the start gate), inside this half and away from its edges.
       if (!playing || !playing0 || f0 < from + 30 || f > to - 2) continue;
       gaps.push(t - t0);
-      if (f - f0 > 1) skipped += f - f0 - 1;
+      if (f - f0 > 1 && t - t0 > 25) skipped += f - f0 - 1;
     }
     const sorted = [...gaps].sort((a, b) => a - b);
     const q = (x: number) => Math.round(sorted[Math.min(sorted.length - 1, Math.floor(x * sorted.length))] ?? 0);
