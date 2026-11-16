@@ -653,7 +653,7 @@ export class FxRenderer {
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
     try {
       // A still's bitmap, decoded ahead (stillBitmap.ts): from the <img> this decoded it again, ~60 ms.
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadable(source));
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadable(source, { straight: true }));
     } catch {
       // A source it may not read (another origin without CORS) or not decoded yet.
       this.drawn = false;
