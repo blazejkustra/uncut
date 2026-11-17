@@ -34,6 +34,7 @@ import {
   previewStats,
   playSeek,
 } from "./media.ts";
+import { prepareStill, releaseStill } from "../stillBitmap.ts";
 
 /**
  * Issue #55: a clip's effects drawn by the shared renderer (past FX_CONTEXTS), copied into its own
@@ -184,6 +185,7 @@ export abstract class CompositorBase {
       el.removeAttribute("src");
       el.load();
     }
+    if (el instanceof HTMLImageElement) releaseStill(el);
     el.remove();
     this.scrubViews.get(id)?.canvas.remove();
     this.scrubViews.delete(id);
@@ -531,7 +533,10 @@ export abstract class CompositorBase {
       el.draggable = false;
       // CORS mode (as the <video>), so a look's WebGL pass may read it (D136).
       el.crossOrigin = "anonymous";
-      el.addEventListener("load", () => this.drawsPicture(item.id) && this.render());
+      el.addEventListener("load", () => {
+        prepareStill(el as HTMLImageElement);
+        if (this.drawsPicture(item.id)) this.render();
+      });
     } else {
       const video = document.createElement("video");
       // Muted until the mix routes its sound (a clip with sound); CORS mode so Web Audio may hear it.

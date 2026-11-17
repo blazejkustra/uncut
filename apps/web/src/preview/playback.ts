@@ -313,6 +313,17 @@ export const playback = {
     playback.seek(state.end);
   },
 
+  /**
+   * Where the clock is right now: playing at 1× and past the start gate, the playhead's frame plus the
+   * time since it was set (a render that took long, a still's first upload, is that much later than
+   * its frame); otherwise the playhead's frame. Never past the last frame.
+   */
+  clockFrame(): number {
+    if (!state.playing || state.waiting || state.rate !== 1) return state.frame;
+    const f = clock.f0 + (Math.max(0, performance.now() - clock.t0) * state.fps) / 1000;
+    return Math.min(state.frames - 1, Math.max(state.frame, f));
+  },
+
   /** The preview's start gate (true: a clip on screen has no picture yet); undefined unregisters. */
   setStartGate(fn: (() => boolean) | undefined) {
     gate = fn;

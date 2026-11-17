@@ -16,6 +16,7 @@
 import type { ClipBox } from "@uncut/core/box";
 import type { ClipFx } from "@uncut/core/fx";
 import { FxRenderer } from "./fx.ts";
+import { uploadable } from "./stillBitmap.ts";
 
 const VERTEX = `#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -158,8 +159,12 @@ export interface GpuPicture {
   readonly wipe?: number | undefined;
   /** An iris's circle in canvas px. */
   readonly iris?: { readonly x: number; readonly y: number; readonly r: number } | undefined;
-  /** Picture effects: drawn at `size` (core's fxPictureSize), `t` s from the clip's start. */
-  readonly fx?: { readonly fx: ClipFx; readonly size: { readonly w: number; readonly h: number }; readonly t: number } | undefined;
+  /**
+   * Picture effects: drawn at `size` (core's fxPictureSize), `t` s from the clip's start. `key` names
+   * the effects as they are (unchanged effects, unchanged key): with it a picture that hasn't changed
+   * (a still) isn't drawn through them again.
+   */
+  readonly fx?: { readonly fx: ClipFx; readonly size: { readonly w: number; readonly h: number }; readonly t: number; readonly key?: string } | undefined;
   /** D265: a <video> Chromium shows with SMPTE 170M primaries converted to BT.709's (untagged SD); its upload has the values unconverted. */
   readonly gamut?: boolean | undefined;
   /** D265: the source is a canvas at the picture's effects size (a shader's), stretched over the content rect. */
@@ -269,7 +274,8 @@ export class GpuCompositor {
     { tex: WebGLTexture; key: string; source?: GpuPicture["source"] | undefined; n: { w: number; h: number }; mip: boolean }
   >();
   // Each effects layer's last drawn picture (`drawn` once it holds one).
-  private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number; drawn?: boolean }>();
+  // A clip's picture through its effects; `sig`: what it was drawn from (its effects, picture and size).
+  private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number; drawn?: boolean; sig?: string }>();
   // Issue #82 (D241): since when the frame on screen has been held (a layer had nothing to draw).
   private heldSince: number | undefined;
   private fx: FxRenderer | undefined;
@@ -456,7 +462,8 @@ export class GpuCompositor {
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      // A still's bitmap, decoded ahead (stillBitmap.ts): from the <img> this decoded it again, ~60 ms.
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadable(source));
     } catch {
       return undefined;
     }
@@ -482,6 +489,7 @@ export class GpuCompositor {
       t.w = w;
       t.h = h;
       t.drawn = false;
+      t.sig = undefined;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, t.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -607,12 +615,18 @@ export class GpuCompositor {
       this.fx ??= new FxRenderer(this.surface as unknown as HTMLCanvasElement, gl);
       const { w, h } = p.fx.size;
       const target = this.fxTarget(p.id, w, h);
-      gl.disable(gl.BLEND);
-      gl.bindVertexArray(null);
-      const ok = this.fx.render(p.source, p.fx.fx, w, h, p.fx.t, 1, undefined, target.fbo);
-      this.bindOwn();
-      if (!ok) return this.drawPicture({ ...p, fx: undefined });
-      target.drawn = true;
+      // The same picture through the same effects (a still, a paused clip): its target already holds it.
+      // Drawing it again uploaded the whole source every frame (a 12 MP photo: ~60 ms a frame).
+      const sig = p.fx.key !== undefined ? `${p.fx.key}|${frameKey(p.source)}|${w}x${h}|${p.fx.fx.shake ? p.fx.t : ""}` : undefined;
+      if (!(sig && target.drawn && target.sig === sig)) {
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(null);
+        const ok = this.fx.render(p.source, p.fx.fx, w, h, p.fx.t, 1, undefined, target.fbo);
+        this.bindOwn();
+        target.sig = ok ? sig : undefined;
+        if (!ok) return this.drawPicture({ ...p, fx: undefined });
+        target.drawn = true;
+      }
       // The effects canvas is stretched over the content rect (as the DOM path's canvas, object-fit fill).
       this.layer(p, { tex: target.tex, img: p.box.content, flip: true, soft: true, gamut: false });
       return true;

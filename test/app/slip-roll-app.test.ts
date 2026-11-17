@@ -127,6 +127,7 @@ test("a double click opens the slip view: moves are its own until Done, which is
     const box = (await (await page.$(selector("c2")))!.boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { clickCount: 2 });
     await page.waitForSelector("[data-testid=slip-modal]", { timeout: 5000 });
+    await page.waitForSelector("[data-testid=slip-window]", { timeout: 5000 });
   };
   // The test before leaves the cut before c2 rolled: c2 starts where it left it.
   const from = clip("c2").in!;

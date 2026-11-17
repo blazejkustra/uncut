@@ -5,7 +5,7 @@ import { isDrawnComponent, componentHtml } from "@uncut/core/components";
 import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
 import { PREROLL_S } from "../../audio/audio.ts";
-import { getPlayback } from "../playback.ts";
+import { getPlayback, playback } from "../playback.ts";
 import { type Item, layoutOf } from "../../state/project.ts";
 import { getState, mediaUrl } from "../../state/store.ts";
 // D290: graphics' project media answered from this page (their iframes ask by postMessage).
@@ -18,6 +18,7 @@ import { shaderTime } from "@uncut/core/shaders";
 import { px, transitionCanvas, setBlur, placeBox, placePicture, drive, seek, irisClip, wanted, reversePending } from "./media.ts";
 
 import { CompositorBase } from "./base.ts";
+import { prepareStill } from "../stillBitmap.ts";
 
 /** Issue #55: the most upcoming clips warmed up at once (a <video> and a decoder each). */
 const WARM_AHEAD = 16;
@@ -71,8 +72,21 @@ export class Compositor extends CompositorBase {
     }
     // The nearest first, at most WARM_AHEAD of them (each is a decoder).
     aheads.sort((a, b) => starts.get(a.id)! - starts.get(b.id)!).splice(WARM_AHEAD);
+    // Each video track's next still (starting within two seconds): its <img> made ahead, loaded and decoded.
+    // Made at its cut, a still had no picture for its first frames (it loads asynchronously, even
+    // from the cache), and a full-size photo seen for the first time took longer than the GPU
+    // compositor holds the last frame (HOLD_MS): black, or the photo missing, until it loaded.
+    const stillsAhead: Array<Item> = [];
+    for (const track of project.tracks) {
+      if (track.kind !== "video" || track.hidden) continue;
+      const next = track.items.find((it) => {
+        const start = starts.get(it.id)!;
+        return start > frame && start - frame < 2 * fps && mediaKind(it)?.kind === "image";
+      });
+      if (next) stillsAhead.push(next);
+    }
     this.decoded.plan(project, starts, frame, clips, { running, playing, scale: deviceScale });
-    const keep = new Set([...clips.map((c) => c.item.id), ...aheads.map((a) => a.id)]);
+    const keep = new Set([...clips.map((c) => c.item.id), ...aheads.map((a) => a.id), ...stillsAhead.map((a) => a.id)]);
     for (const [id, el] of [...this.els]) {
       if (keep.has(id)) continue;
       // No longer shown (it ended, its track was hidden): the mix may hold the <video> a moment,
@@ -283,7 +297,7 @@ export class Compositor extends CompositorBase {
           iris: c.iris !== undefined ? { x: project.canvas.width / 2, y: project.canvas.height / 2, r: irisRadius(c.iris, project.canvas) } : undefined,
           fx:
             fx && needsPicturePass(fx) && !this.fxBroken
-              ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps }
+              ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps, key: this.fxOf.get(c.item.id)?.key }
               : undefined,
           gamut: !shaded && pic instanceof HTMLVideoElement && this.gamutVideo(pic),
           mask: c.mask ? maskRings(c.mask.shape, c.mask.p, project.canvas.width, project.canvas.height) : undefined,
@@ -313,6 +327,15 @@ export class Compositor extends CompositorBase {
       else if (!el.paused) el.pause();
     });
     this.showReverseNotes(pending);
+    for (const ahead of stillsAhead) {
+      if (clips.some((c) => c.item.id === ahead.id)) continue;
+      const el = this.elementFor(ahead, "image");
+      if (!(el instanceof HTMLImageElement)) continue;
+      el.style.opacity = "0";
+      this.boxes.get(ahead.id)!.style.zIndex = "0";
+      // Its bitmap is decoded off the main thread once it loads (stillBitmap.ts), ready for its first frame.
+      prepareStill(el);
+    }
     this.warmBudget = 1;
     for (const id of this.fxWarmed) if (!aheads.some((a) => a.id === id)) this.fxWarmed.delete(id);
     for (const ahead of aheads) {
@@ -439,8 +462,11 @@ export class Compositor extends CompositorBase {
       view.canvas.style.visibility = "hidden";
     }
     this.decoded.finish();
-    // Sound after picture: the mix uses the <video> elements made above.
-    this.mix.render(project, frame, moving);
+    // Sound after picture: the mix uses the <video> elements made above. Its elements kept playing
+    // while the pictures were drawn (a still's first upload takes 100 ms and more), so it's kept in
+    // step with the clock as it is now: at the frame read above it took that wait for drift and
+    // seeked the sound back, then forward again on the next frame (an audible skip at every still).
+    this.mix.render(project, moving ? playback.clockFrame() : frame, moving);
     this.frameEl.dataset.frame = String(Math.floor(frame));
     if (!running && hover !== undefined) this.frameEl.dataset.hover = "true";
     else delete this.frameEl.dataset.hover;
