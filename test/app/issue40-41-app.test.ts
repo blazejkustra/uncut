@@ -269,8 +269,14 @@ test(
     );
     assert.equal(by.get("cam-1")!.group, undefined);
     assert.deepEqual(
-      [by.get("mic-1")!.track, by.get("mic-1")!.start, by.get("mic-1")!.in, by.get("mic-1")!.linkedTo, by.get("mic-1")!.group],
-      ["voice", 90, 12, "cam-1", undefined],
+      [
+        by.get("mic-1")!.track,
+        by.get("mic-1")!.start,
+        by.get("mic-1")!.in,
+        !!by.get("mic-1")!.link && by.get("mic-1")!.link === by.get("cam-1")!.link,
+        by.get("mic-1")!.group,
+      ],
+      ["voice", 90, 12, true, undefined],
     );
     assert.ok(!p.tracks.some((t) => t.id === "camera"), "the empty Camera track went");
     await page.waitForSelector(`[data-testid=lane][data-track=main] ${itemSel("cam-1")}`);
@@ -313,7 +319,7 @@ test(
     const mics = p.tracks.find((t) => t.id === "voice")!.items;
     assert.equal(mics.length, 2);
     for (const cam of cams) {
-      const mic = mics.find((m) => m.linkedTo === cam.id)!;
+      const mic = mics.find((m) => m.link !== undefined && m.link === cam.link)!;
       assert.ok(mic, `a mic piece follows ${cam.id}`);
       assert.deepEqual([mic.start, (mic.in ?? 0) - (cam.in ?? 0), mic.duration], [starts.get(cam.id), 7, cam.duration]);
     }

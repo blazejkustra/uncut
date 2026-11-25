@@ -84,7 +84,8 @@ export function makeToolPress(ctx: ToolPressCtx) {
       e.preventDefault();
       e.stopPropagation();
       if (!at || !online) return;
-      void actions.timelineEdit(planBladeSplit(project, at.item, at.frame));
+      // D347: ⌥ cuts only the item pressed, not the items linked to it.
+      void actions.timelineEdit(planBladeSplit(project, at.item, at.frame, e.altKey));
       return;
     }
     const body = bodyRef.current;

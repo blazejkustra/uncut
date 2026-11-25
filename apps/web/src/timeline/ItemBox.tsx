@@ -2,14 +2,14 @@
 // of items with sound (D83). Split out of Timeline.tsx.
 import { Lock, Undo2, VolumeX } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
-import { speedLabel } from "@uncut/core/arrange";
+import { driftLabel, linkDrift, speedLabel } from "@uncut/core/arrange";
 import { type CaptionCard } from "@uncut/core/captions";
 import { duckDbAt, duckKeysIn, type DuckKey } from "@uncut/core/ducking";
 import { SOLID, solidBackground } from "@uncut/core/render";
 
 import { dbLabel, envelopeDbAt, hasSound, keyIndexAt, levelY, planAddGainKey, planMoveGainKey, planRemoveGainKey, yLevel } from "../audio/sound.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
-import { itemLabel, type Item, type ProjectModel } from "../state/project.ts";
+import { itemLabel, layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, projectOf, thumbUrl } from "../state/store.ts";
 import { keyFrames } from "./clip.ts";
 import { draftOf, findItem, visibleBeats } from "./edit.ts";
@@ -115,6 +115,8 @@ function ItemBoxView({
   const ticks = sound && beats ? visibleBeats(project, item, beats, ppf) : [];
   // F5 (D148): the item's box keys as diamonds along its bottom edge; a click goes there.
   const marks = item.type === "captions" ? [] : keyFrames(item).filter((f) => f >= 0 && f <= duration);
+  // D347: a linked item that plays a different moment than its mate.
+  const drift = linkDrift(project, item.id, layoutOf(project).starts);
   return (
     <div
       className={`clip ${kind} ${className}`}
@@ -218,6 +220,16 @@ function ItemBoxView({
           {item.locked && <Lock data-testid="clip-lock" aria-label="Locked: right-click to unlock" />}
         </span>
       )}
+      {drift ? (
+        <span
+          className="link-drift"
+          data-testid="link-drift"
+          data-frames={drift}
+          title={`Out of sync with its linked item by ${Math.abs(drift)} frames: right-click to move it into sync`}
+        >
+          {driftLabel(drift)}
+        </span>
+      ) : null}
       <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>
       {edges && (
         <>

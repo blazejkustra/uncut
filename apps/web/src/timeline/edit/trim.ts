@@ -1,10 +1,10 @@
 // Trim, split and delete planners (edit.ts), ripple delete and group trims.
 import { isDrawnComponent } from "@uncut/core/components";
 import { overlaps } from "@uncut/core/transitions";
-import { busySpans, keepMainTimes, rippleMainGaps } from "@uncut/core/arrange";
+import { busySpans, keepMainTimes, linkMates, rippleMainGaps } from "@uncut/core/arrange";
 import { withGraphicRetime } from "@uncut/core/retime";
 import type { Op } from "@uncut/core/types";
-import { type Track, type ProjectModel, layoutOf, uniqueId } from "../../state/project.ts";
+import { type Item, type Track, type ProjectModel, layoutOf, uniqueId } from "../../state/project.ts";
 import { type Plan, findItem, type Placed, lockOf, dropTransitions, draftOf, withGroups } from "./base.ts";
 import { type Snap, nearestSnap } from "./snap.ts";
 
@@ -153,9 +153,9 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
 
 /**
  * Split all tracks at the playhead (⇧⌘K, D346): every item the playhead is inside, in one edit,
- * except captions (they follow the speech), items on locked tracks or locked themselves, and a
- * linked sound or clip whose own clip is cut (it splits with it, D123). If one of them can't be
- * cut there (too close to a transition, a locked linked sound), nothing is cut and the user is told.
+ * except captions (they follow the speech), items on locked tracks or locked themselves, and an
+ * item linked to one that is cut (it splits with it, D347). If one of them can't be cut there (too
+ * close to a transition, a locked linked sound), nothing is cut and the user is told.
  */
 export function planSplitAll(project: ProjectModel, frame: number): SplitPlan | { readonly problem: string } {
   const f = Math.floor(frame);
@@ -180,27 +180,43 @@ function splitTargets(project: ProjectModel, f: number): ReadonlyArray<Placed> {
   const under = project.tracks
     .flatMap((track) => track.items.map((item, index): Placed => ({ item, track, index, start: starts.get(item.id) ?? 0 })))
     .filter((p) => p.item.type !== "captions" && !lockOf(p) && p.start < f && f < p.start + p.item.duration);
-  const cut = new Set(under.map((p) => p.item.id));
-  const followsCut = (p: Placed) => "linkedTo" in p.item && p.item.linkedTo !== undefined && cut.has(p.item.linkedTo);
-  return under.filter((p) => !followsCut(p));
+  const kept = new Set<string>();
+  return under.filter((p) => {
+    if (linkMates(project, p.item.id).some((m) => kept.has(m.item.id))) return false;
+    kept.add(p.item.id);
+    return true;
+  });
 }
 
-/** Split `target` at frame `f` (inside it): locks and transitions checked (planSplit, planBladeSplit). */
-function splitAt(project: ProjectModel, target: Placed, f: number, further: string, taken?: ReadonlySet<string>): SplitPlan | { readonly problem: string } {
+/** Whether frame `f` falls inside `item` (not on its first frame). */
+const covers = (project: ProjectModel, item: Item, f: number) => {
+  const start = layoutOf(project).starts.get(item.id) ?? 0;
+  return start < f && f < start + item.duration;
+};
+
+/**
+ * Split `target` at frame `f` (inside it): locks and transitions checked (planSplit, planBladeSplit).
+ * `solo` (⌥, D347): only the target, not the items linked to it.
+ */
+function splitAt(
+  project: ProjectModel,
+  target: Placed,
+  f: number,
+  further: string,
+  taken?: ReadonlySet<string>,
+  solo = false,
+): SplitPlan | { readonly problem: string } {
   const locked = lockOf(target);
   if (locked) return { problem: locked };
-  // D248: a linked sound (or picture) splits with its clip (D123); a locked one would stay whole,
-  // still following only the first half, so the cut is refused and says why.
-  for (const t of project.tracks) {
-    for (const i of t.items) {
-      if (!("linkedTo" in i) || i.linkedTo !== target.item.id || (!t.locked && !i.locked)) continue;
-      const what = i.type === "audio" ? "linked sound" : "linked clip";
-      return {
-        problem: t.locked
-          ? `Its ${what} is on the ${t.name} track, which is locked. Unlock it to cut the clip.`
-          : `Its ${what} is locked. Unlock it to cut the clip.`,
-      };
-    }
+  // D248: a linked item splits with it (D347); a locked one would stay whole, so the cut is refused and says why.
+  const stuck = solo ? undefined : linkMates(project, target.item.id).find(({ item, track }) => (track.locked || item.locked) && covers(project, item, f));
+  if (stuck) {
+    const what = stuck.item.type === "audio" ? "linked sound" : "linked clip";
+    return {
+      problem: stuck.track.locked
+        ? `Its ${what} is on the ${stuck.track.name} track, which is locked. Unlock it to cut the clip.`
+        : `Its ${what} is locked. Unlock it to cut the clip.`,
+    };
   }
   // A transition at either cut needs the half next to it to be at least twice its length.
   if (target.track.role === "main") {
@@ -210,7 +226,12 @@ function splitAt(project: ProjectModel, target: Placed, f: number, further: stri
     if (at < 2 * own || target.item.duration - at < 2 * into) return { problem: `That's too close to a transition to split there. ${further}` };
   }
   const newId = uniqueId(project, target.item.id.replace(/-\d+$/, "") || "item", new Set(taken));
-  return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId, newIds: [newId] };
+  return {
+    ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId, ...(solo ? { solo: true } : {}) }],
+    summary: `Split ${target.item.id}`,
+    newId,
+    newIds: [newId],
+  };
 }
 
 /**
@@ -219,7 +240,7 @@ function splitAt(project: ProjectModel, target: Placed, f: number, further: stri
  * clip (D123). Locked tracks and items refuse; on an item's edge there's nothing to cut (no ops).
  * Captions follow the speech and aren't cut.
  */
-export function planBladeSplit(project: ProjectModel, itemId: string, frame: number): SplitPlan | { readonly problem: string } {
+export function planBladeSplit(project: ProjectModel, itemId: string, frame: number, solo = false): SplitPlan | { readonly problem: string } {
   const target = findItem(project, itemId);
   if (!target) return { problem: "That item isn't in the project any more." };
   if (target.item.type === "captions") return { problem: "Captions follow the speech: cut the clip under them instead." };
@@ -227,7 +248,7 @@ export function planBladeSplit(project: ProjectModel, itemId: string, frame: num
   if (locked) return { problem: locked };
   const f = Math.round(frame);
   if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newId: "", newIds: [] };
-  return splitAt(project, target, f, "Cut further from it.");
+  return splitAt(project, target, f, "Cut further from it.", undefined, solo);
 }
 
 /** Delete an item; it leaves its space, on main too (D224: the clips after it stay; ripple delete closes up). */

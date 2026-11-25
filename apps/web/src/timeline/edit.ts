@@ -4,7 +4,7 @@
 // every action is validated by the server, undoes in one step and reaches the agent's note (D6).
 import { nearestFreeSpot } from "@uncut/core/arrange";
 
-export { SNAP_PX, findItem, homeKind, fitsTrack, lockOf, secondsLabel, draftOf, withGroups } from "./edit/base.ts";
+export { SNAP_PX, findItem, homeKind, fitsTrack, lockOf, secondsLabel, draftOf, withGroups, soloPlan } from "./edit/base.ts";
 export type { Placed, Plan } from "./edit/base.ts";
 export { MIN_BEAT_PX, beatsInItem, visibleBeats, beatTargets, snapPlayhead, snapTargets, trimSnapTargets, bladeFrame } from "./edit/snap.ts";
 export type { BeatMap, BeatSnap, Snap } from "./edit/snap.ts";
