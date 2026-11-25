@@ -4,6 +4,7 @@ import type { SpeedKey } from "@uncut/core/speedRamp";
 import { playback, getPlayback } from "../../../preview/playback.ts";
 import {
   planSplit,
+  planSplitAll,
   findItem,
   planSetTransition,
   planDelete,
@@ -62,12 +63,18 @@ export const timelineActions = {
   /** Elements tab → a full-frame background (see planAddBackground): over the whole edit, or behind the selected item (D220). */
   addBackground: (props: BackgroundProps, behindSelected = false) =>
     addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
-  /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
+  /** S: split at the playhead (see planSplit); the parts after the playhead are selected. */
   async split() {
     if (!state.snapshot) return;
     const { selected, frame } = getPlayback();
     const plan = planSplit(projectOf(state.snapshot), selected, frame);
-    if (await timelineEdit(plan)) playback.select("newId" in plan ? plan.newId : undefined);
+    if (await timelineEdit(plan)) playback.selectMany("newIds" in plan ? plan.newIds : []);
+  },
+  /** ⇧⌘K: split all tracks at the playhead (see planSplitAll); the parts after it are selected. */
+  async splitAll() {
+    if (!state.snapshot) return;
+    const plan = planSplitAll(projectOf(state.snapshot), getPlayback().frame);
+    if (await timelineEdit(plan)) playback.selectMany("newIds" in plan ? plan.newIds : []);
   },
   /** ⌫: delete the selected item; on main the rest closes up. A selected cut: remove its transition (D73). */
   async deleteSelected() {

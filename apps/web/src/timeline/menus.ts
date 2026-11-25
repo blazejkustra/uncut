@@ -408,6 +408,7 @@ export function emptyMenu(project: ProjectModel, frame: number, track: Track | u
     "-",
     { id: "paste-here", label: "Paste here", shortcut: "⌘V", disabled: off || !clipboardItems().length, run: () => void paste(frame) },
     { id: "split-playhead", label: "Split at the playhead", shortcut: "S", disabled: off, run: () => void actions.split() },
+    { id: "split-all", label: "Split all tracks at the playhead", ...keyHint("splitAll"), disabled: off, run: () => void actions.splitAll() },
     "-",
     {
       id: "select-all",
