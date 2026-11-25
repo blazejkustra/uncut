@@ -39,7 +39,7 @@
 .score-rise { font-family: var(--mono); font-size: 12px; text-align: right; color: var(--muted); }
 .score-rise.up { color: var(--ok); }
 .score-rise.down { color: var(--warn); }
-.score-bar > span.rose { animation: score-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.score-bar > span.rose { animation: score-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 .critic-row .blockers, .critic-row .defects, .critic-row .fixes { gap: 8px; padding: 0 8px 8px; margin: 0; }
 .blocker { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 4px 8px; font-size: 13px; line-height: 1.35; }
