@@ -60,6 +60,7 @@ const transcript = (words: ReadonlyArray<string>, from: number) => ({
   seconds: 20,
   segments: [],
   words: words.map((text, i) => ({ text, start: from + i * 0.5, end: from + i * 0.5 + 0.4, p: 0.9 })),
+  phrases: [{ start: from, end: from + (words.length - 1) * 0.5 + 0.4, text: words.join(" "), words: [0, words.length] }],
 });
 
 function writeProject(folder: string, name: string, media: ReadonlyArray<{ id: string; file: string; name: string }>) {
