@@ -13,7 +13,7 @@
 
 /* The models: a list like the composer's model menu. */
 .gen-models { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); }
-.gen-group-label { font-size: 11px; color: var(--dim); padding: 8px 6px 3px; letter-spacing: 0.02em; }
+.gen-group-label { font-size: 11px; color: var(--dim); padding: 8px 6px 3px; letter-spacing: normal; }
 .gen-model { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 5px 8px 5px 6px; border-radius: var(--radius-sm); text-align: left; border: 1px solid transparent; }
 .gen-model:hover { background: var(--raised); }
 .gen-model.active { background: var(--raised); border-color: var(--border-strong); }
@@ -36,7 +36,7 @@
 .gen-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--fg); }
 .gen-mark-logo { width: 14px; height: 14px; display: block; }
 .gen-mark.claude { background: rgb(217 119 87 / 12%); box-shadow: inset 0 0 0 1px rgb(217 119 87 / 28%); }
-.gen-mark-letter { font-size: 12px; font-weight: 700; letter-spacing: -0.02em; }
+.gen-mark-letter { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
 
 /* The prompt, in a box like the composer's. */
 .gen-box { border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; transition: border-color 120ms; }
@@ -61,7 +61,7 @@
 
 /* Generate: the one big button, and what it costs under it. */
 .gen-panel .gen-go { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.gen-run { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: var(--radius); font-size: 14px; font-weight: 600; color: var(--on-fg); background: var(--fg); transition: filter 120ms, transform 80ms, box-shadow 120ms; }
+.gen-run { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: var(--radius); font-size: 13px; font-weight: 600; color: var(--on-fg); background: var(--fg); transition: filter 120ms, transform 80ms, box-shadow 120ms; }
 .gen-run:not(:disabled):hover { background: var(--fg-hover); }
 .gen-run:not(:disabled):active { transform: translateY(1px); }
 .gen-run:disabled { background: var(--raised); color: var(--dim); box-shadow: inset 0 0 0 1px var(--border-strong); cursor: not-allowed; }

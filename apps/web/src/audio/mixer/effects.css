@@ -49,8 +49,8 @@
 .fxg.bypassed { opacity: 0.4; }
 .fxg-grid { stroke: rgb(var(--ink) / 6%); stroke-width: 1; }
 .fxg-zero { stroke: rgb(var(--ink) / 16%); stroke-width: 1; fill: none; }
-.fxg-tick { fill: var(--dim); font-size: 8px; font-family: var(--mono); }
-.fxg-value { fill: var(--fg); font-size: 9px; font-family: var(--mono); }
+.fxg-tick { fill: var(--dim); font-size: 10px; font-family: var(--mono); }
+.fxg-value { fill: var(--fg); font-size: 10px; font-family: var(--mono); }
 .fxg-curve { fill: none; stroke: var(--select); stroke-width: 1.8; stroke-linejoin: round; }
 .fxg-curve.duck { stroke: #5ec8e5; }
 .fxg-fill { fill: var(--select-soft); stroke: none; }
@@ -61,7 +61,7 @@
 .fxg-peak { fill: var(--ok); }
 .fxg-noise { fill: rgb(var(--ink) / 18%); }
 .fxg-handle circle { fill: var(--panel); stroke: var(--select); stroke-width: 1.5; }
-.fxg-handle text { fill: var(--fg); font-size: 7px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.fxg-handle text { fill: var(--fg); font-size: 10px; font-weight: 600; text-anchor: middle; pointer-events: none; }
 .fxg-handle.live { cursor: grab; }
 .fxg-handle.live:hover circle { fill: var(--select); }
 .fxg-handle.live:hover text { fill: var(--fg); }

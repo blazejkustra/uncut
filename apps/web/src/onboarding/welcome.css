@@ -11,8 +11,8 @@
 #root .welcome-hero { display: flex; align-items: center; gap: 16px; }
 #root .welcome-logo { width: 64px; height: 64px; flex: none; margin: -4px; }
 #root .welcome-titles { min-width: 0; }
-#root .welcome-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 2px; }
-#root .welcome-main h1 { font-size: 26px; }
+#root .welcome-brand { font-size: 12px; font-weight: 600; letter-spacing: normal; color: var(--muted); margin-bottom: 2px; }
+#root .welcome-main h1 { font-size: 20px; }
 #root .welcome-main .wiz-lead { margin: 14px 0 20px; }
 #root .welcome-actions .wiz-card { padding: 16px; background: var(--bg); }
 #root .welcome-actions .wiz-card:not(:disabled):hover { background: var(--panel-2); }

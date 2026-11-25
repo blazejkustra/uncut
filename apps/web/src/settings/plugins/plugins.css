@@ -29,11 +29,11 @@
 .pm-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; flex: none; }
 .pm-icon svg.lucide { width: 16px; height: 16px; color: var(--muted); }
 .pm-title { min-width: 0; }
-.pm-name { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-by { font-size: 11px; color: var(--dim); }
 .pm-desc { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pm-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
-.pm-kind { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--raised); color: var(--muted); }
+.pm-kind { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--raised); color: var(--muted); }
 .pm-perms { display: flex; gap: 6px; font-size: 11px; color: var(--dim); line-height: 1.4; }
 .pm-perms svg.lucide { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 .pm-perms p { margin: 0; }
@@ -54,7 +54,7 @@
 .pg-toc .link-btn { padding: 2px 6px; }
 .pg-toc .link-btn:hover { color: var(--fg); }
 .pg-section { scroll-margin-top: 8px; }
-.pg-section h3 { margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
+.pg-section h3 { margin: 14px 0 6px; font-size: 15px; font-weight: 600; }
 .pg-section p { margin: 0 0 8px; color: var(--muted); }
 .pg-section ul { margin: 0 0 8px; padding-left: 18px; color: var(--muted); }
 .pg-section li + li { margin-top: 4px; }
