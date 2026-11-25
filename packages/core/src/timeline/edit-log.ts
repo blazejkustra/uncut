@@ -432,6 +432,9 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
   }
 }
 
+export const HAND_EDITS_KEPT =
+  "They are intentional. Keep them, build on them, and don't undo them unless the user asks. If one looks like a mistake, ask about it once; after that leave it and don't ask again.";
+
 /** The note the agent receives. Empty string when the user changed nothing. */
 export function manualEditsNote(
   session: Session,
@@ -454,7 +457,7 @@ export function manualEditsNote(
   }
   return [
     `The user made ${lines.length} edit${lines.length === 1 ? "" : "s"} by hand since your last turn (now at revision ${session.revision}).`,
-    "They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.",
+    HAND_EDITS_KEPT,
     ...lines,
   ].join("\n");
 }

@@ -187,7 +187,9 @@ export const COMPACT_HOOKS = {
   SessionStart: [
     {
       matcher: "compact",
-      hooks: hookEcho("The conversation was just summarised. Before going on, call plan_read and brand_read, and read the graphic you are working on again."),
+      hooks: hookEcho(
+        "The conversation was just summarised. Before going on, call plan_read and brand_read, follow the messages of the user that plan_read lists word for word, and read the graphic you are working on again.",
+      ),
     },
   ],
 };

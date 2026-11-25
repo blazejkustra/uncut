@@ -2,7 +2,7 @@
 // last saw against the project now, per item, track and media entry, with final values. Anything
 // that was done and then undone, deleted or reverted nets to nothing and isn't listed.
 import { applyEdit, EditError } from "./apply-ops.ts";
-import { describeOp, itemLabel } from "./edit-log.ts";
+import { describeOp, HAND_EDITS_KEPT, itemLabel } from "./edit-log.ts";
 import { itemUsesMedia, usedMediaIds } from "./mediaPlan.ts";
 import type { Id, Item, LogEntry, Media, Op, Project, Session, Track } from "./types.ts";
 
@@ -288,7 +288,7 @@ export function netEditsNote(before: Project, session: Session, since: number, r
   const full = inFull(changes);
   return [
     `The user changed ${things(changes.length)} by hand since your last turn (now at revision ${session.revision}). This is the net result: anything they did and then undid or reverted isn't listed.`,
-    "They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.",
+    HAND_EDITS_KEPT,
     ...listed(changes, full).map((l) => `- ${l}`),
     ...(full ? [] : [NOTE_IN_BRIEF]),
   ].join("\n");
@@ -313,10 +313,7 @@ export function othersEditsNote(before: Project, session: Session, since: number
   if (!userChanges.length && !agentCount) return netZeroNote(session.revision);
   const full = inFull([...userChanges, ...byAgent.flatMap((a) => a.changes)]);
   const user = userChanges.length
-    ? [
-        `The user changed ${things(userChanges.length)} by hand. They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.`,
-        ...listed(userChanges, full).map((l) => `- ${l}`),
-      ]
+    ? [`The user changed ${things(userChanges.length)} by hand. ${HAND_EDITS_KEPT}`, ...listed(userChanges, full).map((l) => `- ${l}`)]
     : [];
   const agents = agentCount
     ? [

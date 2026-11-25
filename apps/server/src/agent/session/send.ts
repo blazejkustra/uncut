@@ -8,7 +8,7 @@ import { locksNote, type Project, reviewNotesTurnBlock, sectionsNote } from "@un
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { calledSkills, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
+import { calledSkills, directionsBlock, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
@@ -325,6 +325,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       // failed before claude read it doesn't count).
       const blocks = committedBlocks(owner, s);
       const lean = leanPlanBlock(planBlock, blocks.committed);
+      const directions = compacting ? "" : directionsBlock(owner.turns);
       let message = compacting
         ? text
         : [
@@ -333,6 +334,7 @@ export const makeSend = (ctx: SpawnCtx) => {
             contextBlock(project, pointed),
             foldersBlock,
             planBlock ? lean.text : "",
+            directions,
             team,
             context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
           ]

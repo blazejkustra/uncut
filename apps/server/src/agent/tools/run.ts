@@ -15,7 +15,7 @@ import {
 import { friendlyText } from "@uncut/core/mentions";
 import { projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
-import { planOnly } from "../agentPlan.ts";
+import { directionsBlock, planOnly } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
 import {
   bigChange,
@@ -340,10 +340,11 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         }
         case "plan_read": {
           // D266: the brief, storyboard and last review with its defect ids, read back (a message
-          // says "Unchanged" for them, and a compacted conversation may have lost them).
+          // says "Unchanged" for them, and a compacted conversation may have lost them), and D341: the user's messages.
           const plan = yield* Effect.promise(() => readPlan(v.dir).catch(() => r.owner.plan));
           r.owner.plan = plan;
-          return textResult(planOnly(plan) || "Nothing is planned: no brief, storyboard or review yet.");
+          const planned = [directionsBlock(r.owner.turns), planOnly(plan)].filter(Boolean).join("\n\n");
+          return textResult(planned || "Nothing is planned: no brief, storyboard or review yet.");
         }
         case "skill_read":
           return yield* skillRead(v, args);
