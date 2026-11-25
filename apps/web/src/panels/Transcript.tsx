@@ -434,8 +434,8 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
             <div className="empty-icon">
               <Captions />
             </div>
-            <div className="empty-title">Nothing to read yet</div>
-            <div className="empty-sub">{scope ? "No speech here." : "No speech on the main track."}</div>
+            <div className="empty-title">No transcript yet</div>
+            <div className="empty-sub">{scope ? "No speech here." : "Speech on the main track shows here as words you can cut."}</div>
           </div>
         ) : (
           <div className="tx-doc">{blocks}</div>
