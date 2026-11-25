@@ -22,7 +22,9 @@ import {
   OUTLINE_ITEMS,
 } from "../../apps/server/src/agent/agentTools.ts";
 import { leanPlanBlock } from "../../apps/server/src/agent/session/send.ts";
-import { capNote, NOTE_LINES } from "../../apps/server/src/agent/turns/notes.ts";
+import { capNote, NOTE_LINES, noteShowsAll } from "../../apps/server/src/agent/turns/notes.ts";
+import type { ProjectView } from "../../apps/server/src/project/projects.ts";
+import { NOTE_IN_BRIEF } from "../../packages/core/src/timeline/net-edits.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 import { frameScale } from "../../apps/server/src/agent/tools/common.ts";
@@ -121,6 +123,13 @@ test("#81: the manual-edits note is capped", () => {
   assert.match(out, /^The user made 35 edits/);
   assert.equal(capNote("- one"), "- one");
   assert.equal(capNote(""), "");
+});
+
+test("D6: a note in brief never shows everything, so the agent reads the project before editing", () => {
+  const view = { stateAt: () => ({}), openRevision: 0, unlogged: [] } as unknown as ProjectView;
+  const head = "The user changed 30 things by hand since your last turn (now at revision 9).";
+  assert.equal(noteShowsAll(view, 0, `${head}\n- Muted track a1`), true);
+  assert.equal(noteShowsAll(view, 0, `${head}\n- Added 30 items on track v3: clip-1, clip-2\n${NOTE_IN_BRIEF}`), false);
 });
 
 test("#81: an added item's indented field lines go with it, kept or dropped", () => {

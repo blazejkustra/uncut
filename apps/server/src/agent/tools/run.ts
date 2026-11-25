@@ -531,7 +531,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             const userChanges = now ? noteFor(now, baseRevision, readerOf(r.owner)) : "";
             // The refusal gives the revision now and what the user changed since the agent's base: it
             // may edit from there when that shows every change (D6: else it reads again).
-            if (now && noteShowsAll(now, baseRevision)) r.owner.seen.add(now.session.revision);
+            if (now && noteShowsAll(now, baseRevision, userChanges)) r.owner.seen.add(now.session.revision);
             // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
             const details =
               "details" in outcome.error && Array.isArray(outcome.error.details)
@@ -602,7 +602,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const now = view();
           const userChanges = now ? noteFor(now, baseRevision, readerOf(r.owner)) : "";
           if (!userChanges) r.owner.seen.add(snapshot.revision);
-          else if (now && noteShowsAll(now, baseRevision)) r.owner.seen.add(now.session.revision);
+          else if (now && noteShowsAll(now, baseRevision, userChanges)) r.owner.seen.add(now.session.revision);
           const end = projectSummary(project, snapshot.revision).duration;
           // Ducking (D85) needs its key media's loudness: a mixer change starts the analysis
           // where it's missing (waits up to SILENCES_WAIT_MS, as transcript_edit) and says so.

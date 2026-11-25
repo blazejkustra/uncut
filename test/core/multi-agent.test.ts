@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { applyEdit, createSession, EditConflict } from "../../packages/core/src/timeline/apply-ops.ts";
 import { manualEditsNote } from "../../packages/core/src/timeline/edit-log.ts";
-import { netEditsNote, othersEditsNote } from "../../packages/core/src/timeline/net-edits.ts";
+import { NOTE_IN_BRIEF, netEditsNote, othersEditsNote } from "../../packages/core/src/timeline/net-edits.ts";
 import type { LogEntry, Op, Project, Session } from "../../packages/core/src/timeline/types.ts";
 import { HistoryDb, SCHEMA_VERSION } from "../../apps/server/src/project/history.ts";
 import { storedAgents } from "../../apps/server/src/project/history/agents.ts";
@@ -129,6 +129,24 @@ test("one agent's note names the user's edits and each other agent's, leaving it
   // With only the user among the others, the words are netEditsNote's (one agent, as before).
   const user = applyEdit(start, { actor: "user", ops: [retitle("a", "mine")] });
   assert.equal(othersEditsNote(start.project, user, 0, forB, nameForB), netEditsNote(start.project, user, 0, forB));
+});
+
+test("over the detail budget, the other agents' edits are named by id too, under their agent's name", () => {
+  const start = createSession(project());
+  const titles = Array.from(
+    { length: 30 },
+    (_, i): Op =>
+      ({ op: "insert_item", track: "text", item: { id: `title-${i}`, type: "text", start: 100 + i * 30, duration: 30, text: `Title number ${i}` } }) as Op,
+  );
+  let s = byAgent(start, "ag-a", 0, ...titles);
+  s = applyEdit(s, { actor: "user", ops: [retitle("a", "mine")] });
+  const forB = (e: LogEntry) => e.actor === "user" || (e.agentId !== undefined && e.agentId !== "ag-b");
+  const nameForB = (e: LogEntry) => (e.actor === "agent" && e.agentId === "ag-a" ? "Graphics" : undefined);
+  const note = othersEditsNote(start.project, s, 0, forB, nameForB);
+  assert.match(note, /The user changed 1 thing by hand.*\n- Changed 1 item: a\n/);
+  assert.match(note, /Other agents in this project changed 30 things/);
+  assert.match(note, /\n- by Graphics: Added 30 items on track text: title-0, title-1, .* and 18 more\n/);
+  assert.ok(note.endsWith(NOTE_IN_BRIEF));
 });
 
 test("history.db: an existing db opens with no schema change, its turns belong to the default agent, agent rows get their agent from the turn", () => {

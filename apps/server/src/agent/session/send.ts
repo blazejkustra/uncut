@@ -184,7 +184,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       const note = compacting ? "" : joinNotes(owner.carried, changes);
       // The note names the revision the project is at now ("now at revision N"): the agent may edit
       // from it when it shows every change (noteShowsAll) and no earlier opening's note comes with it.
-      if (changes && !owner.carried && noteShowsAll(v, owner.agentSeen)) owner.seen.add(v.session.revision);
+      if (changes && !owner.carried && noteShowsAll(v, owner.agentSeen, changes)) owner.seen.add(v.session.revision);
       const project = v.session.project as Project;
       // What the prompt's @labels point at (D140), only those still in the prompt.
       const pointed = (mentions ?? [])

@@ -29,6 +29,8 @@ export {
   netChanges,
   netEditsNote,
   netZeroNote,
+  NOTE_DETAIL_CHARS,
+  NOTE_IN_BRIEF,
   othersEditsNote,
   projectChanges,
   type EntryAuthor,
