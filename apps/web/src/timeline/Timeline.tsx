@@ -47,7 +47,7 @@ import { useDuckCurves } from "../audio/ducking.ts";
 import { findItem } from "./edit.ts";
 import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
-import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
+import { displayTracks, layoutOf, trackCodes, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, projectOf, useAppSelect } from "../state/store.ts";
 import { slip, slipSubject } from "./slip/slipView.ts";
 import { elementBlocks } from "@uncut/core/graphicElements";
@@ -63,6 +63,7 @@ import { onTransitionDrop, useDraggedTransition, useTilePointer } from "./dnd.ts
 import { openMenu } from "./ContextMenu.tsx";
 import { emptyMenu, itemMenu, rulerMenu, trackMenu, type MenuUi } from "./menus.ts";
 import { TrackHead } from "./TrackHead.tsx";
+import { LANE_SIZES, laneHeight as baseLaneHeight, laneSize, setLaneSize, useLaneHeights } from "./laneHeights.ts";
 import { useTimelineWheel } from "./wheel.ts";
 import { useAgentFlash } from "./useAgentFlash.ts";
 import { type DragView, type Marquee, HEAD_WIDTH } from "./gestures/dragView.ts";
@@ -194,6 +195,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
   const ticks: Array<number> = [];
   for (let s = 0; s * fps * ppf <= width; s += step) ticks.push(s);
   const tracks = displayTracks(project);
+  const codes = trackCodes(project);
   const laneOrder = tracks.map((t) => t.id);
   const empty = end === 0;
   // While dragging, the lanes draw the planned result; data-start/data-duration stay the server's.
@@ -213,10 +215,9 @@ function TimelineView({ project }: { project: ProjectModel }) {
       if (known?.status !== "ready") return most;
       return Math.max(most, rowsHeight(elementBlocks(item, known.elements).reduce((n, b) => Math.max(n, b.row + 1), 0)));
     }, 0);
-  const laneHeight = (track: Track) => {
-    const extra = elementsHeight(track);
-    return extra ? (track.role === "main" ? 52 : 40) + extra : undefined;
-  };
+  useLaneHeights();
+  const dir = snapshot?.dir;
+  const laneHeight = (track: Track) => baseLaneHeight(dir, track) + elementsHeight(track);
 
   const { laneEls, laneHit, laneAt, laneIndexAt, frameAt } = makeLaneGeometry({ project, lanesRef, laneOrder, ppf });
 
@@ -396,6 +397,21 @@ function TimelineView({ project }: { project: ProjectModel }) {
           </button>
         </Tooltip>
         <div className="toolbar-sep" />
+        <div className="seg lane-sizes" role="radiogroup" aria-label="Track height" data-testid="lane-sizes">
+          {LANE_SIZES.map((s) => (
+            <Tooltip key={s.id} label={s.label}>
+              <button
+                className={laneSize() === s.id ? "active" : ""}
+                role="radio"
+                aria-checked={laneSize() === s.id}
+                data-testid={`lane-size-${s.id}`}
+                onClick={() => setLaneSize(dir, s.id)}
+              >
+                {s.short}
+              </button>
+            </Tooltip>
+          ))}
+        </div>
         <Tooltip label="Zoom out" shortcut="zoomOut">
           <button className="icon-btn" data-testid="zoom-out" onClick={playback.zoomOut}>
             <ZoomOut />
@@ -421,6 +437,8 @@ function TimelineView({ project }: { project: ProjectModel }) {
                 key={track.id}
                 project={project}
                 track={track}
+                code={codes.get(track.id) ?? ""}
+                dir={dir}
                 online={online}
                 renaming={renamingTrack === track.id}
                 height={laneHeight(track)}
@@ -518,7 +536,8 @@ function TimelineView({ project }: { project: ProjectModel }) {
                   className={`tl-lane ${track.role === "main" ? "main" : ""} ${track.hidden ? "hidden" : ""} ${track.locked ? "locked" : ""} ${dropLane === track.id ? "drop-target" : ""}`}
                   data-testid="lane"
                   data-track={track.id}
-                  style={laneHeight(track) ? { height: laneHeight(track) } : undefined}
+                  data-code={codes.get(track.id)}
+                  style={{ height: laneHeight(track), ["--lane-h" as string]: `${baseLaneHeight(dir, track)}px` }}
                   onPointerDown={(e) => onEmptyDown(e)}
                   onContextMenu={(e) => onEmptyMenu(e, track)}
                 >

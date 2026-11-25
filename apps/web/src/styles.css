@@ -245,6 +245,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .seg { display: flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .seg button { padding: 3px 10px; border-radius: 4px; color: var(--muted); }
 .seg button.active { background: var(--raised); color: var(--fg); }
+.seg.lane-sizes button { padding: 2px 7px; font: 11px var(--mono); }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
 /* F12: as tall as the panel at least, so the empty space under the lanes starts a marquee too. */
 .tl { display: grid; grid-template-columns: 184px 1fr; grid-template-rows: 1fr; min-width: 100%; min-height: 100%; width: max-content; position: relative; }
@@ -256,10 +257,13 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .tl-ruler { position: sticky; top: 0; z-index: 8; height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); }
 .tl-ruler .tick { position: absolute; top: 24px; bottom: 0; border-left: 1px solid var(--border-strong); }
 .tl-ruler .tick span { position: absolute; left: 4px; top: -2px; font: 10px var(--mono); color: var(--dim); }
-.tl-head { height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.tl-head { position: relative; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
 .tl-head .name { flex: 1; min-width: 0; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.tl-head .name .badge { display: inline-flex; color: var(--muted); }
-.tl-head .name .badge svg.lucide { width: 13px; height: 13px; }
+.tl-head .name .code { flex: none; min-width: 20px; font: 600 11px var(--mono); color: var(--muted); }
+.tl-head.main .name .code { color: var(--fg); }
+/* The lane's bottom edge in the head: drag to resize (D346). */
+.tl-resize { position: absolute; left: 0; right: 0; bottom: -3px; height: 6px; z-index: 1; cursor: row-resize; }
+.tl-resize:hover { background: rgb(255 255 255 / 12%); }
 .tl-head .icon-btn { width: 22px; height: 22px; }
 .tl-head .icon-btn svg.lucide { width: 13px; height: 13px; }
 .tl-head.main { height: 52px; background: var(--panel-2); }

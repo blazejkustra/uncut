@@ -1,10 +1,8 @@
-.clip.graphic { top: 4px; bottom: auto; height: 32px; }
-.tl-lane.main .clip.graphic { height: 44px; }
+.clip.graphic { top: 4px; bottom: auto; height: calc(var(--lane-h, 40px) - 8px); }
 .el-fold { position: absolute; right: 2px; top: 2px; z-index: 2; display: inline-flex; align-items: center; gap: 1px; height: 16px; padding: 0 4px 0 2px; border: 0; border-radius: 3px; background: rgb(0 0 0 / 30%); color: var(--fg); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .el-fold svg.lucide { width: 11px; height: 11px; }
 .el-note { position: absolute; right: 4px; top: 3px; z-index: 2; font-size: 10px; color: var(--muted); }
-.el-rows { position: absolute; top: 37px; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
-.tl-lane.main .el-rows { top: 49px; }
+.el-rows { position: absolute; top: calc(var(--lane-h, 40px) - 3px); overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
 .el-rows-inner { position: relative; }
 .el-block { position: absolute; height: 18px; box-sizing: border-box; border-radius: 3px; background: #3a2a1a; border: 1px solid #6a4a2c; overflow: hidden; cursor: grab; display: flex; align-items: center; touch-action: none; }
 .el-block.image { background: #1f3340; border-color: #33566b; }

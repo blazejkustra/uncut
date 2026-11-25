@@ -50,6 +50,21 @@ export const displayTracks = (project: ProjectModel) => [
   ...project.tracks.filter((t) => t.kind === "audio"),
 ];
 
+/**
+ * The tracks' short names as Premiere numbers them (D346): the main track is V1, the other picture
+ * and text tracks V2, V3… from the bottom up, the sound tracks A1, A2… from the top down.
+ */
+export function trackCodes(project: ProjectModel): ReadonlyMap<string, string> {
+  const pictures = project.tracks.filter((t) => t.kind !== "audio");
+  const main = pictures.filter((t) => t.role === "main");
+  const upward = [...main, ...pictures.filter((t) => t.role !== "main").reverse()];
+  const sounds = project.tracks.filter((t) => t.kind === "audio");
+  return new Map([...upward.map((t, i) => [t.id, `V${i + 1}`] as const), ...sounds.map((t, i) => [t.id, `A${i + 1}`] as const)]);
+}
+
+/** Names Uncut gives tracks itself ("Main", "Video 2", "Audio"): the code says as much. */
+export const isDefaultTrackName = (name: string) => /^(Main|Video|Audio)( \d+)?$/.test(name);
+
 /** An id no media, track, item, scene or sequence uses yet: "clip-1", "clip-2", … */
 export function uniqueId(project: ProjectModel, base: string, taken = new Set<string>()) {
   const ids = new Set([

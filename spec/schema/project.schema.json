@@ -241,7 +241,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "kind": { "enum": ["video", "text", "audio"] },
-        "role": { "const": "main", "description": "The magnetic track. Its items have no start; they play back to back." },
+        "role": { "const": "main", "description": "The main track (V1 in the app). Its items have no start: each follows the one before it, after its gap (D224). Transitions go between its clips." },
         "name": { "type": "string" },
         "locked": { "type": "boolean" },
         "hidden": { "type": "boolean" },

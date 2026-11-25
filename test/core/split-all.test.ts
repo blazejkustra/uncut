@@ -1,10 +1,11 @@
 // Timeline v2 phase 1 (D346): split all tracks at the playhead (⇧⌘K, and S with nothing
-// selected) on a project with clips on V1, V2 and A1.
+// selected) on a project with clips on V1, V2 and A1, and the tracks' V1/A1 codes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyEdit, createSession, validateProject, loadModules, type Project } from "../../packages/core/src/index.ts";
 import { withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
 import { planSplit, planSplitAll, planTrackFlag } from "../../apps/web/src/timeline/edit.ts";
+import { isDefaultTrackName, trackCodes } from "../../apps/web/src/state/project.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const project: Project = {
@@ -111,4 +112,10 @@ test("split all: a cut too close to a V1 transition refuses the whole split", ()
   assert.deepEqual(validateProject(withTransition, modules), []);
   assert.match((planSplitAll(withTransition, 85) as { problem: string }).problem, /transition/);
   assert.equal(ok(planSplitAll(withTransition, 45)).ops.length, 4);
+});
+
+test("track codes: the main track is V1, picture tracks above it V2, V3 from the bottom up, sound A1, A2 from the top", () => {
+  const codes = trackCodes(project);
+  assert.deepEqual(Object.fromEntries(codes), { main: "V1", "screen-track": "V2", text: "V3", voice: "A1", bed: "A2" });
+  assert.deepEqual(["Main", "Video", "Video 2", "Audio 3", "Text", "Music", "Camera"].map(isDefaultTrackName), [true, true, true, true, false, false, false]);
 });
