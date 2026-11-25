@@ -195,6 +195,7 @@ export const freshTurnState = () => ({
   looked: { sheet: false, phone: false },
   limits: turnLimits(),
   reviewRounds: 0,
+  rangeRounds: new Map<string, number>(),
   planned: false,
   rendered: [],
   graphicWrites: 0,
@@ -266,6 +267,8 @@ export interface Running {
   readonly limits: TurnLimits;
   // D189: review rounds in this turn.
   reviewRounds: number;
+  // Review rounds in this turn by the part of the timeline they reviewed (timelineRange.ts rangeKey).
+  readonly rangeRounds: Map<string, number>;
   // Round 2's A2: the turn was reminded once to run the critic before it ends (agentPlan reviewNudge).
   nudged?: boolean;
   // D196: frames of the edit the agent rendered in this turn, by revision (render_frames, contact_sheet): a fix claim needs its moment rendered at the current revision.

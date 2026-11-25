@@ -467,6 +467,9 @@
           "folder": { "type": "string", "description": "Desktop, Movies... or a path" },
           "name": { "type": "string" },
           "range": { "enum": ["all", "marks", "selection"], "description": "all (default), marks, selected clips" },
+          "marker": { "type": "string", "description": "a video's marker label (to the next marker), or frames from, to" },
+          "from": { "type": "integer" },
+          "to": { "type": "integer" },
           "loudness": { "enum": ["normal", "quiet", "broadcast", "target", "off"] },
           "motionBlur": { "type": "boolean" },
           "fps": { "type": "number" },
@@ -1271,11 +1274,14 @@
     },
     {
       "name": "review_submit",
-      "description": "Ask Uncut's critic for a review round of the built video: a separate Claude that sees only frames Uncut renders now, the brief, the brand kit, the storyboard and a rubric for the brief's type and the active skills; it scores what applies and lists blockers (any one fails the round); docs_read production has the rest. Uncut renders the contact sheet, phone-size frames and each claimed fix's moment itself. From round 2, claim each fix by the last review's id (look at the moment with render_frames first); the critic checks it on fresh frames, and a finding back unchanged after a claimed fix is unresolved: ask the user about it. You don't score it yourself.",
+      "description": "Ask Uncut's critic for a review round of the built video: a separate Claude that sees only frames Uncut renders now (a contact sheet, phone-size frames, each claimed fix's moment), the brief, the kit, the storyboard and a rubric; it scores what applies and lists blockers (any one fails the round); docs_read production has the rest. From round 2, claim each fix by the last review's id after render_frames of its moment; a finding back unchanged after a claimed fix is unresolved: ask the user. You don't score it.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "marker": { "type": "string", "description": "a video's marker label (to the next marker), or frames from, to" },
+          "from": { "type": "integer" },
+          "to": { "type": "integer" },
           "fixes": {
             "type": "array",
             "maxItems": 10,
@@ -1303,16 +1309,16 @@
           },
           "scores": {
             "type": "object",
-            "description": "Ignored: Uncut's critic scores the video, not you."
+            "description": "Ignored: the critic scores, not you."
           },
           "defects": {
             "type": "array",
-            "description": "Ignored: the critic lists the defects."
+            "description": "Ignored: the critic lists them."
           },
           "notes": {
             "type": "string",
             "maxLength": 2000,
-            "description": "Ignored by the critic (it never sees your reasoning)."
+            "description": "Ignored: the critic never sees it."
           }
         }
       },

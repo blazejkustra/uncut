@@ -186,7 +186,10 @@ test("the tools, labels, Look only set and the prompt's production process", () 
     /You don't score your own work/,
     /back unchanged after you claimed its fix is unresolved: don't try it again, ask the user/,
     /The user's own numbers \(a text size, a timing\) win/,
-    /At most 3 rounds in a turn, 1 on a turn whose message points at a moment[\s\S]*At the limit the film has not passed/,
+    /At most 3 rounds in a turn for each video \(15 in all\), 1 on a turn whose message points at a moment[\s\S]*At the limit the film has not passed/,
+    /Several videos in one project[^\n]*flat on Main one after another, each starting at a marker named after it/,
+    /Never nest a video in a sequence unless the user asks for one/,
+    /review_submit \{"marker":"Promo 1"\} reviews that video alone[^\n]*export_video \{"marker":"Promo 1"\} exports it alone/,
     /reference_frames/,
     /spring/,
   ])
@@ -709,6 +712,81 @@ test("an @time fix turn: one round, the cap says what is open and passes nothing
     assert.equal(saved.usage.costUsd, 0.25);
     assert.equal(saved.usage.cacheWriteTokens, 40000);
     assert.equal(saved.usage.outputTokens, 700);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("several videos: each marker's section is reviewed alone, with its own rounds, on the timeline's clock", { skip, timeout: 180000 }, async () => {
+  const s = await setup("sections");
+  try {
+    const nines = Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, { score: 9, evidence: "f 0, f 30: fine" }]));
+    const blocked = (what: string) => ({
+      scores: nines,
+      blockers: [{ kind: "placeholder", what, at: 0.5, fix: "Put the recording in" }],
+      summary: "One blocker.",
+    });
+    s.critic([blocked("Promo A's phone is empty"), blocked("Promo B's phone is empty")]);
+    const promo = (id: string, start: number, text: string) => ({ op: "insert_item", track: "text", item: { ...TITLE, id, start, duration: 60, text } });
+    await s.ask("Make two promos", [
+      { tool: "project_read" },
+      {
+        tool: "timeline_edit",
+        args: {
+          baseRevision: "$rev",
+          summary: "Two promos",
+          ops: [
+            promo("title-1", 0, "Promo A"),
+            promo("title-2", 60, "Promo B"),
+            {
+              op: "update_project",
+              set: {
+                markers: [
+                  { frame: 0, label: "Promo A" },
+                  { frame: 60, label: "Promo B" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    s.results();
+    const t = await s.ask("@0:00.5 the phones are empty, fix both", [
+      { tool: "contact_sheet", args: { max: 4 } },
+      { tool: "render_frames", args: { frames: [0, 15], phone: true } },
+      { tool: "review_submit", args: { marker: "Promo A" } },
+      { tool: "review_submit", args: { marker: "Promo A" } },
+      { tool: "contact_sheet", args: { max: 4 } },
+      { tool: "render_frames", args: { frames: [60, 75], phone: true } },
+      { tool: "review_submit", args: { marker: "promo b" } },
+      { tool: "review_submit", args: { marker: "Promo C" } },
+    ]);
+    assert.equal(t.status, "done");
+    const r = s.results();
+    const a = jsonOf(r[2]!.result);
+    assert.deepEqual(a.range.from, 0);
+    assert.deepEqual(
+      a.blockers.map((b: any) => b.at),
+      [0.5],
+    );
+    assert.match(textOf(r[3]!.result), /No more review rounds in this turn \(round 1 of at most 1[^]*Promo A's phone is empty/);
+    const b = jsonOf(r[6]!.result);
+    assert.deepEqual({ from: b.range.from, to: b.range.to, marker: b.range.marker }, { from: 60, to: 120, marker: "Promo B" });
+    assert.deepEqual(
+      b.blockers.map((x: any) => x.at),
+      [2.5],
+      "the critic's 0.5 s into Promo B is 2.5 s on the timeline",
+    );
+    assert.match(b.next, /f 75[^]*render_frames 69 to 81/);
+    assert.match(textOf(r[7]!.result), /No marker is named "Promo C" \(the markers: "Promo A", "Promo B"\)/);
+    const runs = s.criticRuns();
+    assert.equal(runs.length, 2, "one critic run per video");
+    for (const run of runs) assert.match(run.text, /, 2\.0 s \(60 frames\)\./, "the critic sees one 2 s video, not the 4 s timeline");
+    const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-2.json"), "utf8"));
+    assert.deepEqual(saved.range, { from: 60, to: 120, marker: "Promo B" });
+    assert.equal(saved.blockers[0].at, 2.5);
+    assert.equal(saved.blockers[0].frame, 75);
   } finally {
     await s.stop();
   }

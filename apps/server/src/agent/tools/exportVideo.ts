@@ -18,6 +18,7 @@ import { expandHome } from "../../paths.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import { inside, namedFolders } from "../permissions/paths.ts";
 import type { Running } from "../session/types.ts";
+import { rangeArgs, rangeKey, type TimelineRange } from "../timelineRange.ts";
 import type { LibraryCtx } from "./library.ts";
 
 /** Folder words a user says ("export to Desktop"), each a folder in their home. */
@@ -45,9 +46,10 @@ const real = (p: string) => {
   }
 };
 
-/** Exports one turn may start: a loop can't fill the disk. */
+/** Exports one turn may start of one part of the timeline, and of all of them: a loop can't fill the disk. */
 export const EXPORTS_PER_TURN = 3;
-const startedIn = new WeakMap<Running, number>();
+export const EXPORTS_PER_TURN_TOTAL = 10;
+const startedIn = new WeakMap<Running, Map<string, number>>();
 
 /** Whether anything is at `p`, a dangling symlink included (existsSync follows links). */
 const lexists = (p: string) => {
@@ -160,6 +162,33 @@ export function freeOutput(dir: string, file: string, taken: (p: string) => bool
   return join(dir, `${stem} ${Date.now()}${extension}`);
 }
 
+/**
+ * The part of the timeline export_video renders (the dialog's range): the In/Out marks or the
+ * selection as they were when the message was sent, a marker's section or frames from and to; none
+ * is the whole timeline.
+ */
+export function exportRange(
+  project: Pick<Project, "tracks" | "markers">,
+  args: Record<string, unknown>,
+  ranges: Running["ranges"],
+): { readonly range?: TimelineRange } | { readonly problem: string } {
+  const kind = args.range ?? "all";
+  if (kind !== "all" && kind !== "marks" && kind !== "selection") return { problem: 'range must be "all", "marks" or "selection".' };
+  const named = rangeArgs(project, args);
+  if ("problem" in named || kind === "all") return named;
+  if (named.range) return { problem: `Pass range "${kind}" or a marker or frames, not both.` };
+  const span = kind === "marks" ? ranges?.marks : ranges?.selection;
+  if (!span)
+    return {
+      problem:
+        kind === "marks"
+          ? "No In/Out marks were set when the user sent this message. Export the whole timeline, or ask them to set In and Out (I, O) first."
+          : "Nothing was selected on the timeline when the user sent this message. Export the whole timeline, or ask them to select the clips first.",
+    };
+  const range = { from: Math.round(span.from), to: Math.round(span.to) };
+  return range.to > range.from ? { range } : { problem: "That range is empty." };
+}
+
 const QUALITIES: ReadonlyArray<ExportQuality> = ["draft", "standard", "high"];
 const LOUDNESS: ReadonlyArray<ExportLoudness> = ["normal", "quiet", "broadcast", "target", "off"];
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;
@@ -184,19 +213,9 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
         if (args[k] !== undefined && typeof args[k] !== "number") return textResult(`${k} must be a number.`, true);
       if (args.name !== undefined && (typeof args.name !== "string" || !args.name.trim())) return textResult("name must be a file name.", true);
       if (args.folder !== undefined && typeof args.folder !== "string") return textResult("folder must be a folder name or path.", true);
-      // The part of the timeline (the dialog's range): the marks and selection as they were when the message was sent.
-      const kind = args.range ?? "all";
-      if (kind !== "all" && kind !== "marks" && kind !== "selection") return textResult('range must be "all", "marks" or "selection".', true);
-      const span = kind === "marks" ? r.ranges?.marks : kind === "selection" ? r.ranges?.selection : undefined;
-      if (kind !== "all" && !span)
-        return textResult(
-          kind === "marks"
-            ? "No In/Out marks were set when the user sent this message. Export the whole timeline, or ask them to set In and Out (I, O) first."
-            : "Nothing was selected on the timeline when the user sent this message. Export the whole timeline, or ask them to select the clips first.",
-          true,
-        );
-      const range = span ? { from: Math.round(span.from), to: Math.round(span.to) } : undefined;
-      if (range && range.to <= range.from) return textResult("That range is empty.", true);
+      const part = exportRange(project, args, r.ranges);
+      if ("problem" in part) return textResult(part.problem, true);
+      const range = part.range && { from: part.range.from, to: part.range.to };
 
       // One export at a time, as in the editor.
       const jobs = yield* exporter.jobList;
@@ -209,8 +228,20 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
           true,
         );
 
-      if ((startedIn.get(r) ?? 0) >= EXPORTS_PER_TURN)
-        return textResult({ refused: `This turn already exported ${EXPORTS_PER_TURN} videos; no more in this turn. Tell the user where they are.` }, true);
+      const exported = startedIn.get(r) ?? new Map<string, number>();
+      const key = rangeKey(part.range);
+      if ((exported.get(key) ?? 0) >= EXPORTS_PER_TURN)
+        return textResult(
+          {
+            refused: `This turn already exported ${EXPORTS_PER_TURN} videos of this part of the timeline; no more of it in this turn. Tell the user where they are.`,
+          },
+          true,
+        );
+      if ([...exported.values()].reduce((a, b) => a + b, 0) >= EXPORTS_PER_TURN_TOTAL)
+        return textResult(
+          { refused: `This turn already exported ${EXPORTS_PER_TURN_TOTAL} videos; no more in this turn. Tell the user where they are.` },
+          true,
+        );
 
       // Where: the folder asked for, else the dialog's (the last export's folder, else ~/Movies).
       const last = [...jobs].reverse().find((j) => j.phase === "done" || ACTIVE.has(j.phase));
@@ -221,7 +252,7 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
         fallback: lastDir ?? defaultParentDir(),
       });
       if ("problem" in where) return textResult({ refused: where.problem }, true);
-      const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : project.name, codecExtension(codec));
+      const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : (part.range?.marker ?? project.name), codecExtension(codec));
       const busyOutputs = new Set(jobs.filter((j) => ACTIVE.has(j.phase)).map((j) => j.output));
       const output = freeOutput(where.dir, file, (p) => lexists(p) || busyOutputs.has(p));
 
@@ -265,7 +296,7 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
         );
       if (!started.ok) return textResult({ failed: started.message }, true);
-      startedIn.set(r, (startedIn.get(r) ?? 0) + 1);
+      startedIn.set(r, exported.set(key, (exported.get(key) ?? 0) + 1));
 
       // Wait for it (the user sees its progress in the editor and can cancel it there).
       const until = Date.now() + exportWaitMs();

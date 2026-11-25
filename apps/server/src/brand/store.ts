@@ -592,6 +592,14 @@ export function normStoryboard(raw: unknown): Storyboard | undefined {
   };
 }
 
+function reviewRange(raw: unknown): Review["range"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  if (!Number.isInteger(o.from) || !Number.isInteger(o.to) || (o.to as number) <= (o.from as number)) return undefined;
+  const marker = str(o.marker, 120).trim();
+  return { from: Math.max(0, o.from as number), to: o.to as number, ...(marker ? { marker } : {}) };
+}
+
 export function normReview(raw: unknown): Review | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const r = raw as Record<string, unknown>;
@@ -623,6 +631,7 @@ export function normReview(raw: unknown): Review | undefined {
   const looked = r.looked && typeof r.looked === "object" ? (r.looked as Record<string, unknown>) : undefined;
   const notes = str(r.notes, 2000);
   const turnId = str(r.turnId, 80);
+  const range = reviewRange(r.range);
   return {
     round: Math.max(1, Math.round(num(r.round, 1))),
     scores,
@@ -710,6 +719,7 @@ export function normReview(raw: unknown): Review | undefined {
     ...(typeof r.revision === "number" ? { revision: r.revision } : {}),
     at: str(r.at, 40) || new Date(0).toISOString(),
     ...(turnId ? { turnId } : {}),
+    ...(range ? { range } : {}),
   };
 }
 
