@@ -32,7 +32,7 @@
 .agent-stage-foot svg.lucide { width: 13px; height: 13px; }
 .agent-stage-foot kbd { font-size: 10px; padding: 0 5px; }
 .agent-stage-drop {
-  position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: 12px; background: rgb(17 17 17 / 88%);
+  position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; pointer-events: none; z-index: 5;
 }
 .agent-stage-drop svg.lucide { width: 22px; height: 22px; color: var(--select); }

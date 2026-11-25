@@ -10,7 +10,7 @@
 
 .fxp-switch { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 3px; border-radius: 11px; background: var(--raised); border: 1px solid var(--border-strong); color: var(--muted); font-size: 11px; flex: none; }
 .fxp-switch-knob { width: 16px; height: 16px; border-radius: 50%; background: var(--dim); transition: background 120ms; }
-.fxp-switch.on { color: var(--fg); border-color: rgb(74 222 128 / 45%); }
+.fxp-switch.on { color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 .fxp-switch.on .fxp-switch-knob { background: var(--ok); }
 .fxp-switch:disabled { opacity: 0.5; }
 
@@ -45,26 +45,26 @@
 .fxp-seg button.on { color: var(--fg); border-color: var(--select); background: var(--select-soft); }
 
 /* Graphs */
-.fxg { display: block; width: 100%; height: auto; border-radius: 6px; background: #0e0e10; border: 1px solid var(--border); user-select: none; }
+.fxg { display: block; width: 100%; height: auto; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); user-select: none; }
 .fxg.bypassed { opacity: 0.4; }
-.fxg-grid { stroke: rgb(255 255 255 / 6%); stroke-width: 1; }
-.fxg-zero { stroke: rgb(255 255 255 / 16%); stroke-width: 1; fill: none; }
+.fxg-grid { stroke: rgb(var(--ink) / 6%); stroke-width: 1; }
+.fxg-zero { stroke: rgb(var(--ink) / 16%); stroke-width: 1; fill: none; }
 .fxg-tick { fill: var(--dim); font-size: 8px; font-family: var(--mono); }
 .fxg-value { fill: var(--fg); font-size: 9px; font-family: var(--mono); }
-.fxg-curve { fill: none; stroke: #6d8cff; stroke-width: 1.8; stroke-linejoin: round; }
+.fxg-curve { fill: none; stroke: var(--select); stroke-width: 1.8; stroke-linejoin: round; }
 .fxg-curve.duck { stroke: #5ec8e5; }
-.fxg-fill { fill: rgb(109 140 255 / 12%); stroke: none; }
-.fxg-threshold { stroke: #fbbf24; stroke-width: 1; stroke-dasharray: 3 2; }
-.fxg-playhead { stroke: #f87171; stroke-width: 1.2; }
-.fxg-meter { fill: rgb(255 255 255 / 6%); }
+.fxg-fill { fill: var(--select-soft); stroke: none; }
+.fxg-threshold { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 3 2; }
+.fxg-playhead { stroke: var(--error); stroke-width: 1.2; }
+.fxg-meter { fill: rgb(var(--ink) / 6%); }
 .fxg-gr { fill: #e8a33d; }
-.fxg-peak { fill: #4ade80; }
-.fxg-noise { fill: rgb(255 255 255 / 18%); }
-.fxg-handle circle { fill: #1c1f2c; stroke: #6d8cff; stroke-width: 1.5; }
-.fxg-handle text { fill: #c9d3ff; font-size: 7px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.fxg-peak { fill: var(--ok); }
+.fxg-noise { fill: rgb(var(--ink) / 18%); }
+.fxg-handle circle { fill: var(--panel); stroke: var(--select); stroke-width: 1.5; }
+.fxg-handle text { fill: var(--fg); font-size: 7px; font-weight: 600; text-anchor: middle; pointer-events: none; }
 .fxg-handle.live { cursor: grab; }
-.fxg-handle.live:hover circle { fill: #6d8cff; }
-.fxg-handle.live:hover text { fill: #fff; }
+.fxg-handle.live:hover circle { fill: var(--select); }
+.fxg-handle.live:hover text { fill: var(--fg); }
 
 /* A track's strip: its effects, duck and pan beside the fader, so the list has the panel's full height. */
 .strip-main { flex: 1; min-height: 0; display: flex; gap: 8px; }

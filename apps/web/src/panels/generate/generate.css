@@ -40,7 +40,7 @@
 
 /* The prompt, in a box like the composer's. */
 .gen-box { border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; transition: border-color 120ms; }
-.gen-box:focus-within { border-color: rgb(255 255 255 / 22%); }
+.gen-box:focus-within { border-color: rgb(var(--ink) / 22%); }
 .gen-panel .gen-box .gen-prompt { border: 0; border-radius: var(--radius); background: transparent; resize: vertical; min-height: 84px; padding: 9px 11px; font: 13px/1.45 var(--font); color: var(--fg); outline: 0; }
 .gen-panel .gen-box .gen-prompt::placeholder { color: var(--dim); }
 
@@ -61,12 +61,12 @@
 
 /* Generate: the one big button, and what it costs under it. */
 .gen-panel .gen-go { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.gen-run { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: var(--radius); font-size: 14px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #6d8cff 0%, #8b6dff 55%, #b46dff 100%); box-shadow: 0 1px 0 rgb(255 255 255 / 18%) inset, 0 6px 18px -6px rgb(124 110 255 / 60%); transition: filter 120ms, transform 80ms, box-shadow 120ms; }
-.gen-run:not(:disabled):hover { filter: brightness(1.1); box-shadow: 0 1px 0 rgb(255 255 255 / 22%) inset, 0 8px 24px -6px rgb(124 110 255 / 75%); }
+.gen-run { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: var(--radius); font-size: 14px; font-weight: 600; color: var(--on-fg); background: var(--fg); transition: filter 120ms, transform 80ms, box-shadow 120ms; }
+.gen-run:not(:disabled):hover { background: var(--fg-hover); }
 .gen-run:not(:disabled):active { transform: translateY(1px); }
 .gen-run:disabled { background: var(--raised); color: var(--dim); box-shadow: inset 0 0 0 1px var(--border-strong); cursor: not-allowed; }
 .gen-run svg.lucide { width: 15px; height: 15px; }
-.gen-run kbd { position: absolute; right: 10px; font-size: 11px; padding: 1px 5px; background: rgb(0 0 0 / 22%); border-color: rgb(255 255 255 / 20%); color: inherit; opacity: 0.85; }
+.gen-run kbd { position: absolute; right: 10px; font-size: 11px; padding: 1px 5px; background: transparent; border-color: color-mix(in srgb, var(--on-fg) 25%, transparent); color: inherit; opacity: 0.85; }
 .gen-run:disabled kbd { background: transparent; border-color: var(--border); }
 .gen-panel .gen-cost { text-align: center; color: var(--muted); font-size: 11px; }
 
@@ -77,8 +77,8 @@
 
 /* Media › Generated (D240, #74): ordinary media tiles with a small Generated badge. */
 .gen-section-label { display: flex; align-items: center; gap: 5px; }
-.gen-section-label svg.lucide { width: 12px; height: 12px; color: #9b8cff; }
-.tile-gen-badge { position: absolute; left: 4px; bottom: 4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: #fff; background: linear-gradient(135deg, #6d8cff, #b46dff); pointer-events: auto; }
+.gen-section-label svg.lucide { width: 12px; height: 12px; color: var(--muted); }
+.tile-gen-badge { position: absolute; left: 4px; bottom: 4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: var(--on-select); background: var(--select); pointer-events: auto; }
 .tile-gen-badge svg.lucide { width: 10px; height: 10px; flex: none; }
 .media-list .tile .tile-gen-badge { left: 3px; bottom: 3px; width: 14px; height: 14px; }
 .media-list .tile .tile-gen-badge svg.lucide { width: 9px; height: 9px; }

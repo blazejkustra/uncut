@@ -26,8 +26,11 @@ import {
   FIXTURE_SNAPSHOT,
   FIXTURE_SNAPSHOT_FX,
 } from "./fixture.ts";
+import "../theme.css";
 import "../styles.css";
 import "../ui/states.css";
+
+document.documentElement.dataset.theme = "dark";
 
 // Waveforms come from the server's peaks: a fixed, beat-like envelope here (120 BPM, a kick every
 // 0.5 s), so audio clips draw as they do in the app. Every other request has nothing to answer.
