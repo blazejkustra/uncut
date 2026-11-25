@@ -200,6 +200,8 @@ test(
     await waitFor(item("a"));
     cdp = await page.createCDPSession();
     await page.click("[data-testid=bottom-timeline]");
+    // Small tracks, so the four audio lanes the test makes fit in the panel.
+    await page.click("[data-testid=lane-size-small]");
 
     // ---- T2: ⌘ + wheel zooms around the pointer, a pinch too; ⇧ + wheel scrolls sideways ----
     const z0 = await zoom();
