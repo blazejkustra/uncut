@@ -66,7 +66,8 @@ export type FixedId =
   | "exitFull"
   | "zoomPointer"
   | "scrollSideways"
-  | "clickSelect";
+  | "clickSelect"
+  | "rulerRange";
 export type ShortcutId = ActionId | FixedId;
 
 export interface ActionDef {
@@ -125,6 +126,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   { id: "zoomPointer", group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer", fixed: "pointer" },
   { id: "scrollSideways", group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways", fixed: "pointer" },
   { id: "clickSelect", group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item", fixed: "pointer" },
+  { id: "rulerRange", group: "Timeline", keys: ["⇧ drag on the ruler"], does: "Mark In to Out over the frames you drag across", fixed: "pointer" },
   // D256 (#76): the View menu's layout keys, handled with the menu's others (store/keys.ts).
   { id: "toggleLeft", group: "View", keys: ["⇧⌘L"], does: "Hide or show the left panel", fixed: "menu" },
   { id: "toggleRight", group: "View", keys: ["⇧⌘I"], does: "Hide or show the right panel", fixed: "menu" },
