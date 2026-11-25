@@ -22,10 +22,7 @@ export interface RasterizerCommand {
 /** How to start the rasteriser here, or a sentence saying why it can't be. */
 export function rasterizerCommand(
   env: NodeJS.ProcessEnv = process.env,
-  runtime: { readonly electron?: string | undefined; readonly execPath: string; readonly platform?: NodeJS.Platform } = {
-    electron: process.versions.electron,
-    execPath: process.execPath,
-  },
+  runtime: ElectronRuntime = { electron: process.versions.electron, execPath: process.execPath },
 ): RasterizerCommand | { readonly problem: string } {
   // A headless Linux server (D106): Chromium keeps captured frames in /dev/shm, which Docker caps at
   // 64 MB, and a 1080p export's captures then fail ("UnknownVizError", the GPU process gone). The
@@ -34,19 +31,39 @@ export function rasterizerCommand(
     ...((runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"]),
     ...(env.UNCUT_TEST_NO_GPU === "1" ? ["--uncut-no-gpu"] : []),
   ];
-  if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), ...render] };
+  return electronModeCommand(render, "draw text for the export", env, runtime);
+}
+
+/** How to start the offline voice's runner (apps/desktop/src/speech.ts), the same binary in its --uncut-speech mode. */
+export const speechRunnerCommand = (env: NodeJS.ProcessEnv = process.env, runtime?: ElectronRuntime) =>
+  electronModeCommand(["--uncut-speech"], "run the offline voice", env, runtime);
+
+interface ElectronRuntime {
+  readonly electron?: string | undefined;
+  readonly execPath: string;
+  readonly platform?: NodeJS.Platform;
+}
+
+/** The desktop's Electron binary in one of its modes (`flags`), or a sentence saying why it can't start, to `what`. */
+function electronModeCommand(
+  flags: ReadonlyArray<string>,
+  what: string,
+  env: NodeJS.ProcessEnv,
+  runtime: ElectronRuntime = { electron: process.versions.electron, execPath: process.execPath },
+): RasterizerCommand | { readonly problem: string } {
+  if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), ...flags] };
   const entry = env.UNCUT_RENDER_ENTRY || besideServer("../../desktop/dist/main.cjs");
-  if (!existsSync(entry)) return { problem: `Can't draw text for the export: ${entry} isn't built (pnpm build).` };
+  if (!existsSync(entry)) return { problem: `Can't ${what}: ${entry} isn't built (pnpm build).` };
   // On Electron-as-Node the binary itself can run the entry; on Node, the workspace's Electron.
-  if (runtime.electron) return { bin: runtime.execPath, args: [entry, ...render] };
+  if (runtime.electron) return { bin: runtime.execPath, args: [entry, ...flags] };
   let bin: unknown;
   try {
     bin = createRequire(import.meta.url)("electron");
   } catch {
-    return { problem: "Can't find Electron to draw text for the export (development setup)." };
+    return { problem: `Can't find Electron to ${what} (development setup).` };
   }
-  if (typeof bin !== "string") return { problem: "Can't find Electron to draw text for the export (development setup)." };
-  return { bin, args: [entry, ...render] };
+  if (typeof bin !== "string") return { problem: `Can't find Electron to ${what} (development setup).` };
+  return { bin, args: [entry, ...flags] };
 }
 
 /**

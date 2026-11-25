@@ -145,8 +145,13 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       // A plugin's generators (#107, #108).
       if (args.generator === "generate.elevenlabs.voiceover") return "Generated a voiceover with ElevenLabs";
       if (args.generator === "generate.elevenlabs.music") return "Generated music with ElevenLabs";
+      if (args.generator === "generate.reverb.voiceover") return "Generated a voiceover on this Mac";
       return `Generated ${what}${by}`;
     }
+    case "voice_list":
+      return "Listed the voices";
+    case "voice_clone":
+      return typeof args.name === "string" && args.name.trim() ? `Cloned the voice ${args.name.trim().slice(0, 60)}` : "Cloned a voice";
     case "screen_record":
       return typeof args.source === "string" ? `Asked to record ${args.source.slice(0, 60)}` : "Asked to record the screen";
     case "argent_boot":

@@ -1,4 +1,4 @@
-import { type GeneratorChoice, type KeyProvider } from "@uncut/contracts";
+import { type GeneratorChoice, type KeyProvider, type VoiceCloneRequest } from "@uncut/contracts";
 import { bridge } from "../../bridge.ts";
 import { set } from "../core.ts";
 import { call, plainError } from "../server.ts";
@@ -35,6 +35,19 @@ export const generateActions = {
   async generatorChoices(generator: string, option: string): Promise<{ readonly choices: ReadonlyArray<GeneratorChoice> } | { readonly error: string }> {
     const result = await call((c) => c["generate.choices"]({ generator, option }));
     return result.ok ? { choices: result.value } : { error: plainError(result.error) };
+  },
+  /** Clones a voice for the offline voiceover; its progress comes on voices.state. Returns the job's id when it started. */
+  async cloneVoice(request: VoiceCloneRequest) {
+    set({ voiceError: undefined });
+    const result = await call((c) => c["voices.clone"](request));
+    if (!result.ok) return void set({ voiceError: plainError(result.error) });
+    return result.value.jobId;
+  },
+  cancelClone: () => call((c) => c["voices.cancel"]({})),
+  async removeVoice(id: string) {
+    set({ voiceError: undefined });
+    const result = await call((c) => c["voices.remove"]({ id }));
+    if (!result.ok) set({ voiceError: plainError(result.error) });
   },
   /** "Edit prompt" on a generated result: the Generate tab with its generator, prompt and settings. */
   editPrompt(draft: GenerateDraft) {

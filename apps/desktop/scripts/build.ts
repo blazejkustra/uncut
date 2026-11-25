@@ -35,6 +35,19 @@ await build({
   logLevel: "warning",
 });
 
+// The offline voice's runner (plugins/reverb-tts) for the --uncut-speech window: Reverb on WebGPU
+// through ruNNtime, bundled on its own as window.UncutSpeech.
+await build({
+  entryPoints: [dir("src/speechRunner.ts")],
+  outfile: dir("dist/speech-runner.js"),
+  bundle: true,
+  platform: "browser",
+  format: "iife",
+  globalName: "UncutSpeech",
+  target: "chrome140",
+  logLevel: "warning",
+});
+
 const renderer = dir("../web/dist");
 if (existsSync(renderer)) await cp(renderer, dir("dist/renderer"), { recursive: true });
 else console.warn("apps/web/dist not built yet; only the dev server URL will work");

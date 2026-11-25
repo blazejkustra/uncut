@@ -93,6 +93,7 @@ async function bundledInputs(): Promise<Array<string>> {
       loader: { ".woff2": "dataurl" },
     }),
     build({ ...common, entryPoints: [at("apps/web/src/preview/shaderRunner.ts")], platform: "browser", format: "iife" }),
+    build({ ...common, entryPoints: [at("apps/desktop/src/speechRunner.ts")], platform: "browser", format: "iife" }),
     build({
       ...common,
       entryPoints: [at("apps/web/src/main.tsx")],
@@ -365,6 +366,16 @@ export async function render(): Promise<string> {
   s += "Speech models are not in the app or the repository:\n";
   s += "Uncut downloads the one the user picks from huggingface.co/ggerganov/whisper.cpp into its data\n";
   s += "folder and checks its SHA-256. The Whisper model weights are OpenAI's, released under MIT.\n\n";
+  s += "The offline voice's model is not in the app or the repository either: on first use Uncut downloads\n";
+  s += "Reverb-TTS (huggingface.co/software-mansion/Reverb-TTS, weights under CC BY-NC 4.0: non-commercial\n";
+  s += "use only, with attribution) and its audio codec, the Higgs Audio v2 tokenizer\n";
+  s += "(huggingface.co/software-mansion/higgs-audio-v2-tokenizer-Reverb, under the Boson Higgs Audio 2\n";
+  s += "Community License), into its data folder, and checks their SHA-256. Built with Higgs Materials\n";
+  s += "licensed from Boson AI USA, Inc., Copyright Boson AI USA, Inc., All Rights Reserved, and Meta\n";
+  s += "Llama 3 licensed under the Meta Llama 3 Community License, Copyright Meta Platforms, Inc., All\n";
+  s += "Rights Reserved. Meta Llama 3 is licensed under the Meta Llama 3 Community License, Copyright (c)\n";
+  s += "Meta Platforms, Inc. All Rights Reserved. Boson Higgs Audio 2 is licensed under the Boson\n";
+  s += "Community License, Copyright (c) Boson AI USA, Inc. All Rights Reserved.\n\n";
   s += "Argent (the capture plugin's recorder): not bundled. The user installs it with npx\n";
   s += "@swmansion/argent; Uncut talks to it as a separate program.\n\n";
   s += "Claude Code (the agent): not bundled. Uncut runs the user's own claude command, with\n";
@@ -372,7 +383,7 @@ export async function render(): Promise<string> {
 
   s += section("npm packages shipped in the app");
   s += "Every package bundled into the app's code (the server, the desktop shell, the editor and the\n";
-  s += "shader runner, found from the bundles themselves) and the plugin SDK's runtime dependencies.\n";
+  s += "shader and voice runners, found from the bundles themselves) and the plugin SDK's runtime dependencies.\n";
   s += "Their licence texts follow below.\n\n";
   for (const p of npm) s += `${p.name}@${p.version}: ${p.license}${p.repository ? `\n  ${p.repository}` : ""}\n`;
 

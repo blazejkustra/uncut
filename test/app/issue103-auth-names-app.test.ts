@@ -160,8 +160,8 @@ test(
     await page.waitForSelector("[data-testid=generator][data-id='generate.sound']");
     assert.deepEqual(
       (await models()).map((r) => r.id),
-      ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"],
-      "Sound has its generic ElevenLabs models (#107, #108: the plugin's)",
+      ["generate.reverb.voiceover", "generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"],
+      "Sound has the offline voiceover first, then its generic ElevenLabs models (#107, #108: the plugin's)",
     );
     assert.doesNotMatch(await panel(), BRANDS);
 

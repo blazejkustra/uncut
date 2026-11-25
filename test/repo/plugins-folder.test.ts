@@ -26,6 +26,7 @@ test("the repo has bundled plugins and a catalog with the example", () => {
   assert.deepEqual(bundled.map((d) => d.split("/").at(-1)).sort(), [
     "apple-vision",
     "argent-capture",
+    "reverb-tts",
     "uncut-elevenlabs",
     "uncut-skills",
     "whisper-transcribe",

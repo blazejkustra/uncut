@@ -597,6 +597,67 @@
       "returns": "id, kind, name, path, frames, seconds, width, height, hasAudio, revision, model, estimatedCost (US dollars), turnSpend; or needsKey / approved: false with what to tell the user"
     },
     {
+      "name": "voice_list",
+      "description": "The voices of generate.reverb.voiceover, the free offline voiceover (on this Mac, 7 languages): Reverb's presets and the user's cloned voices.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "returns": "{ voices: [{ id, name, language, preset? }], generator }"
+    },
+    {
+      "name": "voice_clone",
+      "description": "Clone the voice in a project clip from 3 to 15 s of clean speech, for generate.reverb.voiceover. The user confirms on a card that they have the right to use it. Whisper writes what the clip says unless you pass transcript.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "media",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "type": "string",
+            "description": "An audio or video media id."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Where the speech starts in the media, in seconds (default 0)."
+          },
+          "seconds": {
+            "type": "number",
+            "minimum": 3,
+            "maximum": 15,
+            "description": "Default 10."
+          },
+          "language": {
+            "enum": [
+              "en",
+              "de",
+              "fr",
+              "es",
+              "it",
+              "pl",
+              "pt"
+            ]
+          },
+          "transcript": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "What those seconds say, word for word."
+          }
+        }
+      },
+      "returns": "{ voice: { id, name, language, transcript } }"
+    },
+    {
       "name": "modules_list",
       "description": "Installed modules (transitions, text styles, components, effects, audio processors…). Without arguments: every module's id and purpose by kind, and the plugins. kind: that kind's modules whole, with their params schema (components also their placement: default size, devices' screens; text styles their look; transitions their frame limits); showsInPreview says whether the preview draws (or plays) a module as the export does. ids: just those modules, whole.",
       "inputSchema": {

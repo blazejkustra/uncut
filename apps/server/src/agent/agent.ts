@@ -59,6 +59,7 @@ import { Plugins } from "../plugins/plugins.ts";
 import { Capture } from "../capture/capture.ts";
 import { uploadedTake } from "../capture/takes.ts";
 import { Generator } from "../generate/generate.ts";
+import { Speech } from "../speech/speech.ts";
 import { Keys } from "../generate/keys.ts";
 import { Library } from "../library/library.ts";
 import { isTestRun } from "../generate/providers.ts";
@@ -220,6 +221,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const plugins = yield* Plugins;
     const generator = yield* Generator;
+    const speech = yield* Speech;
     const keys = yield* Keys;
     const capture = yield* Capture;
     const sounds = yield* Library;
@@ -257,6 +259,7 @@ export const layer = Layer.effect(
       config,
       plugins,
       generator,
+      speech,
       keys,
       capture,
       sounds,

@@ -35,6 +35,7 @@ import { Plugins } from "../plugins/plugins.ts";
 import { copyComponent } from "../plugins/contributions.ts";
 import { Capture } from "../capture/capture.ts";
 import { Generator } from "../generate/generate.ts";
+import { Speech } from "../speech/speech.ts";
 import { Keys } from "../generate/keys.ts";
 import { Library } from "../library/library.ts";
 import { LinkImport } from "../media/linkImport.ts";
@@ -63,6 +64,7 @@ interface Services {
   readonly plugins: typeof Plugins.Service;
   readonly capture: typeof Capture.Service;
   readonly generator: typeof Generator.Service;
+  readonly speech: typeof Speech.Service;
   readonly keys: typeof Keys.Service;
   readonly sounds: typeof Library.Service;
   readonly mediaIndex: typeof MediaIndex.Service;
@@ -93,6 +95,7 @@ const handlersLayer = ({
   plugins,
   capture,
   generator,
+  speech,
   keys,
   sounds,
   mediaIndex,
@@ -353,6 +356,10 @@ const handlersLayer = ({
     [RPC_METHODS.generateJobs]: () => generator.jobs,
     [RPC_METHODS.generateCancel]: ({ jobId }) => generator.cancel(jobId),
     [RPC_METHODS.generateChoices]: ({ generator: id, option }) => generator.choices(id, option),
+    [RPC_METHODS.voicesState]: () => speech.state,
+    [RPC_METHODS.voicesClone]: (input) => speech.clone(input),
+    [RPC_METHODS.voicesCancel]: () => speech.cancel,
+    [RPC_METHODS.voicesRemove]: ({ id }) => speech.remove(id),
     [RPC_METHODS.keysList]: () => keys.list,
     [RPC_METHODS.keysSet]: ({ provider, key }) => keys.set(provider, key),
     [RPC_METHODS.keysRemove]: ({ provider }) => keys.remove(provider),
@@ -380,6 +387,7 @@ export const layer = Layer.unwrap(
     const plugins = yield* Plugins;
     const capture = yield* Capture;
     const generator = yield* Generator;
+    const speech = yield* Speech;
     const keys = yield* Keys;
     const sounds = yield* Library;
     const mediaIndex = yield* MediaIndex;
@@ -401,6 +409,7 @@ export const layer = Layer.unwrap(
       plugins,
       capture,
       generator,
+      speech,
       keys,
       sounds,
       mediaIndex,

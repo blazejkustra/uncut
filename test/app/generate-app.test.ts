@@ -119,7 +119,7 @@ test(
       await page.waitForFunction(
         () =>
           [...document.querySelectorAll<HTMLElement>("[data-testid=generator][data-soon=false]")].map((e) => e.dataset.id).join() ===
-          "generate.sound,generate.elevenlabs.voiceover,generate.elevenlabs.music",
+          "generate.reverb.voiceover,generate.sound,generate.elevenlabs.voiceover,generate.elevenlabs.music",
       );
       await page.click("[data-testid=generate-type-image]");
 

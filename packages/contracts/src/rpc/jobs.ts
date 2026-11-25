@@ -9,6 +9,7 @@ import { VisionError } from "../vision.ts";
 import { PluginInfo, PluginError, PluginContributions, CatalogEntry } from "../plugins.ts";
 import { CaptureState, CaptureError, CaptureOptions, CaptureOrientation, TakeKind, MultiPart, MultiLayout } from "../capture.ts";
 import { GeneratorChoice, GeneratorInfo, GenerateRequest, GenerateError, GenerateJob, KeyInfo, KeyProvider } from "../generate.ts";
+import { VoiceCloneRequest, VoiceError, VoicesState } from "../voices.ts";
 
 // D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
 // like takeUploadName("screen", ...)) with the source's name, or what went wrong.
@@ -304,6 +305,17 @@ export const GenerateChoicesRpc = Rpc.make(RPC_METHODS.generateChoices, {
   success: Schema.Array(GeneratorChoice),
   error: GenerateError,
 });
+// The offline voice's voices (Reverb): the presets and the user's cloned ones, with the clone in
+// progress, now and on every change; a clone (returns at once, progress on voices.state); cancel
+// it; remove a cloned voice.
+export const VoicesStateRpc = Rpc.make(RPC_METHODS.voicesState, { payload: Empty, success: VoicesState, stream: true });
+export const VoicesCloneRpc = Rpc.make(RPC_METHODS.voicesClone, {
+  payload: VoiceCloneRequest,
+  success: Schema.Struct({ jobId: Schema.String }),
+  error: VoiceError,
+});
+export const VoicesCancelRpc = Rpc.make(RPC_METHODS.voicesCancel, { payload: Empty });
+export const VoicesRemoveRpc = Rpc.make(RPC_METHODS.voicesRemove, { payload: Schema.Struct({ id: Schema.String }), error: VoiceError });
 // Settings › Keys (D99): which providers have a key; store or remove one. A key goes in, never out.
 export const KeysListRpc = Rpc.make(RPC_METHODS.keysList, { payload: Empty, success: Schema.Array(KeyInfo) });
 export const KeysSetRpc = Rpc.make(RPC_METHODS.keysSet, {

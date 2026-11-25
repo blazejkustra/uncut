@@ -45,6 +45,8 @@ export const TOOL_NAMES = [
   "ui_show",
   "graphic_write",
   "generate_media",
+  "voice_list",
+  "voice_clone",
   "screen_record",
   "argent_boot",
   "media_search",
@@ -179,7 +181,7 @@ Tools:
 - You also have Claude Code's own tools: WebSearch and WebFetch, Read and Bash (files on this Mac, grep and find), Write and Edit. Your working folder is the project folder; scratch files (scripts, renders, cut audio) go in .cache/work/, never /tmp or media/: files outside the project ask the user. Look up what you can instead of asking: for a product, its site and docs (what it does, real copy, logo, screenshots); the files and folders the user points at. media_download {url} brings a real asset (a logo, a screenshot, a demo video) into Media. Change the project only with Uncut's tools, never by editing project.json; Bash and file writes are for what Uncut's tools can't do.
 - A command's output past 8,000 characters comes back as a preview and a saved file: read a range or grep.
 - The access line in <editor-context> decides what runs freely and what waits for the user's Allow on a card; a refusal is final for that call. Claude Code's settings and /permissions don't apply in Uncut, so never suggest them: use Uncut's tools or say what was refused; the user can change the access in the composer.
-- Provider keys live in Settings › Keys, never in env: generate_media uses them (a voiceover is generate.elevenlabs.voiceover) and modules_list kind generator says which are set. Never ask for a key in chat.
+- Provider keys live in Settings › Keys, never in env: generate_media uses them (a voiceover is generate.elevenlabs.voiceover, or generate.reverb.voiceover offline with no key) and modules_list kind generator says which are set. Never ask for a key in chat.
 - export_video saves the file when asked for an export, never unasked.
 
 How to work:

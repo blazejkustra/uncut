@@ -1,0 +1,57 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "reverb.tts",
+  "kind": "generator",
+  "name": "Reverb (on this Mac)",
+  "icon": "icon.svg",
+  "version": "0.1.0",
+  "description": "Voiceovers made offline on this Mac's GPU with Reverb, in English, German, French, Spanish, Italian, Polish and Portuguese, in a preset voice or one cloned from a few seconds of speech. No key: Uncut downloads the voice model (386 MB) the first time. Reverb's weights are for non-commercial use only (CC BY-NC 4.0).",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 900 },
+  "requires": { "platforms": ["macos-arm64"] },
+  "capabilities": ["gpu"],
+  "generators": [
+    {
+      "id": "reverb.voiceover",
+      "name": "Voiceover (offline)",
+      "media": "audio",
+      "provider": "local",
+      "model": "reverb-int4",
+      "billing": "Runs on this Mac, no key. Non-commercial use only (CC BY-NC 4.0)",
+      "promptLabel": "Script",
+      "placeholder": "Welcome back. Today we're building a tiny app in five minutes.",
+      "maxPrompt": 4000,
+      "options": [
+        {
+          "id": "voice",
+          "label": "Voice",
+          "type": "choice",
+          "dynamic": true,
+          "default": "en_male_narrator_1",
+          "choices": [{ "value": "en_male_narrator_1", "label": "Narrator, male" }],
+          "description": "A preset voice or one the user cloned, by id or name (voice_list lists them)."
+        },
+        {
+          "id": "language",
+          "label": "Language",
+          "type": "choice",
+          "default": "auto",
+          "choices": [
+            { "value": "auto", "label": "The voice's own" },
+            { "value": "en", "label": "English" },
+            { "value": "de", "label": "German" },
+            { "value": "fr", "label": "French" },
+            { "value": "es", "label": "Spanish" },
+            { "value": "it", "label": "Italian" },
+            { "value": "pl", "label": "Polish" },
+            { "value": "pt", "label": "Portuguese" }
+          ],
+          "description": "The script's language; any voice can speak any of the seven."
+        }
+      ],
+      "price": { "unit": "character", "usd": 0 }
+    }
+  ]
+}
