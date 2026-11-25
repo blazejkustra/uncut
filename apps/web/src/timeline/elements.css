@@ -27,3 +27,6 @@
 .el-row-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .el-row-time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .insp-actions { display: flex; gap: 8px; margin-top: 8px; }
+.seg.lane-sizes button { padding: 2px 7px; font: 11px var(--mono); }
+.tl-resize { position: absolute; left: 0; right: 0; bottom: -3px; height: 6px; z-index: 1; cursor: row-resize; }
+.tl-resize:hover { background: rgb(255 255 255 / 12%); }
