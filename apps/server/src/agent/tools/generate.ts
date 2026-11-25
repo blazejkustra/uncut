@@ -1,4 +1,4 @@
-// The agent's tools that make and find media: generate_media, screen_record, argent_boot, media_search, media_describe, and the turn-end clean-up.
+// The agent's tools that make and find media: generate_media, voice_list, voice_clone, screen_record, argent_boot, media_search, media_describe, and the turn-end clean-up.
 import type { FootageHit, ProjectSnapshot } from "@uncut/contracts";
 import { type Project, describeOp, type Op } from "@uncut/core";
 import * as Effect from "effect/Effect";
@@ -9,12 +9,14 @@ import { MAX_FOOTAGE_HITS } from "../../footage/footageIndex.ts";
 import { MAX_FOUND } from "../../media/mediaIndex.ts";
 import { CONFIRM_OVER, needsKeyLine, TURN_CAP } from "../../generate/generate.ts";
 import { providerName } from "../../generate/keys.ts";
+import { CONSENT_LINE } from "../../speech/speech.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import { type Running, pushEdit } from "../session/types.ts";
 import { otherProjectsClosed } from "./access.ts";
 import type { AskCtx } from "./ask.ts";
 
 const MAX_NOTE_CHARS = 500;
+const OFFLINE_VOICEOVER = "generate.reverb.voiceover";
 
 /** A search hit for the agent: in the open project with its media id and project frames, else with the path to import. */
 const momentOut = (hit: FootageHit, fps: number) => ({
@@ -46,7 +48,7 @@ const validNotes = (notes: unknown): notes is ReadonlyArray<{ start: number; end
   );
 
 export const makeGenerateTools = (ctx: AskCtx) => {
-  const { generator, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, footage, view, projects, seeOwn } = ctx;
+  const { generator, speech, textResult, keys, askUser, persist, publish, entryInfo, screenWaits, capture, mediaIndex, footage, view, projects, seeOwn } = ctx;
 
   /** Which provider keys are set, as booleans: all the agent ever learns about them (D311). */
   const keysSet = Effect.map(keys.list, (list) => Object.fromEntries(list.map((k) => [k.provider, k.set])));
@@ -143,6 +145,62 @@ export const makeGenerateTools = (ctx: AskCtx) => {
         model,
         ...(cost > 0 ? { estimatedCost: Number(cost.toFixed(3)), turnSpend: r.turn.spend } : { estimatedCost: 0 }),
         note: `In Media › Generated with its prompt (an edit of this turn: Undo turn removes it). Place it with timeline_edit${entry.kind === "audio" ? " on an audio track" : " (a clip on the main track, or with a start on a video track above it)"}.`,
+      });
+    });
+
+  /** voice_list: the offline voiceover's voices, Reverb's presets and the user's cloned ones. */
+  const voiceList = Effect.map(speech.voices, (voices) =>
+    textResult({
+      generator: OFFLINE_VOICEOVER,
+      voices: voices.map((v) => ({ id: v.id, name: v.name, language: v.language, ...(v.preset ? { preset: true } : { transcript: v.transcript }) })),
+      next: `generate_media ${OFFLINE_VOICEOVER} with the script as prompt and options {voice: id}; it's free and runs on this Mac.`,
+    }),
+  );
+
+  /**
+   * voice_clone: a voice from a few seconds of a clip's speech, for the offline voiceover. The user
+   * confirms on a card that they have the right to use it (the agent can't); Whisper writes what it says.
+   */
+  const voiceClone = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const media = (v.session.project as Project).media.find((m) => m.id === args.media);
+      if (!media) return textResult(`There's no media "${String(args.media)}" in this project.`, true);
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (!name) return textResult("Give the voice a name.", true);
+      const answer = yield* askUser(r, `Clone the voice in ${media.name} as "${name.slice(0, 60)}". ${CONSENT_LINE}.`, 0);
+      if (answer !== "allow")
+        return textResult(
+          {
+            cloned: false,
+            message:
+              answer === "deny"
+                ? "The user didn't confirm they have the right to use this voice. Nothing was cloned."
+                : "Nothing was cloned: nobody confirmed the card.",
+          },
+          true,
+        );
+      const out = yield* speech
+        .cloneNow(
+          {
+            media: media.id,
+            name,
+            consent: true,
+            ...(typeof args.start === "number" ? { start: args.start } : {}),
+            ...(typeof args.seconds === "number" ? { seconds: args.seconds } : {}),
+            ...(typeof args.language === "string" ? { language: args.language } : {}),
+            ...(typeof args.transcript === "string" ? { transcript: args.transcript } : {}),
+          },
+          { signal: r.abort.signal },
+        )
+        .pipe(
+          Effect.map((voice) => ({ ok: true as const, voice })),
+          Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+        );
+      if (!out.ok) return textResult(`Nothing was cloned: ${out.message}`, true);
+      const { id, language, transcript } = out.voice;
+      return textResult({
+        voice: { id, name: out.voice.name, language, transcript },
+        next: `generate_media ${OFFLINE_VOICEOVER} with options {voice: "${id}"}.`,
       });
     });
 
@@ -446,7 +504,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
       }
     });
 
-  return { keysSet, generateMedia, screenRecord, argentBoot, mediaSearch, mediaDescribe, turnCleanup };
+  return { keysSet, generateMedia, voiceList, voiceClone, screenRecord, argentBoot, mediaSearch, mediaDescribe, turnCleanup };
 };
 
 export type GenerateCtx = AskCtx & ReturnType<typeof makeGenerateTools>;

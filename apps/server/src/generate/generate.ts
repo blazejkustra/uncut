@@ -4,10 +4,11 @@
 // media/generated/ folder; Uncut imports it like a capture (D98: the import job, quiet, a relative
 // path) with source {module, prompt, model, kind, size?, seconds?, options?}. A generator plugin's
 // generators (#107, #108: pluginGenerators.ts) run the same way, the plugin making the request
-// through Uncut with the key. From the Generate tab that's one
+// through Uncut with the key; a local one (the offline voice) writes the file Uncut names, on this
+// Mac, with no key. From the Generate tab that's one
 // user edit (one ⌘Z); from the agent it's an edit of its turn (Undo turn removes it). Undo leaves
 // the file in media/generated, like captures and music copies.
-import { mkdir, readdir, realpath, rm } from "node:fs/promises";
+import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -43,6 +44,7 @@ import {
   type PluginGenerator,
 } from "./pluginGenerators.ts";
 import { ServerConfig } from "../app/config.ts";
+import { REVERB_PLUGIN, Speech } from "../speech/speech.ts";
 import { askClaude, renderMarkup, SVG_GENERATOR, SVG_MAX_SECONDS, SVG_SECONDS, SVG_SIZES, svgPixels } from "./svg.ts";
 
 export const GENERATED_DIR = "media/generated";
@@ -165,6 +167,21 @@ export function displayNameOf(spec: Pick<GenerateSpec, "name" | "prompt">, taken
 
 const cancelled = (signal: AbortSignal) => signal.aborted;
 
+type PluginReply = { readonly isError?: boolean; readonly content: ReadonlyArray<{ readonly type: string }>; readonly structured?: unknown };
+
+/** What a plugin's reply said, in its text parts. */
+const saidOf = (r: PluginReply) =>
+  r.content
+    .flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : []))
+    .join(" ")
+    .trim();
+
+/** The model a plugin's reply names, else the generator's own. */
+function modelOf(r: PluginReply, g: PluginGenerator) {
+  const out = (r.structured ?? {}) as { model?: unknown };
+  return typeof out.model === "string" && /^[\w.:-]{1,80}$/.test(out.model) ? out.model : (g.model ?? g.local);
+}
+
 export const layer = Layer.effect(
   Generator,
   Effect.gen(function* () {
@@ -177,6 +194,7 @@ export const layer = Layer.effect(
     const projects = yield* Projects;
     const media = yield* MediaLibrary;
     const plugins = yield* Plugins;
+    const speech = yield* Speech;
     // A generator plugin's requests (uncut/fetch) are answered here, with the key its call was granted.
     plugins.host.serveRequests(servePluginRequest);
     const reportedSkips = new Set<string>();
@@ -210,10 +228,10 @@ export const layer = Layer.effect(
       id: g.id,
       name: g.name,
       kinds: [g.media],
-      provider: g.provider,
+      ...(g.provider ? { provider: g.provider } : { local: true }),
       ...(g.model ? { model: g.model } : {}),
       ready: has,
-      ...(has ? {} : { needs: needsKeyLine(g.provider) }),
+      ...(has || !g.provider ? {} : { needs: needsKeyLine(g.provider) }),
       sizes: [],
       ...(g.seconds ? { seconds: [...g.seconds] } : {}),
       billing: g.billing,
@@ -237,7 +255,7 @@ export const layer = Layer.effect(
         },
       ];
       for (const g of KEYED) out.push(info(g, yield* keys.has(g.provider)));
-      for (const g of yield* pluginGens) out.push(pluginInfo(g, yield* keys.has(g.provider)));
+      for (const g of yield* pluginGens) out.push(pluginInfo(g, g.provider ? yield* keys.has(g.provider) : true));
       return out;
     });
 
@@ -352,7 +370,7 @@ export const layer = Layer.effect(
       target: Parameters<GeneratorShape["produce"]>[1],
       status: (text: string) => void,
     ) => {
-      const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider, key, signal: target.signal, outBase, sent: target.sent });
+      const grant = openGrant({ pluginId: g.plugin.id, provider: g.provider!, key, signal: target.signal, outBase, sent: target.sent });
       try {
         status(`Asking ${g.plugin.name}…`);
         const args = { generator: g.local, prompt: spec.prompt, ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}), options: spec.options ?? {} };
@@ -367,17 +385,45 @@ export const layer = Layer.effect(
         const saved = grant.saved();
         if (r.isError || !saved) {
           if (saved) await rm(saved, { force: true });
-          const said = r.content
-            .flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : []))
-            .join(" ")
-            .trim();
-          throw new Error(r.isError ? said || `${g.plugin.name} stopped before it finished.` : `${g.plugin.name} finished without making a file.`);
+          throw new Error(r.isError ? saidOf(r) || `${g.plugin.name} stopped before it finished.` : `${g.plugin.name} finished without making a file.`);
         }
-        const out = (r.structured ?? {}) as { model?: unknown };
-        const model = typeof out.model === "string" && /^[\w.:-]{1,80}$/.test(out.model) ? out.model : (g.model ?? g.local);
-        return { path: saved, model, cost: estimateOf(g, spec) };
+        return { path: saved, model: modelOf(r, g), cost: estimateOf(g, spec) };
       } finally {
         grant.end();
+      }
+    };
+
+    /**
+     * A local generator's run (the offline voice): its tool called with the file to write (out) and
+     * what it needs to run here (speech.ts), no key; a failure or a cancel removes the file.
+     */
+    const runLocal = async (
+      g: PluginGenerator,
+      spec: GenerateSpec,
+      outBase: string,
+      target: Parameters<GeneratorShape["produce"]>[1],
+      status: (text: string) => void,
+    ) => {
+      if (g.plugin.id !== REVERB_PLUGIN) throw new Error(`${g.plugin.name} runs on this Mac, but Uncut doesn't know how to start it.`);
+      const out = `${outBase}.wav`;
+      try {
+        const local = await speech.generateArgs(spec.options, target.signal, status);
+        status(`Asking ${g.plugin.name}…`);
+        const args = { generator: g.local, prompt: spec.prompt, options: spec.options ?? {}, out, ...local };
+        const r = await Effect.runPromise(
+          plugins.callPlugin(g.plugin.id, g.tool, args, {
+            signal: target.signal,
+            timeoutMs: PLUGIN_TIMEOUT_MS,
+            onProgress: (_p, _t, message) => message && status(message),
+          }),
+        );
+        const made = await stat(out).catch(() => undefined);
+        if (r.isError || !made?.isFile())
+          throw new Error(r.isError ? saidOf(r) || `${g.plugin.name} stopped before it finished.` : `${g.plugin.name} finished without making a file.`);
+        return { path: out, model: modelOf(r, g), cost: 0 };
+      } catch (error) {
+        await rm(out, { force: true });
+        throw error;
       }
     };
 
@@ -396,6 +442,7 @@ export const layer = Layer.effect(
         const made = yield* Effect.tryPromise({
           try: async () => {
             if (keyed) return keyed.generate(spec, { key: key!, outBase, signal: target.signal, status, sent: target.sent });
+            if (plugged && !plugged.provider) return runLocal(plugged, spec, outBase, target, status);
             if (plugged) return runPlugin(plugged, spec, key!, outBase, target, status);
             const open = Effect.runSync(projects.view);
             const canvas = open && open.openId === target.openId ? open.session.project.canvas : { width: 1920, height: 1080 };
@@ -497,6 +544,10 @@ export const layer = Layer.effect(
         const o = g.options.find((x) => x.id === option);
         if (!o || o.type !== "choice") return yield* new GenerateError({ reason: "bad-request", message: `${g.name} has no choice ${option}.` });
         if (!o.dynamic) return o.choices ?? [];
+        if (!g.provider) {
+          if (g.plugin.id === REVERB_PLUGIN && option === "voice") return yield* speech.choices;
+          return o.choices ?? [];
+        }
         const key = yield* keys.get(g.provider);
         if (!key) return yield* new GenerateError({ reason: "needs-key", message: `${needsKeyLine(g.provider)}. Add it in Settings › Keys.` });
         // A read-only grant: GET requests only, nothing saved, nothing billed.
@@ -505,12 +556,8 @@ export const layer = Layer.effect(
         const r = yield* plugins
           .callPlugin(g.plugin.id, "choices", { generator: g.local, option }, { signal, timeoutMs: CHOICES_TIMEOUT_MS, meta: { "uncut/grant": grant.token } })
           .pipe(Effect.ensuring(Effect.sync(grant.end)));
-        const said = r.content
-          .flatMap((c) => (c.type === "text" && "text" in c && typeof c.text === "string" ? [c.text] : []))
-          .join(" ")
-          .trim();
         if (r.isError)
-          return yield* new GenerateError({ reason: "failed", message: said || `${g.plugin.name} couldn't list the ${o.label.toLowerCase()} choices.` });
+          return yield* new GenerateError({ reason: "failed", message: saidOf(r) || `${g.plugin.name} couldn't list the ${o.label.toLowerCase()} choices.` });
         const list = choicesOf(r.structured);
         if (!list) return yield* new GenerateError({ reason: "failed", message: `${g.plugin.name} answered without a list of choices.` });
         return list;

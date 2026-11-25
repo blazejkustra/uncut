@@ -92,6 +92,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
     graphicWrite,
     keysSet,
     generateMedia,
+    voiceList,
+    voiceClone,
     screenRecord,
     argentBoot,
     mediaSearch,
@@ -448,6 +450,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         }
         case "generate_media":
           return yield* generateMedia(r, v, args);
+        case "voice_list":
+          return yield* voiceList;
+        case "voice_clone":
+          return yield* voiceClone(r, v, args);
         case "screen_record":
           return yield* screenRecord(r, v, args);
         case "argent_boot":

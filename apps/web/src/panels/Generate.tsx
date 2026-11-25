@@ -4,9 +4,10 @@
 // box, the model's options as segmented choices and selects (no chips, D263), and one Generate button that says what it costs: your
 // Claude Code for the SVG generator, your key for the keyed ones. A plugin's models (#107, #108: the
 // ElevenLabs plugin's Voiceover and Music) bring their own options (a voice from the user's account,
-// a model, a speed, Instrumental only) and price. Progress and Cancel stay here; results go
-// to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
-import type { GenerateJob, GenerateOptions, GeneratorChoice, GeneratorInfo, GeneratorOption, KeyProvider } from "@uncut/contracts";
+// a model, a speed, Instrumental only) and price; the Reverb plugin's offline Voiceover runs on
+// this Mac for free, in a preset voice or one cloned here (VoiceClone). Progress and Cancel stay
+// here; results go to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
+import type { GenerateJob, GenerateOptions, GeneratorChoice, GeneratorInfo, GeneratorOption, KeyProvider, VoiceInfo } from "@uncut/contracts";
 import { AudioLines, Check, Film, FolderOpen, Image as ImageIcon, ImagePlus, LoaderCircle, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -14,6 +15,7 @@ import { actions, useApp, type GenerateDraft, type Project } from "../state/stor
 import { MediaTile } from "./library/MediaTile.tsx";
 import { firstModel, modelsFor, type GenType, type Model, type ModelOption } from "./generate/catalog.ts";
 import { LabMark } from "./generate/marks.tsx";
+import { VoiceClone } from "./generate/VoiceClone.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./generate/generate.css";
 
@@ -86,6 +88,7 @@ const priceOf = (m: Model) => {
 const subOf = (m: Model) => {
   const g = m.info;
   if (!g) return m.lab;
+  if (g.local) return "Runs on this Mac, no key";
   if (!g.provider) return "Uses your Claude Code";
   return `${priceOf(m)}, ${g.ready ? "your key is set" : g.needs ? g.needs.charAt(0).toLowerCase() + g.needs.slice(1) : `needs your ${PROVIDER[g.provider]} key`}`;
 };
@@ -289,9 +292,16 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
               option={o}
               value={options[o.id]}
               online={online}
+              {...(g.id === OFFLINE_VOICEOVER && o.id === "voice" && app.voices ? { choices: voiceChoices(app.voices.voices) } : {})}
               onChange={(v) => setDraft((d) => ({ ...d, options: { ...d.options, [o.id]: v } }))}
             />
           ))}
+          {g?.id === OFFLINE_VOICEOVER && (
+            <VoiceClone
+              selected={typeof options.voice === "string" ? options.voice : undefined}
+              onPick={(voice) => setDraft((d) => ({ ...d, options: { ...d.options, voice } }))}
+            />
+          )}
           {m?.soon && m.options?.map((o) => <SoonOption key={o.label} option={o} />)}
         </div>
         <div className="gen-go">
@@ -303,9 +313,11 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
           <div className="gen-cost small" data-testid="generate-estimate">
             {m?.soon
               ? `${m.name} is coming soon`
-              : g?.provider
-                ? `${estimate > 0 && estimate < 0.005 ? "Under $0.01" : `About ${dollars(estimate)}`}, billed to your ${PROVIDER[g.provider]} key`
-                : "Uses your Claude Code"}
+              : g?.local
+                ? g.billing
+                : g?.provider
+                  ? `${estimate > 0 && estimate < 0.005 ? "Under $0.01" : `About ${dollars(estimate)}`}, billed to your ${PROVIDER[g.provider]} key`
+                  : "Uses your Claude Code"}
           </div>
         </div>
         {running.map((j) => (
@@ -363,6 +375,11 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
 /** "30 s", "1 min", "1.5 min". */
 const lengthLabel = (n: number) => (n >= 60 ? `${Number((n / 60).toFixed(1))} min` : `${n} s`);
 
+const OFFLINE_VOICEOVER = "generate.reverb.voiceover";
+/** The offline voiceover's voices as the Voice select's choices: the presets, then the user's own. */
+const voiceChoices = (voices: ReadonlyArray<VoiceInfo>): ReadonlyArray<GeneratorChoice> =>
+  voices.map((v) => ({ value: v.id, label: v.preset ? v.name : `${v.name} (yours)` }));
+
 /** A plugin generator's option values: the draft's, else each option's default (a toggle off). */
 function optionsOf(g: GeneratorInfo | undefined, picked: GenerateOptions | undefined): GenerateOptions {
   const out: Record<string, string | boolean> = {};
@@ -391,19 +408,23 @@ function PluginOption({
   option: o,
   value,
   online,
+  choices: given,
   onChange,
 }: {
   generator: GeneratorInfo;
   option: GeneratorOption;
   value: string | boolean | undefined;
   online: boolean;
+  /** A dynamic choice's values when the tab has them already (the offline voiceover's voices). */
+  choices?: ReadonlyArray<GeneratorChoice>;
   onChange: (v: string | boolean) => void;
 }) {
   const cacheKey = `${g.id}:${o.id}`;
-  const [loaded, setLoaded] = useState<ReadonlyArray<GeneratorChoice> | undefined>(() => choicesCache.get(cacheKey));
+  const [fetched, setLoaded] = useState<ReadonlyArray<GeneratorChoice> | undefined>(() => choicesCache.get(cacheKey));
+  const loaded = given ?? fetched;
   const [problem, setProblem] = useState<string | undefined>();
   useEffect(() => {
-    if (o.type !== "choice" || !o.dynamic || !g.ready || !online || choicesCache.has(cacheKey)) return;
+    if (given || o.type !== "choice" || !o.dynamic || !g.ready || !online || choicesCache.has(cacheKey)) return;
     let live = true;
     void actions.generatorChoices(g.id, o.id).then((r) => {
       if (!live) return;

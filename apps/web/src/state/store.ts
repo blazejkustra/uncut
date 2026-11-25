@@ -69,6 +69,7 @@ let unsubscribeFootage: (() => void) | undefined;
 let unsubscribeProxies: (() => void) | undefined;
 let unsubscribeTranscription: (() => void) | undefined;
 let unsubscribeGenerate: (() => void) | undefined;
+let unsubscribeVoices: (() => void) | undefined;
 
 // While a remote isn't connected, ask the relay why (a refused token reads differently from a
 // server that's down), so the banner can say so.
@@ -176,6 +177,11 @@ export async function start() {
       unsubscribeGenerate = conn.subscribe(
         (c) => c["generate.jobs"]({}),
         (generateJobs) => set({ generateJobs }),
+      );
+      unsubscribeVoices?.();
+      unsubscribeVoices = conn.subscribe(
+        (c) => c["voices.state"]({}),
+        (voices) => set({ voices }),
       );
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(

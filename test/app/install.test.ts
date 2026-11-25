@@ -149,6 +149,7 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
     "apple-vision",
     "argent-capture",
     "catalog",
+    "reverb-tts",
     "uncut-elevenlabs",
     "uncut-skills",
     "whisper-transcribe",

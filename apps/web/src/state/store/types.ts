@@ -26,6 +26,7 @@ import type {
   BrandState,
   GenerateKind,
   TemplateInfo,
+  VoicesState,
 } from "@uncut/contracts";
 import type { AppInfo, EnvironmentInfo } from "../bridge.ts";
 import type { Check } from "@uncut/core/checks";
@@ -97,6 +98,9 @@ export interface AppStateShape {
   readonly generateJobs: ReadonlyArray<GenerateJob>;
   readonly generateError?: string;
   readonly generateDraft?: GenerateDraft & { readonly seq: number };
+  /** The offline voiceover's voices (Reverb's presets and the user's clones) and the clone in progress. */
+  readonly voices?: VoicesState;
+  readonly voiceError?: string;
   /** Settings › Keys: which providers have a key (never the key). */
   readonly keys?: ReadonlyArray<KeyInfo>;
   readonly keysError?: string;

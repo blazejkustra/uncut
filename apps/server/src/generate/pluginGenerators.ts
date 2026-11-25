@@ -21,7 +21,8 @@ export interface PluginGenerator {
   readonly plugin: { readonly id: string; readonly name: string };
   readonly name: string;
   readonly media: GenerateKind;
-  readonly provider: KeyProvider;
+  /** Whose key it uses; none for a local one (it runs on this Mac and writes the file Uncut names). */
+  readonly provider: KeyProvider | undefined;
   readonly model: string | undefined;
   readonly billing: string;
   readonly tool: string;
@@ -33,14 +34,16 @@ export interface PluginGenerator {
   readonly price: GeneratorPrice;
 }
 
-/** What a generator plugin needs to be allowed (the user approves these on install). */
+/** What a generator plugin with keyed generators needs to be allowed (the user approves these on install). */
 export const GENERATOR_CAPABILITIES = ["network", "api-key"];
+/** The provider of a generator that runs on this Mac, with no key. */
+export const LOCAL_PROVIDER = "local";
 const DEFAULT_PROMPT = 4000;
 
 /**
  * The generators of the allowed generator plugins, in order; one whose id is taken (a built-in
- * generator's or an earlier plugin's) or whose plugin lacks network and api-key is left out, with
- * a line in `skipped`.
+ * generator's or an earlier plugin's) or, unless it's local, whose plugin lacks network and api-key
+ * is left out, with a line in `skipped`.
  */
 export function pluginGeneratorsOf(
   plugins: ReadonlyArray<{
@@ -58,13 +61,13 @@ export function pluginGeneratorsOf(
     const declared = (Array.isArray(p.manifest.generators) ? p.manifest.generators : []) as ReadonlyArray<Record<string, any>>;
     if (!declared.length) continue;
     const missing = GENERATOR_CAPABILITIES.filter((c) => !p.capabilities.includes(c));
-    if (missing.length) {
+    if (missing.length && declared.some((g) => g.provider !== LOCAL_PROVIDER))
       skipped.push(`${p.name}'s generators need the ${missing.join(" and ")} capabilit${missing.length > 1 ? "ies" : "y"}.`);
-      continue;
-    }
     for (const g of declared) {
       const id = `generate.${g.id}`;
-      if (seen.has(id) || !PROVIDER_API[g.provider as KeyProvider]) {
+      const local = g.provider === LOCAL_PROVIDER;
+      if (!local && missing.length) continue;
+      if (seen.has(id) || (!local && !PROVIDER_API[g.provider as KeyProvider])) {
         skipped.push(
           seen.has(id)
             ? `${p.name}'s generator ${g.id} is left out: another generator has that id.`
@@ -79,7 +82,7 @@ export function pluginGeneratorsOf(
         plugin: { id: p.id, name: p.name },
         name: g.name,
         media: g.media,
-        provider: g.provider,
+        provider: local ? undefined : g.provider,
         model: g.model,
         billing: g.billing,
         tool: g.tool ?? "generate",

@@ -693,12 +693,14 @@ test("sheet maths and step labels: frames, the grid, the clock, the turn card's 
   }
   assert.equal(clock(83.5), "1:23.50");
   assert.equal(clock(3723), "1:02:03.00");
-  assert.deepEqual(TOOL_NAMES.slice(TOOL_NAMES.indexOf("media_import"), TOOL_NAMES.indexOf("media_import") + 8), [
+  assert.deepEqual(TOOL_NAMES.slice(TOOL_NAMES.indexOf("media_import"), TOOL_NAMES.indexOf("media_import") + 10), [
     "media_import",
     "contact_sheet",
     "ui_show",
     "graphic_write",
     "generate_media",
+    "voice_list",
+    "voice_clone",
     "screen_record",
     "argent_boot",
     "media_search",

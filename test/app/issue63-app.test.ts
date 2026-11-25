@@ -106,7 +106,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     const ids = (t: string, soon: boolean) => seen[t]!.models.filter((m) => m.soon === soon).map((m) => m.id);
     assert.deepEqual(ids("image", false), ["generate.svg", "generate.gpt-image"]);
     assert.deepEqual(ids("video", false), ["generate.svg", "generate.veo"]);
-    assert.deepEqual(ids("audio", false), ["generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"]);
+    assert.deepEqual(ids("audio", false), ["generate.reverb.voiceover", "generate.sound", "generate.elevenlabs.voiceover", "generate.elevenlabs.music"]);
     // D277 (#103): no brand-named coming-soon models; #107, #108: Sound's ElevenLabs ones are wired now.
     assert.deepEqual([ids("image", true), ids("video", true), ids("audio", true)], [[], [], []]);
     assert.notEqual(seen.image!.placeholder, seen.video!.placeholder);

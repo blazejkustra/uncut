@@ -8,6 +8,7 @@ import type { CaptureShape } from "../../capture/capture.ts";
 import type { ServerConfigShape } from "../../app/config.ts";
 import type { ExporterShape } from "../../export/exporter.ts";
 import type { GeneratorShape } from "../../generate/generate.ts";
+import type { SpeechShape } from "../../speech/speech.ts";
 import type { KeysShape } from "../../generate/keys.ts";
 import type { LibraryShape } from "../../library/library.ts";
 import type { MediaLibraryShape } from "../../media/media.ts";
@@ -30,6 +31,7 @@ export interface AgentServices {
   readonly config: ServerConfigShape;
   readonly plugins: PluginsShape;
   readonly generator: GeneratorShape;
+  readonly speech: SpeechShape;
   readonly keys: KeysShape;
   readonly capture: CaptureShape;
   readonly sounds: LibraryShape;

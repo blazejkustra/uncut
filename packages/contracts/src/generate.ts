@@ -88,6 +88,8 @@ export const GeneratorInfo = Schema.Struct({
   placeholder: Schema.optional(Schema.String),
   // The longest prompt it takes, in characters (default 4000).
   maxPrompt: Schema.optional(Schema.Number),
+  // A plugin's generator that runs on this Mac with no key (the offline voice).
+  local: Schema.optional(Schema.Boolean),
 });
 export type GeneratorInfo = typeof GeneratorInfo.Type;
 

@@ -43,6 +43,7 @@ import * as Plugins from "../plugins/plugins.ts";
 import * as Settings from "./settings.ts";
 import * as Setup from "./setup.ts";
 import * as Whisper from "../analysis/whisper.ts";
+import * as Speech from "../speech/speech.ts";
 import * as Ws from "./ws.ts";
 
 // stdout is a protocol channel: exactly one JSON line once the port is bound. The desktop
@@ -128,7 +129,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provideMerge(Generate.layer),
     // The sound library (D134): Openverse and Freesound search, previews and downloads.
     Layer.provideMerge(SoundLibrary.layer),
-    Layer.provideMerge(Keys.layer),
+    // Keys, and the offline voice (Reverb): its voices, clones and model files.
+    Layer.provideMerge(Layer.merge(Keys.layer, Speech.layer)),
     // media_analyze and analysis.* (D66); analysis waits for exports.
     Layer.provide(Analysis.layer),
     // whisper-cli and the speech models (D68), for transcripts and the Setup row.

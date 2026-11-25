@@ -54,6 +54,8 @@ export interface ServerConfigShape {
   readonly testFault: string | undefined;
   // Where speech models come from (UNCUT_WHISPER_MODEL_URL, tests or a mirror; D68). Unset: Hugging Face, checked against the catalog.
   readonly whisperModelUrl: string | undefined;
+  // Where the offline voice's files come from (UNCUT_REVERB_MODEL_URL, tests or a mirror). Unset: Hugging Face, checked against the catalog.
+  readonly reverbModelUrl?: string | undefined;
   // The desktop's keys pipe (--keys-fd, D99): safeStorage encrypt/decrypt for generator keys. Undefined: keys in memory only.
   readonly keysFd?: number | undefined;
 }
@@ -170,6 +172,7 @@ export const readConfig = (
     ...(layout && !env.UNCUT_PLUGIN_CATALOG_DIR ? { pluginCatalogFolders: layout.catalog } : {}),
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
+    reverbModelUrl: env.UNCUT_REVERB_MODEL_URL || undefined,
     shellReady: shell.shellReady,
     keysFd,
   };

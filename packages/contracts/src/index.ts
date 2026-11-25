@@ -74,6 +74,7 @@ export {
   GenerateJob,
   GenerateError,
 } from "./generate.ts";
+export { VoiceInfo, VoiceCloneRequest, VoiceCloneJob, VoicesState, VoiceError } from "./voices.ts";
 export {
   BrandColor,
   BrandFont,
