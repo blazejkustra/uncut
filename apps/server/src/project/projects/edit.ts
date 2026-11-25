@@ -1,7 +1,7 @@
 // A user or agent edit to the open project: checked (schema, D6, names), then committed (the projects layer).
 import type { ProjectSnapshot } from "@uncut/contracts";
 import { applyEdit, describeOp, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
-import { withLinkedAudio } from "@uncut/core/arrange";
+import { linkedFollowLines, linkLengthProblem, withLinkedAudio } from "@uncut/core/arrange";
 import * as Effect from "effect/Effect";
 
 import type { ProjectFormatShape } from "../format.ts";
@@ -56,15 +56,18 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
           { code: "conflict", path: "/", message: what },
         ]);
       }
+      const typed = ops as ReadonlyArray<Op>;
+      const before = p.session.project as Project;
+      // D123: linked items follow what the edit does to their clip.
+      const synced = withLinkedAudio(before, typed);
       const applied = yield* Effect.try({
         // validateOps above checked every op against the edit-ops schema.
         try: () =>
           applyEdit(
             p.session,
-            // D123: detached sounds still linked to their clip follow what the edit does to it.
             {
               actor: agent ? "agent" : "user",
-              ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>),
+              ops: synced,
               baseRevision,
               summary,
               ...(agent ? { turnId: agent.turnId, agentId } : {}),
@@ -92,6 +95,8 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       }
       const problems = format.validate(written);
       if (problems.length) return yield* refused("The edit would make the project invalid", problems);
+      const linkProblem = linkLengthProblem(written, typed);
+      if (linkProblem) return yield* refused(linkProblem, [{ code: "linked-length", path: "/ops", message: linkProblem }]);
       // D206: a dry run stops here, with everything checked and nothing saved (the revision stays).
       if (agent?.dryRun)
         return {
@@ -102,8 +107,7 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
           canRedo: p.future.length > 0,
         } satisfies ProjectSnapshot;
       const entry = applied.log.at(-1)!;
-      const typed = ops as ReadonlyArray<Op>;
-      const lines = typed.map((op) => describeOp(op, written, summary));
+      const lines = [...typed.map((op) => describeOp(op, written, summary)), ...linkedFollowLines(before, typed, synced)];
       const author = agent ? "agent" : typed.every((op) => op.op === "add_media") ? "import" : "user";
       return yield* commit(
         p,

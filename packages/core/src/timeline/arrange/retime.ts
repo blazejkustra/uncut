@@ -1,4 +1,5 @@
 import { applyEdit, createSession } from "../apply-ops.ts";
+import { itemLabel, secs } from "../edit-log.ts";
 import { layout } from "../timeline.ts";
 import { soundMedia } from "../../audio/audio.ts";
 import {
@@ -283,6 +284,11 @@ const retimes = (op: Op): string | undefined => {
   return undefined;
 };
 
+/** What a linked item copies from its clip: while none of it changes, the linked item is left alone. */
+const FOLLOWED_KEYS = ["in", "duration", "speed", "keepPitch", "media", "loop"] as const;
+
+const sameTiming = (before: Item, after: Item) => FOLLOWED_KEYS.every((k) => before[k] === after[k]);
+
 /**
  * Linked sound (D123), and linked parts of a take (D215): an audio item or an off-main clip with
  * `linkedTo` follows its clip until the user moves, trims, splits or retimes the linked item itself.
@@ -323,6 +329,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   const taken = takenIds(after);
   const extra: Array<Op> = [];
   const unlink: Array<Op> = [];
+  const following: Array<Id> = [];
   for (const { item: a } of linked) {
     // The linked item itself was moved, trimmed, split or retimed: it's on its own now (its halves too).
     const own = [...afterItems.keys()].filter((id) => originOf(id) === a.id);
@@ -335,9 +342,14 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     if (!now || now.track.locked || now.item.locked) continue;
     const clip = a.linkedTo!;
     const clipBefore = beforeItems.get(clip);
+    if (!clipBefore) continue;
     const pieces = [...afterItems.values()]
       .filter(({ item }) => item.type === "clip" && originOf(item.id) === clip)
       .sort((x, y) => (starts.get(x.item.id) ?? 0) - (starts.get(y.item.id) ?? 0));
+    const leader = pieces.length === 1 ? pieces[0]!.item : undefined;
+    const leaderUnchanged = leader?.id === clip && starts.get(clip) === beforeStarts.get(clip) && sameTiming(clipBefore, leader);
+    if (leaderUnchanged) continue;
+    following.push(a.id);
     if (!pieces.length) {
       // Its clip is gone (deleted, or every word of it cut): so is the linked item.
       extra.push({ op: "delete_item", item: a.id });
@@ -458,8 +470,65 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   return [
     ...ops,
     ...unlink,
-    ...linked
-      .filter(({ item }) => afterItems.has(item.id) && !unlink.some((u) => (u as { item: string }).item === item.id))
-      .map(({ item }) => ({ op: "update_item" as const, item: item.id, set: { linkedTo: null } })),
+    ...following
+      .filter((id) => afterItems.has(id) && !unlink.some((u) => (u as { item: string }).item === id))
+      .map((id) => ({ op: "update_item" as const, item: id, set: { linkedTo: null } })),
   ];
+}
+
+/**
+ * An edit that links an item to a clip (update_item `linkedTo`) of another length is refused: the
+ * linked item takes its clip's length the next time the clip changes, so the rest of it would be
+ * lost without anyone asking. Checked on the project after the edit.
+ */
+export function linkLengthProblem(after: Project, ops: ReadonlyArray<Op>): string | undefined {
+  for (const op of ops) {
+    if (op.op !== "update_item" || typeof op.set.linkedTo !== "string") continue;
+    const follower = locate(after, op.item)?.item;
+    if (follower?.linkedTo !== op.set.linkedTo) continue;
+    const clip = locate(after, op.set.linkedTo)?.item;
+    if (clip?.type !== "clip") return `${op.item} can't be linked to ${op.set.linkedTo}: there's no clip with that id.`;
+    if (follower.duration === clip.duration) continue;
+    return (
+      `${op.item} is ${follower.duration} frames and ${clip.id} is ${clip.duration}. A linked item takes its clip's length, ` +
+      `so linking would cut ${op.item} to ${clip.duration} frames. Split or trim ${op.item} to ${clip.duration} frames first ` +
+      `(and link the rest to the clip it plays under), or leave it unlinked.`
+    );
+  }
+  return undefined;
+}
+
+function followLine(project: Project, op: Op): string | undefined {
+  const fps = project.canvas.fps;
+  if (op.op === "delete_item") return `Deleted ${itemLabel(project, op.item)} with the clip it was linked to`;
+  if (op.op === "insert_item") {
+    const leader = op.item.linkedTo;
+    return `Added ${op.item.id}, a piece of a linked item${leader ? ` following ${itemLabel(project, leader)}` : ""}`;
+  }
+  if (op.op !== "update_item") return undefined;
+  const before = locate(project, op.item)?.item;
+  if (!before) return undefined;
+  const leader = before.linkedTo ? itemLabel(project, before.linkedTo) : "its clip";
+  if (Object.keys(op.set).length === 1 && op.set.linkedTo === null) return `${itemLabel(project, op.item)} no longer follows ${leader}`;
+  const changes = [
+    op.set.start !== undefined && op.set.start !== before.start ? `start ${secs(before.start ?? 0, fps)} to ${secs(Number(op.set.start), fps)}` : "",
+    op.set.duration !== undefined && op.set.duration !== before.duration
+      ? `length ${before.duration} to ${Number(op.set.duration)} frames (${secs(before.duration, fps)} to ${secs(Number(op.set.duration), fps)})`
+      : "",
+    op.set.in !== undefined && op.set.in !== (before.in ?? 0) ? `in point ${before.in ?? 0} to ${Number(op.set.in)}` : "",
+    op.set.linkedTo === null ? "no longer linked" : "",
+  ].filter(Boolean);
+  return `${itemLabel(project, op.item)} followed ${leader}${changes.length ? `: ${changes.join(", ")}` : ""}`;
+}
+
+/**
+ * The lines for what withLinkedAudio added to an edit (`synced` past `ops`): a linked item that
+ * followed its clip, was unlinked, split into pieces or deleted with it. Worded from the project
+ * before the edit.
+ */
+export function linkedFollowLines(project: Project, ops: ReadonlyArray<Op>, synced: ReadonlyArray<Op> = withLinkedAudio(project, ops)): Array<string> {
+  return synced
+    .slice(ops.length)
+    .map((op) => followLine(project, op))
+    .filter((line): line is string => !!line);
 }

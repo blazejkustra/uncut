@@ -13,6 +13,7 @@ import {
   withGraphicRetime,
 } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
+import { linkedFollowLines } from "@uncut/core/arrange";
 import { projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
 import { planOnly } from "../agentPlan.ts";
@@ -512,6 +513,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const placements = placed.notes.length ? { placed: placed.notes } : {};
           const tracked = seen.notes.length ? { tracked: seen.notes } : {};
           const retimed = retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, v.session.project.canvas.fps) } : {};
+          const followLines = linkedFollowLines(v.session.project as Project, ops as ReadonlyArray<Op>);
+          const followed = followLines.length ? { linkedFollowed: followLines } : {};
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(
               {
@@ -578,6 +581,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               ...placements,
               ...tracked,
               ...retimed,
+              ...followed,
               duration: end,
               seconds: Number((end / planned.canvas.fps).toFixed(2)),
               note: "Nothing changed. Send the same edit without dryRun to make it.",
@@ -591,7 +595,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               return String((op as { op?: unknown }).op ?? "edit");
             }
           });
-          pushEdit(r, { revision: snapshot.revision, summary: line, lines });
+          pushEdit(r, { revision: snapshot.revision, summary: line, lines: [...lines, ...followLines] });
           // D206: tracks it made, for the turn-end clean-up.
           for (const op of ops as ReadonlyArray<Op>)
             if (op.op === "add_track" && typeof (op.track as { id?: unknown }).id === "string") r.addedTracks.add((op.track as { id: string }).id);
@@ -615,6 +619,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             ...placements,
             ...tracked,
             ...retimed,
+            ...followed,
             duration: end,
             seconds: Number((end / project.canvas.fps).toFixed(2)),
             ...(ducking ? { ducking } : {}),
