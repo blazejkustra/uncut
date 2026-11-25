@@ -2,7 +2,7 @@
    gradient is three times wider than them and holds one band of light, cut at the icon's angle
    (118deg), that moves across them by background-position alone. */
 .wordmark { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.wordmark-name { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+.wordmark-name { display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .wordmark-mark { width: 11px; height: 13px; flex: none; color: var(--fg); }
 .wordmark-text {
   font-weight: 600;

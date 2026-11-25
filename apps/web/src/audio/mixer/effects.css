@@ -1,5 +1,5 @@
 /* The Mixer's effect popovers (D246): header with one On switch, live graphs, grouped fields with units. */
-.fx-popover.wide { width: 310px; gap: 10px; }
+.fx-popover.wide { width: 310px; gap: 8px; }
 .fx-slot .fx-off { margin-left: auto; font-size: 10px; color: var(--dim); flex: none; }
 .fx-slot.target.heard { color: #5ec8e5; }
 
@@ -8,14 +8,14 @@
 .fxp-title b { font-size: 12px; font-weight: 600; }
 .fxp-title .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.fxp-switch { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 3px; border-radius: 11px; background: var(--raised); border: 1px solid var(--border-strong); color: var(--muted); font-size: 11px; flex: none; }
+.fxp-switch { display: inline-flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px 0 4px; border-radius: 11px; background: var(--raised); border: 1px solid var(--border-strong); color: var(--muted); font-size: 11px; flex: none; }
 .fxp-switch-knob { width: 16px; height: 16px; border-radius: 50%; background: var(--dim); transition: background 120ms; }
 .fxp-switch.on { color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 .fxp-switch.on .fxp-switch-knob { background: var(--ok); }
 .fxp-switch:disabled { opacity: 0.5; }
 
 .fxp-field { position: relative; min-width: 0; }
-.fxp-field .field { padding-right: 34px; }
+.fxp-field .field { padding-right: 32px; }
 .fxp-field[data-unit=""] .field { padding-right: 8px; }
 .fxp-field .field .v { width: 100%; min-width: 0; text-align: right; background: transparent; border: 0; color: var(--fg); outline: 0; }
 .fxp-unit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--dim); pointer-events: none; }
@@ -26,7 +26,7 @@
 .fxp-bands { display: flex; flex-direction: column; gap: 4px; }
 .fxp-band { display: grid; grid-template-columns: 58px 1fr 1fr 0.8fr; gap: 4px; align-items: center; }
 .fxp-band-name { font-size: 10px; color: var(--muted); }
-.fxp-band .field { height: 26px; padding-left: 6px; }
+.fxp-band .field { height: 26px; padding-left: 8px; }
 .fxp-band .field .k { font-size: 10px; }
 /* In a band the unit says what a field is (dB, Hz): only Q keeps its label, so the values fit. */
 .fxp-band .fxp-field:not([data-unit=""]) .k { display: none; }
@@ -41,7 +41,7 @@
 
 .fxp-seg { display: flex; align-items: center; gap: 4px; }
 .fxp-seg .small { margin-right: auto; }
-.fxp-seg button { height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11px; color: var(--muted); background: var(--raised); border: 1px solid var(--border); }
+.fxp-seg button { height: 22px; padding: 0 8px; border-radius: 11px; font-size: 11px; color: var(--muted); background: var(--raised); border: 1px solid var(--border); }
 .fxp-seg button.on { color: var(--fg); border-color: var(--select); background: var(--select-soft); }
 
 /* Graphs */
@@ -68,7 +68,7 @@
 
 /* A track's strip: its effects, duck and pan beside the fader, so the list has the panel's full height. */
 .strip-main { flex: 1; min-height: 0; display: flex; gap: 8px; }
-.strip-sends { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.strip-sends { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .strip-sends .fx-list { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .strip-sends .pan-row { margin-top: auto; }
-.strip-fade { flex: none; width: 66px; display: flex; flex-direction: column; gap: 3px; }
+.strip-fade { flex: none; width: 66px; display: flex; flex-direction: column; gap: 4px; }

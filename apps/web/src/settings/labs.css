@@ -1,6 +1,6 @@
 /* D245 (#91): Settings › Labs, and the Environments entry points while their flag is off. */
 .labs-lead { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--muted); }
-.lab-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); cursor: pointer; }
+.lab-row { display: flex; align-items: center; gap: 12px; padding: 12px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); cursor: pointer; }
 .lab-row + .lab-row { margin-top: 8px; }
 .lab-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lab-name { font-weight: 600; font-size: 13px; }
@@ -12,7 +12,7 @@
 .lab-switch:checked::after { transform: translateX(12px); background: #fff; }
 .lab-switch:focus-visible { outline: 2px solid var(--select-soft); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .lab-switch, .lab-switch::after { transition: none; } }
-.labs-hint { display: block; margin-top: 6px; font-size: 11px; color: var(--dim); }
+.labs-hint { display: block; margin-top: 8px; font-size: 11px; color: var(--dim); }
 .env-chip:disabled { opacity: 0.5; }
 .env-chip:disabled:hover { border-color: var(--border); color: var(--muted); }
 .labs-hint .link-btn { padding: 0; font-size: 11px; color: var(--select); }

@@ -1,15 +1,15 @@
 /* The Elements tab's search, section select and sticker sections (issue #71, D251; no chips, D263). */
-.elements-top { padding: 0 14px 6px; display: flex; flex-direction: column; gap: 8px; }
+.elements-top { padding: 0 12px 8px; display: flex; flex-direction: column; gap: 8px; }
 .elements-search { position: relative; display: flex; align-items: center; }
 .elements-search > svg.lucide { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
-.elements-search .input { width: 100%; padding-left: 28px; padding-right: 26px; }
+.elements-search .input { width: 100%; padding-left: 28px; padding-right: 24px; }
 .elements-search-clear { position: absolute; right: 4px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
 .elements-search-clear svg.lucide { width: 13px; height: 13px; }
-.elements-section { width: auto; max-width: 60%; height: 26px; padding: 0 22px 0 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.elements-section { width: auto; max-width: 60%; height: 26px; padding: 0 20px 0 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .elements-section-label { text-transform: none; font-weight: 600; color: var(--fg); opacity: 0.8; }
 .sticker-group { margin-top: 12px; }
 .sticker-group:first-child { margin-top: 4px; }
 .sticker-group-label { font-size: 11px; color: var(--muted); }
-.sticker-group .sticker-grid { margin-top: 6px; }
+.sticker-group .sticker-grid { margin-top: 8px; }
 /* A mark (an underline, a hand-drawn circle) keeps its own aspect in a square button. */
 .sticker-btn.mark .sticker-art { width: 100%; height: auto; max-height: 30px; }

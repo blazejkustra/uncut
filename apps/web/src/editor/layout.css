@@ -9,10 +9,10 @@ body.resizing .app { transition: none; }
 .layout-toggles .icon-btn[aria-pressed=false] { color: var(--muted); opacity: 0.6; }
 .layout-toggles .icon-btn[aria-pressed=false]:hover { opacity: 1; }
 /* D270: a plain button (square corners like .btn, no pill); icon, label and key share one centre line. */
-.focus-exit { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--raised); color: var(--fg); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
+.focus-exit { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--raised); color: var(--fg); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
 .focus-exit:hover { border-color: var(--muted); }
 .focus-exit svg.lucide { width: 14px; height: 14px; display: block; }
-.focus-exit kbd { display: inline-flex; align-items: center; height: 18px; font-size: 10px; line-height: 1; padding: 0 5px; }
+.focus-exit kbd { display: inline-flex; align-items: center; height: 18px; font-size: 10px; line-height: 1; padding: 0 4px; }
 
 /* Focus mode (D270): the preview on the left, the agent (thread and composer) a full-height column on the right. */
 .focus-agent { grid-area: side; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
