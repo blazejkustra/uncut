@@ -9,7 +9,7 @@
 .capture-toggle.on { color: var(--fg); border-color: var(--border-strong); background: var(--raised); }
 .capture-toggle-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border-strong); flex: none; }
 .capture-toggle.on .capture-toggle-dot { background: var(--error); border-color: var(--error); }
-.capture-toggle:disabled { opacity: 0.7; cursor: default; }
+.capture-toggle:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* One card per source that's on. */
 .capture-card { display: flex; flex-direction: column; gap: 8px; }
@@ -84,6 +84,6 @@
    no box around it); mid-take the timer and controls take its place, also without a box. */
 .capture-this-mac .record-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 36px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--raised); color: var(--fg); font-weight: 600; flex: none; }
 .capture-this-mac .record-button:not(:disabled):hover { border-color: var(--error); }
-.capture-this-mac .record-button:disabled { color: var(--muted); cursor: default; }
+.capture-this-mac .record-button:disabled { color: var(--muted); cursor: not-allowed; }
 .capture-this-mac .record-dot { width: 12px; height: 12px; box-shadow: none; }
 .capture-this-mac .record-bar { padding: 0; border: 0; border-radius: 0; background: none; flex: none; }

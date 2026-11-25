@@ -13,3 +13,6 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .tabs button:not(.active):hover { color: var(--fg); }
 .seg button:not(.active):not(:disabled):hover { color: var(--fg); }
 .tool-picker .icon-btn.on { background: var(--raised); }
+summary, [role="button"], [role="tab"], [role="radio"], [role="option"], [role="menuitem"] { cursor: pointer; }
+input:disabled, textarea:disabled, [aria-disabled="true"], label:has(> input:disabled) { cursor: not-allowed; }
+.capture-search:focus-within, .pm-search:focus-within { border-color: var(--select); }

@@ -64,7 +64,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-field > span:first-child { width: 48px; flex: none; color: var(--muted); font-size: 12px; }
 .wiz-field b { font-weight: 600; flex: 1; }
 .wiz-field input { flex: 1; min-width: 0; height: 32px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13px; }
-.wiz-field:focus-within { border-color: var(--border-strong); }
+.wiz-field:focus-within { border-color: var(--select); }
 .wiz-meta { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
 .wiz-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .form-fields { margin-top: 12px; }
@@ -214,7 +214,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .field .k { color: var(--dim); font-size: 11px; white-space: nowrap; flex: none; }
 .field .v { margin-left: auto; font-family: var(--mono); font-size: 12px; }
 .field.input { width: 100%; outline: 0; }
-.field.input:focus { border-color: var(--border-strong); }
+.field.input:focus, .field:focus-within { border-color: var(--select); }
 .folder-row { display: flex; align-items: center; gap: 8px; }
 .folder-row .ellipsis { flex: 1; color: var(--muted); }
 
@@ -420,11 +420,11 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* Add to timeline: a button on the tile's thumbnail, shown on hover. */
 .tile { position: relative; }
 .tile[draggable="true"] { cursor: grab; }
-.tile-add { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--on-media); color: #0a0a0a; opacity: 0; transition: opacity 0.1s; }
+.tile-add { position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--on-media); color: #0a0a0a; opacity: 0; transition: opacity 0.1s; }
 .tile-add svg.lucide { width: 14px; height: 14px; stroke-width: 1.75; }
 .tile:hover .tile-add, .tile-add:focus-visible { opacity: 1; }
 /* Analysis (D66): an Analyze button beside +, then a bar with a stop button while it runs */
-.tile-analyze { position: absolute; right: 30px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--on-media); opacity: 0; transition: opacity 0.1s; }
+.tile-analyze { position: absolute; right: 32px; top: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--on-media); opacity: 0; transition: opacity 0.1s; }
 .tile-analyze svg.lucide { width: 14px; height: 14px; }
 .tile:hover .tile-analyze, .tile-analyze:focus-visible { opacity: 1; }
 .tile-analysis { position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 8px; border-radius: var(--radius-sm); background: rgb(0 0 0 / 60%); }
@@ -513,7 +513,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .turn-cleanup-done { color: var(--muted); }
 .turn-undo-reason { padding: 0 4px 4px; font-size: 11px; color: var(--muted); line-height: 1.4; }
 .composer { flex: none; margin: 0 12px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; }
-.composer:focus-within { border-color: rgb(var(--ink) / 22%); }
+.composer:focus-within { border-color: var(--select); }
 .composer-ctx { display: flex; align-items: center; gap: 8px; padding: 8px 8px 0; font-size: 11px; color: var(--dim); min-width: 0; }
 .composer-ctx svg.lucide { width: 12px; height: 12px; }
 .composer { position: relative; }
@@ -949,7 +949,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .pan-fill { position: absolute; top: 5px; height: 2px; background: var(--select); }
 .pan-centre { position: absolute; left: 50%; top: 2px; width: 1px; height: 8px; background: var(--dim); }
 .pan-thumb { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--fg); }
-.pan.disabled, .fader.disabled { cursor: default; opacity: 0.5; }
+.pan.disabled, .fader.disabled { cursor: not-allowed; opacity: 0.5; }
 .pan-label { width: 24px; font-size: 10px; color: var(--muted); text-align: right; }
 .strip-body { flex: 1; min-height: 32px; display: flex; gap: 8px; justify-content: center; }
 .meter { position: relative; display: flex; gap: 2px; width: 12px; padding-top: 4px; }
@@ -1086,7 +1086,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .gen-needs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; color: var(--warn); }
 .gen-form { display: flex; flex-direction: column; gap: 8px; }
 .gen-prompt { resize: vertical; min-height: 72px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--fg); font: 13px/1.45 var(--font); padding: 8px 8px; outline: 0; }
-.gen-prompt:focus { border-color: var(--border-strong); }
+.gen-prompt:focus { border-color: var(--select); }
 .gen-select { flex: 1; min-width: 0; background: transparent; color: var(--fg); border: 0; font: inherit; font-size: 12px; outline: 0; }
 .gen-go { display: flex; align-items: center; gap: 8px; }
 .gen-go .gen-cost { flex: 1; min-width: 0; }
@@ -1372,7 +1372,7 @@ kbd { font: 11px var(--mono); padding: 1px 8px; border-radius: var(--radius-sm);
 .prop-toggle { display: flex; justify-content: flex-end; }
 .stop-actions { display: flex; justify-content: flex-end; }
 /* Elements grid (E1/E2, D130): + and hide on hover, hidden tiles listed below. */
-.tile-hide { position: absolute; left: 4px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--on-media); opacity: 0; transition: opacity 0.1s; }
+.tile-hide { position: absolute; left: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--on-media); opacity: 0; transition: opacity 0.1s; }
 .tile-hide svg.lucide { width: 14px; height: 14px; }
 .tile:hover .tile-hide, .tile-hide:focus-visible, .hidden-tile .tile-hide { opacity: 1; }
 .hidden-tile .thumb { opacity: 0.45; }
@@ -1689,7 +1689,7 @@ body[data-window="welcome"] .modal.wiz { width: 100%; max-width: 720px; }
 .opt-check { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
 .opt-check input { margin: 0; accent-color: var(--select); cursor: pointer; }
 .opt-check.on { color: var(--fg); }
-.opt-check.disabled { opacity: 0.45; cursor: default; }
+.opt-check.disabled { opacity: 0.45; cursor: not-allowed; }
 .capture-source-pic { width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); background: var(--panel-2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .capture-source .capture-source-pic img { width: 100%; height: 100%; object-fit: cover; aspect-ratio: auto; background: none; }
 .capture-source .capture-source-pic.icon img { width: 32px; height: 32px; object-fit: contain; }
