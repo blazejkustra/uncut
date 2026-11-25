@@ -1,5 +1,5 @@
-// Long takes phrase by phrase: the splitter on synthetic sound (tones and silences), the merge's
-// offsets, the loop guard, the language check, names from the brief, and a long take through the
+// Takes phrase by phrase: the splitter on synthetic sound (tones and silences), the merge's
+// offsets, the loop guard, the language check, names from the brief, retakes, and a long take through the
 // analysis queue with the fake whisper-cli (one run, one -f/-of pair per phrase).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -18,12 +18,20 @@ import {
   pcmLevels,
   pcmWav,
   readPcmWav,
+  retakesOf,
   splitPhrases,
   transcribeByPhrases,
   type Pcm,
 } from "../../apps/server/src/analysis/phrases.ts";
-import { transcribeDirect, type Speech, type SpeechRequest, type Transcribe, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
-import { transcriptOut } from "../../apps/server/src/agent/agentTranscript.ts";
+import {
+  isTranscriptResult,
+  transcribeDirect,
+  type Speech,
+  type SpeechRequest,
+  type Transcribe,
+  type TranscriptResult,
+} from "../../apps/server/src/analysis/transcription.ts";
+import { transcriptOut, transcriptSummary } from "../../apps/server/src/agent/agentTranscript.ts";
 import { SAY_TOKENS, whisperJson } from "../helpers/whisper-json.ts";
 
 const RATE = 16000;
@@ -277,6 +285,60 @@ test("transcript_read on a phrase transcript: one text line per phrase, phrases 
     { from: "w0", to: "w3", start: 33, end: 79 },
     { from: "w4", to: "w5", start: 183, end: 205 },
   ]);
+});
+
+test("retakes: a phrase that a later one starts over is said again there (the last time), similar sentences in a row aren't", () => {
+  const lines = [
+    "So last week we",
+    "So, last week we released a model",
+    "So last week we released a model that clones your voice in just five seconds.",
+    "You can cut it.",
+    "You can caption it.",
+    "Let me know how it works.",
+    "Thanks.",
+    "Let me know how it works for you.",
+  ];
+  const merged = mergePhrases(lines.map((line, i) => ({ span: { start: i * 10, end: i * 10 + 8 }, guarded: { speech: speech([line]) } })));
+  assert.deepEqual(
+    [...retakesOf(merged.phrases, merged.words)],
+    [
+      [0, 2],
+      [1, 2],
+      [5, 7],
+    ],
+  );
+  const firstWord = (k: number) => `w${merged.phrases[k]!.words[0]}`;
+  const far = [merged.phrases[5]!, merged.phrases[3]!, merged.phrases[4]!, merged.phrases[6]!, merged.phrases[7]!];
+  assert.equal(retakesOf(far, merged.words).size, 0, "only the next three phrases count");
+
+  const result: TranscriptResult = { hasAudio: true, seconds: 80, language: "en", model: "m", ...merged };
+  const text = (transcriptOut(result, { cached: true, fps: 30, length: 2400 }) as { text: string }).text.split("\n");
+  const marked = text.filter((l) => l.includes("(said again at"));
+  assert.deepEqual(
+    marked.map((l) => /^(w\d+) \[\d+–\d+\] \(said again at (w\d+)\) /.exec(l)?.slice(1)),
+    [
+      [firstWord(0), firstWord(2)],
+      [firstWord(1), firstWord(2)],
+      [firstWord(5), firstWord(7)],
+    ],
+  );
+  const words = transcriptOut(result, { cached: true, fps: 30, length: 2400, format: "words" }) as { phrases: Array<{ from: string; saidAgainAt?: string }> };
+  assert.deepEqual(
+    words.phrases.filter((p) => p.saidAgainAt).map((p) => [p.from, p.saidAgainAt]),
+    [
+      [firstWord(0), firstWord(2)],
+      [firstWord(1), firstWord(2)],
+      [firstWord(5), firstWord(7)],
+    ],
+  );
+  assert.equal((transcriptSummary(result, true) as { retakes?: number }).retakes, 3);
+});
+
+test("a take over 15 s cached as one whole transcript is redone phrase by phrase; a shorter one, or one with phrases, is kept", () => {
+  const whole = { hasAudio: true, language: "en", model: "m", ...speech(["So last week we", "So last week we released a model."]) };
+  assert.equal(isTranscriptResult({ ...whole, seconds: 62 }), false);
+  assert.equal(isTranscriptResult({ ...whole, seconds: 12 }), true);
+  assert.equal(isTranscriptResult({ ...whole, seconds: 62, phrases: [{ start: 0, end: 4, text: "So last week we", words: [0, 4] }] }), true);
 });
 
 let root = "";
