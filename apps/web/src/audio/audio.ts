@@ -49,7 +49,7 @@ import { duckCurvesOf } from "./ducking.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { mediaUrl } from "../state/store.ts";
 import { reversedSrc } from "../preview/compositor/media.ts";
-import { RAMP_S, wanted, reachable, startedAt, WARM_S, PREROLL_S, seek, DRIFT_S } from "./mix/elements.ts";
+import { RAMP_S, wanted, reachable, startedAt, WARM_S, PREROLL_S, seek, DRIFT_S, JUMP_S, MAX_LAG_S } from "./mix/elements.ts";
 import type { MixState } from "./mix/levels.ts";
 import { MixGraph } from "./mix/graph.ts";
 import { stagesLatency } from "./mix/nodes.ts";
@@ -75,6 +75,13 @@ export class Mix extends MixGraph {
   private was: { frame: number; playing: boolean } | undefined;
   /** The lead (s) each own element was last started with: a change seeks it (D262). */
   private readonly ledBy = new WeakMap<HTMLMediaElement, number>();
+  /**
+   * How far ahead (s at 1x) an own element is aimed when it starts or is seeked while playing: how
+   * far behind the clock the last one was once it ran (start-up and seek time, device latency).
+   */
+  private startLag = 0;
+  /** Own elements started or seeked while playing: when, the lag they were aimed by, and whether their landing was measured yet. */
+  private readonly aimed = new WeakMap<HTMLMediaElement, { at: number; lag: number; measured: boolean }>();
 
   /** Whether an element is still in use: sounding for an item, or ramping down after it. */
   holds(el: HTMLMediaElement | undefined): boolean {
@@ -137,7 +144,8 @@ export class Mix extends MixGraph {
     el.dataset.src = src;
     el.addEventListener("seeked", () => {
       const want = wanted.has(el!) ? reachable(el!, wanted.get(el!)!) : undefined;
-      if (want !== undefined && Math.abs(el!.currentTime - want) > 0.004) {
+      // Playing, the target is already behind the clock: drive() seeks again if it is still off.
+      if (want !== undefined && el!.paused && Math.abs(el!.currentTime - want) > 0.004) {
         wanted.set(el!, want);
         el!.currentTime = want;
       } else wanted.delete(el!);
@@ -319,18 +327,47 @@ export class Mix extends MixGraph {
     this.ledBy.set(el, lead);
     if (playing) {
       if (el.paused) {
-        seek(el, target);
+        this.seekAhead(el, target, rate);
         el.play().catch(() => {});
-      } else if (relead) seek(el, target);
-      else if (Math.abs(el.currentTime - target) > DRIFT_S * Math.max(1, rate)) {
-        // A looped item wraps by itself; its clock wraps too, a little off from the file's end.
-        const length = Number.isFinite(el.duration) ? el.duration : 0;
-        if (!(el.loop && length > 0 && Math.abs(Math.abs(el.currentTime - target) - length) < DRIFT_S)) seek(el, target);
+      } else if (relead) this.seekAhead(el, target, rate);
+      else {
+        this.measureLag(el, target, rate);
+        if (this.drifted(el, target, rate)) this.seekAhead(el, target, rate);
       }
     } else {
       if (!el.paused) el.pause();
       seek(el, target);
     }
+  }
+
+  /** Seek a playing element where the clock will be once it sounds: `startLag` ahead. */
+  private seekAhead(el: HTMLMediaElement, target: number, rate: number) {
+    this.aimed.set(el, { at: performance.now(), lag: this.startLag, measured: false });
+    seek(el, target + this.startLag * rate);
+  }
+
+  /** Once an element started or seeked while playing really runs: how far behind the clock it landed sets the next aim. */
+  private measureLag(el: HTMLMediaElement, target: number, rate: number) {
+    const aim = this.aimed.get(el);
+    if (!aim || aim.measured || !this.ready(el)) return;
+    aim.measured = true;
+    this.startLag = Math.min(MAX_LAG_S, Math.max(0, aim.lag + (target - el.currentTime) / rate));
+  }
+
+  /**
+   * Whether a playing element is far enough off the clock to seek. A jump (over JUMP_S) seeks at
+   * once; a smaller drift waits until the element runs and a second has passed since its last
+   * seek, since each seek stalls it again.
+   */
+  private drifted(el: HTMLMediaElement, target: number, rate: number) {
+    const off = Math.abs(el.currentTime - target);
+    if (off <= DRIFT_S * Math.max(1, rate)) return false;
+    // A looped item wraps by itself; its clock wraps too, a little off from the file's end.
+    const length = Number.isFinite(el.duration) ? el.duration : 0;
+    if (el.loop && length > 0 && Math.abs(off - length) < DRIFT_S) return false;
+    if (off > JUMP_S * Math.max(1, rate)) return true;
+    const aim = this.aimed.get(el);
+    return this.ready(el) && (!aim || performance.now() - aim.at > 1000);
   }
 
   /**
