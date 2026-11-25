@@ -171,7 +171,7 @@ test("one job: good files in one edit, bad ones reported in order, nothing copie
     kind: "video",
     name: "Holiday Clip.mp4",
     path: files.clip,
-    probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: true },
+    probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: true, colour: { bitDepth: 8 } },
   });
   assert.deepEqual(media["m-poster"], {
     id: "m-poster",
