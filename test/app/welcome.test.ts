@@ -115,9 +115,9 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
     (els as Array<HTMLElement>).map((e) => [e.textContent.trim(), e.dataset.kind, e.dataset.main ?? null]),
   );
   assert.deepEqual(tracks, [
-    ["Text", "text", null],
-    ["Main", "video", "true"],
-    ["Audio", "audio", null],
+    ["V2Text", "text", null],
+    ["V1", "video", "true"],
+    ["A1", "audio", null],
   ]);
   await waitFor(page, "[data-testid=timeline-empty]");
   assert.match(await text(page, "media-empty"), /No media yet/);
