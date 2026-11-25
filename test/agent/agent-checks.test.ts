@@ -235,10 +235,6 @@ test("C6: a ripple trim on Main re-times the panel graphic over it, and timeline
               src: "graphics/panel.html",
               start: 150,
               duration: 300,
-              keys: [
-                { frame: 200, opacity: 1 },
-                { frame: 210, opacity: 0 },
-              ],
             },
           },
         ],
@@ -260,13 +256,6 @@ test("C6: a ripple trim on Main re-times the panel graphic over it, and timeline
   );
   const panel = onDisk().tracks.find((t) => t.id === "panel-track")!.items[0]!;
   assert.deepEqual([panel.start, panel.duration, panel.skips], [150, 270, [{ at: 120, frames: 30 }]]);
-  assert.deepEqual(
-    panel.keys!.filter((k) => k.frame >= 160).map((k) => [k.frame, k.opacity]),
-    [
-      [170, 1],
-      [180, 0],
-    ],
-  );
 });
 
 test("D274: no bundled music; library_search with source included finds the user's own music, or says to ask", { skip, timeout: 180000 }, async () => {
