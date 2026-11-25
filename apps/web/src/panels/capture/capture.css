@@ -3,7 +3,7 @@
 /* Source toggles: two by two in the narrow panel, a row of four when there's room. */
 .capture-toggles { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; }
 .capture-toggle { position: relative; display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 8px; font-size: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); font-size: 12px; text-align: left; }
-.capture-toggle svg.lucide { width: 15px; height: 15px; flex: none; }
+.capture-toggle svg.lucide { width: 14px; height: 14px; flex: none; }
 .capture-toggle span:first-of-type { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .capture-toggle:not(:disabled):hover { border-color: var(--border-strong); color: var(--fg); }
 .capture-toggle.on { color: var(--fg); border-color: var(--border-strong); background: var(--raised); }
@@ -37,7 +37,7 @@
 
 /* A search field (the picker modal and the device list). */
 .capture-search { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); flex: none; }
-.capture-search svg.lucide { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.capture-search svg.lucide { width: 14px; height: 14px; color: var(--muted); flex: none; }
 .capture-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg); font: 12px var(--font); outline: 0; }
 
 /* Argent: the chosen device's row is the picker with Record beside it. */

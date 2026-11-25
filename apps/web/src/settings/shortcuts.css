@@ -23,7 +23,7 @@
 /* Always takes its room (no shift under the pointer), shown on hover. */
 .shortcut-chip:hover .shortcut-remove, .shortcut-remove:focus-visible { opacity: 1; }
 .shortcut-remove:hover { color: var(--fg); }
-.shortcut-remove svg.lucide { width: 10px; height: 10px; }
+.shortcut-remove svg.lucide { width: 12px; height: 12px; }
 .shortcut-listening { font: 11px var(--mono); padding: 1px 8px; border-radius: 4px; border: 1px dashed var(--select); color: var(--select); animation: shortcut-pulse 1.2s ease-in-out infinite; }
 @keyframes shortcut-pulse { 50% { opacity: 0.55; } }
 @media (prefers-reduced-motion: reduce) { .shortcut-listening { animation: none; } }
@@ -33,7 +33,7 @@
 .shortcut-clear, .shortcut-reset { opacity: 0; transition: opacity var(--fast, 120ms); }
 .shortcut-edit:hover .shortcut-clear:not(:disabled), .shortcut-edit:hover .shortcut-reset:not(:disabled), .shortcut-clear:focus-visible, .shortcut-reset:focus-visible { opacity: 1; }
 .shortcut-lock { display: inline-flex; align-items: center; color: var(--dim); margin-left: 2px; }
-.shortcut-lock svg.lucide { width: 11px; height: 11px; }
+.shortcut-lock svg.lucide { width: 12px; height: 12px; }
 .shortcut-row.fixed .shortcut-does { color: var(--muted); }
 .shortcut-hint { font-size: 11px; color: var(--muted); padding: 0 0 8px; }
 .shortcut-conflict { display: flex; align-items: center; gap: 8px; padding: 8px 8px; margin: 0 0 8px; border-radius: var(--radius-sm); background: var(--raised); font-size: 12px; }

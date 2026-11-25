@@ -1,14 +1,14 @@
 /* D259 (#94): the Import from link dialog. */
 .link-modal { width: 440px; max-width: 100%; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 4px; }
 .link-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
-.link-title svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+.link-title svg.lucide { width: 14px; height: 14px; color: var(--muted); }
 .link-text { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.link-text svg.lucide { width: 13px; height: 13px; }
+.link-text svg.lucide { width: 14px; height: 14px; }
 .link-notice-text { font-size: 13px; line-height: 1.5; margin: 0 0 8px; color: var(--fg); }
 .link-command { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 8px 8px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); }
 .link-command code { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
 .link-command .icon-btn { width: 24px; height: 24px; }
-.link-command .icon-btn svg.lucide { width: 13px; height: 13px; }
+.link-command .icon-btn svg.lucide { width: 14px; height: 14px; }
 .link-command .icon-btn[data-copied] { color: var(--ok); }
 .link-url { width: 100%; height: 30px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); outline: none; margin-bottom: 8px; }
 .link-url:focus { border-color: var(--select); }

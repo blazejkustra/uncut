@@ -2,7 +2,7 @@
 .sound-browser .lib-selects { display: flex; gap: 8px; align-items: center; }
 .sound-browser .lib-selects select.input { flex: 1 1 0; min-width: 0; height: 26px; padding: 0 8px; font-size: 12px; }
 .sound-browser .lib-selects .btn { flex: none; height: 26px; display: inline-flex; align-items: center; gap: 4px; }
-.sound-browser .lib-selects .btn svg.lucide { width: 13px; height: 13px; }
+.sound-browser .lib-selects .btn svg.lucide { width: 14px; height: 14px; }
 
 .lib-folders { display: flex; flex-direction: column; gap: 8px; }
 .lib-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -16,7 +16,7 @@
 .lib-folder > svg.lucide { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .lib-folder-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lib-folder-count { flex: none; font: 11px var(--mono); color: var(--dim); }
-.lib-folder .icon-btn svg.lucide { width: 13px; height: 13px; }
+.lib-folder .icon-btn svg.lucide { width: 14px; height: 14px; }
 .lib-folder[data-missing="true"] { opacity: 0.6; }
 .lib-folder-list > .muted { padding: 8px 8px 8px; line-height: 1.45; border-top: 1px solid var(--border); }
 
@@ -31,11 +31,11 @@
 .lib-generate-toggle { align-self: flex-start; }
 .lib-generate { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .lib-generate-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
-.lib-generate-head .icon-btn svg.lucide { width: 13px; height: 13px; }
+.lib-generate-head .icon-btn svg.lucide { width: 14px; height: 14px; }
 .lib-generate textarea.input { width: 100%; resize: vertical; min-height: 44px; padding: 8px 8px; font: inherit; font-size: 12px; line-height: 1.4; }
 .lib-generate svg.spin { width: 12px; height: 12px; vertical-align: -2px; }
 .lib-generate-done { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); }
-.lib-generate-done > svg.lucide { width: 13px; height: 13px; color: var(--ok, var(--select)); }
+.lib-generate-done > svg.lucide { width: 14px; height: 14px; color: var(--ok, var(--select)); }
 .lib-generate-done .link-btn { display: inline-flex; align-items: center; gap: 4px; }
 .lib-generate-done .link-btn svg.lucide { width: 12px; height: 12px; }
 

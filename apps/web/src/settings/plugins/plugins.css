@@ -35,7 +35,7 @@
 .pm-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
 .pm-kind { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--raised); color: var(--muted); }
 .pm-perms { display: flex; gap: 8px; font-size: 11px; color: var(--dim); line-height: 1.4; }
-.pm-perms svg.lucide { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+.pm-perms svg.lucide { width: 14px; height: 14px; flex: none; margin-top: 1px; }
 .pm-perms p { margin: 0; }
 .pm-perms p + p { margin-top: 4px; }
 .pm-warn { font-size: 11px; color: var(--warn); line-height: 1.4; }

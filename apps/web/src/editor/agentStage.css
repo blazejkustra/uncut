@@ -29,13 +29,13 @@
 .agent-stage-card .composer { margin: 0 24px 8px; border-radius: 12px; }
 .agent-stage-card .composer-box > textarea, .agent-stage-card .composer-hl { min-height: 76px; font-size: 13px; }
 .agent-stage-foot { display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; font-size: 12px; color: var(--muted); }
-.agent-stage-foot svg.lucide { width: 13px; height: 13px; }
+.agent-stage-foot svg.lucide { width: 14px; height: 14px; }
 .agent-stage-foot kbd { font-size: 10px; padding: 0 4px; }
 .agent-stage-drop {
   position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; pointer-events: none; z-index: 5;
 }
-.agent-stage-drop svg.lucide { width: 22px; height: 22px; color: var(--select); }
+.agent-stage-drop svg.lucide { width: 20px; height: 20px; color: var(--select); }
 @keyframes agent-stage-in { from { opacity: 0; } }
 @keyframes agent-stage-card-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .agent-stage, .agent-stage-card { animation: none; } }

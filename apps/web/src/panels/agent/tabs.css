@@ -1,5 +1,5 @@
 .agent { position: relative; }
-.agent-add svg.lucide { width: 15px; height: 15px; }
+.agent-add svg.lucide { width: 14px; height: 14px; }
 .agent-add:disabled { cursor: not-allowed; }
 .agent-add.floating { position: absolute; top: 6px; right: 8px; z-index: 3; width: 24px; height: 24px; opacity: 0.7; }
 .agent-add.floating:hover { opacity: 1; }

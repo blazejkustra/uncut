@@ -1,7 +1,7 @@
 .critic-row .critic-head { gap: 8px; padding: 8px 8px; align-items: center; }
 .critic-row .critic-head:disabled { cursor: default; color: var(--fg); opacity: 1; }
 .critic-icon { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); flex: none; }
-.critic-row .critic-icon svg { width: 13px; height: 13px; color: var(--muted); }
+.critic-row .critic-icon svg { width: 14px; height: 14px; color: var(--muted); }
 .critic-icon.running svg { color: var(--select); }
 .critic-icon.passed svg { color: var(--ok); }
 .critic-icon.failed svg, .critic-icon.unresolved svg, .critic-icon.error svg { color: var(--warn); }

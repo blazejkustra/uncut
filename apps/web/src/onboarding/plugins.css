@@ -5,13 +5,13 @@
 .plugin-head .wiz-section { margin-top: 0; }
 .plugin-head .wiz-btns { gap: 2px; }
 .plugin-head .btn.ghost { height: 26px; padding: 0 8px; font-size: 12px; }
-.plugin-head .btn.ghost svg.lucide { width: 13px; height: 13px; }
+.plugin-head .btn.ghost svg.lucide { width: 14px; height: 14px; }
 .plugin-row .wiz-row { gap: 8px; padding-right: 8px; }
 .plugin-row .wiz-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .plugin-version { font-size: 11px; font-weight: 400; color: var(--dim); font-variant-numeric: tabular-nums; }
 .plugin-summary { white-space: nowrap; }
 .plugin-status { flex: none; min-width: 84px; display: flex; justify-content: flex-end; }
-.plugin-more svg.lucide { width: 15px; height: 15px; transition: transform 0.15s; }
+.plugin-more svg.lucide { width: 14px; height: 14px; transition: transform 0.15s; }
 .plugin-more.open svg.lucide { transform: rotate(180deg); }
 .plugin-details { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px 12px 48px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.5; color: var(--muted); }
 .plugin-details[hidden] { display: none; }
