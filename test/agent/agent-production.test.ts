@@ -285,7 +285,6 @@ test("U15: the user's own brief edit on the Plan card is theirs and the next mes
   }
 });
 
-
 test(
   "U7/U17: kits and skills reach every message; brand_read and its files; brand_write's style guide and new kit; the brand colours check; reference_frames",
   { skip, timeout: 180000 },
