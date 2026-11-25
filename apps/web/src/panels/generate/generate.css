@@ -6,7 +6,7 @@
 
 /* The type switch: three equal segments. */
 .gen-panel .gen-types { display: flex; gap: 2px; padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); }
-.gen-panel .gen-types button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 7px; font-size: 13px; color: var(--muted); white-space: nowrap; transition: background 120ms, color 120ms; }
+.gen-panel .gen-types button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--radius-sm); font-size: 13px; color: var(--muted); white-space: nowrap; transition: background 120ms, color 120ms; }
 .gen-panel .gen-types button:hover { color: var(--fg); }
 .gen-panel .gen-types button.active { background: var(--raised); color: var(--fg); box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgb(0 0 0 / 40%); }
 .gen-panel .gen-types svg.lucide { width: 14px; height: 14px; }
@@ -27,13 +27,13 @@
 .gen-model.active .gen-model-price { color: var(--fg); }
 .gen-soon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
 .gen-soon-grid .gen-model { min-height: 34px; gap: 8px; padding: 4px 8px; }
-.gen-soon-grid .gen-mark { width: 20px; height: 20px; border-radius: 5px; }
+.gen-soon-grid .gen-mark { width: 20px; height: 20px; border-radius: var(--radius-sm); }
 .gen-soon-grid .gen-mark-logo { width: 12px; height: 12px; }
 .gen-soon-grid .gen-model-name { font-size: 12px; }
 .gen-soon-grid .gen-model-sub { font-size: 11px; }
 
 /* A lab's mark in a small tile. */
-.gen-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--fg); }
+.gen-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: var(--radius-sm); background: var(--bg); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--fg); }
 .gen-mark-logo { width: 14px; height: 14px; display: block; }
 .gen-mark.claude { background: rgb(217 119 87 / 12%); box-shadow: inset 0 0 0 1px rgb(217 119 87 / 28%); }
 .gen-mark-letter { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
@@ -78,7 +78,7 @@
 /* Media › Generated (D240, #74): ordinary media tiles with a small Generated badge. */
 .gen-section-label { display: flex; align-items: center; gap: 4px; }
 .gen-section-label svg.lucide { width: 12px; height: 12px; color: var(--muted); }
-.tile-gen-badge { position: absolute; left: 4px; bottom: 4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: var(--on-select); background: var(--select); pointer-events: auto; }
+.tile-gen-badge { position: absolute; left: 4px; bottom: 4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-sm); color: var(--on-select); background: var(--select); pointer-events: auto; }
 .tile-gen-badge svg.lucide { width: 10px; height: 10px; flex: none; }
 .media-list .tile .tile-gen-badge { left: 3px; bottom: 3px; width: 14px; height: 14px; }
 .media-list .tile .tile-gen-badge svg.lucide { width: 9px; height: 9px; }

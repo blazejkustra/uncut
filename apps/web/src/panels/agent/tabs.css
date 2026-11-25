@@ -16,7 +16,7 @@
 .agent-tab-name { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-tab-focus { font-size: 11px; color: var(--dim); }
 .agent-tab-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--select); flex: none; }
-.agent-tab-close { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 20px; padding: 0; overflow: hidden; border-radius: 4px; color: var(--dim); cursor: pointer; }
+.agent-tab-close { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 20px; padding: 0; overflow: hidden; border-radius: var(--radius-sm); color: var(--dim); cursor: pointer; }
 .agent-tab:hover .agent-tab-close, .agent-tab:focus-within .agent-tab-close { width: 20px; margin: 0 4px 0 -4px; }
 .agent-tab-close:not(:disabled):hover { background: var(--panel); color: var(--fg); }
 .agent-tab-close:disabled { cursor: not-allowed; }

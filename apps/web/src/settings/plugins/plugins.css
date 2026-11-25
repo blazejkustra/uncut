@@ -26,14 +26,14 @@
 .pm-card-head { display: contents; }
 .pm-card-head .pm-icon { grid-column: 1; grid-row: 1 / span 2; }
 .pm-card-head .pm-title { grid-column: 2; }
-.pm-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; flex: none; }
+.pm-icon { width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--raised); display: grid; place-items: center; flex: none; }
 .pm-icon svg.lucide { width: 16px; height: 16px; color: var(--muted); }
 .pm-title { min-width: 0; }
 .pm-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-by { font-size: 11px; color: var(--dim); }
 .pm-desc { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pm-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
-.pm-kind { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--raised); color: var(--muted); }
+.pm-kind { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm); background: var(--raised); color: var(--muted); }
 .pm-perms { display: flex; gap: 8px; font-size: 11px; color: var(--dim); line-height: 1.4; }
 .pm-perms svg.lucide { width: 14px; height: 14px; flex: none; margin-top: 1px; }
 .pm-perms p { margin: 0; }
@@ -44,7 +44,7 @@
 .pm-from { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 .pg { display: flex; flex-direction: column; gap: 4px; padding: 12px 12px 24px; font-size: 13px; line-height: 1.55; }
-.pg code { font-family: var(--mono); font-size: 12px; background: var(--raised); padding: 1px 4px; border-radius: 4px; }
+.pg code { font-family: var(--mono); font-size: 12px; background: var(--raised); padding: 1px 4px; border-radius: var(--radius-sm); }
 .pg-hero { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg); }
 .pg-hero-title { font-weight: 600; }
 .pg-hero-sub { font-size: 12px; color: var(--muted); }

@@ -1,5 +1,5 @@
 /* #86 (D239): the app's tooltip. Above everything, the overlay scrollbars and the toasts included. */
-.tooltip { position: fixed; z-index: 2147483600; display: inline-flex; align-items: center; gap: 8px; max-width: 320px; padding: 4px 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--border-strong); box-shadow: 0 6px 18px rgb(0 0 0 / 45%); color: var(--fg); font-size: 12px; line-height: 1.35; pointer-events: none; user-select: none; animation: tooltip-in 0.12s ease-out; }
+.tooltip { position: fixed; z-index: 2147483600; display: inline-flex; align-items: center; gap: 8px; max-width: 320px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--raised); border: 1px solid var(--border-strong); box-shadow: var(--shadow); color: var(--fg); font-size: 12px; line-height: 1.35; pointer-events: none; user-select: none; animation: tooltip-in 0.12s ease-out; }
 .tooltip-label { min-width: 0; }
 .tooltip-keys { display: inline-flex; gap: 4px; flex: none; }
 .tooltip-keys kbd { font-size: 11px; padding: 0 4px; line-height: 16px; color: var(--muted); }
