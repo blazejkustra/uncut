@@ -48,7 +48,7 @@ function itemLine(it: Item, start: number): string {
     typeof x.src === "string" ? x.src : "",
     x.gap ? `gap ${x.gap}` : "",
     transition?.module ? `transition ${transition.module} ${transition.duration ?? ""}`.trim() : "",
-    x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
+    x.link ? `link ${x.link}` : x.linkedTo ? `linkedTo ${x.linkedTo}` : "",
     x.sequence ? `sequence ${x.sequence}` : "",
     x.locked ? "locked" : "",
     x.mute ? "mute" : "",

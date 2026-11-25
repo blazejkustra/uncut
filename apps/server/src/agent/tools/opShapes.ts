@@ -10,8 +10,15 @@ import { withoutDecisionIds } from "./decisionIds.ts";
 
 type Schema = { [k: string]: unknown; properties?: Record<string, Schema>; required?: ReadonlyArray<string>; description?: string };
 
+/** An op's schema without `solo`: the timeline's ⌥ (one side of a link, D347) isn't in the agent's tools yet. */
+function withoutSolo(b: Schema): Schema {
+  if (!b.properties?.solo) return b;
+  const { solo: _solo, ...properties } = b.properties;
+  return { ...b, properties };
+}
+
 /** The edit ops core applies, in the schema's order. */
-const CORE: ReadonlyArray<Schema> = editOpsSchema.$defs.op.oneOf as unknown as ReadonlyArray<Schema>;
+const CORE: ReadonlyArray<Schema> = (editOpsSchema.$defs.op.oneOf as unknown as ReadonlyArray<Schema>).map(withoutSolo);
 export const CORE_OPS: ReadonlyArray<string> = CORE.map((b) => (b.properties!.op as { const: string }).const);
 
 /** The convenience ops: name, the spec $def with their full shape, and a line for the tool description. */
@@ -149,7 +156,7 @@ export function opsSchema(): { ops: Record<string, unknown>; defs: Record<string
               .map(([k, x]) => [k, strip(x)]),
           )
         : v;
-  const core = strip(editOpsSchema.$defs.op) as { oneOf: Array<Schema> };
+  const core = strip({ oneOf: CORE }) as { oneOf: Array<Schema> };
   // set_transition also takes allowTrim (the server trims the spare media an overlap lacks).
   const st = core.oneOf.find((b) => (b.properties!.op as { const: string }).const === "set_transition")!;
   st.properties = { ...st.properties, allowTrim: { type: "boolean" } };

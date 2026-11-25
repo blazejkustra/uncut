@@ -50,7 +50,7 @@ const placedItems = (p: Project) => new Map(p.tracks.flatMap((track) => track.it
 const TIMING = new Set(["id", "type", "start", "duration", "in"]);
 
 /** The fields of an added item the add line says (where and what it plays), or that only say what it is. */
-const ADDED_SKIP = new Set(["id", "type", "start", "duration", "in", "media", "src", "component", "source", "words", "linkedTo"]);
+const ADDED_SKIP = new Set(["id", "type", "start", "duration", "in", "media", "src", "component", "source", "words", "linkedTo", "link"]);
 
 /** Under an added item, a field it was given: an indented "  - " line, so the item counts as one change. */
 export const SUB_LINE = "\n  - ";

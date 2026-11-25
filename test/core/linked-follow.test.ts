@@ -1,5 +1,5 @@
-// D123 linked items: an edit re-syncs a linked item only when it changes the item's clip; a link
-// between items of different lengths is refused; whatever the follow changes is in the edit's lines.
+// Linked items (D338, by delta since D347): an edit changes a linked item only when it changes its
+// mate, links of different lengths keep their frames, and whatever the link adds is in the edit's lines.
 // The fixture mirrors the xd2 project at revision 143 (a voice of 1520 frames linked to a 733-frame
 // camera clip) and the revision 144 that restyled other items and cut the voice to 733.
 import { test } from "node:test";
@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
 import { applyEdit, createSession, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
-import { linkedFollowLines, linkLengthProblem, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
+import { linkLines } from "../../packages/core/src/timeline/arrange.ts";
+import { linkedOps } from "../helpers/links.ts";
 import { makeEditUnlocked } from "../../apps/server/src/project/projects/edit.ts";
 import type { ProjectFormatShape } from "../../apps/server/src/project/format.ts";
 import type { OpenProject } from "../../apps/server/src/project/projects/service.ts";
@@ -52,7 +53,7 @@ const project = (voice: Partial<Item> = {}): Project => ({
 
 const find = (p: Project, id: string) => p.tracks.flatMap((t) => t.items).find((i) => i.id === id);
 const apply = (p: Project, ops: ReadonlyArray<Op>) => applyEdit(createSession(p), { actor: "user", ops }).project;
-const edit = (p: Project, ops: ReadonlyArray<Op>) => apply(p, withLinkedAudio(p, ops));
+const edit = (p: Project, ops: ReadonlyArray<Op>) => apply(p, linkedOps(p, ops));
 
 const restyle: ReadonlyArray<Op> = [
   { op: "update_item", item: "screen-a2", set: { transform: { x: -779, y: -241, w: 3286, h: 1700 } } },
@@ -76,7 +77,7 @@ const editor = (p: Project) => {
 
 test("an edit that leaves a linked item's clip alone leaves the linked item alone", () => {
   const offset = project({ start: 1110 });
-  assert.deepEqual(withLinkedAudio(offset, restyle), restyle);
+  assert.deepEqual(linkedOps(offset, restyle), restyle);
   const after = edit(offset, restyle);
   assert.deepEqual(find(after, "audio-7"), find(offset, "audio-7"));
 });
@@ -86,25 +87,33 @@ test("xd2 revision 143 to 144: restyling other items keeps the 1520-frame voice 
   const rev144 = edit(rev143, restyle);
   assert.equal(find(rev144, "audio-7")!.duration, 1520);
   assert.equal(find(rev144, "audio-7")!.linkedTo, "clip-13");
-  assert.deepEqual(linkedFollowLines(rev143, restyle), []);
+  assert.deepEqual(linkLines(rev143, restyle, linkedOps(rev143, restyle)), []);
 });
 
-test("linking a 1520-frame voice to a 733-frame clip is refused, with the lengths and what to do", async () => {
+test("D347: a 1520-frame voice linked to a 733-frame clip keeps its frames when the clip is trimmed (its end didn't line up)", async () => {
   const unlinked = project({ duration: 1520, linkedTo: undefined });
-  const link: ReadonlyArray<Op> = [{ op: "update_item", item: "audio-7", set: { linkedTo: "clip-13" } }];
-  const problem = linkLengthProblem(edit(unlinked, link), link);
-  assert.match(problem ?? "", /audio-7 is 1520 frames and clip-13 is 733/);
-  assert.match(problem ?? "", /Split or trim audio-7 to 733 frames first/);
+  const link: ReadonlyArray<Op> = [
+    { op: "update_item", item: "audio-7", set: { link: "voice" } },
+    { op: "update_item", item: "clip-13", set: { link: "voice" } },
+  ];
   const { rows, send } = editor(unlinked);
-  const result = await send(link);
-  assert.equal(result._tag, "Failure");
-  assert.equal(rows.length, 0, "nothing is committed");
-  assert.equal(linkLengthProblem(edit(project({ linkedTo: undefined }), link), link), undefined, "equal lengths link");
-  const nowhere: ReadonlyArray<Op> = [{ op: "update_item", item: "audio-7", set: { linkedTo: "title-mcp" } }];
-  assert.match(linkLengthProblem(edit(unlinked, nowhere), nowhere) ?? "", /no clip with that id/);
+  assert.equal((await send(link))._tag, "Success");
+  assert.equal(rows.length, 1);
+  const linked = edit(unlinked, link);
+  const trimmed = edit(linked, [{ op: "trim_item", item: "clip-13", edge: "end", frames: 100 }]);
+  assert.deepEqual([find(trimmed, "clip-13")!.duration, find(trimmed, "audio-7")!.duration], [633, 1520]);
+  const split = edit(linked, [{ op: "split_item", item: "clip-13", at: 300, newId: "clip-13b" }]);
+  const voice = split.tracks.find((t) => t.id === "audio")!.items.filter((i) => i.id !== "audio-6");
+  assert.deepEqual(
+    voice.map((i) => [i.start, i.duration]),
+    [
+      [1102, 300],
+      [1402, 1220],
+    ],
+  );
 });
 
-test("a trim of the clip still trims its linked voice, and the edit's lines say so", async () => {
+test("a trim of the clip still trims its linked voice where their ends line up, and the edit's lines say so", async () => {
   const p = project();
   const trim: ReadonlyArray<Op> = [{ op: "trim_item", item: "clip-13", edge: "end", frames: 100 }];
   assert.equal(find(edit(p, trim), "audio-7")!.duration, 633);
@@ -114,5 +123,5 @@ test("a trim of the clip still trims its linked voice, and the edit's lines say 
   assert.equal(result._tag, "Success");
   const lines = rows[0]!.lines ?? [];
   assert.equal(lines.length, 2, lines.join("\n"));
-  assert.match(lines[1]!, /audio-7\) followed camera\.mp4 \(clip-13\): length 733 to 633 frames/);
+  assert.match(lines[1]!, /Trimmed camera\.mp4 \(audio-7\) with the item it's linked to: end edge by 3\.3s/);
 });

@@ -180,10 +180,12 @@ export interface Item {
   /** Clip, audio (D123): makes no sound. Detach audio sets it on the clip whose sound went to an audio item. */
   readonly mute?: boolean;
   /**
-   * Audio and off-main clips (D123, D215): the clip this item follows (a detached sound, a take's
-   * microphone or other picture under its picture on Main); while set it follows that clip
-   * (arrange.ts withLinkedAudio).
+   * Clip, audio (D347): items with the same link are edited together by delta (arrange/links.ts
+   * withLinks): the same move, the same trim of edges that lined up, a split at the same frame,
+   * deleted together.
    */
+  readonly link?: string;
+  /** Legacy one-way link (D123, D215), read as a link with that clip and converted to `link` on open (D347). */
   readonly linkedTo?: Id;
   // clip, audio
   readonly gainDb?: number;
@@ -340,14 +342,14 @@ export type FieldSet = { readonly [key: string]: unknown };
 
 export type Op =
   | { readonly op: "insert_item"; readonly track: Id; readonly index?: number; readonly item: Item }
-  | { readonly op: "update_item"; readonly item: Id; readonly set: FieldSet }
-  | { readonly op: "trim_item"; readonly item: Id; readonly edge: "start" | "end"; readonly frames: number }
+  | { readonly op: "update_item"; readonly item: Id; readonly set: FieldSet; readonly solo?: boolean }
+  | { readonly op: "trim_item"; readonly item: Id; readonly edge: "start" | "end"; readonly frames: number; readonly solo?: boolean }
   // Slip: the same frames of the timeline show other frames of the media (frames > 0: later ones).
-  | { readonly op: "slip_item"; readonly item: Id; readonly frames: number }
+  | { readonly op: "slip_item"; readonly item: Id; readonly frames: number; readonly solo?: boolean }
   // Roll: the cut after `item` moves (frames > 0: later); the item after it gives up what `item` gains.
   | { readonly op: "roll_edit"; readonly item: Id; readonly frames: number }
-  | { readonly op: "split_item"; readonly item: Id; readonly at: Frame; readonly newId: Id }
-  | { readonly op: "move_item"; readonly item: Id; readonly track?: Id; readonly index?: number; readonly start?: Frame }
+  | { readonly op: "split_item"; readonly item: Id; readonly at: Frame; readonly newId: Id; readonly solo?: boolean }
+  | { readonly op: "move_item"; readonly item: Id; readonly track?: Id; readonly index?: number; readonly start?: Frame; readonly solo?: boolean }
   | { readonly op: "delete_item"; readonly item: Id }
   | { readonly op: "set_transition"; readonly item: Id; readonly transition: TimedModule | null }
   // The schema only says "an object" for the new track (the project validator checks the result),

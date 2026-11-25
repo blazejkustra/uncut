@@ -3,6 +3,7 @@
 // lands on them, linked sounds follow (still linked), and it's one edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 import {
   applyEdit,
   createSession,
@@ -14,7 +15,7 @@ import {
   type Op,
   type Project,
 } from "../../packages/core/src/index.ts";
-import { shiftMainItems, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
+import { shiftMainItems } from "../../packages/core/src/timeline/arrange.ts";
 import { draftOf, planGroupMove } from "../../apps/web/src/timeline/edit.ts";
 
 const modules = await loadModules("spec/modules/builtin");
@@ -39,7 +40,7 @@ const ok = <T extends object>(plan: T): Exclude<T, { readonly problem: string }>
 };
 /** As the server applies it: the ops plus what keeps linked items in step (D123). */
 const run = (p: Project, ops: ReadonlyArray<Op>) => {
-  const s = applyEdit(createSession(p), { actor: "user", ops: withLinkedAudio(p, ops) }, timelineProblems).project;
+  const s = applyEdit(createSession(p), { actor: "user", ops: linkedOps(p, ops) }, timelineProblems).project;
   assert.deepEqual(validateProject(s, modules), []);
   return s;
 };

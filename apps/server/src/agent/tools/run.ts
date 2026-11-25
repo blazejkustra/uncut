@@ -13,7 +13,7 @@ import {
   withGraphicRetime,
 } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
-import { linkedFollowLines } from "@uncut/core/arrange";
+import { linkLines, withLinks } from "@uncut/core/arrange";
 import { projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
 import { planOnly } from "../agentPlan.ts";
@@ -513,7 +513,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const placements = placed.notes.length ? { placed: placed.notes } : {};
           const tracked = seen.notes.length ? { tracked: seen.notes } : {};
           const retimed = retime.retimed.length ? { graphicsRetimed: retimeNotes(retime.retimed, v.session.project.canvas.fps) } : {};
-          const followLines = linkedFollowLines(v.session.project as Project, ops as ReadonlyArray<Op>);
+          const linked = withLinks(v.session.project as Project, ops as ReadonlyArray<Op>);
+          const followLines = "problem" in linked ? [] : linkLines(v.session.project as Project, ops as ReadonlyArray<Op>, linked.ops);
           const followed = followLines.length ? { linkedFollowed: followLines } : {};
           if (!r.owner.seen.has(baseRevision)) {
             return textResult(

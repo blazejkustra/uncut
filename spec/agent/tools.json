@@ -1717,7 +1717,7 @@
         "item"
       ],
       "additionalProperties": false,
-      "description": "Put on Main: a picture off the main track (a clip, component, graphic or text) goes into it at the cut nearest frame (default: where it is), and what comes after ripples. A take's parts (its group: microphone, Mac sound, the other picture) over exactly its stretch become linked to it (linkedTo, their own in points kept) and stay on their tracks under it, following it from then on; a sound of a take puts the take's picture (the screen, else the camera) on Main. The track it leaves empty goes.",
+      "description": "Put on Main: a picture off the main track (a clip, component, graphic or text) goes into it at the cut nearest frame (default: where it is), and what comes after ripples. A take's parts (its group: microphone, Mac sound, the other picture) over exactly its stretch become linked to it (link, their own in points kept) and stay on their tracks under it, edited together with it from then on; a sound of a take puts the take's picture (the screen, else the camera) on Main. The track it leaves empty goes.",
       "properties": {
         "op": {
           "const": "put_on_main"

@@ -3,6 +3,7 @@
 // T7, D126), a part of the timeline as its own project (G7, D127).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 
 import {
   applyEdit,
@@ -298,9 +299,9 @@ test("G7: a part of the timeline is a project of its own: cut exactly, shifted, 
   assert.ok("problem" in sliceProject(base, { from: 5000, to: 6000 }));
 });
 
-test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripple, speed; unlinked once moved", async () => {
+test("T3 (D123, D347): a detached sound is linked to its clip: transcript cuts, ripple, speed; moved, it takes the clip; unlinked, it stays", async () => {
   const { planTextCut } = await import("../../packages/core/src/index.ts");
-  const { withLinkedAudio } = await import("../../packages/core/src/timeline/arrange.ts");
+  const { linkMates, planUnlink } = await import("../../packages/core/src/timeline/arrange.ts");
   const words = [
     { text: "Hello", start: 0.5, end: 1.0 },
     { text: "um", start: 1.2, end: 1.5 },
@@ -326,11 +327,14 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
       { id: "fx", kind: "audio", name: "FX", items: [] },
     ],
   };
-  const edit = (p: Project, ops: ReadonlyArray<Op>) => apply(p, withLinkedAudio(p, ops));
+  const edit = (p: Project, ops: ReadonlyArray<Op>) => apply(p, linkedOps(p, ops));
   const det = planDetachAudio(talk, "clip-1", takenIds(talk));
   assert.ok(!("problem" in det));
   const p = apply(talk, det.ops);
-  assert.equal(find(p, det.itemId)!.linkedTo, "clip-1");
+  assert.deepEqual(
+    linkMates(p, det.itemId).map((m) => m.item.id),
+    ["clip-1"],
+  );
   // The transcript cut of "um" (media frames 36–45) cuts the detached sound too: it's never heard.
   const cut = planTextCut(p, "m-talk", { words, language: "en", seconds: 6 }, { remove: [{ from: 1, to: 1 }] });
   assert.ok(!("problem" in cut));
@@ -364,11 +368,15 @@ test("T3 (D123): a linked detached sound follows its clip: transcript cuts, ripp
   assert.ok(!("problem" in sp));
   const s2 = edit(r, sp.ops);
   assert.deepEqual([find(s2, det.itemId)!.speed, find(s2, det.itemId)!.duration], [2, 18]);
-  // Moved by hand: unlinked, and the clip's next change leaves it alone.
-  const moved = edit(s2, [{ op: "update_item", item: det.itemId, set: { start: 300 } }]);
-  assert.equal(find(moved, det.itemId)!.linkedTo, undefined);
-  const after = edit(moved, [{ op: "delete_item", item: "clip-1" }]);
-  assert.equal(find(after, det.itemId)!.start, 300, "an unlinked sound stays when its clip goes");
+  // Moved by hand (before the cut): still linked, its clip comes along on Main.
+  const moved = edit(p, [{ op: "move_item", item: det.itemId, start: 40 }]);
+  assert.equal(layout(moved).starts.get("clip-1"), 40);
+  // Unlinked: the clip's next change leaves it alone.
+  const unlink = planUnlink(moved, [det.itemId]);
+  assert.ok(!("problem" in unlink));
+  const free = edit(moved, unlink.ops);
+  const after = edit(free, [{ op: "delete_item", item: "clip-1" }]);
+  assert.equal(find(after, det.itemId)!.start, 40, "an unlinked sound stays when its clip goes");
   // A linked sound goes with its clip.
   const gone = edit(s2, [{ op: "delete_item", item: "clip-1" }]);
   assert.equal(find(gone, det.itemId), undefined);

@@ -2,6 +2,7 @@
 // the log), the planners behind the tools, and their keys in all four keymaps.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 import {
   applyEdit,
   createSession,
@@ -15,7 +16,6 @@ import {
   type Op,
   type Project,
 } from "../../packages/core/src/index.ts";
-import { withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
 import { conflicts, presetBindings, PRESETS } from "../../apps/web/src/editor/keymap.ts";
 import { planRoll, planSlip, rollTarget } from "../../apps/web/src/timeline/edit/slipRoll.ts";
 import { findItem } from "../../apps/web/src/timeline/edit/base.ts";
@@ -131,9 +131,9 @@ test("a linked sound follows a slip and a roll of its clip", () => {
       { id: "s", kind: "audio", name: "Sound", items: [{ id: "a1", type: "audio", media: "m-a", in: 50, start: 0, duration: 100, linkedTo: "c1" }] },
     ],
   };
-  const slipped = apply(withLinkedAudio(linked, [{ op: "slip_item", item: "c1", frames: 20 }]), linked);
+  const slipped = apply(linkedOps(linked, [{ op: "slip_item", item: "c1", frames: 20 }]), linked);
   assert.equal(item(slipped, "a1").in, 70);
-  const rolled = apply(withLinkedAudio(linked, [{ op: "roll_edit", item: "c1", frames: 20 }]), linked);
+  const rolled = apply(linkedOps(linked, [{ op: "roll_edit", item: "c1", frames: 20 }]), linked);
   assert.equal(item(rolled, "a1").duration, 120);
 });
 

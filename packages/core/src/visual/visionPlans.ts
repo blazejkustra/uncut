@@ -241,7 +241,7 @@ export function planTextBehindSubject(project: Project, textIds: ReadonlyArray<s
   const taken = takenIds(project);
   const trackId = freshId("cutout", taken);
   const copyId = freshId(`${best.item.id}-cutout`, new Set([...taken, trackId]));
-  const { gap: _gap, linkedTo: _linked, transitionIn: _transition, ...source } = best.item;
+  const { gap: _gap, linkedTo: _linked, link: _link, transitionIn: _transition, ...source } = best.item;
   const effects = [...(source.effects ?? []).filter((e) => e.module !== CUTOUT), { module: CUTOUT, params: { mode: "person", softness: 1, shrink: 0 } }];
   const copy: Item = { ...source, id: copyId, start: spanOf(starts, best.item).from, mute: true, effects };
   const names = new Set(project.tracks.map((t) => t.name));

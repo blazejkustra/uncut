@@ -1,7 +1,7 @@
 // A user or agent edit to the open project: checked (schema, D6, names), then committed (the projects layer).
 import type { ProjectSnapshot } from "@uncut/contracts";
 import { applyEdit, describeOp, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
-import { linkedFollowLines, linkLengthProblem, withLinkedAudio } from "@uncut/core/arrange";
+import { linkLines, withLinks } from "@uncut/core/arrange";
 import * as Effect from "effect/Effect";
 
 import type { ProjectFormatShape } from "../format.ts";
@@ -58,8 +58,10 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       }
       const typed = ops as ReadonlyArray<Op>;
       const before = p.session.project as Project;
-      // D123: linked items follow what the edit does to their clip.
-      const synced = withLinkedAudio(before, typed);
+      // D347: linked items get what the edit does to their mates.
+      const linked = withLinks(before, typed);
+      if ("problem" in linked) return yield* refused(linked.problem, [{ code: "linked", path: "/ops", message: linked.problem }]);
+      const synced = linked.ops;
       const applied = yield* Effect.try({
         // validateOps above checked every op against the edit-ops schema.
         try: () =>
@@ -95,8 +97,6 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
       }
       const problems = format.validate(written);
       if (problems.length) return yield* refused("The edit would make the project invalid", problems);
-      const linkProblem = linkLengthProblem(written, typed);
-      if (linkProblem) return yield* refused(linkProblem, [{ code: "linked-length", path: "/ops", message: linkProblem }]);
       // D206: a dry run stops here, with everything checked and nothing saved (the revision stays).
       if (agent?.dryRun)
         return {
@@ -107,7 +107,7 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
           canRedo: p.future.length > 0,
         } satisfies ProjectSnapshot;
       const entry = applied.log.at(-1)!;
-      const lines = [...typed.map((op) => describeOp(op, written, summary)), ...linkedFollowLines(before, typed, synced)];
+      const lines = [...typed.map((op) => describeOp(op, written, summary)), ...linkLines(before, typed, synced)];
       const author = agent ? "agent" : typed.every((op) => op.op === "add_media") ? "import" : "user";
       return yield* commit(
         p,

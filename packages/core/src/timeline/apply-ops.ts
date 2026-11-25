@@ -247,7 +247,8 @@ function nestItems(project: Draft, op: Extract<Op, { op: "nest_items" }>) {
   guard(main);
   const items = main.items.slice(first, first + op.items.length);
   for (const item of items) guard(main, item);
-  const follower = allItems(project).find((i) => i.linkedTo && op.items.includes(i.linkedTo));
+  const links = new Set(items.flatMap((i) => (i.link ? [i.link] : [])));
+  const follower = allItems(project).find((i) => !op.items.includes(i.id) && ((i.linkedTo && op.items.includes(i.linkedTo)) || (i.link && links.has(i.link))));
   if (follower) throw new EditError(`"${follower.id}" is linked to a clip going into the sequence: unlink it first`);
   const gap = gapOf(items[0]!);
   delete items[0]!.gap;

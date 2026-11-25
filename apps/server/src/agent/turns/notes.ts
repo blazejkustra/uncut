@@ -15,6 +15,7 @@ import {
   TurnDependency,
   describeOp,
 } from "@uncut/core";
+import { linkMates } from "@uncut/core/arrange";
 import type { ProjectView } from "../../project/projects.ts";
 import { unloggedWords } from "../../project/projects/service.ts";
 import type { StoredTurn } from "../session/types.ts";
@@ -104,10 +105,10 @@ export function speechOfItem(
   if (!at) return { problem: `There's no item "${itemId}". project_read lists the items on each track.` };
   const speech = speechItem(project, at.item);
   if (!speech?.media) return { problem: `${itemId} has no sound (and no linked or grouped sound), so there's no speech to read.` };
-  const onMain = (id: string | undefined) => !!id && project.tracks.some((t) => t.role === "main" && t.items.some((i) => i.id === id));
+  const mainMate = (id: string) => linkMates(project, id).find((m) => m.track.role === "main" && m.item.type === "clip")?.item.id;
   if (at.track.role === "main") return { media: speech.media, itemId, request: { clips: [itemId] } };
-  if (onMain(at.item.linkedTo)) return { media: speech.media, itemId, request: { clips: [at.item.linkedTo!] } };
-  if (onMain(speech.linkedTo)) return { media: speech.media, itemId, request: { clips: [speech.linkedTo!] } };
+  const clip = mainMate(itemId) ?? mainMate(speech.id);
+  if (clip) return { media: speech.media, itemId, request: { clips: [clip] } };
   const scope = transcriptScope(project, itemId);
   return { media: scope?.media ?? speech.media, itemId, request: { items: scope?.items ?? [speech.id] } };
 }

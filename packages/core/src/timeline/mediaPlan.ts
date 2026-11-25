@@ -138,8 +138,9 @@ export function planFitToVideo(
   // Volume keys past the new end would be refused (key-range): they go.
   const keys = item.gainKeys?.filter((k) => k.frame <= duration);
   if (item.gainKeys && keys && keys.length !== item.gainKeys.length) set.gainKeys = keys.length ? keys : null;
-  // A detached sound (D123) that is fitted on its own stops following its clip.
+  // A detached sound (D123) that is fitted on its own leaves its link (D347).
   if (item.linkedTo) set.linkedTo = null;
+  if (item.link) set.link = null;
   const mode = fits ? (duration === item.duration ? "same" : "trim") : "loop";
   const changed = Object.entries(set).some(([k, v]) =>
     v === null

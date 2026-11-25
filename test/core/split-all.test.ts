@@ -2,8 +2,8 @@
 // selected) on a project with clips on V1, V2 and A1, and the tracks' V1/A1 codes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 import { applyEdit, createSession, validateProject, loadModules, type Project } from "../../packages/core/src/index.ts";
-import { withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
 import { planSplit, planSplitAll, planTrackFlag } from "../../apps/web/src/timeline/edit.ts";
 import { isDefaultTrackName, trackCodes } from "../../apps/web/src/state/project.ts";
 
@@ -45,7 +45,7 @@ const ok = (plan: object) => {
   return plan as { ops: Array<{ op: string; item: string; at: number; newId: string }>; newIds: Array<string>; summary: string };
 };
 const apply = (p: Project, plan: object) => {
-  const s = applyEdit(createSession(p), { actor: "user", ops: withLinkedAudio(p, ok(plan).ops as never) });
+  const s = applyEdit(createSession(p), { actor: "user", ops: linkedOps(p, ok(plan).ops as never) });
   assert.deepEqual(validateProject(s.project, modules), []);
   return s.project;
 };

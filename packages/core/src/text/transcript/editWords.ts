@@ -2,6 +2,7 @@ import { gapOf, resolveStarts } from "../../timeline/rules.ts";
 import type { Project, Item, Track } from "../../timeline/types.ts";
 import { localForSource, sourceSpan } from "../../timeline/speedRamp.ts";
 import { type CutWord, floorF, ceilF } from "./cutSpans.ts";
+import { linkIndex, linkMates } from "../../timeline/arrange/links.ts";
 
 /** The words under the main track in edit order, as the Transcript panel lists them (what you'd hear). */
 export interface EditWord {
@@ -22,19 +23,21 @@ export interface EditWord {
 const SOUND_PART = /voice|mic/i;
 
 /**
- * D215: the sound parts of an item, best first: the items linked to it (D123 linkedTo: a detached
+ * D215: the sound parts of an item, best first: the items linked to it (D347 link: a detached
  * sound, a take's microphone under its picture on Main), then its group's (a take still on overlay
  * tracks), clips and sounds only, never `item` itself. A take's microphone (a Voiceover track, a
  * "mic" media) comes before this Mac's sound and the other picture.
  */
-export function soundParts(project: Pick<Project, "tracks">, item: Pick<Item, "id" | "group">): Array<Item> {
+export function soundParts(project: Pick<Project, "tracks">, item: Pick<Item, "id" | "group" | "type">): Array<Item> {
   const { byLink, byGroup } = partsIndex(project.tracks);
   const linked: Array<{ item: Item; rank: number }> = [];
   const add = (list: ReadonlyArray<{ item: Item; named: boolean }> | undefined, tie: number) => {
     for (const { item: i, named } of list ?? [])
       if (i.id !== item.id && !linked.some((x) => x.item.id === i.id)) linked.push({ item: i, rank: tie + (named ? 0 : i.type === "audio" ? 1 : 2) });
   };
-  add(byLink.get(item.id), 0);
+  // A picture's linked items are its sound parts; a sound's mates aren't (its clip speaks through it).
+  const link = item.type === "audio" ? undefined : linkIndex(project.tracks).keyOf.get(item.id);
+  if (link) add(byLink.get(link), 0);
   if (item.group) add(byGroup.get(item.group), 4);
   return linked.sort((a, b) => a.rank - b.rank).map((x) => x.item);
 }
@@ -48,12 +51,14 @@ function partsIndex(tracks: ReadonlyArray<Track>) {
   let index = partsIndexes.get(tracks);
   if (index) return index;
   index = { byLink: new Map(), byGroup: new Map() };
+  const links = linkIndex(tracks);
   for (const track of tracks) {
     if (track.role === "main") continue;
     for (const i of track.items) {
       if (i.type !== "audio" && i.type !== "clip") continue;
       const entry = { item: i, named: SOUND_PART.test(track.name) || SOUND_PART.test(i.name ?? "") };
-      if (i.linkedTo) (index.byLink.get(i.linkedTo) ?? index.byLink.set(i.linkedTo, []).get(i.linkedTo)!).push(entry);
+      const link = links.keyOf.get(i.id);
+      if (link) (index.byLink.get(link) ?? index.byLink.set(link, []).get(link)!).push(entry);
       if (i.group) (index.byGroup.get(i.group) ?? index.byGroup.set(i.group, []).get(i.group)!).push(entry);
     }
   }
@@ -95,11 +100,11 @@ export interface TranscriptScope {
 export function transcriptScope(project: Pick<Project, "tracks" | "media">, itemId: string): TranscriptScope | undefined {
   const at = project.tracks.flatMap((t) => t.items.map((i) => ({ item: i, track: t }))).find((x) => x.item.id === itemId);
   if (!at || at.track.role === "main") return undefined;
-  const mainIds = new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.map((i) => i.id)));
-  if (at.item.linkedTo && mainIds.has(at.item.linkedTo)) return undefined;
+  const onMain = (id: string) => linkMates(project, id).some((m) => m.track.role === "main");
+  if (onMain(at.item.id)) return undefined;
   const sound = speechItem(project, at.item);
   if (!sound?.media) return undefined;
-  if (sound.linkedTo && mainIds.has(sound.linkedTo)) return undefined;
+  if (onMain(sound.id)) return undefined;
   const track = project.tracks.find((t) => t.items.some((i) => i.id === sound.id))!;
   const starts = resolveStarts(project);
   const plays = (i: Item) => (i.type === "clip" || i.type === "audio") && i.media === sound.media;

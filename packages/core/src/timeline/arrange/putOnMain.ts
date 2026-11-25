@@ -3,11 +3,12 @@ import { layout } from "../timeline.ts";
 import type { Project, Item, Op, Id, Track } from "../types.ts";
 import { locate, lockProblem } from "./retime.ts";
 import { mainSlot, takenIds, isFree, freeAudioTrack, uniqueIn, nextName, tryOps } from "./place.ts";
+import { linkIdsIn, linkMates, newLinkId } from "./links.ts";
 
 /** A take's picture (D215): the clip a "Put on Main" puts on the main track when `item` is one of its sounds. */
 function takePicture(project: Pick<Project, "tracks" | "media">, item: Item): Item | undefined {
   if (MAIN_ITEM_TYPES.has(item.type)) return item;
-  if (item.linkedTo) return undefined;
+  if (linkMates(project, item.id).length) return undefined;
   if (!item.group) return undefined;
   const mates = project.tracks.flatMap((t) =>
     t.role === "main" ? [] : t.items.filter((i) => i.group === item.group && i.type === "clip" && i.id !== item.id).map((i) => ({ i, t })),
@@ -22,7 +23,7 @@ export interface PutOnMainPlan {
   /** The item that went on Main, and its index there. */
   readonly itemId: Id;
   readonly index: number;
-  /** Its parts that now follow it (linkedTo). */
+  /** Its parts now linked to it. */
   readonly linked: ReadonlyArray<Id>;
 }
 
@@ -30,7 +31,7 @@ export interface PutOnMainPlan {
  * "Put on Main" (D215): a picture (clip, element, graphic or text) off the main track goes into the
  * main track at the cut nearest `frame` (default: where its middle is), which ripples what comes
  * after. A take's parts (its group: the microphone, this Mac's sound, the other picture) that play
- * over exactly its stretch become linked to it (D123's linkedTo, the in offsets kept): they stay on
+ * over exactly its stretch become linked to it (D347's link, the in offsets kept): they stay on
  * their tracks, start where it starts on Main and follow its moves, trims, ripple, splits and
  * transcript cuts. A part whose track isn't free there goes on another free track of its kind (a new
  * one when none is). Group members that aren't parts (other lengths, text) stay as they are. A sound
@@ -64,8 +65,9 @@ export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame
   const before = main.items[index];
   if (before?.transitionIn) ops.push({ op: "set_transition", item: before.id, transition: null });
   ops.push({ op: "move_item", item: picture.id, track: main.id, index });
-  if (picture.group || picture.linkedTo)
-    ops.push({ op: "update_item", item: picture.id, set: { ...(picture.group ? { group: null } : {}), ...(picture.linkedTo ? { linkedTo: null } : {}) } });
+  const link = picture.link ?? newLinkId(linkIdsIn(project));
+  const pictureSet = { ...(picture.group ? { group: null } : {}), ...(picture.linkedTo ? { linkedTo: null } : {}) };
+  if (Object.keys(pictureSet).length) ops.push({ op: "update_item", item: picture.id, set: pictureSet });
   // The take's parts: same stretch, a clip or a sound, unlocked.
   const members = picture.group
     ? project.tracks.flatMap((t) =>
@@ -108,11 +110,12 @@ export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame
       }
     }
     ops.push({ op: "move_item", item: item.id, ...(target.id !== track.id ? { track: target.id } : {}), start: newStart });
-    ops.push({ op: "update_item", item: item.id, set: { linkedTo: picture.id, group: null } });
+    ops.push({ op: "update_item", item: item.id, set: { link, group: null, ...(item.linkedTo ? { linkedTo: null } : {}) } });
     const moved = { ...item, start: newStart };
     tracks = tracks.map((t) => (t.id === target.id ? { ...t, items: [...t.items, moved] } : t));
     linked.push(item.id);
   }
+  if (linked.length && !picture.link) ops.push({ op: "update_item", item: picture.id, set: { link } });
   // A group of one is no group.
   if (picture.group && rest.length === 1) ops.push({ op: "update_item", item: rest[0]!.item.id, set: { group: null } });
   // The track it leaves empty goes (as Bring forward / Send backward does).

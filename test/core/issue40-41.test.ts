@@ -5,6 +5,7 @@
 // clip's linked microphone.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 import {
   applyEdit,
   captionCards,
@@ -22,7 +23,7 @@ import {
   type Op,
   type Project,
 } from "../../packages/core/src/index.ts";
-import { planPutOnMain, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
+import { linkMates, planPutOnMain } from "../../packages/core/src/timeline/arrange.ts";
 
 // 30 fps; words in seconds of the microphone's file (frame = seconds × 30).
 const WORDS = [
@@ -67,7 +68,13 @@ const ok = <R extends object>(r: R): Exclude<R, { readonly problem: string }> =>
   return r as Exclude<R, { readonly problem: string }>;
 };
 /** Ops applied as the server applies them (linked items follow, D123), checked with the timeline rules. */
-const apply = (p: Project, ops: ReadonlyArray<Op>) => applyEdit(createSession(p), { actor: "user", ops: withLinkedAudio(p, ops) }, timelineProblems).project;
+/** The ids an item is linked with (D347), joined. */
+const linkedWith = (p: Project, id: string) =>
+  linkMates(p, id)
+    .map((m) => m.item.id)
+    .sort()
+    .join(",");
+const apply = (p: Project, ops: ReadonlyArray<Op>) => applyEdit(createSession(p), { actor: "user", ops: linkedOps(p, ops) }, timelineProblems).project;
 const items = (p: Project) => new Map(p.tracks.flatMap((t) => t.items.map((i) => [i.id, { ...i, track: t.id }] as const)));
 const startsOf = (p: Project) => layout(p).starts;
 
@@ -152,7 +159,7 @@ test("Put on Main: a camera + mic take goes in at the nearest cut, the mic linke
   assert.equal(by.get("cam-1")!.track, "main");
   assert.equal(by.get("cam-1")!.group, undefined);
   assert.deepEqual(
-    [by.get("mic-1")!.start, by.get("mic-1")!.in, by.get("mic-1")!.linkedTo, by.get("mic-1")!.group, by.get("mic-1")!.track],
+    [by.get("mic-1")!.start, by.get("mic-1")!.in, linkedWith(put, "mic-1"), by.get("mic-1")!.group, by.get("mic-1")!.track],
     [90, 12, "cam-1", undefined, "voice"],
   );
   assert.ok(!put.tracks.some((t) => t.id === "camera"), "the empty Camera track goes");
@@ -195,7 +202,7 @@ test("Put on Main with a screen: the screen goes on Main, the camera bubble and 
   assert.equal(startsOf(put).get("scr-1"), 0, "an empty Main: it starts the edit");
   assert.deepEqual([items(put).get("cam-1")!.start, items(put).get("mic-1")!.start], [0, 0]);
   const split = apply(put, [{ op: "split_item", item: "scr-1", at: 60, newId: "scr-2" }]);
-  const pieces = [...items(split).values()].filter((i) => i.linkedTo === "scr-2");
+  const pieces = linkMates(split, "scr-2").map((m) => m.item);
   assert.deepEqual(pieces.map((i) => [i.type, i.start, i.in, i.duration]).sort(), [
     ["audio", 60, 72, 90],
     ["clip", 60, 65, 90],
@@ -299,7 +306,7 @@ test("the take on Main: words through the camera's linked mic, a cut by text rip
   ]);
   const mics = cut.tracks
     .find((t) => t.id === "voice")!
-    .items.map((i) => [i.start, i.in, i.duration, i.linkedTo])
+    .items.map((i) => [i.start, i.in, i.duration, linkedWith(cut, i.id)])
     .sort((a, b) => (a[0] as number) - (b[0] as number));
   assert.deepEqual(mics, [
     [90, 12, 38, "cam-1"],
