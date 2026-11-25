@@ -49,7 +49,6 @@ import {
   mediaToken,
   sourceFramePick,
   svgClipHtml,
-  untaggedFilter,
   blurFilters,
   placementOf,
   fxGraph,
@@ -60,7 +59,7 @@ import {
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
 import { clipVision, layerFaceMasks, unblurredLabel, unblurredStop, type VisionLookup } from "../plan/vision.ts";
 import { faceMaskFrame } from "./faceMasks.ts";
-import { withPictureSizes, capsOf, untaggedFiles, run, guardedRun, ffmpegError, boundedDecoders, capHardwareDecodes } from "./ffmpeg.ts";
+import { withPictureSizes, capsOf, colourFilters, run, guardedRun, ffmpegError, boundedDecoders, capHardwareDecodes } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
 import { graphicMediaSource } from "../graphicMedia.ts";
@@ -169,7 +168,7 @@ export async function renderFramesWith(
 /**
  * A frame session (D292): one rasteriser, one graphic media source and one temp folder for any
  * number of renderFramesWith-style renders (the picture sizes, the plan, the background and the
- * untagged files once per width). `signal` (and each render's own) stops it.
+ * colour filters once per width). `signal` (and each render's own) stops it.
  */
 export async function openFrameSession(
   bin: string,
@@ -217,8 +216,8 @@ export async function openFrameSession(
   const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
   // The colour tables (D136) written so far, by key.
   const luts = new Map<string, string>();
-  // Per output width: the plan, the background and the untagged files.
-  const widths = new Map<number, Promise<{ background: string; untagged: Map<string, number>; small: { outWidth: number; outHeight: number } | undefined }>>();
+  // Per output width: the plan, the background and the files' colour filters.
+  const widths = new Map<number, Promise<{ background: string; colours: Map<string, string>; small: { outWidth: number; outHeight: number } | undefined }>>();
   let sheets = 0;
   const forWidth = (W: number, H: number, signal: AbortSignal) => {
     let got = widths.get(W);
@@ -235,8 +234,8 @@ export async function openFrameSession(
           vision: options.vision,
         });
         await rs.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background, ...small });
-        const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
-        return { background, untagged, small };
+        const colours = "problem" in plan ? new Map<string, string>() : await colourFilters(bin, plan, signal);
+        return { background, colours, small };
       })();
       widths.set(W, got);
       // A failure isn't kept: the next render tries again.
@@ -273,7 +272,7 @@ export async function openFrameSession(
   ): Promise<Array<RenderedFrame>> => {
     const W = Math.max(2, Math.round(width / 2) * 2);
     const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
-    const { background, untagged, small: sized } = await forWidth(W, H, signal);
+    const { background, colours, small: sized } = await forWidth(W, H, signal);
     const draw = async (html: string, png: string) =>
       rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...sized });
     const out: Array<RenderedFrame> = [];
@@ -369,7 +368,7 @@ export async function openFrameSession(
         const shown = v.wipe === undefined ? W : 2 * Math.floor((W * v.wipe) / 2);
         if (shown <= 0) continue;
         const fade = (v.item.type === "clip" && !svg) || v.item.type === "graphic" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
-        const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
+        const tag = media ? (colours.get(mediaPath(media)) ?? "") : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
         // An iris (D79): alpha times the disc at the canvas's centre, for a layer whose top-left is at (ox, oy).
         // A reveal shape (D133): alpha times core's coverage, the same way.

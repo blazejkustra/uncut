@@ -1,6 +1,6 @@
 // The MediaLibrary service: its shape and the import, replace and drop inputs it takes.
 import { ProjectError, type ImportJob, type ProjectSnapshot } from "@uncut/contracts";
-import type { Overrun } from "@uncut/core";
+import type { MediaColour, Overrun } from "@uncut/core";
 import type { TakePlacement, MultiKind, MultiLayoutName, PlacedMulti } from "@uncut/core/place";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -131,6 +131,6 @@ export interface MediaEntry {
   readonly kind: "video" | "audio" | "image";
   readonly name: string;
   readonly path: string;
-  readonly probe: { frames?: number; fps?: number; width?: number; height?: number; hasAudio: boolean };
+  readonly probe: { frames?: number; fps?: number; width?: number; height?: number; hasAudio: boolean; colour?: MediaColour };
   readonly source?: { readonly module: string; readonly [key: string]: unknown };
 }

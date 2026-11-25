@@ -1,5 +1,6 @@
 import { AtSign, AudioLines, AudioWaveform, Image as ImageIcon, Film, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useState, useRef, useEffect, type ReactNode } from "react";
+import { hdrLabel } from "@uncut/core/colour";
 import { timecode } from "../../state/format.ts";
 import { type MediaItem, useApp, isRemote, actions, getState, activeAnalyses, thumbUrl, mediaUrl, proxyOf, proxyUrl, projectOf } from "../../state/store.ts";
 import { planReplaceMarks } from "../../timeline/replace.ts";
@@ -62,6 +63,7 @@ export function MediaTile({
 }) {
   const app = useApp();
   const { thumbIds } = app;
+  const hdr = item.kind === "video" ? hdrLabel(item.probe?.colour) : undefined;
   // G4: renamed in place (double-click the name, or Rename in its menu).
   const [renaming, setRenaming] = useState(false);
   const tileRef = useRef<HTMLDivElement>(null);
@@ -385,6 +387,11 @@ export function MediaTile({
       </div>
       <div className="tile-sub" data-testid="tile-meta">
         {generated ? <span className="gen-by">{generated.by}</span> : mediaMeta(item)}
+        {hdr && (
+          <span className="tile-hdr" data-testid="media-hdr" title={`${hdr}: tone-mapped to SDR in the preview and the export`}>
+            HDR
+          </span>
+        )}
       </div>
     </div>
   );

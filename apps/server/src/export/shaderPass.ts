@@ -98,7 +98,7 @@ export async function shadeLayers(
   r: Rasterizer,
   bin: string,
   plan: ExportPlan,
-  opts: Pick<CommandOptions, "caps" | "untagged">,
+  opts: Pick<CommandOptions, "caps" | "colourFilters">,
   dir: string,
   signal: AbortSignal,
   onFrame?: (done: number, total: number) => void,

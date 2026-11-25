@@ -12,6 +12,7 @@ import {
   type ProjectLut,
   readFcpxml,
   type TimelineFile,
+  type MediaColour,
 } from "@uncut/core";
 import type { ProbeInfo } from "../mediaCore.ts";
 import { MATCH_FIRST_CLIP } from "../../project/projects.ts";
@@ -123,6 +124,27 @@ export const PROBE_ERRORS: Record<string, string> = {
   unreadable: "The file couldn't be read",
 };
 
+const tag = (value: unknown) => (typeof value === "string" && value && value !== "unknown" ? value : undefined);
+
+const bitDepthOf = (stream: Record<string, unknown>) => {
+  const raw = Number(stream.bits_per_raw_sample);
+  if (Number.isInteger(raw) && raw > 0) return raw;
+  const fromFormat = /p(\d+)(?:le|be)?$/.exec(String(stream.pix_fmt ?? ""))?.[1];
+  if (fromFormat) return Number(fromFormat);
+  return typeof stream.pix_fmt === "string" ? 8 : undefined;
+};
+
+/** A video stream's colour from ffprobe's fields (color_transfer, color_primaries, color_space, bits_per_raw_sample, pix_fmt). */
+export function colourOf(stream: Record<string, unknown> | undefined): MediaColour | undefined {
+  if (!stream) return undefined;
+  const transfer = tag(stream.color_transfer);
+  const primaries = tag(stream.color_primaries);
+  const matrix = tag(stream.color_space);
+  const bitDepth = bitDepthOf(stream);
+  if (!transfer && !primaries && !matrix && !bitDepth) return undefined;
+  return { ...(transfer ? { transfer } : {}), ...(primaries ? { primaries } : {}), ...(matrix ? { matrix } : {}), ...(bitDepth ? { bitDepth } : {}) };
+}
+
 /** ffprobe's JSON in the media core's shape, for formats the core doesn't parse. */
 export const fromFfprobe = (json: string): ProbeInfo | undefined => {
   let j: { streams?: Array<Record<string, unknown>>; format?: Record<string, unknown> };
@@ -142,6 +164,7 @@ export const fromFfprobe = (json: string): ProbeInfo | undefined => {
     .split("/")
     .map(Number);
   const duration = Number(j.format?.duration ?? video?.duration ?? audio?.duration);
+  const colour = video && !image ? colourOf(video) : undefined;
   return {
     kind: image ? "image" : video ? "video" : "audio",
     container: String(j.format?.format_name ?? "unknown").split(",")[0]!,
@@ -150,6 +173,7 @@ export const fromFfprobe = (json: string): ProbeInfo | undefined => {
     ...(num && den && !image ? { fps: `${num}/${den}`, fpsValue: num / den } : {}),
     ...(audio ? { audioCodec: String(audio.codec_name) } : {}),
     hasAudio: Boolean(audio),
+    ...(colour ? { colour } : {}),
     via: "ffprobe",
   };
 };
@@ -187,5 +211,6 @@ export const probeOf = (info: ProbeInfo, fps: number): MediaEntry["probe"] => {
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     hasAudio: info.hasAudio,
+    ...(info.colour ? { colour: info.colour } : {}),
   };
 };

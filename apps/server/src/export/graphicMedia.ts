@@ -31,8 +31,8 @@ import { dirname, extname, join } from "node:path";
 import { graphicMediaFrame, graphicMediaSize, type GraphicMediaRequest, type Media } from "@uncut/core";
 import { withoutApiKey } from "../app/shellEnv.ts";
 import { localInputs } from "../media/localInputs.ts";
-import { run } from "./exporter/ffmpeg.ts";
-import { untaggedFilter } from "./plan/video.ts";
+import { colourFilterOf, run } from "./exporter/ffmpeg.ts";
+import { toneMapSupported } from "../media/hdr.ts";
 
 export interface GraphicMediaPicture {
   readonly bytes: Buffer;
@@ -64,8 +64,8 @@ interface VideoInfo {
   readonly height: number;
   readonly fps: number;
   readonly frames?: number;
-  /** Untagged colour (exportPlan untaggedFilter): its height, else undefined. */
-  readonly untagged?: number;
+  /** The filters that read its colour as the preview shows it (exporter colourFilterOf), else undefined. */
+  readonly colour?: string;
   /** A variable-rate file: each frame's start (s from the file's start, ascending), from ffprobe. */
   readonly times?: ReadonlyArray<number>;
 }
@@ -129,7 +129,7 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space:stream_side_data=rotation:stream_tags=rotate:format=duration,start_time",
+      "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space,color_transfer:stream_side_data=rotation:stream_tags=rotate:format=duration,start_time",
       "-of",
       "json",
       path,
@@ -144,6 +144,7 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
     nb_frames?: string;
     duration?: string;
     color_space?: string;
+    color_transfer?: string;
     side_data_list?: Array<{ rotation?: number }>;
     tags?: { rotate?: string };
   };
@@ -158,6 +159,7 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
   const fps = rate(s.avg_frame_rate) ?? rate(s.r_frame_rate) ?? 30;
   const duration = Number(s.duration ?? parsed.format?.duration);
   const counted = Number(s.nb_frames);
+  const colour = colourFilterOf(s, await toneMapSupported(bin));
   const frames =
     Number.isInteger(counted) && counted > 0 ? counted : Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration * fps)) : undefined;
   const base = {
@@ -165,7 +167,7 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
     height: turned ? s.width : s.height,
     fps,
     ...(frames ? { frames } : {}),
-    ...(!s.color_space || s.color_space === "unknown" ? { untagged: s.height } : {}),
+    ...(colour ? { colour } : {}),
   };
   // Variable rate (its nominal and average rates differ): the frames' own times.
   const nominal = rate(s.r_frame_rate);
@@ -363,7 +365,7 @@ export function graphicMediaSource(opts: {
       "-fps_mode",
       "passthrough",
       "-vf",
-      `${untaggedFilter(info.untagged)}scale=w=${width}:h=${height}:flags=bicubic,format=bgr24`,
+      `${info.colour ?? ""}scale=w=${width}:h=${height}:flags=bicubic,format=bgr24`,
       "-f",
       "rawvideo",
       "-pix_fmt",

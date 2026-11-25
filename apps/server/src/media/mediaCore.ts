@@ -1,6 +1,7 @@
 // Talks to the Rust media core helper (native/media, D42): spawned on demand, one JSON
 // request per stdin line, one JSON reply per stdout line.
 import { MediaCoreError } from "@uncut/contracts";
+import type { MediaColour } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,6 +27,8 @@ export interface ProbeInfo {
   readonly hasAudio: boolean;
   readonly rotation?: number;
   readonly creationTime?: string;
+  /** Not read by the media core: ffprobe's, added at import (media/hdr.ts). */
+  readonly colour?: MediaColour;
   readonly via: "native" | "ffprobe" | "svg";
 }
 

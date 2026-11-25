@@ -5,6 +5,7 @@ import { sourceFramePick } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
 import { makeTemp } from "./files.ts";
 import { capsOf, run, guardedRun, ffmpegError } from "./ffmpeg.ts";
+import { toneMapFor } from "../../media/hdr.ts";
 
 /** The contact sheet's grid drawn by a rasteriser of its own, as a JPEG. */
 export async function drawSheet(cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout): Promise<Buffer> {
@@ -49,6 +50,7 @@ export async function mediaFramesWith(
   signal: AbortSignal,
 ): Promise<Array<MediaFrame>> {
   const caps = await capsOf(bin);
+  const toneMap = await toneMapFor(bin, path);
   const temp = await makeTemp();
   let streamEnd: Promise<number | undefined> | undefined;
   const videoEnd = () =>
@@ -89,7 +91,7 @@ export async function mediaFramesWith(
             "-map",
             "0:v:0",
             "-vf",
-            `${pick.filter},scale=${Math.max(16, Math.round(width / 2) * 2)}:-2`,
+            [pick.filter, `scale=${Math.max(16, Math.round(width / 2) * 2)}:-2`, toneMap].filter(Boolean).join(","),
             "-frames:v",
             "1",
             "-q:v",

@@ -32,7 +32,7 @@ import { rasterizerCommand, startRasterizer, type Rasterizer } from "../rasteriz
 import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeInto, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
 import { REVIEW_PAGE } from "./reviewPage.ts";
-import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, untaggedFiles, ffmpegError, guardedRun } from "./ffmpeg.ts";
+import { Cancelled, capsOf, denoiseLagOf, ffmpegWith, colourFilters, ffmpegError, guardedRun } from "./ffmpeg.ts";
 import { encodeChunked } from "./chunkedEncode.ts";
 import { rasterise } from "./rasterise.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
@@ -156,10 +156,10 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         step("graphics", done, total),
       );
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
-      const untagged = await untaggedFiles(bin, plan, signal);
+      const colours = await colourFilters(bin, plan, signal);
       stage = "shader";
       const faceMasks = await writeFaceMasks(bin, plan, temp, signal);
-      const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal, (done, total) => step("shaders", done, total));
+      const shaded = await shadeLayers(rasterizer, bin, plan, { caps, colourFilters: colours }, temp, signal, (done, total) => step("shaders", done, total));
       signal.removeEventListener("abort", onAbort);
       await rasterizer.close();
       rasterizer = undefined;
@@ -199,7 +199,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         const encoderCaps = await capsOf(encoderBin);
         const encoderPlan = plan.denoiseLag === undefined ? plan : { ...plan, denoiseLag: await denoiseLagOf(encoderBin) };
         const options = {
-          untagged,
+          colourFilters: colours,
           background,
           rasters,
           caps: encoderCaps,

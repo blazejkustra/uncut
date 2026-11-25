@@ -22,7 +22,7 @@ import * as Stream from "effect/Stream";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
-import { posterKey } from "./media.ts";
+import { pictureKey, toneMapFor } from "./hdr.ts";
 import { Projects } from "../project/projects.ts";
 import { needsProxy, Proxies, videoFacts } from "./proxies.ts";
 import { which } from "../app/setup.ts";
@@ -69,8 +69,8 @@ export function tilesFor(seconds: number) {
   return { interval, count, cols: COLS, rows: Math.ceil(count / COLS) };
 }
 
-/** ffmpeg's arguments (before localInputs): the first picture, a frame every `interval` s, scaled and tiled into one JPEG. */
-export function filmstripArgs(input: string, output: string, seconds: number, { keyframesOnly = false, hardware = false } = {}): Array<string> {
+/** ffmpeg's arguments (before localInputs): the first picture, a frame every `interval` s, scaled (then tone-mapped, for HDR) and tiled into one JPEG. */
+export function filmstripArgs(input: string, output: string, seconds: number, { keyframesOnly = false, hardware = false, toneMap = "" } = {}): Array<string> {
   const { interval, cols, rows } = tilesFor(seconds);
   return [
     "-hide_banner",
@@ -89,7 +89,7 @@ export function filmstripArgs(input: string, output: string, seconds: number, { 
     "-map",
     "0:v:0",
     "-vf",
-    `fps=1/${interval},scale=-2:${FILMSTRIP_TILE_H}:flags=bilinear,tile=${cols}x${rows}`,
+    [`fps=1/${interval}`, `scale=-2:${FILMSTRIP_TILE_H}:flags=bilinear`, toneMap, `tile=${cols}x${rows}`].filter(Boolean).join(","),
     "-frames:v",
     "1",
     "-update",
@@ -140,6 +140,8 @@ process.on("exit", () => {
 export interface SpriteOptions {
   readonly keyframesOnly?: boolean;
   readonly hardware?: boolean;
+  /** The tone map of an HDR input (hdr.ts toneMapFor). */
+  readonly toneMap?: string;
   /** Aborting kills the run (its project closed, the server is stopping). */
   readonly signal?: AbortSignal | undefined;
 }
@@ -242,8 +244,9 @@ export async function generate(folder: string, id: string, source: Source, tools
   let made = false;
   try {
     const run = (input: string, keyframesOnly: boolean) => async () => {
-      if (tools.hardware && (await makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, hardware: true, signal: tools.signal }))) return true;
-      return makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, signal: tools.signal });
+      const toneMap = await toneMapFor(ffmpeg, input);
+      if (tools.hardware && (await makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, hardware: true, toneMap, signal: tools.signal }))) return true;
+      return makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, toneMap, signal: tools.signal });
     };
     // A proxy (short GOP) decodes keyframes only; one that went away mid-run falls back to the original.
     const attempts = source.proxy ? [run(source.input, true), run(source.path, heavy)] : [run(source.input, heavy)];
@@ -346,7 +349,7 @@ export const layer = Layer.unwrap(
         const probe = media.probe;
         const seconds = probe?.frames && probe.fps ? probe.frames / probe.fps : undefined;
         const result = yield* Effect.promise(async (): Promise<Generated | undefined> => {
-          const key = await posterKey(path);
+          const key = await pictureKey(await tools.ffprobe(), path);
           if (!key) return undefined;
           const name = `${dir}\0${id}--${key}`;
           let job = inFlight.get(name);

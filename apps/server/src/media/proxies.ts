@@ -9,7 +9,7 @@ import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
 import type { ProjectSnapshot, ProxyState } from "@uncut/contracts";
-import type { Project } from "@uncut/core";
+import { hdrKind, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -22,7 +22,7 @@ import { withoutApiKey } from "../app/shellEnv.ts";
 import { Exporter } from "../export/exporter.ts";
 import { ffmpegWith } from "../export/exporter/ffmpeg.ts";
 import { Projects } from "../project/projects.ts";
-import { posterKey } from "./media.ts";
+import { pictureKey, toneMapFor } from "./hdr.ts";
 import { runProbe } from "./probe.ts";
 import { localInputs } from "./localInputs.ts";
 import { ReverseQueue } from "./reversed.ts";
@@ -49,10 +49,13 @@ export interface VideoFacts {
   readonly height?: number | undefined;
   /** The whole file's bits per second. */
   readonly bitrate?: number | undefined;
+  /** HLG or PQ: tone-mapped, so always proxied (the preview's <video> would show it untouched). */
+  readonly hdr?: boolean | undefined;
 }
 
-/** D212: whether footage gets a proxy: 4K (a shorter side of 1800 px or more, or 3200 wide), HEVC, or long-GOP above 30 Mb/s. */
+/** D212: whether footage gets a proxy: 4K (a shorter side of 1800 px or more, or 3200 wide), HEVC, HDR, or long-GOP above 30 Mb/s. */
 export function needsProxy(facts: VideoFacts): boolean {
+  if (facts.hdr) return true;
   const w = facts.width ?? 0;
   const h = facts.height ?? 0;
   if (Math.min(w, h) >= 1800 || Math.max(w, h) >= 3200) return true;
@@ -60,8 +63,11 @@ export function needsProxy(facts: VideoFacts): boolean {
   return facts.codec !== undefined && LONG_GOP.has(facts.codec) && (facts.bitrate ?? 0) > HEAVY_BITRATE;
 }
 
-/** ffmpeg's arguments for a proxy: the first picture and sound, the longer side at PROXY_SIZE (never upscaled), short GOP, no B-frames. */
-export function proxyArgs(input: string, output: string, encoder: "hardware" | "software"): Array<string> {
+/**
+ * ffmpeg's arguments for a proxy: the first picture and sound, the longer side at PROXY_SIZE (never
+ * upscaled), tone-mapped after the scale when `toneMap` is given (hdr.ts), short GOP, no B-frames.
+ */
+export function proxyArgs(input: string, output: string, encoder: "hardware" | "software", toneMap = ""): Array<string> {
   const video =
     encoder === "hardware"
       ? ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-profile:v", "high", "-q:v", "50"]
@@ -85,7 +91,7 @@ export function proxyArgs(input: string, output: string, encoder: "hardware" | "
     "-map",
     "0:a:0?",
     "-vf",
-    `scale=w=${PROXY_SIZE}:h=${PROXY_SIZE}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p`,
+    [`scale=w=${PROXY_SIZE}:h=${PROXY_SIZE}:force_original_aspect_ratio=decrease:force_divisible_by=2`, toneMap, "format=yuv420p"].filter(Boolean).join(","),
     ...video,
     "-g",
     String(PROXY_GOP),
@@ -120,7 +126,7 @@ export async function videoFacts(ffprobe: string, path: string): Promise<(VideoF
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=codec_name,width,height:format=bit_rate,duration",
+      "stream=codec_name,width,height,color_transfer:format=bit_rate,duration",
       "-of",
       "json",
       path,
@@ -130,7 +136,7 @@ export async function videoFacts(ffprobe: string, path: string): Promise<(VideoF
   if (r.kind !== "done" || r.code !== 0) return undefined;
   try {
     const j = JSON.parse(r.stdout) as {
-      streams?: Array<{ codec_name?: string; width?: number; height?: number }>;
+      streams?: Array<{ codec_name?: string; width?: number; height?: number; color_transfer?: string }>;
       format?: { bit_rate?: string; duration?: string };
     };
     const s = j.streams?.[0];
@@ -141,6 +147,7 @@ export async function videoFacts(ffprobe: string, path: string): Promise<(VideoF
       width: s.width,
       height: s.height,
       bitrate: Number(j.format?.bit_rate) || undefined,
+      hdr: hdrKind({ transfer: s.color_transfer }) !== undefined,
       ...(Number.isFinite(seconds) ? { seconds } : {}),
     };
   } catch {
@@ -201,7 +208,7 @@ export class ProxyQueue {
     if (s?.phase !== "done" || !s.key || !dir) return undefined;
     const m = this.media.find((x) => x.id === id);
     if (!m) return undefined;
-    if ((await posterKey(isAbsolute(m.path) ? m.path : resolve(dir, m.path))) !== s.key) {
+    if ((await pictureKey(await this.options.ffprobe(), isAbsolute(m.path) ? m.path : resolve(dir, m.path))) !== s.key) {
       void this.sync(dir, this.media);
       return undefined;
     }
@@ -263,7 +270,7 @@ export class ProxyQueue {
     for (const m of media) {
       if (m.kind !== "video" || typeof m.path !== "string") continue;
       const path = isAbsolute(m.path) ? m.path : resolve(dir, m.path);
-      const key = await posterKey(path);
+      const key = await pictureKey(ffprobe, path);
       if (!key) continue;
       const name = proxyName(m.id, key);
       if (files.includes(name)) {
@@ -342,10 +349,11 @@ export class ProxyQueue {
     await mkdir(folder, { recursive: true }).catch(() => {});
     const out = join(folder, proxyName(task.id, task.key));
     const part = `${out}.part`;
-    const attempt = (bin: string, encoder: "hardware" | "software") =>
-      new Promise<boolean>((resolveRun) => {
+    const attempt = async (bin: string, encoder: "hardware" | "software") => {
+      const toneMap = await toneMapFor(bin, task.path);
+      return new Promise<boolean>((resolveRun) => {
         if (run.cancelled) return resolveRun(false);
-        const child = spawn(bin, localInputs(bin, proxyArgs(task.path, part, encoder)), {
+        const child = spawn(bin, localInputs(bin, proxyArgs(task.path, part, encoder, toneMap)), {
           stdio: ["ignore", "pipe", "pipe"],
           env: withoutApiKey(process.env),
         });
@@ -364,6 +372,7 @@ export class ProxyQueue {
         child.on("error", () => resolveRun(false));
         child.on("close", (code) => resolveRun(code === 0 && !run.cancelled));
       });
+    };
     let ok = (await this.hardware) ? await attempt(ffmpeg, "hardware") : false;
     // VideoToolbox can refuse (no session free, an older Mac): libx264 then.
     if (!ok && !run.cancelled) {
@@ -372,7 +381,7 @@ export class ProxyQueue {
     }
     if (ok && !run.cancelled) {
       // The original may have changed while the proxy was made: then it's not this file's proxy.
-      const now = await posterKey(task.path);
+      const now = await pictureKey(await this.options.ffprobe(), task.path);
       ok =
         now === task.key &&
         (await rename(part, out).then(
