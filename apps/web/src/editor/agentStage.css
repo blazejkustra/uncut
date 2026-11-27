@@ -3,18 +3,18 @@
 .agent-stage {
   grid-area: 2 / 1 / 4 / 5; z-index: 30; pointer-events: none;
   display: flex; align-items: center; justify-content: center; padding: 28px 24px;
-  background: rgb(0 0 0 / 46%); backdrop-filter: blur(7px) saturate(0.85);
+  background: var(--overlay); backdrop-filter: blur(7px) saturate(0.85);
   animation: agent-stage-in 0.22s ease-out;
 }
 .agent-stage-card {
   pointer-events: auto; position: relative;
   width: min(720px, 100%); height: min(620px, 100%);
   display: flex; flex-direction: column; min-height: 0;
-  border: 1px solid var(--border-strong); border-radius: 16px; background: var(--panel);
-  box-shadow: 0 24px 80px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 3%) inset;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel);
+  box-shadow: var(--shadow);
   animation: agent-stage-card-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.agent-stage-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0 18px; }
+.agent-stage-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 0 16px; }
 .agent-stage-kicker { font-size: 11px; color: var(--muted); }
 .agent-stage-head .grow, .agent-stage-foot .grow { flex: 1; }
 .agent-stage-card .agent { min-height: 0; }
@@ -23,19 +23,19 @@
 .agent-stage-card .agent-thread { padding: 8px 28px 12px; }
 .agent-stage-card .agent:has(.agent-empty) { justify-content: center; }
 .agent-stage-card .agent:has(.agent-empty) > .agent-thread { flex: 0 0 auto; overflow: visible; padding-bottom: 20px; }
-.agent-stage-card .agent-empty { padding: 0; gap: 10px; }
-.agent-stage-card .agent-empty-title { font-size: 30px; letter-spacing: -0.02em; }
-.agent-stage-card .agent-empty-sub { font-size: 14px; }
-.agent-stage-card .composer { margin: 0 24px 10px; border-radius: 12px; }
-.agent-stage-card .composer-box > textarea, .agent-stage-card .composer-hl { min-height: 76px; font-size: 14px; }
-.agent-stage-foot { display: flex; align-items: center; gap: 6px; padding: 0 26px 14px; font-size: 12px; color: var(--muted); }
-.agent-stage-foot svg.lucide { width: 13px; height: 13px; }
-.agent-stage-foot kbd { font-size: 10px; padding: 0 5px; }
+.agent-stage-card .agent-empty { padding: 0; gap: 8px; }
+.agent-stage-card .agent-empty-title { font-size: 20px; letter-spacing: -0.01em; }
+.agent-stage-card .agent-empty-sub { font-size: 13px; }
+.agent-stage-card .composer { margin: 0 24px 8px; border-radius: var(--radius); }
+.agent-stage-card .composer-box > textarea, .agent-stage-card .composer-hl { min-height: 76px; font-size: 13px; }
+.agent-stage-foot { display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; font-size: 12px; color: var(--muted); }
+.agent-stage-foot svg.lucide { width: 14px; height: 14px; }
+.agent-stage-foot kbd { font-size: 10px; padding: 0 4px; }
 .agent-stage-drop {
-  position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: 12px; background: rgb(17 17 17 / 88%);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; pointer-events: none; z-index: 5;
+  position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 88%, transparent);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; pointer-events: none; z-index: 5;
 }
-.agent-stage-drop svg.lucide { width: 22px; height: 22px; color: var(--select); }
+.agent-stage-drop svg.lucide { width: 20px; height: 20px; color: var(--select); }
 @keyframes agent-stage-in { from { opacity: 0; } }
 @keyframes agent-stage-card-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .agent-stage, .agent-stage-card { animation: none; } }
@@ -49,10 +49,10 @@
 
 /* Bringing it back from the Agent tab's empty state; the side panel while the stage has the chat. */
 .agent-stage-back { align-self: center; margin-top: 4px; }
-.side-staged { margin: auto; padding: 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--muted); font-size: 12px; }
+.side-staged { margin: auto; padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--muted); font-size: 12px; }
 
 /* D266: what a drop on the card couldn't import, above the foot line. */
-.agent-stage-card .agent-stage-report { margin: 0 24px 10px; max-height: 120px; overflow-y: auto; }
+.agent-stage-card .agent-stage-report { margin: 0 24px 8px; max-height: 120px; overflow-y: auto; }
 
 /* The stage is for the first message: agents are added from the panel, once it's the editor. */
 .agent-stage-card .agent-tabs:not(:has(.agent-tab)) { display: none; }

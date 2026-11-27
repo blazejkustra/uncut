@@ -3,7 +3,7 @@
 // every server on the way out. macOS's own tabs merge the windows (Window › Merge All Windows).
 import * as path from "node:path";
 
-import { app, BrowserWindow, desktopCapturer, Menu, screen, shell, type Session, type WebFrameMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, Menu, nativeTheme, screen, shell, type Session, type WebFrameMain } from "electron";
 
 import { CLOSE_REQUEST_CHANNEL, SERVER_EXIT_CHANNEL, type CloseAnswer } from "../ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "../windowState.ts";
@@ -280,7 +280,7 @@ export function createWindow(options: WindowOptions = {}): AppWindow {
     titleBarStyle: "hiddenInset",
     // Window › Merge All Windows puts the projects in one window's tabs.
     tabbingIdentifier: "uncut",
-    backgroundColor: "#0a0a0a",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#f5f5f5",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

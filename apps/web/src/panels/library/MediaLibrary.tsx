@@ -154,9 +154,10 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
       <FootageSearch project={project} />
       {media.length === 0 && generated.size === 0 ? (
         <Empty icon={<Film />} title="No media yet" testId="media-empty">
+          <span>Video, photos and sound you import show here. The files stay where they are.</span>
           <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>
             <Upload />
-            Import…
+            Import media…
           </button>
         </Empty>
       ) : media.length > 0 ? (

@@ -67,7 +67,7 @@ export function Welcome() {
               <h3 className="welcome-label">Recent</h3>
               {recents.length === 0 ? (
                 <p className="muted welcome-empty" data-testid="no-recents">
-                  No recent projects yet.
+                  No recent projects yet. Projects you open or create show here.
                 </p>
               ) : (
                 <div className="wiz-list" data-testid="recents">

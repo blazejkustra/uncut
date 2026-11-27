@@ -8,6 +8,7 @@ import { installLeave } from "./state/leave.tsx";
 import { installScrollbars } from "./editor/scrollbars.ts";
 import { installCrashReports } from "./state/crashReports.ts";
 import { brandFileUrl, getState, start, subscribeApp } from "./state/store.ts";
+import "./theme.css";
 import "./styles.css";
 import "./ui/states.css";
 
