@@ -186,10 +186,15 @@ export interface CursorCall {
   readonly label: string;
 }
 
+function cursorLabel(call: CursorCall) {
+  const summary = call.tool === "timeline_edit" ? str(obj(call.input)?.summary)?.trim() : undefined;
+  return summary || call.label;
+}
+
 /** A tool call of the agent itself: a new stop; a subagent's call also starts a child. */
 export function cursorCall(trail: CursorTrail, call: CursorCall, project?: Project) {
   const target = cursorTarget(call.tool, call.input, project);
-  trail.stops.push({ seq: ++trail.seq, step: call.step, label: call.label, target });
+  trail.stops.push({ seq: ++trail.seq, step: call.step, label: cursorLabel(call), target });
   if (trail.stops.length > CURSOR_STOPS) trail.stops.splice(0, trail.stops.length - CURSOR_STOPS);
   if (SUBAGENT_TOOLS.has(call.tool)) {
     const description = str(obj(call.input)?.description)?.trim();

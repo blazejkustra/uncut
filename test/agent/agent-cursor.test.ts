@@ -134,3 +134,18 @@ test("the published trail keeps only the latest stops", () => {
   assert.equal(view.stops.at(-1)!.seq, CURSOR_STOPS + 3);
   assert.equal(view.stops[0]!.label, "Step 3");
 });
+
+test("a timeline edit's pill shows its summary alone", () => {
+  const trail = cursorTrail();
+  const ops = [{ op: "trim_item", item: "c1", edge: "end", frames: 3 }];
+  cursorCall(
+    trail,
+    { id: "t1", step: 0, tool: "timeline_edit", input: { summary: "Trim the end of clip 2", ops }, label: "Editing the timeline: Trim the end of clip 2" },
+    project,
+  );
+  cursorCall(trail, { id: "t2", step: 1, tool: "timeline_edit", input: { ops }, label: "Editing the timeline" }, project);
+  assert.deepEqual(
+    trail.stops.map((s) => s.label),
+    ["Trim the end of clip 2", "Editing the timeline"],
+  );
+});
