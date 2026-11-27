@@ -163,10 +163,32 @@ async function clickAt(f: number) {
   await page.mouse.click(ruler.x + 0.5 + f * ppf - scroll, ruler.y + ruler.height / 2);
 }
 
-const ready = () =>
-  page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), {
-    timeout: 20000,
-  });
+const videoStates = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].map(
+      (v) =>
+        `${v.dataset.item} rs${v.readyState} ns${v.networkState} ${v.preload} t${v.currentTime.toFixed(3)}${v.seeking ? " seeking" : ""}${v.paused ? "" : " playing"}${v.error ? ` err${v.error.code}` : ""} op${v.style.opacity || "-"}`,
+    ),
+  );
+
+async function ready() {
+  const started = performance.now();
+  try {
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), {
+      timeout: 20000,
+    });
+  } catch (e) {
+    const lanes = await page.evaluate(() =>
+      (globalThis as unknown as { __uncutPlay?: { stats: () => { each: Array<{ key: string }> } } }).__uncutPlay
+        ?.stats()
+        .each.map((l) => l.key)
+        .join(","),
+    );
+    console.log(`# issue55 ${phase}: videos not ready after 20 s (lanes ${lanes}): ${(await videoStates()).join("; ")}`);
+    throw e;
+  }
+  console.log(`# issue55 ${phase}: videos ready in ${(performance.now() - started).toFixed(0)} ms: ${(await videoStates()).join("; ")}`);
+}
 
 /** Counts a run's glitches and prints them. */
 function report(label: string, r: Awaited<ReturnType<typeof stopGlitchProbe>>, lateMs: number): GlitchCounts & { contextLost: number } {
