@@ -1,0 +1,39 @@
+/* D348: the agents' cursors. Only the pill takes pointer events; positions come from transforms. */
+.agent-cursors { position: fixed; inset: 0; pointer-events: none; z-index: 35; overflow: hidden; }
+.agent-cursor { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 0.3s ease-out; will-change: transform; }
+.agent-cursor[data-state="on"] { opacity: 1; }
+.agent-cursor[data-state="leaving"], .agent-cursor[data-hidden="true"] { opacity: 0; }
+.agent-cursor[data-hidden="true"] .agent-cursor-pill { pointer-events: none; }
+
+.agent-cursor-arrow { position: absolute; left: -2px; top: -2px; display: block; }
+.agent-cursor-arrow path { fill: var(--agent-colour); stroke: #fff; stroke-width: 1.2; stroke-linejoin: round; }
+
+.agent-cursor-pill {
+  position: absolute; left: 14px; top: 16px; display: inline-flex; align-items: baseline; gap: 5px; max-width: 300px;
+  padding: 5px 10px; border: 0; border-radius: 999px; background: var(--agent-pill); color: #fff;
+  font: 500 12px/1.2 var(--font); white-space: nowrap; pointer-events: auto; cursor: pointer;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+}
+.agent-cursor-pill b { font-weight: 650; }
+.agent-cursor-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.agent-cursor-more { opacity: 0.85; }
+.agent-cursor[data-flip="true"] .agent-cursor-pill { left: auto; right: 6px; }
+.agent-cursor[data-parked="true"] .agent-cursor-arrow, .agent-cursor[data-parked="true"] .agent-cursor-pin { display: none; }
+.agent-cursor[data-parked="true"] .agent-cursor-pill { left: auto; right: 0; top: -12px; }
+
+/* Pinned to a panel's edge: a small arrow toward the target out of view. */
+.agent-cursor-pin { position: absolute; display: none; width: 0; height: 0; border: 5px solid transparent; }
+.agent-cursor[data-pin="left"] .agent-cursor-pin { display: block; left: -14px; top: 2px; border-right-color: var(--agent-colour); border-left-width: 0; }
+.agent-cursor[data-pin="right"] .agent-cursor-pin { display: block; left: 18px; top: -4px; border-left-color: var(--agent-colour); border-right-width: 0; }
+.agent-cursor[data-pin="up"] .agent-cursor-pin { display: block; left: 3px; top: -14px; border-bottom-color: var(--agent-colour); border-top-width: 0; }
+.agent-cursor[data-pin="down"] .agent-cursor-pin { display: block; left: 3px; top: 18px; border-top-color: var(--agent-colour); border-bottom-width: 0; }
+.agent-cursor[data-pin="right"] .agent-cursor-pill { left: auto; right: 10px; }
+
+.agent-cursor.child .agent-cursor-arrow { transform: scale(0.72); transform-origin: 2px 2px; }
+.agent-cursor.child .agent-cursor-pill { left: 11px; top: 11px; padding: 3px 8px; font-size: 11px; max-width: 220px; }
+
+.agent-cursor-band { position: absolute; left: 0; top: 0; width: 1px; height: 3px; transform-origin: 0 0; opacity: 0.75; display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-cursor { transition: none; }
+}

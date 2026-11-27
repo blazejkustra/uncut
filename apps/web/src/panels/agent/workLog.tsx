@@ -197,12 +197,11 @@ export function Thinking({ item }: { item: AgentItem }) {
   );
 }
 
-/** What the agent is doing now (D139): the running step, writing, thinking, or starting. */
-export function NowLine({ turn, waiting }: { turn: AgentTurn; waiting: boolean }) {
-  const friendly = useFriendly();
+/** What the agent is doing now (D139): the running step, writing, thinking, or starting. Also the cursor's label before its first step (D348). */
+export function nowText(turn: AgentTurn, waiting: boolean, friendly: (text: string) => string): string {
   const last = turn.items.at(-1);
   const step = [...turn.items].reverse().find((i) => i.kind === "step" && i.status === "running");
-  const what = waiting
+  return waiting
     ? "Waiting for your answer"
     : step
       ? friendly(step.doing ?? step.text)
@@ -213,6 +212,10 @@ export function NowLine({ turn, waiting }: { turn: AgentTurn; waiting: boolean }
           : turn.items.length === 0
             ? "Starting Claude Code"
             : "Working";
+}
+
+export function NowLine({ turn, waiting }: { turn: AgentTurn; waiting: boolean }) {
+  const what = nowText(turn, waiting, useFriendly());
   return (
     <div className="now-line" data-testid="agent-now">
       <LoaderCircle className="spin" />

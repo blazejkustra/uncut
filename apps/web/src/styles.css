@@ -648,8 +648,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .step.failed:hover span { color: var(--fg); }
 .approval-lines { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); line-height: 1.4; }
 /* U6 (D185): what the agent just added or changed glows for a moment on the timeline. */
-.clip.agent-flash { animation: agent-flash 1.8s ease-out; }
-@keyframes agent-flash { 0%, 30% { box-shadow: 0 0 0 2px var(--select), 0 0 14px 2px var(--select); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.clip.agent-flash { animation: agent-flash 1s ease-out; }
+@keyframes agent-flash { 0%, 40% { box-shadow: 0 0 0 2px var(--agent-colour, var(--select)); } 100% { box-shadow: 0 0 0 2px transparent; } }
 .send { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; }
 .send svg.lucide { width: 15px; height: 15px; }
 .send:disabled { background: var(--raised); color: var(--dim); opacity: 1; }

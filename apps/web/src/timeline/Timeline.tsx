@@ -74,6 +74,7 @@ import { makeLaneDrop } from "./gestures/laneDrop.ts";
 import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
 import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import { FollowAgentButton } from "../editor/cursors/FollowAgentButton.tsx";
 import "./range.css";
 
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand, slip: MoveHorizontal, roll: Columns2 };
@@ -395,6 +396,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
             <Link2 />
           </button>
         </Tooltip>
+        <FollowAgentButton />
         <div className="toolbar-sep" />
         <Tooltip label="Zoom out" shortcut="zoomOut">
           <button className="icon-btn" data-testid="zoom-out" onClick={playback.zoomOut}>
@@ -542,6 +544,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         duration={duration}
                         ppf={ppf}
                         thumbIds={thumbIds}
+                        accent={flash.get(item.id)}
                         beats={item.media ? beatMap.get(item.media) : undefined}
                         className={`${selection.has(item.id) ? "selected" : ""} ${flash.has(item.id) ? "agent-flash" : ""} ${dragged && (drag.mode === "move" || drag.mode === "group") ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
                         data={{
