@@ -228,10 +228,13 @@ test("ripple delete of a sound alone (the timeline's ⇧⌫): its clip goes too 
   assert.ok(!("problem" in plan));
   const q = edit(p, plan.ops);
   assert.deepEqual([find(q, "a"), find(q, "as")], [undefined, undefined]);
-  assert.deepEqual([geo(q, "b"), geo(q, "bs")], [
-    [0, 200, 120],
-    [0, 200, 120],
-  ]);
+  assert.deepEqual(
+    [geo(q, "b"), geo(q, "bs")],
+    [
+      [0, 200, 120],
+      [0, 200, 120],
+    ],
+  );
 });
 
 test("speed: the sound takes the clip's speed and length; the sounds after move with the ripple", () => {
