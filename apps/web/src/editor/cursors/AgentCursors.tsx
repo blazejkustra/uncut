@@ -181,7 +181,6 @@ function AgentCursorView({
     const startLeg = (next: Leg) => {
       const m = motion.current;
       m.from = m.at ?? parkSpot(frame.current.row);
-      m.to = undefined;
       follow(next);
       setLeg(next);
     };
