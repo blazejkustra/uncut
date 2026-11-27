@@ -185,6 +185,32 @@ async function ready() {
         .join(","),
     );
     console.log(`# issue55 ${phase}: videos not ready after 20 s (lanes ${lanes}): ${(await videoStates()).join("; ")}`);
+    const logs = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")]
+        .filter((v) => v.readyState < 2 || v.seeking)
+        .map((v) => `${v.dataset.item}: ${((v as unknown as { __log?: string[] }).__log ?? []).join(" ")}`),
+    );
+    for (const l of logs) console.log(`# issue55 DIAG events ${l}`);
+    const stuckIds = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].filter((v) => v.readyState < 2 || v.seeking).map((v) => v.dataset.item!),
+    );
+    await page.evaluate((ids: string[]) => {
+      for (const v of document.querySelectorAll<HTMLVideoElement>("video[data-item]")) if (ids.includes(v.dataset.item!)) v.currentTime = v.currentTime + 0.001;
+    }, stuckIds);
+    await sleep(3000);
+    console.log(`# issue55 DIAG after re-seek: ${(await videoStates()).filter((s) => stuckIds.includes(s.split(" ")[0]!)).join("; ")}`);
+    await page.evaluate((ids: string[]) => {
+      for (const v of document.querySelectorAll<HTMLVideoElement>("video[data-item]"))
+        if (ids.includes(v.dataset.item!) && (v.readyState < 2 || v.seeking)) void v.play().then(() => v.pause());
+    }, stuckIds);
+    await sleep(3000);
+    console.log(`# issue55 DIAG after play/pause: ${(await videoStates()).filter((s) => stuckIds.includes(s.split(" ")[0]!)).join("; ")}`);
+    await page.evaluate((ids: string[]) => {
+      for (const v of document.querySelectorAll<HTMLVideoElement>("video[data-item]"))
+        if (ids.includes(v.dataset.item!) && (v.readyState < 2 || v.seeking)) v.load();
+    }, stuckIds);
+    await sleep(4000);
+    console.log(`# issue55 DIAG after load(): ${(await videoStates()).filter((s) => stuckIds.includes(s.split(" ")[0]!)).join("; ")}`);
     throw e;
   }
   console.log(`# issue55 ${phase}: videos ready in ${(performance.now() - started).toFixed(0)} ms: ${(await videoStates()).join("; ")}`);
@@ -240,7 +266,11 @@ async function play(label: string, from: number, ms: number) {
 }
 
 test("issue #55: 20 video overlays and ~20 animated texts play and scrub without glitches", { skip, timeout: 600000 }, async () => {
-  app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
+  app = await launchApp({
+    command: APP,
+    args: (process.env.ISSUE55_ARGS ?? "").split(" ").filter(Boolean),
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) },
+  });
   page = app.page;
   // Requests the page couldn't make, by route (the app's own errors only say "Failed to load resource").
   const failed = new Map<string, number>();
@@ -254,6 +284,49 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   });
   await waitForWelcome(page);
   await viewerPrefs(page, { gpu: false });
+  await page.evaluate(() => {
+    const t0 = performance.now();
+    const make = document.createElement.bind(document);
+    const events = [
+      "loadstart",
+      "loadedmetadata",
+      "loadeddata",
+      "seeking",
+      "seeked",
+      "play",
+      "playing",
+      "pause",
+      "waiting",
+      "stalled",
+      "suspend",
+      "abort",
+      "emptied",
+      "error",
+    ];
+    document.createElement = ((tag: string, opts?: ElementCreationOptions) => {
+      const el = make(tag, opts);
+      if (el instanceof HTMLVideoElement) {
+        const log: string[] = [];
+        (el as unknown as { __log: string[] }).__log = log;
+        const note = (s: string) => log.length < 80 && log.push(`${Math.round(performance.now() - t0)}:${s}`);
+        for (const ev of events) el.addEventListener(ev, () => note(`${ev}@${el.currentTime.toFixed(2)}/rs${el.readyState}`));
+        const desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime")!;
+        Object.defineProperty(el, "currentTime", {
+          get: () => desc.get!.call(el),
+          set: (v: number) => {
+            note(`set${v.toFixed(2)}${el.seeking ? "(seeking)" : ""}/rs${el.readyState}/${el.preload}`);
+            desc.set!.call(el, v);
+          },
+        });
+        const pause = el.pause.bind(el);
+        el.pause = () => {
+          note(`pause()${el.seeking ? "(seeking)" : ""}`);
+          pause();
+        };
+      }
+      return el;
+    }) as typeof document.createElement;
+  });
   await page.click("[data-testid=open-project]");
   await waitFor("[data-testid=editor]");
   await page.click("[data-testid=bottom-timeline]");
