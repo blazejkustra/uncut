@@ -59,6 +59,7 @@ function ItemBoxView({
   duration,
   ppf,
   thumbIds,
+  accent,
   beats,
   className,
   data,
@@ -80,6 +81,8 @@ function ItemBoxView({
   duration: number;
   ppf: number;
   thumbIds: ReadonlySet<string>;
+  /** D348: the colour of the agent that just changed it (its flash outline). */
+  accent?: string | undefined;
   /** The item's media's beats (seconds), when cached (D70). */
   beats?: ReadonlyArray<number> | undefined;
   className: string;
@@ -124,7 +127,7 @@ function ItemBoxView({
       data-muted={item.mute ? "true" : undefined}
       data-locked={item.locked ? "true" : undefined}
       data-speed={item.speed !== undefined && item.speed !== 1 ? item.speed : undefined}
-      style={{ left: start * ppf, width: px }}
+      style={{ left: start * ppf, width: px, ...(accent ? { ["--agent-colour" as string]: accent } : {}) }}
       onPointerDown={onPointerDown}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}

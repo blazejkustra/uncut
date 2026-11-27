@@ -16,6 +16,7 @@ import { PROVIDER, GRACEFUL_MS, KILL_AFTER_MS, interruptMs } from "./config.ts";
 import type { McpResult } from "../agent.ts";
 import type { AgentServices } from "./context.ts";
 import { codexInterrupt } from "./codex.ts";
+import { cursorView } from "../agentCursor.ts";
 
 const byStart = (a: StoredTurn, b: StoredTurn) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0);
 
@@ -49,6 +50,7 @@ export const makeCore = (ctx: AgentServices) => {
       ...(warning ? { warning } : {}),
       ...(a.context ? { context: a.context } : {}),
       ...(a.threadStart ? { threadStart: a.threadStart } : {}),
+      ...(running && a.running ? { cursor: cursorView(running, a.running.cursor, a.running.turn.items) } : {}),
     };
   };
 

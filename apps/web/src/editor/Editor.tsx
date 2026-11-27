@@ -37,6 +37,7 @@ import { SlipDialog } from "../timeline/slip/SlipDialog.tsx";
 import { useEditorKeys } from "./keys.ts";
 import { keysOf, type ShortcutId } from "./keymap.ts";
 import { AgentStage } from "./AgentStage.tsx";
+import { AgentCursors } from "./cursors/AgentCursors.tsx";
 import { markDocked, stage, stageWanted, useStageDismissed, type StageDismissal } from "./agentStage.ts";
 import { layoutStyle, panels, panelShown, panelsStyle, rememberSideTab, useLayout, usePanels, type Hideable, type Panels } from "./layout.ts";
 import "./layout.css";
@@ -153,6 +154,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
       {panelShown(shown, "lib") && <Resizer panel="lib" />}
       {panelShown(shown, "side") && <Resizer panel="side" />}
       {panelShown(shown, "bottom") && <Resizer panel="bottom" />}
+      {!staged && <AgentCursors project={project} dir={snapshot.dir} />}
       {/* #75 (D255): a new, empty project: the agent centre stage over the editor. */}
       {staged && !shown.focus && <AgentStage project={project} online={online} onDismiss={dismissStage} />}
       <SlipDialog project={project} />

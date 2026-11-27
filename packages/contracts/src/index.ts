@@ -134,6 +134,10 @@ export {
   DEFAULT_AGENT_ID,
   AGENTS_RUNNING_MAX,
   AgentInfo,
+  AgentCursor,
+  AgentCursorChild,
+  AgentCursorStop,
+  AgentCursorTarget,
   AgentState,
   AgentError,
 } from "./agent.ts";

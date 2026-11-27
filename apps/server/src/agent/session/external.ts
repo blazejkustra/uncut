@@ -89,6 +89,7 @@ export const makeExternal = (
     externalLock,
     label,
     doing,
+    pointAt,
     persist,
     publishNow,
     plugins,
@@ -197,6 +198,7 @@ export const makeExternal = (
   const startStep = (r: Running, name: string, input: Record<string, unknown>) => {
     const item: StoredTurn["items"][number] = { kind: "step", tool: name, text: label(name, input), status: "running", doing: doing(name, input) };
     r.turn.items.push(item);
+    pointAt(r, `external:${r.turn.items.length - 1}`, r.turn.items.length - 1, name, input);
     publishNow();
     return item;
   };

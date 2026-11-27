@@ -9,6 +9,7 @@ import type { RunCtx } from "../tools/run.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { agentFailCode } from "../../telemetry/events.ts";
 import { usedKey } from "../agentLimits.ts";
+import { cursorCall, cursorChildCall } from "../agentCursor.ts";
 import { assistantUsage, contextOf, contextUsageReply, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
@@ -96,6 +97,19 @@ export const makeStream = (ctx: RunCtx) => {
     friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
   const doing = (tool: string, input: unknown) =>
     friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
+
+  const projectNow = () => view()?.session.project as Project | undefined;
+  /** D348: the agent's cursor goes to what this call touches. */
+  const pointAt = (r: Running, id: string, step: number, tool: string, input: unknown) =>
+    cursorCall(r.cursor, { id, step, tool, input, label: doing(tool, input) }, projectNow());
+
+  /** D348: a subagent's own tool calls move its child cursor. */
+  const onChildMessage = (r: Running, msg: Record<string, any>) => {
+    if (msg.type !== "assistant" || !Array.isArray(msg.message?.content)) return;
+    const calls = (msg.message.content as Array<Record<string, any>>).filter((c) => c?.type === "tool_use" && isString(c.name));
+    for (const c of calls) cursorChildCall(r.cursor, String(msg.parent_tool_use_id), c.name.replace(/^mcp__uncut__/, ""), c.input, projectNow());
+    if (calls.length) publishSoon();
+  };
 
   /** Live output (D139): a stream_event of the message claude is writing. */
   const onStream = (r: Running, event: Record<string, any>) => {
@@ -270,6 +284,7 @@ export const makeStream = (ctx: RunCtx) => {
           r.steps.set(String(c.id), items.length);
           items.push({ kind: "step", tool, text: label(tool, c.input), status: "running", doing: doing(tool, c.input) });
         }
+        pointAt(r, String(c.id), r.steps.get(String(c.id))!, tool, c.input);
       }
     }
     publishNow();
@@ -296,7 +311,7 @@ export const makeStream = (ctx: RunCtx) => {
     }
   };
 
-  return { publishNow, publishSoon, label, doing, watchData, delivered, onStream, onAssistant, finish, noteContext, onContextUsage };
+  return { publishNow, publishSoon, label, doing, pointAt, onChildMessage, watchData, delivered, onStream, onAssistant, finish, noteContext, onContextUsage };
 };
 
 export type StreamCtx = RunCtx & ReturnType<typeof makeStream>;
