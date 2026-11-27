@@ -494,6 +494,37 @@ export const DEFAULT_AGENT_ID = "ag-main";
 /** C12: at most this many agents work at once in a project. */
 export const AGENTS_RUNNING_MAX = 2;
 
+/**
+ * D348: where an agent's cursor points for a tool call. The renderer turns it into pixels from its
+ * own layout. item: an item's edge, centre or a frame into it (`offset`), `frame` and `track` when
+ * the item isn't drawn (yet). time: the ruler from `frame` to `end`, over the preview when `preview`.
+ * words: transcript words (`from`..`to` word indexes) of `media` or `item`. track: a track's head.
+ * park: no place on screen (the agent panel's edge). stay: where the cursor already is.
+ */
+export const AgentCursorTarget = Schema.Struct({
+  kind: Schema.Literals(["item", "time", "words", "track", "park", "stay"]),
+  item: Schema.optional(Schema.String),
+  at: Schema.optional(Schema.Literals(["start", "end", "centre"])),
+  offset: Schema.optional(Schema.Number),
+  frame: Schema.optional(Schema.Number),
+  end: Schema.optional(Schema.Number),
+  track: Schema.optional(Schema.String),
+  media: Schema.optional(Schema.String),
+  from: Schema.optional(Schema.Number),
+  to: Schema.optional(Schema.Number),
+  preview: Schema.optional(Schema.Boolean),
+});
+export type AgentCursorTarget = typeof AgentCursorTarget.Type;
+/** D348: one tool call the cursor goes to: `seq` counts up per turn, `step` is the call's index in the turn's items. */
+export const AgentCursorStop = Schema.Struct({ seq: Schema.Number, step: Schema.Number, label: Schema.String, target: AgentCursorTarget });
+export type AgentCursorStop = typeof AgentCursorStop.Type;
+/** D348: a subagent or critic round running for the agent, drawn as a smaller cursor. */
+export const AgentCursorChild = Schema.Struct({ id: Schema.String, label: Schema.String, target: Schema.optional(AgentCursorTarget) });
+export type AgentCursorChild = typeof AgentCursorChild.Type;
+/** D348: a working agent's cursor: its latest stops (oldest first) and children. Never saved. */
+export const AgentCursor = Schema.Struct({ turnId: Schema.String, stops: Schema.Array(AgentCursorStop), children: Schema.Array(AgentCursorChild) });
+export type AgentCursor = typeof AgentCursor.Type;
+
 /** C12: one agent of the open project, with its own conversation, running turn and approval card. */
 export const AgentInfo = Schema.Struct({
   id: Schema.String,
@@ -507,6 +538,7 @@ export const AgentInfo = Schema.Struct({
   warning: Schema.optional(Schema.String),
   context: Schema.optional(AgentContext),
   threadStart: Schema.optional(Schema.String),
+  cursor: Schema.optional(AgentCursor),
 });
 export type AgentInfo = typeof AgentInfo.Type;
 

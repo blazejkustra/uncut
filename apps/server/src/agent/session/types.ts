@@ -4,6 +4,7 @@ import type { Approval } from "./state.ts";
 import type { Access } from "../agentPermissions.ts";
 import { turnLimits, type TurnLimits } from "../agentLimits.ts";
 import type { ClaudeSkill } from "../claudeSkills.ts";
+import { cursorTrail, type CursorTrail } from "../agentCursor.ts";
 
 // The agent's in-memory records: stored turns, a project's Loaded agent, a claude session, a running turn.
 
@@ -206,6 +207,7 @@ export const freshTurnState = () => ({
   turnRefusals: new Map<string, string>(),
   toolNames: new Map<string, string>(),
   downloads: { bytes: 0, count: 0 },
+  cursor: cursorTrail(),
 });
 
 export interface Running {
@@ -290,6 +292,8 @@ export interface Running {
   priorSpend?: number;
   // D194: media_download's spending in this turn.
   downloads: { bytes: number; count: number };
+  // D348: where the agent's cursor went in this turn and its subagents still running. Not saved.
+  readonly cursor: CursorTrail;
   // Uncut tools the model called by their bare name (graphic_write, not mcp__uncut__graphic_write):
   // Claude Code answered "No such tool available" and nothing ran; the next Uncut result says so.
   bareCalls?: Array<string>;

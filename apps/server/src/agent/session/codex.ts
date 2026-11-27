@@ -82,7 +82,7 @@ export const codexInterrupt = (s: ClaudeSession): boolean => {
 };
 
 export const makeCodex = (ctx: StreamCtx) => {
-  const { persist, closeSession, publishNow, publishSoon, label, doing, delivered, finish, turnCleanup, permit, bridgeUrl, sessions } = ctx;
+  const { persist, closeSession, publishNow, publishSoon, label, doing, pointAt, delivered, finish, turnCleanup, permit, bridgeUrl, sessions } = ctx;
 
   /** The turn's item for a Codex item id (text, thinking or a step). */
   const itemAt = (r: Running, id: string) => {
@@ -127,6 +127,7 @@ export const makeCodex = (ctx: StreamCtx) => {
     r.toolNames.set(id, step.tool);
     r.steps.set(`codex:${id}`, items.length);
     items.push({ kind: "step", tool: step.tool, text: label(step.tool, step.input), status: "running", doing: doing(step.tool, step.input) });
+    pointAt(r, `codex:${id}`, items.length - 1, step.tool, step.input);
     publishNow();
   };
 

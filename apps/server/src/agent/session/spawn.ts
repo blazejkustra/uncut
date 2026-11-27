@@ -12,6 +12,7 @@ import { besideServer } from "../../paths.ts";
 import type { Loaded, Running, ClaudeSession } from "./types.ts";
 import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
+import { cursorCallEnded } from "../agentCursor.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
 import { forgetSentBlocks, sendBlocksWhole } from "./send.ts";
 import { asksNoQuestions, pointsAtTime, reviewNudge } from "../agentPlan.ts";
@@ -49,6 +50,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     delivered,
     onStream,
     onAssistant,
+    onChildMessage,
     finish,
     noteContext,
     onContextUsage,
@@ -166,8 +168,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
     }
     // D194: what the turn did with the web and read from files, the subagents' work included.
     watchData(r, msg);
-    // Work from a subagent (none today) isn't the turn's own.
-    if (msg.parent_tool_use_id) return;
+    // Work from a subagent isn't the turn's own; only its cursor follows it (D348).
+    if (msg.parent_tool_use_id) return onChildMessage(r, msg);
     if (msg.type === "stream_event" || msg.type === "assistant" || msg.type === "user" || msg.type === "result") delivered(r);
     if (msg.type === "stream_event") onStream(r, (msg.event ?? {}) as Record<string, any>);
     else if (msg.type === "assistant") onAssistant(r, msg);
@@ -175,6 +177,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       const content = msg.message?.content;
       for (const c of (Array.isArray(content) ? content : []) as Array<Record<string, any>>) {
         if (c.type !== "tool_result") continue;
+        cursorCallEnded(r.cursor, String(c.tool_use_id));
         const at = r.steps.get(String(c.tool_use_id));
         const item = at === undefined ? undefined : r.turn.items[at];
         if (!item) continue;
