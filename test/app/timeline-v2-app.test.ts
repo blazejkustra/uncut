@@ -187,7 +187,7 @@ test(
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 6);
     await (await page.$("[data-testid=timeline]"))!.screenshot({ path: out("timeline-v2-split-all.png") });
 
-    // Nothing stays selected, so S at 4 s splits every track again.
+    // The parts after the cut stay selected, so S at 4 s splits them all again.
     for (let i = 0; i < 2; i++) await chord(page, ["Shift"], "ArrowRight");
     for (let i = 0; i < 15; i++) await page.keyboard.press("ArrowRight");
     await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === 120);

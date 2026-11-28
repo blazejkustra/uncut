@@ -63,20 +63,18 @@ export const timelineActions = {
   /** Elements tab → a full-frame background (see planAddBackground): over the whole edit, or behind the selected item (D220). */
   addBackground: (props: BackgroundProps, behindSelected = false) =>
     addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
-  /**
-   * S: split at the playhead (see planSplit). One item cut: the part after the playhead is selected.
-   * Every track cut: nothing is, so the next S splits every track again.
-   */
+  /** S: split at the playhead (see planSplit); the parts after it are selected, so S again splits them all. */
   async split() {
     if (!state.snapshot) return;
-    const { selected, frame } = getPlayback();
-    const plan = planSplit(projectOf(state.snapshot), selected, frame);
-    if (await timelineEdit(plan)) playback.select("newId" in plan && plan.ops.length === 1 ? plan.newId : undefined);
+    const { selected, also, frame } = getPlayback();
+    const plan = planSplit(projectOf(state.snapshot), selected, frame, also);
+    if (await timelineEdit(plan)) playback.selectMany("newIds" in plan ? plan.newIds : []);
   },
-  /** ⇧⌘K: split all tracks at the playhead (see planSplitAll); nothing stays selected, as after S. */
+  /** ⇧⌘K: split all tracks at the playhead (see planSplitAll); the parts after it are selected. */
   async splitAll() {
     if (!state.snapshot) return;
-    if (await timelineEdit(planSplitAll(projectOf(state.snapshot), getPlayback().frame))) playback.select(undefined);
+    const plan = planSplitAll(projectOf(state.snapshot), getPlayback().frame);
+    if (await timelineEdit(plan)) playback.selectMany("newIds" in plan ? plan.newIds : []);
   },
   /** ⌫: delete the selected item; on main the rest closes up. A selected cut: remove its transition (D73). */
   async deleteSelected() {

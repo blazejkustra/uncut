@@ -42,7 +42,7 @@ const project: Project = {
 
 const ok = (plan: object) => {
   assert.ok(!("problem" in plan), JSON.stringify(plan));
-  return plan as { ops: Array<{ op: string; item: string; at: number; newId: string }>; summary: string };
+  return plan as { ops: Array<{ op: string; item: string; at: number; newId: string }>; newIds: Array<string>; summary: string };
 };
 const apply = (p: Project, plan: object) => {
   const s = applyEdit(createSession(p), { actor: "user", ops: withLinkedAudio(p, ok(plan).ops as never) });
@@ -64,7 +64,7 @@ test("split all: every unlocked item under the playhead on V1, V2 and A1 in one 
     ],
     "a-sound isn't cut on its own: it follows a",
   );
-  assert.equal(new Set(plan.ops.map((o) => o.newId)).size, 4, "a new id per piece");
+  assert.equal(new Set(plan.newIds).size, 4, "a new id per piece");
   assert.equal(plan.summary, "Split 4 items at the playhead");
   const after = apply(project, plan);
   const counts = Object.fromEntries(after.tracks.map((t) => [t.id, t.items.length]));
@@ -86,6 +86,19 @@ test("split all: S with nothing selected does the same; a selection still splits
     ok(planSplit(project, "song", 45)).ops.map((o) => o.item),
     ["song"],
   );
+});
+
+test("split all, then S again: the parts it selected are split where the playhead is now, in one edit", () => {
+  const first = ok(planSplitAll(project, 45));
+  const after = apply(project, first);
+  const [primary, ...also] = first.newIds;
+  const again = ok(planSplit(after, primary, 70, also));
+  assert.deepEqual(
+    again.ops.map((o) => [o.item, o.at]),
+    first.newIds.slice(1).map((id) => [id, 25]),
+    "the title's part ended at 60; the others are cut at 70",
+  );
+  assert.match((planSplit(after, primary, 400, also) as { problem: string }).problem, /selected items/);
 });
 
 test("split all: locked tracks and items stay whole, captions aren't cut, nothing under the playhead says so", () => {

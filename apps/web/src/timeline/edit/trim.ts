@@ -128,26 +128,37 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
 }
 
 export interface SplitPlan extends Plan {
-  /** The (first) part after the cut. */
-  readonly newId: string;
+  /** The parts after the cut, one per item cut. */
+  readonly newIds: ReadonlyArray<string>;
 }
 
 const FURTHER = "Move the playhead further from it.";
 
+const inside = (p: Placed, f: number) => p.start < f && f < p.start + p.item.duration;
+
 /**
- * Split at the playhead (D52): the selected item if the playhead is inside it (not on its first
- * frame), otherwise every track there (planSplitAll). With an item selected that the playhead
- * isn't over, nothing is split (and the user is told), so a split never lands on something the
- * user didn't mean.
+ * Split at the playhead (D52): the selected items (`selected` and `also`) the playhead is inside
+ * (not on their first frame), otherwise every track there (planSplitAll). With items selected that
+ * the playhead isn't over, nothing is split (and the user is told), so a split never lands on
+ * something the user didn't mean.
  */
-export function planSplit(project: ProjectModel, selected: string | undefined, frame: number): SplitPlan | { readonly problem: string } {
+export function planSplit(
+  project: ProjectModel,
+  selected: string | undefined,
+  frame: number,
+  also: ReadonlyArray<string> = [],
+): SplitPlan | { readonly problem: string } {
   const f = Math.floor(frame);
   // Selected captions (D82) aren't split: they follow the main track, so S splits what's under them.
-  const picked = findItem(project, selected);
-  const sel = picked?.item.type === "captions" ? undefined : picked;
-  if (!sel) return planSplitAll(project, frame);
-  if (!(sel.start < f && f < sel.start + sel.item.duration)) return { problem: "Move the playhead over the selected item to split it." };
-  return splitAt(project, sel, f, FURTHER);
+  const picked = [selected, ...also].map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined && p.item.type !== "captions");
+  if (!picked.length) return planSplitAll(project, frame);
+  const under = picked.filter((p) => inside(p, f));
+  if (!under.length) {
+    return {
+      problem: picked.length > 1 ? "Move the playhead over the selected items to split them." : "Move the playhead over the selected item to split it.",
+    };
+  }
+  return splitEach(project, withoutFollowers(under), f);
 }
 
 /**
@@ -158,29 +169,32 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
  */
 export function planSplitAll(project: ProjectModel, frame: number): SplitPlan | { readonly problem: string } {
   const f = Math.floor(frame);
-  const targets = splitTargets(project, f);
-  if (!targets.length) return { problem: "Put the playhead over an item to split it." };
+  const { starts } = layoutOf(project);
+  const under = project.tracks
+    .flatMap((track) => track.items.map((item, index): Placed => ({ item, track, index, start: starts.get(item.id) ?? 0 })))
+    .filter((p) => p.item.type !== "captions" && !lockOf(p) && inside(p, f));
+  if (!under.length) return { problem: "Put the playhead over an item to split it." };
+  return splitEach(project, withoutFollowers(under), f);
+}
+
+/** `under` less a linked sound or clip whose own clip is in it: it splits with that clip (D123). */
+function withoutFollowers(under: ReadonlyArray<Placed>): ReadonlyArray<Placed> {
+  const cut = new Set(under.map((p) => p.item.id));
+  return under.filter((p) => !("linkedTo" in p.item && p.item.linkedTo !== undefined && cut.has(p.item.linkedTo)));
+}
+
+/** Split every target at frame `f` in one edit; one that can't be cut refuses them all. */
+function splitEach(project: ProjectModel, targets: ReadonlyArray<Placed>, f: number): SplitPlan | { readonly problem: string } {
   const taken = new Set<string>();
   const ops: Array<Op> = [];
   for (const target of targets) {
     const plan = splitAt(project, target, f, FURTHER, taken);
     if ("problem" in plan) return plan;
     ops.push(...plan.ops);
-    taken.add(plan.newId);
+    for (const id of plan.newIds) taken.add(id);
   }
   const summary = targets.length > 1 ? `Split ${targets.length} items at the playhead` : `Split ${targets[0]!.item.id}`;
-  return { ops, summary, newId: [...taken][0]! };
-}
-
-/** What split all cuts at frame `f` (see planSplitAll). */
-function splitTargets(project: ProjectModel, f: number): ReadonlyArray<Placed> {
-  const { starts } = layoutOf(project);
-  const under = project.tracks
-    .flatMap((track) => track.items.map((item, index): Placed => ({ item, track, index, start: starts.get(item.id) ?? 0 })))
-    .filter((p) => p.item.type !== "captions" && !lockOf(p) && p.start < f && f < p.start + p.item.duration);
-  const cut = new Set(under.map((p) => p.item.id));
-  const followsCut = (p: Placed) => "linkedTo" in p.item && p.item.linkedTo !== undefined && cut.has(p.item.linkedTo);
-  return under.filter((p) => !followsCut(p));
+  return { ops, summary, newIds: [...taken] };
 }
 
 /** Split `target` at frame `f` (inside it): locks and transitions checked (planSplit, planBladeSplit). */
@@ -208,7 +222,7 @@ function splitAt(project: ProjectModel, target: Placed, f: number, further: stri
     if (at < 2 * own || target.item.duration - at < 2 * into) return { problem: `That's too close to a transition to split there. ${further}` };
   }
   const newId = uniqueId(project, target.item.id.replace(/-\d+$/, "") || "item", new Set(taken));
-  return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId };
+  return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newIds: [newId] };
 }
 
 /**
@@ -224,7 +238,7 @@ export function planBladeSplit(project: ProjectModel, itemId: string, frame: num
   const locked = lockOf(target);
   if (locked) return { problem: locked };
   const f = Math.round(frame);
-  if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newId: "" };
+  if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newIds: [] };
   return splitAt(project, target, f, "Cut further from it.");
 }
 
