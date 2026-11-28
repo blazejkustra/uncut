@@ -8,6 +8,8 @@ import {
   lockOf,
   newTrackIndexOver,
   withGroups,
+  isLinkSelection,
+  withLinkMates,
   withOverlayRipple,
   planGroupMove,
   planGroupTrim,
@@ -88,10 +90,13 @@ export function makeItemDrag(ctx: ItemDragCtx) {
     const before = selectionIds();
     const mates = withGroups(project, [item.id]);
     const current = toggle ? before : before.includes(item.id) ? withGroups(project, before) : mates;
-    const grouped = !toggle && current.length > 1 && current.includes(item.id);
+    // D349: a clip and its linked sound are selected together, yet pressed and dragged as one item.
+    const grouped =
+      !toggle && current.length > 1 && current.includes(item.id) && !isLinkSelection(project, [item.id, ...current.filter((id) => id !== item.id)]);
     // Just its own group: its edges trim the whole group.
     const groupOnly = grouped && mates.length > 1 && current.length === mates.length && current.every((id) => mates.includes(id));
-    if (!grouped && !toggle) playback.select(item.id);
+    const linked = e.altKey ? [item.id] : withLinkMates(project, item.id);
+    if (!grouped && !toggle) linked.length > 1 ? playback.selectMany(linked) : playback.select(item.id);
     else if (grouped && (!before.includes(item.id) || current.length !== before.length))
       playback.selectMany([item.id, ...current.filter((id) => id !== item.id)]);
     const found = findItem(project, item.id);

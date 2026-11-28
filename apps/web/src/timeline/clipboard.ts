@@ -2,7 +2,7 @@
 // in-app clipboard (⌘C/⌘X/⌘V, ⌘D). Pure: they turn the project and a gesture into edit ops the
 // server validates, like edit.ts.
 import type { Op } from "@uncut/core/types";
-import { keepMainTimes } from "@uncut/core/arrange";
+import { keepMainTimes, linkIdsIn, newLinkId } from "@uncut/core/arrange";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { findItem, fitsTrack, homeKind, lockOf, type Plan } from "./edit.ts";
@@ -75,6 +75,28 @@ export function copyItems(project: ProjectModel, ids: ReadonlyArray<string>): Ar
     }));
 }
 
+/** A new link for each link two or more pasted items share. */
+function pastedLinks(project: ProjectModel, clips: ReadonlyArray<Clip>): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const { item } of clips) if (item.link) counts.set(item.link, (counts.get(item.link) ?? 0) + 1);
+  const taken = linkIdsIn(project);
+  return new Map([...counts].filter(([, n]) => n > 1).map(([link]) => [link, newLinkId(taken)]));
+}
+
+/** How far from the playhead each linked main clip lands (after the clip under it), by its old link. */
+function mainShifts(clips: ReadonlyArray<Clip>, main: Track | undefined, index: number, starts: ReadonlyMap<string, number>, at: number): Map<string, number> {
+  const shifts = new Map<string, number>();
+  if (!main) return shifts;
+  const before = main.items[index - 1];
+  let landing = before ? (starts.get(before.id) ?? 0) + before.duration : 0;
+  for (const clip of clips) {
+    if (!clip.main || !fitsTrack(clip.item, main)) continue;
+    if (clip.item.link) shifts.set(clip.item.link, landing - (at + clip.offset));
+    landing += clip.item.duration;
+  }
+  return shifts;
+}
+
 const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video", text: "Text", audio: "Audio" };
 
 /**
@@ -82,7 +104,8 @@ const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video
  * unlocked and free for its whole length, else on another track of the kind that is, else on a
  * new track (video above the main track, text on top, audio at the bottom). A main-track clip is
  * inserted on the main track after the clip under the playhead (the rest moves along). New ids;
- * transitions aren't copied (the cut they sat on isn't there).
+ * transitions aren't copied (the cut they sat on isn't there). Items pasted with the items they
+ * were linked to get a link of their own (D349), a sound landing where its main clip does.
  */
 export function planPaste(
   project: ProjectModel,
@@ -105,19 +128,22 @@ export function planPaste(
   let mainIndex = main ? main.items.filter((i) => (starts.get(i.id) ?? 0) < at).length : 0;
   // D157: pasted groups are new groups (the copies don't join the originals').
   const groups = new Map<string, string>();
+  const links = pastedLinks(project, clips);
+  const shifts = mainShifts(clips, main && !main.locked ? main : undefined, mainIndex, starts, at);
   for (const clip of clips) {
     const id = uniqueId(project, clip.item.id.replace(/-\d+$/, "") || "item", taken);
     taken.add(id);
     ids.push(id);
     // D224: nor the gap before a main clip (it lands right after the clip before it).
-    const { transitionIn: _t, start: _s, gap: _g, group: oldGroup, ...rest } = clip.item as Item & { start?: number };
+    const { transitionIn: _t, start: _s, gap: _g, group: oldGroup, link: oldLink, ...rest } = clip.item as Item & { start?: number };
     if (oldGroup && !groups.has(oldGroup)) groups.set(oldGroup, `group-${id}`);
-    const item = { ...rest, id, ...(oldGroup ? { group: groups.get(oldGroup)! } : {}) } as Item;
+    const link = oldLink ? links.get(oldLink) : undefined;
+    const item = { ...rest, id, ...(oldGroup ? { group: groups.get(oldGroup)! } : {}), ...(link ? { link } : {}) } as Item;
     if (clip.main && main && !main.locked && fitsTrack(item, main)) {
       ops.push({ op: "insert_item", track: main.id, index: mainIndex++, item });
       continue;
     }
-    const from = at + clip.offset;
+    const from = at + clip.offset + ((oldLink && shifts.get(oldLink)) || 0);
     const to = from + item.duration;
     const own = tracks.find((t) => t.id === clip.track && t.role !== "main");
     const usable = (t: Track) => t.role !== "main" && !t.locked && fitsTrack(item, t) && free(t, from, to);

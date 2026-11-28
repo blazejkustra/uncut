@@ -413,7 +413,7 @@ export function planExport(
       const media = soundMedia(project, item);
       if (!media) return;
       const start = starts.get(item.id) ?? 0;
-      const span = audioSpan(track, index, start);
+      const span = audioSpan(track, index, start, project);
       const duck = curve ? duckKeysIn(curve.keys, span.from, span.to).map((k) => ({ frame: k.frame - start, db: k.db })) : [];
       const gain: GainModel = {
         ...(duck.length ? { duck } : {}),

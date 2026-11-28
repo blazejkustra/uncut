@@ -13,6 +13,7 @@ import {
   planImportTimeline,
   planReshoot,
   subtitleFormatOf,
+  type Op,
   type ParsedCue,
   type Project,
   type ProjectLut,
@@ -20,7 +21,7 @@ import {
 } from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
 import { planPlaceMulti, planPlaceTake, type MultiKind, type MultiLayoutName, type PlacedMulti, type TakePlacement } from "@uncut/core/place";
-import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
+import { insertedClips, planPlaceMedia, withSoundPairs, type PlaceMedia } from "@uncut/core/arrange";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -435,18 +436,28 @@ export const layer = Layer.effect(
               }
               // T9 (D128): files dropped on the timeline land where they were dropped, in this edit.
               let dropped = false;
+              let droppedClips: ReadonlyArray<string> = [];
               const placeable = toPlace.filter((m) => m.kind === "image" || m.probe?.frames);
               if (options.drop && placeable.length) {
                 const plan = planPlaceMedia(raw as Project, placeable, options.drop, taken);
                 if (!("problem" in plan)) {
                   placeOps.push(...plan.ops);
                   dropped = true;
+                  droppedClips = insertedClips(plan.ops);
                   const first = plan.placed[0];
                   if (first) placed = first;
                 }
               }
+              const ops = [
+                ...canvasOps,
+                ...entries.map(({ entry }) => ({ op: "add_media", media: entry })),
+                ...subtitleOps,
+                ...lutOps,
+                ...timelineOps,
+                ...placeOps,
+              ];
               return {
-                ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...lutOps, ...timelineOps, ...placeOps],
+                ops: droppedClips.length ? withSoundPairs(raw as Project, ops as ReadonlyArray<Op>, droppedClips) : ops,
                 summary: timelineOps.length
                   ? `Import timeline ${basename(timelines[0]!.path)}`
                   : options.multi

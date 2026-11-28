@@ -14,6 +14,7 @@
 //   goes 0 → 1. The item's own fade on that side is skipped, as the picture skips its animation.
 //   A dip to black (transitions.ts) dips the sound instead: the outgoing clip fades out over its
 //   last half of the transition, the incoming one fades in over its first half (no overlap).
+//   A sound linked to a main clip (D349) takes that clip's transitions on the edges they share.
 // - A muted track is silent (gain 0); if any track is soloed, only soloed tracks sound. A hidden
 //   track only hides the picture: its clips still sound (mute is the sound's switch).
 // - dB at or below SILENCE_DB is silence (the volume slider's "−∞").
@@ -28,6 +29,7 @@
 // master.gainDb, masterGain below; its own −60 dB cutoff). Both are linear, so the export pans each
 // item's layer by its track's pan and applies the master volume once after amix: the same sound.
 import { overlaps } from "../visual/transitions.ts";
+import { mainStarts } from "../timeline/rules.ts";
 import { isRamped, reversedSeconds, sourceFrames } from "../timeline/speedRamp.ts";
 import type { Item, Project, Track } from "../timeline/types.ts";
 
@@ -81,20 +83,66 @@ export function soundMedia(project: Pick<Project, "media">, item: Item) {
   return undefined;
 }
 
+type Transition = NonNullable<Item["transitionIn"]>;
+
+interface MainEdges {
+  readonly into?: Transition | undefined;
+  readonly out?: Transition | undefined;
+}
+
+const edgesByTracks = new WeakMap<ReadonlyArray<Track>, ReadonlyMap<string, MainEdges>>();
+
+/**
+ * D349: the main-track transitions each linked sound off the main track takes part in: those of
+ * its main mate (same `link`), on each edge the two share (a J or L cut's edge has none).
+ */
+function linkedEdges(tracks: ReadonlyArray<Track>): ReadonlyMap<string, MainEdges> {
+  const cached = edgesByTracks.get(tracks);
+  if (cached) return cached;
+  const mates = new Map<string, { start: number; end: number; into?: Transition | undefined; out?: Transition | undefined }>();
+  for (const track of tracks) {
+    if (track.role !== "main") continue;
+    const starts = mainStarts(track);
+    track.items.forEach((item, i) => {
+      if (item.link)
+        mates.set(item.link, { start: starts[i]!, end: starts[i]! + item.duration, into: item.transitionIn, out: track.items[i + 1]?.transitionIn });
+    });
+  }
+  const edges = new Map<string, MainEdges>();
+  for (const track of tracks) {
+    if (track.role === "main") continue;
+    for (const item of track.items) {
+      const mate = item.link ? mates.get(item.link) : undefined;
+      if (!mate) continue;
+      const start = item.start ?? 0;
+      edges.set(item.id, { into: start === mate.start ? mate.into : undefined, out: start + item.duration === mate.end ? mate.out : undefined });
+    }
+  }
+  edgesByTracks.set(tracks, edges);
+  return edges;
+}
+
+/** The transitions into and out of the item: its own on the main track, else its main mate's (with `project`). */
+function transitionsOf(track: Track, index: number, project: Pick<Project, "tracks"> | undefined): MainEdges {
+  const item = track.items[index]!;
+  if (track.role === "main") return { into: item.transitionIn, out: track.items[index + 1]?.transitionIn };
+  return (project && linkedEdges(project.tracks).get(item.id)) ?? {};
+}
+
 /**
  * The frames an item sounds over: its own, plus half an overlapping transition on either side of a
  * main-track cut (the outgoing clip plays on into the incoming one, which starts early). `dipIn` /
  * `dipOut` are the fade lengths of a dip to black at its start / end (half the dip; no overlap).
+ * With `project`, a linked sound off the main track takes its main mate's transitions (D349).
  */
 export function audioSpan(
   track: Track,
   index: number,
   start: number,
+  project?: Pick<Project, "tracks">,
 ): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
   const item = track.items[index]!;
-  const main = track.role === "main";
-  const into = main ? item.transitionIn : undefined;
-  const out = main ? track.items[index + 1]?.transitionIn : undefined;
+  const { into, out } = transitionsOf(track, index, project);
   const half = into && overlaps(into.module) ? into.duration / 2 : 0;
   const nextHalf = out && overlaps(out.module) ? out.duration / 2 : 0;
   const dipIn = into && !overlaps(into.module) ? into.duration / 2 : 0;
@@ -198,9 +246,9 @@ export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): 
  * `duckDb` is the track's ducking at that moment (D85, ducking.ts duckDbAt), added to the combined
  * dB like a volume key (so the −60 dB cutoff covers it too).
  */
-export function itemGain(track: Track, index: number, local: number, duckDb = 0): number {
+export function itemGain(track: Track, index: number, local: number, duckDb = 0, project?: Pick<Project, "tracks">): number {
   const item = track.items[index]!;
-  const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0);
+  const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0, project);
   const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0) + duckDb;
   let gain = dbToGain(db) * fadeAt(item, local, { skipIn: half > 0 || dipIn > 0, skipOut: nextHalf > 0 || dipOut > 0 });
   if (dipIn > 0) gain *= clamp01(local / dipIn);
@@ -226,12 +274,18 @@ export function audibleAt(
     track.items.forEach((item, index) => {
       if (!soundMedia(project, item)) return;
       const start = starts.get(item.id) ?? 0;
-      const { from, to } = audioSpan(track, index, start);
+      const { from, to } = audioSpan(track, index, start, project);
       if (f < from || f >= to) return;
       const local = f - start;
       // A held clip (D94) past its media's end makes no sound (the preview stops its element).
       if (heldPast(project, item, local)) return;
-      out.push({ item, track, gain: on ? itemGain(track, index, local, duck?.(track.id, f) ?? 0) : 0, source: sourceAt(project, item, local), muted: !on });
+      out.push({
+        item,
+        track,
+        gain: on ? itemGain(track, index, local, duck?.(track.id, f) ?? 0, project) : 0,
+        source: sourceAt(project, item, local),
+        muted: !on,
+      });
     });
   }
   return out;
@@ -251,7 +305,7 @@ export function outputGains(
   duckDb = 0,
 ): { readonly left: number; readonly right: number } {
   if (!trackAudible(project, track)) return { left: 0, right: 0 };
-  const g = itemGain(track, index, local, duckDb) * masterGain(project);
+  const g = itemGain(track, index, local, duckDb, project) * masterGain(project);
   const pan = panGains(trackPan(track));
   return { left: g * pan.left, right: g * pan.right };
 }

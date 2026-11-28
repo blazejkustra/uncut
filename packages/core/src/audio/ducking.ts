@@ -121,7 +121,7 @@ export function duckCurve(
       const rate = env.rate;
       const thr = settings.thresholdDb ?? speechThreshold(env);
       const start = starts.get(item.id) ?? 0;
-      const span = audioSpan(key, index, start);
+      const span = audioSpan(key, index, start, project);
       const k0 = Math.max(0, Math.ceil((span.from / fps) * rate - 1e-9));
       const k1 = Math.ceil((span.to / fps) * rate - 1e-9);
       let open: number | undefined;
@@ -129,7 +129,7 @@ export function duckCurve(
         const local = (k / rate) * fps - start;
         const src = sourceAt(project, item, local);
         const level = env.db[Math.floor(src * rate + 1e-9)];
-        const on = level !== undefined && level >= thr && itemGain(key, index, local) > 0 && !heldPast(project, item, local);
+        const on = level !== undefined && level >= thr && itemGain(key, index, local, 0, project) > 0 && !heldPast(project, item, local);
         if (on && open === undefined) open = k;
         if (!on && open !== undefined) {
           runs.push([open / rate, k / rate]);

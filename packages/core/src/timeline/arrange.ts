@@ -25,7 +25,20 @@ export {
 export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts";
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, planSpeedRamp, planReverse } from "./arrange/retime.ts";
 export { withLinks, linkLines } from "./arrange/linkFollow.ts";
-export { linkIndex, linkMates, isLinked, legacyLinkOps, planLink, planUnlink, linkDrift, driftLabel, planMoveIntoSync } from "./arrange/links.ts";
+export { withSoundPairs, insertedClips } from "./arrange/pairs.ts";
+export {
+  linkIndex,
+  linkIdsIn,
+  newLinkId,
+  linkMates,
+  isLinked,
+  legacyLinkOps,
+  planLink,
+  planUnlink,
+  linkDrift,
+  driftLabel,
+  planMoveIntoSync,
+} from "./arrange/links.ts";
 export type { DetachAudioPlan, RetimePlan } from "./arrange/retime.ts";
 export { planPutOnMain } from "./arrange/putOnMain.ts";
 export { planReplaceRange } from "./arrange/replace.ts";

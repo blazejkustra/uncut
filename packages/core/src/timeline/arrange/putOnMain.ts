@@ -4,6 +4,8 @@ import type { Project, Item, Op, Id, Track } from "../types.ts";
 import { locate, lockProblem } from "./retime.ts";
 import { mainSlot, takenIds, isFree, freeAudioTrack, uniqueIn, nextName, tryOps } from "./place.ts";
 import { linkIdsIn, linkMates, newLinkId } from "./links.ts";
+import { withLinks } from "./linkFollow.ts";
+import { withSoundPairs } from "./pairs.ts";
 
 /** A take's picture (D215): the clip a "Put on Main" puts on the main track when `item` is one of its sounds. */
 function takePicture(project: Pick<Project, "tracks" | "media">, item: Item): Item | undefined {
@@ -36,7 +38,7 @@ export interface PutOnMainPlan {
  * transcript cuts. A part whose track isn't free there goes on another free track of its kind (a new
  * one when none is). Group members that aren't parts (other lengths, text) stay as they are. A sound
  * of a take picks the take's picture (the screen, else the camera). One edit; the track the picture
- * leaves empty goes.
+ * leaves empty goes. A clip that plays its own sound gets it on an audio track, linked (D349).
  */
 export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame?: number | undefined } = {}): PutOnMainPlan | { readonly problem: string } {
   const found = locate(project, itemId);
@@ -121,7 +123,10 @@ export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame
   // The track it leaves empty goes (as Bring forward / Send backward does).
   const left = tracks.find((t) => t.id === placed.track.id);
   if (left && !left.items.length && !left.locked && left.role !== "main") ops.push({ op: "delete_track", track: left.id });
-  const check = tryOps(project, ops);
+  const paired = picture.type === "clip" ? withSoundPairs(project, ops, [picture.id]) : ops;
+  const synced = withLinks(project, paired);
+  if ("problem" in synced) return synced;
+  const check = tryOps(project, synced.ops);
   if ("problem" in check) return check;
-  return { ops, summary: `Put ${picture.name ?? picture.id} on Main`, itemId: picture.id, index, linked };
+  return { ops: paired, summary: `Put ${picture.name ?? picture.id} on Main`, itemId: picture.id, index, linked };
 }

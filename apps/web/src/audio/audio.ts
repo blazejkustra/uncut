@@ -230,8 +230,8 @@ export class Mix extends MixGraph {
       const index = a.track.items.indexOf(a.item);
       const start = starts.get(id) ?? 0;
       const lead = leadOf(a.track.id);
-      const local = Math.min(ahead + lead * fps, audioSpan(a.track, index, start).to - 1e-6) - start;
-      const gain = a.muted ? 0 : itemGain(a.track, index, local, duckDbAt(ducks.get(a.track.id)?.keys, start + local));
+      const local = Math.min(ahead + lead * fps, audioSpan(a.track, index, start, project).to - 1e-6) - start;
+      const gain = a.muted ? 0 : itemGain(a.track, index, local, duckDbAt(ducks.get(a.track.id)?.keys, start + local), project);
       // A led track's clip sounds through an <audio> of ours, started early (D262); its <video> shows the picture.
       const video = lead > 0 ? undefined : this.shown.get(id);
       const preferred: HTMLMediaElement | undefined = video ?? this.ownElement(a.item, project);
@@ -289,7 +289,7 @@ export class Mix extends MixGraph {
         // Clips on a visible track get their <video> from the Compositor, which warms it up (a led track's: ours, D262).
         if (item.type === "clip" && !track.hidden && lead === 0 && !this.apart(item)) return;
         const start = starts.get(item.id) ?? 0;
-        const from = audioSpan(track, index, start).from;
+        const from = audioSpan(track, index, start, project).from;
         const at = frame + lead * fps;
         if (from <= at || from - at > WARM_S * fps) return;
         const el = this.ownElement(item, project);

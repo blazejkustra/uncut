@@ -12,7 +12,7 @@ import { itemLabel, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, isRemote } from "../state/store.ts";
 import type { ReviewNote } from "@uncut/core/types";
 import type { MenuItems } from "./ContextMenu.tsx";
-import { findItem, planNest, planUnnest, trackFlag } from "./edit.ts";
+import { findItem, isLinkSelection, planNest, planUnnest, trackFlag, withLinkMates } from "./edit.ts";
 import { keysOf } from "../editor/keymap.ts";
 
 /** A menu row's key hint: the keymap's first key for the action (#78), so a rebinding shows. */
@@ -29,19 +29,22 @@ export interface MenuUi {
   readonly customSpeed: (id: string) => void;
 }
 
-/** The ids a menu on `itemId` acts on: the selection when the item is in it, else just the item (which gets selected). */
-export function menuSelection(itemId: string): ReadonlyArray<string> {
+/**
+ * The ids a menu on `itemId` acts on: the selection when the item is in it, else just the item
+ * (which gets selected with its linked items, D349). An item and its linked items act as the item.
+ */
+export function menuSelection(project: ProjectModel, itemId: string): ReadonlyArray<string> {
   const { selected, also } = getPlayback();
   const current = selected === undefined ? [] : [selected, ...also];
-  if (current.includes(itemId)) return current;
-  playback.select(itemId);
+  if (current.includes(itemId)) return isLinkSelection(project, current) ? [itemId] : current;
+  playback.selectMany(withLinkMates(project, itemId));
   return [itemId];
 }
 
 export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, online: boolean): MenuItems {
   const placed = findItem(project, itemId);
   if (!placed) return [];
-  const ids = menuSelection(itemId);
+  const ids = menuSelection(project, itemId);
   const many = ids.length > 1;
   const { item, track, start } = placed;
   const locked = !!(track.locked || item.locked);
