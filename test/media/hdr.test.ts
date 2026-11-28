@@ -6,7 +6,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,8 +16,8 @@ import { fileColour, pictureKey, toneMapFilter, toneMapFor, toneMapSupported } f
 import { posterKey } from "../../apps/server/src/media/media.ts";
 import { needsProxy, proxyArgs } from "../../apps/server/src/media/proxies.ts";
 import { filmstripArgs } from "../../apps/server/src/media/filmstrips.ts";
-import { colourFilterOf } from "../../apps/server/src/export/exporter/ffmpeg.ts";
-import { untaggedFilter } from "../../apps/server/src/export/exportPlan.ts";
+import { colourFilterOf, colourFilters } from "../../apps/server/src/export/exporter/ffmpeg.ts";
+import { untaggedFilter, type ExportPlan } from "../../apps/server/src/export/exportPlan.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const ffmpegPath = hasFfmpeg ? execFileSync("/bin/sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).trim() : "";
@@ -167,4 +167,15 @@ test("the tone-mapped frame comes out tagged BT.709 and isn't the untouched pict
     { encoding: "utf8" },
   ).trim();
   assert.equal(tags, "bt709,bt709,bt709");
+});
+
+test("the export's colour filters tone-map only when the ffmpeg that runs them can (a system ffmpeg for libx264)", { skip: skipFf }, async (t) => {
+  if (!(await toneMapSupported(ffmpegPath))) return t.skip("this ffmpeg's scale has no colour management");
+  const older = join(dir, "ffmpeg-7");
+  writeFileSync(older, "#!/bin/sh\necho 'scale AVOptions:'\n");
+  chmodSync(older, 0o755);
+  const plan = { visuals: [{ kind: "video", file: hlg }] } as unknown as ExportPlan;
+  const signal = new AbortController().signal;
+  assert.equal((await colourFilters(ffmpegPath, plan, signal)).get(hlg), `${toneMapFilter({ transfer: "arib-std-b67" })},`);
+  assert.equal((await colourFilters(ffmpegPath, plan, signal, older)).get(hlg), undefined);
 });

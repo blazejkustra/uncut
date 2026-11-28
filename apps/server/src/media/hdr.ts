@@ -3,15 +3,13 @@
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 
-import { hdrKind, type HdrKind, type MediaColour } from "@uncut/core";
+import { hdrKind, type MediaColour } from "@uncut/core";
 
 import { withoutApiKey } from "../app/shellEnv.ts";
 import { colourOf, posterKey } from "./mediaLibrary/helpers.ts";
 import { runProbe } from "./probe.ts";
 
-const IN_TRANSFER: Readonly<Record<HdrKind, string>> = { HLG: "arib-std-b67", PQ: "smpte2084" };
-
-export const COLOUR_ENTRIES = "stream=color_transfer,color_primaries,color_space,bits_per_raw_sample,pix_fmt";
+const COLOUR_ENTRIES = "stream=color_transfer,color_primaries,color_space,bits_per_raw_sample,pix_fmt";
 
 async function probeColour(ffprobe: string, path: string): Promise<MediaColour | undefined> {
   const r = await runProbe(
@@ -45,9 +43,8 @@ export async function fileColour(ffprobe: string | undefined, path: string): Pro
 
 /** The filter that tone-maps HDR to SDR BT.709 (limited range); "" for anything else. */
 export function toneMapFilter(colour: MediaColour | undefined): string {
-  const kind = hdrKind(colour);
-  if (!kind) return "";
-  return `scale=in_transfer=${IN_TRANSFER[kind]}:in_primaries=bt2020:out_transfer=bt709:out_primaries=bt709:out_color_matrix=bt709:out_range=tv:intent=perceptual`;
+  if (!colour || !hdrKind(colour)) return "";
+  return `scale=in_transfer=${colour.transfer}:in_primaries=bt2020:out_transfer=bt709:out_primaries=bt709:out_color_matrix=bt709:out_range=tv:intent=perceptual`;
 }
 
 const support = new Map<string, Promise<boolean>>();

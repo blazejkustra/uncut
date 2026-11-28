@@ -13,6 +13,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -21,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { lockApps, unlockApps } from "../helpers/app.ts";
+import { posterKey } from "../../apps/server/src/media/media.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip =
@@ -286,6 +288,27 @@ test("a reused id gets its own poster, not the old file's", T, async () => {
   const [r, , bl] = rgb(poster);
   assert.ok(bl > 150 && r < 100, `poster colour ${rgb(poster)} should be blue`);
   assert.equal(readdirSync(join(dir, ".cache/thumbs")).filter((f) => f.startsWith("m-same--")).length, 1, "the old poster is gone");
+});
+
+test("an HDR clip's poster from before tone mapping is made again before the Library lists it", T, async () => {
+  const hlg = join(root, "HLG Clip.mp4");
+  ffmpeg(
+    ...["-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p10le"],
+    ...["-x264-params", "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc", hlg],
+  );
+  const job = await s.importAndWait([hlg]);
+  const id = job.result.imported[0].id as string;
+  const thumbs = join(dir, ".cache/thumbs");
+  const poster = () => readdirSync(thumbs).filter((f) => f.startsWith(`${id}--`));
+  const [current] = poster();
+  assert.ok(current, "the import made a poster");
+  const stale = `${id}--${await posterKey(hlg)}.jpg`;
+  assert.notEqual(current, stale, "an HDR poster has its own key");
+  renameSync(join(thumbs, current), join(thumbs, stale));
+
+  assert.ok((await s.ok("media.thumbnails")).includes(id));
+  assert.deepEqual(poster(), [current]);
+  assert.equal((await fetch(`${s.base}/media/thumb/${id}?token=${s.token}`)).status, 200);
 });
 
 test("a file named like an image sequence (shot%d.png) is imported as itself", T, async () => {

@@ -697,14 +697,16 @@ export const layer = Layer.effect(
       });
 
     const remaking = new Set<string>();
-    /** An HDR video's poster from before it was tone-mapped (under its plain posterKey) is made again, in the background. */
+    /** Makes an HDR video's poster again when the one on disk is from before it was tone-mapped (under its plain posterKey). */
     const remakeStalePoster = (m: MediaEntry, seconds: number | undefined, path: string, files: ReadonlySet<string>, dir: string) =>
       Effect.gen(function* () {
         const stale = yield* Effect.promise(() => posterKey(path));
-        if (!stale || !files.has(posterName(m.id, stale)) || remaking.has(m.id)) return;
+        if (!stale || !files.has(posterName(m.id, stale)) || remaking.has(m.id)) return false;
         remaking.add(m.id);
-        const remake = makePoster(m, seconds, dir).pipe(Effect.ignore, Effect.ensuring(Effect.sync(() => remaking.delete(m.id))));
-        yield* Effect.forkIn(remake, scope);
+        return yield* makePoster(m, seconds, dir).pipe(
+          Effect.catchCause(() => Effect.succeed(false)),
+          Effect.ensuring(Effect.sync(() => remaking.delete(m.id))),
+        );
       });
 
     const currentPosters = Effect.gen(function* () {
@@ -713,13 +715,21 @@ export const layer = Layer.effect(
       const project = open.project as unknown as { canvas: { fps: number }; media: ReadonlyArray<MediaEntry> };
       const files = new Set(yield* Effect.promise(() => readdir(thumbDir(open.dir)).catch(() => [] as Array<string>)));
       const out = new Map<string, string>();
+      const stale: Array<{ m: MediaEntry; path: string; key: string }> = [];
       for (const m of project.media) {
         const path = isAbsolute(m.path) ? m.path : resolve(open.dir, m.path);
         const key = yield* currentPosterKey(m.kind, path);
         if (key && files.has(posterName(m.id, key))) out.set(m.id, join(thumbDir(open.dir), posterName(m.id, key)));
-        else if (key && m.kind === "video")
-          yield* remakeStalePoster(m, m.probe?.frames ? m.probe.frames / project.canvas.fps : undefined, path, files, open.dir);
+        else if (key && m.kind === "video") stale.push({ m, path, key });
       }
+      yield* Effect.forEach(
+        stale,
+        ({ m, path, key }) =>
+          remakeStalePoster(m, m.probe?.frames ? m.probe.frames / project.canvas.fps : undefined, path, files, open.dir).pipe(
+            Effect.tap((made) => (made ? Effect.sync(() => out.set(m.id, join(thumbDir(open.dir), posterName(m.id, key)))) : Effect.void)),
+          ),
+        { concurrency: 2, discard: true },
+      );
       return out;
     });
 

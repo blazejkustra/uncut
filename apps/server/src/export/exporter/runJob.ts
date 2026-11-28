@@ -199,7 +199,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         const encoderCaps = await capsOf(encoderBin);
         const encoderPlan = plan.denoiseLag === undefined ? plan : { ...plan, denoiseLag: await denoiseLagOf(encoderBin) };
         const options = {
-          colourFilters: colours,
+          colourFilters: encoderBin === bin ? colours : await colourFilters(bin, plan, signal, encoderBin),
           background,
           rasters,
           caps: encoderCaps,

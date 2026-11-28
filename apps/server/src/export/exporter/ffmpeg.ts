@@ -290,12 +290,15 @@ export function colourFilterOf(stream: ColourStream, toneMaps: boolean): string 
   return undefined;
 }
 
-/** Each video file of a plan whose colour needs a filter (colourFilterOf), with that filter. */
-export async function colourFilters(ffmpeg: string, plan: ExportPlan, signal: AbortSignal): Promise<Map<string, string>> {
+/**
+ * Each video file of a plan whose colour needs a filter (colourFilterOf), with that filter: probed
+ * with the ffprobe beside `ffmpeg`, tone-mapped only when `runner` (the ffmpeg the filters run in) can.
+ */
+export async function colourFilters(ffmpeg: string, plan: ExportPlan, signal: AbortSignal, runner = ffmpeg): Promise<Map<string, string>> {
   const ffprobe = join(dirname(ffmpeg), "ffprobe");
   const out = new Map<string, string>();
   const videos = new Set(plan.visuals.flatMap((l) => (l.kind === "video" ? [l.file] : [])));
-  const toneMaps = videos.size > 0 && (await toneMapSupported(ffmpeg));
+  const toneMaps = videos.size > 0 && (await toneMapSupported(runner));
   for (const file of videos) {
     const r = await run(
       ffprobe,
