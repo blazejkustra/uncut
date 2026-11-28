@@ -161,11 +161,8 @@ test(
   { skip, timeout: 120000 },
   async () => {
     try {
-      // ---- Select green, ⌘-click its sound: two selected ----
+      // ---- A click on green selects it with its linked sound (D349) ----
       await page.click(itemSel("green"));
-      await page.keyboard.down("Meta");
-      await page.click(itemSel("mic"));
-      await page.keyboard.up("Meta");
       assert.deepEqual((await selectedIds()).sort(), ["green", "mic"]);
 
       // ---- Drag green 0.5 s right: it leaves a gap, blue is pushed, the sound follows, one edit ----

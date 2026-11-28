@@ -348,7 +348,7 @@ test("#94, D280: Import from link through the user's own yt-dlp (a catalog plugi
   const placed = project()
     .tracks.flatMap((t) => t.items)
     .filter((i) => Object.values(i).includes(dropped.id));
-  assert.equal(placed.length, 1, "and on the timeline");
+  assert.equal(placed.length, 2, "and on the timeline, the clip with its linked sound (D349)");
   await shot(page, "dropped");
   await app.close();
   apps.delete(app);

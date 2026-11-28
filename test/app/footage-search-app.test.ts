@@ -142,7 +142,9 @@ const dropFirstHitOnMain = (page: Page) =>
   });
 
 const mainItems = (page: Page) =>
-  page.$$eval("[data-testid=timeline-item]", (items) => items.map((item) => ({ duration: Number((item as HTMLElement).dataset.duration) })));
+  page.$$eval("[data-testid=lane][data-track=main] [data-testid=timeline-item]", (items) =>
+    items.map((item) => ({ duration: Number((item as HTMLElement).dataset.duration) })),
+  );
 
 test("search footage, see the moment, drop that stretch on the timeline, add one from another project", { skip, timeout: 240000 }, async () => {
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data") } });
@@ -163,7 +165,9 @@ test("search footage, see the moment, drop that stretch on the timeline, add one
   await page.screenshot({ path: shot("results") });
 
   await dropFirstHitOnMain(page);
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=lane][data-track=main] [data-testid=timeline-item]").length === 1, {
+    timeout: 15000,
+  });
   const [item] = await mainItems(page);
   assert.equal(item!.duration, Math.ceil((14.4 + 0.5) * FPS) - Math.floor((13.5 - 0.5) * FPS), "the words and their handles");
 
