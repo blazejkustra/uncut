@@ -116,3 +116,18 @@ test("a trim of the clip still trims its linked voice, and the edit's lines say 
   assert.equal(lines.length, 2, lines.join("\n"));
   assert.match(lines[1]!, /audio-7\) followed camera\.mp4 \(clip-13\): length 733 to 633 frames/);
 });
+
+test("when a follow is in the way, only the item that was to follow is unlinked", () => {
+  const p = project();
+  const move: ReadonlyArray<Op> = [{ op: "move_item", item: "clip-13", start: 800 }];
+  const after = edit(p, move);
+  assert.equal(find(after, "audio-7")!.linkedTo, undefined, "audio-7 would overlap audio-6: it stops following");
+  assert.equal(find(after, "audio-7")!.start, 1102);
+  assert.equal(find(after, "audio-6")!.linkedTo, "clip-10", "audio-6's clip didn't change");
+});
+
+test("an item linked to a clip that is already gone is left alone", () => {
+  const p = project({ linkedTo: "clip-gone" });
+  assert.deepEqual(withLinkedAudio(p, restyle), restyle);
+  assert.deepEqual(find(edit(p, restyle), "audio-7"), find(p, "audio-7"));
+});
