@@ -7,6 +7,9 @@ import { applyEdit, audibleAt, createSession, layout, type Op, type Project } fr
 import { duckCurve } from "../../packages/core/src/audio/ducking.ts";
 import { projectChecks } from "../../packages/core/src/checks/checks.ts";
 import { soundRoles } from "../../packages/core/src/checks/soundRoles.ts";
+import { checkContext } from "../../packages/core/src/checks/context.ts";
+import { sfxItems } from "../../packages/core/src/checks/soundSheet.ts";
+import { planPlaceMedia, takenIds } from "../../packages/core/src/timeline/arrange.ts";
 import { planAddMedia } from "../../apps/web/src/state/project.ts";
 import { copyItems, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
 import { withLinkMates } from "../../apps/web/src/timeline/edit.ts";
@@ -83,4 +86,38 @@ test("D349: a linked sound slipped too close to its media's start has no crossfa
   const heard = (q: Project, f: number) => audibleAt(q, layout(q).starts, f).filter((x) => x.item.id === sound && x.gain > 0);
   assert.equal(heard(p, 85).length, 1, "with media before it, the sound fades in early");
   assert.equal(heard(slipped, 85).length, 0, "without, it starts at its cut");
+});
+
+test("D349: a placed clip's sound goes on an audio track of clips' own sounds, never on the Music track's free stretch", () => {
+  let p: Project = { ...base(), tracks: base().tracks.map((t) => (t.id === "music" ? { ...t, mixer: { gainDb: -15 } } : t)) };
+  for (let n = 0; n < 3; n++) p = add(p, { in: 0, frames: 200 });
+  assert.deepEqual(
+    p.tracks.find((t) => t.id === "music")!.items.map((i) => i.id),
+    ["s"],
+  );
+  const sounds = p.tracks.filter((t) => t.kind === "audio" && t.id !== "music");
+  assert.equal(sounds.length, 1);
+  assert.equal(sounds[0]!.items.length, 3);
+  const heard = audibleAt(p, layout(p).starts, 450).find((a) => a.item.type === "audio");
+  assert.equal(heard?.track.id, sounds[0]!.id);
+  assert.equal(heard?.gain, 1);
+});
+
+test("D349: an effect dropped on the track of a talk's sound stays an effect when the talk's speech is known", () => {
+  let p = add(base(), { in: 0, frames: 200 });
+  p = { ...p, media: [...p.media, { id: "whoosh", kind: "audio", name: "whoosh.wav", path: "/whoosh.wav", probe: { frames: 20, fps: 30, hasAudio: true } }] };
+  const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
+  const pairTrack = p.tracks.find((t) => t.items.some((i) => i.id === sound))!;
+  const plan = planPlaceMedia(p, [p.media.find((m) => m.id === "whoosh")!], { frame: 210, track: pairTrack.id }, takenIds(p));
+  if ("problem" in plan) throw new Error(plan.problem);
+  p = apply(p, plan.ops);
+  const whoosh = plan.placed[0]!.itemId;
+  for (const speechMedia of [[], ["cam"]]) {
+    assert.deepEqual(
+      sfxItems(checkContext(p, { speechMedia })).map((s) => s.item.id),
+      [whoosh],
+      JSON.stringify(speechMedia),
+    );
+    assert.equal(soundRoles(p, { speechMedia }).get(sound)?.role, "voice");
+  }
 });

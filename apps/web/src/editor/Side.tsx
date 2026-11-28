@@ -72,7 +72,6 @@ export function Side({
   // F2 (D147): several items selected: what they share, edited on all of them at once.
   // Texts only keep the text Inspector, which already restyles every selected text at once (X3).
   const picked = selected ? [selected.item.id, ...also.filter((id) => findItem(project, id))] : [];
-  // D349: a clip and its linked sound show the one that was clicked.
   const many = picked.every((id) => findItem(project, id)?.item.type === "text") || isLinkSelection(project, picked) ? [] : picked;
   // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
   const cutId = usePlayback((s) => s.cut);

@@ -10,6 +10,7 @@ import {
   keyFade,
   mediaOf,
   isSpeechTrack,
+  mainSpeech,
   type Check,
   type CheckSeverity,
   secs,
@@ -109,9 +110,13 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
         const keys = ctx.project.tracks.filter(
           (t) =>
             t.id !== track.id &&
-            isSpeechTrack(ctx, t) &&
             audible(ctx, t) &&
-            t.items.some((i) => soundOf(ctx, i) && spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s)),
+            t.items.some(
+              (i) =>
+                soundOf(ctx, i) &&
+                (isSpeechTrack(ctx, t) || mainSpeech(ctx, i)) &&
+                spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s),
+            ),
         );
         if (!keys.length) return [];
         const mixer = {

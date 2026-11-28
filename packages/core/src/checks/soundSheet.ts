@@ -7,6 +7,7 @@ import {
   isSpeechTrack,
   isMusicTrack,
   linkedClipTrack,
+  mainSpeech,
   soundOf,
   MUSIC_NAME,
   startOf,
@@ -287,8 +288,9 @@ export function soundSheet(project: Project, options: { readonly speechMedia?: I
       `music ${secs(m.start, fps)} to ${secs(m.start + m.item.duration, fps)}: ${m.media.name}${m.bpm ? `, ${m.bpm} BPM` : m.bpm === null ? ", no steady beat" : ""}, at ${dbText(m.gain)}${m.item.fadeIn ? ", fades in" : ""}${m.item.fadeOut ? ", fades out" : ""}${duckEntry(m.track) ? ", ducked under the voice" : ""}`,
     );
   for (const track of ctx.project.tracks) {
-    if (!isSpeechTrack(ctx, track) || !audible(ctx, track)) continue;
-    const spoken = track.items.filter((i) => soundOf(ctx, i));
+    if (!audible(ctx, track)) continue;
+    const speech = isSpeechTrack(ctx, track);
+    const spoken = track.items.filter((i) => soundOf(ctx, i) && (speech || mainSpeech(ctx, i)));
     if (spoken.length)
       lines.push(`voice on ${track.name}: ${spoken.map((i) => `${secs(startOf(ctx, i), fps)} to ${secs(startOf(ctx, i) + i.duration, fps)}`).join(", ")}`);
   }

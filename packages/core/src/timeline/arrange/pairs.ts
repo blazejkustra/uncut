@@ -1,16 +1,19 @@
 // D349: a video with sound goes on the timeline as a linked pair, the clip (muted) and its sound
 // on an audio track, as Detach audio leaves it. Edits then follow by delta (D347).
 import { applyEdit, createSession } from "../apply-ops.ts";
-import type { Id, Op, Project } from "../types.ts";
+import { layout } from "../timeline.ts";
+import type { Id, Item, Op, Project, Track } from "../types.ts";
 import { withLinks } from "./linkFollow.ts";
-import { takenIds } from "./place.ts";
+import { linkMates } from "./links.ts";
+import { freeAudioTrack, nextName, takenIds, uniqueIn } from "./place.ts";
 import { planDetachAudio } from "./retime.ts";
 
 const applied = (project: Project, ops: ReadonlyArray<Op>) => applyEdit(createSession(project), { actor: "user", ops }).project;
 
 /**
- * `ops` plus the ops that give each clip in `placed` its own linked sound on a free audio track (a
- * new one when none is), where the ops and what their links follow (withLinks) leave room. A clip
+ * `ops` plus the ops that give each clip in `placed` its own linked sound on a free audio track that
+ * holds only clips' own sounds (never music or effects; a new one when none is), where the ops and
+ * what their links follow (withLinks) leave room. A clip
  * without sound, muted, ramped, reversed or locked stays as it is, and so do ops that can't apply.
  */
 export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed: ReadonlyArray<Id>): ReadonlyArray<Op> {
@@ -26,12 +29,28 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
   const taken = takenIds(now);
   const pairs: Array<Op> = [];
   for (const id of placed) {
-    const plan = planDetachAudio(now, id, taken);
+    const track = soundTrack(now, id, taken);
+    const plan = planDetachAudio(track.project, id, taken, { track: track.id });
     if ("problem" in plan) continue;
-    pairs.push(...plan.ops);
-    now = applied(now, plan.ops);
+    const ops = [...track.ops, ...plan.ops];
+    pairs.push(...ops);
+    now = applied(now, ops);
   }
   return pairs.length ? [...ops, ...pairs] : ops;
+}
+
+const ownSound = (project: Project, item: Item) =>
+  item.type === "audio" && linkMates(project, item.id).some((m) => m.item.type === "clip" && m.item.media === item.media);
+
+/** The audio track for clip `id`'s sound: one free there with only clips' own sounds on it, else a new "Audio N" (with its op). */
+function soundTrack(project: Project, id: Id, taken: Set<string>): { readonly id: Id; readonly project: Project; readonly ops: ReadonlyArray<Op> } {
+  const clip = project.tracks.flatMap((t) => t.items).find((i) => i.id === id);
+  const start = layout(project).starts.get(id) ?? 0;
+  const found = clip && freeAudioTrack(project, start, clip.duration, (t: Track) => t.items.every((i) => ownSound(project, i)));
+  if (found) return { id: found.id, project, ops: [] };
+  const track = { id: uniqueIn("audio-track", taken), kind: "audio" as const, name: nextName(project, "Audio") };
+  const ops: ReadonlyArray<Op> = [{ op: "add_track", track }];
+  return { id: track.id, project: applied(project, ops), ops };
 }
 
 /** The new clips an op list inserts (insert_item, and place_item with a new item). */

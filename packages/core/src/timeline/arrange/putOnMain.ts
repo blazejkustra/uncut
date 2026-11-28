@@ -123,7 +123,7 @@ export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame
   // The track it leaves empty goes (as Bring forward / Send backward does).
   const left = tracks.find((t) => t.id === placed.track.id);
   if (left && !left.items.length && !left.locked && left.role !== "main") ops.push({ op: "delete_track", track: left.id });
-  const paired = picture.type === "clip" ? withSoundPairs(project, ops, [picture.id]) : ops;
+  const paired = withSoundPairs(project, ops, [picture.id]);
   const synced = withLinks(project, paired);
   if ("problem" in synced) return synced;
   const check = tryOps(project, synced.ops);

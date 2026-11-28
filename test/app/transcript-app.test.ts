@@ -197,6 +197,15 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
     ["clip-2", 118, 37],
   ]);
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=remove-pauses]")?.dataset.count === "0");
+  const sounds = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).tracks.flatMap((t: any) => (t.kind === "audio" ? t.items : []));
+  assert.deepEqual(
+    sounds.map((i: any) => [i.in, i.duration]),
+    [
+      [13, 82],
+      [118, 37],
+    ],
+    "the clip's linked sound is cut with it",
+  );
   assert.equal(await page.$$eval("[data-testid=tx-word]", (els) => els.length), 8, "every word stays");
   assert.equal(await page.$$eval("[data-testid=tx-block]", (els) => els.length), 2, "one block per clip");
   await page.screenshot({ path: "test-output/transcript-pauses.png" });
