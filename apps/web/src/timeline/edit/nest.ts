@@ -5,7 +5,7 @@ import { type Plan, draftOf, findItem } from "./base.ts";
 
 export function planNest(project: ProjectModel, ids: ReadonlyArray<string>): Plan | { readonly problem: string } {
   const placed = ids.map((id) => findItem(project, id)).filter((p) => p !== undefined);
-  if (!placed.length || placed.some((p) => p.track.role !== "main")) return { problem: "Select items on Main to nest them." };
+  if (!placed.length || placed.some((p) => p.track.role !== "main")) return { problem: "Select items on V1 to nest them." };
   const items = [...placed].sort((a, b) => a.index - b.index).map((p) => p.item.id);
   const item = uniqueId(project, "nested");
   const plan = { ops: [{ op: "nest_items" as const, items, sequence: `${item}-sequence`, item, name: "Sequence" }], summary: "Nest into a sequence" };

@@ -91,7 +91,7 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
       ? [
           {
             id: "put-on-main",
-            label: "Put on Main",
+            label: "Put on V1",
             disabled: off || locked || (item.type === "audio" && !takeHasPicture(project, item)),
             run: () => void actions.putOnMain(item.id),
           },

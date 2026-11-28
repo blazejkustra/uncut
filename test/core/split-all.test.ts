@@ -88,6 +88,44 @@ test("split all: S with nothing selected does the same; a selection still splits
   );
 });
 
+test("split all, then S again: the parts it selected are split where the playhead is now, in one edit", () => {
+  const first = ok(planSplitAll(project, 45));
+  const after = apply(project, first);
+  const [primary, ...also] = first.newIds;
+  const again = ok(planSplit(after, primary, 70, also));
+  assert.deepEqual(
+    again.ops.map((o) => [o.item, o.at]),
+    first.newIds.slice(1).map((id) => [id, 25]),
+    "the title's part ended at 60; the others are cut at 70",
+  );
+  assert.match((planSplit(after, primary, 400, also) as { problem: string }).problem, /selected items/);
+});
+
+test("S with a clip and its linked sound selected cuts the pair once, each half linked with the other's, and S again cuts both", () => {
+  const plan = ok(planSplit(project, "a", 45, ["a-sound"]));
+  assert.deepEqual(
+    plan.ops.map((o) => o.item),
+    ["a"],
+    "the sound splits with its clip",
+  );
+  const after = apply(project, plan);
+  const pieces = (p: Project, track: string) => p.tracks.find((t) => t.id === track)!.items.filter((i) => i.media === "cam" && i.start! < 90);
+  const [clipHead, clipTail] = after.tracks.find((t) => t.id === "main")!.items;
+  const [soundHead, soundTail] = pieces(after, "voice");
+  assert.equal(soundHead!.link, clipHead!.link);
+  assert.equal(soundTail!.link, clipTail!.link);
+  assert.notEqual(clipHead!.link, clipTail!.link);
+  const again = apply(after, ok(planSplit(after, plan.newIds[0], 70)));
+  assert.deepEqual(
+    pieces(again, "voice").map((i) => [i.start, i.duration]),
+    [
+      [0, 45],
+      [45, 25],
+      [70, 20],
+    ],
+  );
+});
+
 test("split all: locked tracks and items stay whole, captions aren't cut, nothing under the playhead says so", () => {
   const locked = apply(project, planTrackFlag(project, "screen-track", "locked"));
   assert.deepEqual(

@@ -63,11 +63,11 @@ export const timelineActions = {
   /** Elements tab → a full-frame background (see planAddBackground): over the whole edit, or behind the selected item (D220). */
   addBackground: (props: BackgroundProps, behindSelected = false) =>
     addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
-  /** S: split at the playhead (see planSplit); the parts after the playhead are selected. */
+  /** S: split at the playhead (see planSplit); the parts after it are selected, so S again splits them all. */
   async split() {
     if (!state.snapshot) return;
-    const { selected, frame } = getPlayback();
-    const plan = planSplit(projectOf(state.snapshot), selected, frame);
+    const { selected, also, frame } = getPlayback();
+    const plan = planSplit(projectOf(state.snapshot), selected, frame, also);
     if (await timelineEdit(plan)) playback.selectMany("newIds" in plan ? plan.newIds : []);
   },
   /** ⇧⌘K: split all tracks at the playhead (see planSplitAll); the parts after it are selected. */

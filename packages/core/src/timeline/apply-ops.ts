@@ -188,7 +188,7 @@ export function adjacentAfter<T extends Pick<Item, "start" | "duration" | "gap">
 }
 
 /** A roll's other side: the item after the cut, which the op changes too. */
-function rolledItem(project: Project, op: Op): Array<string> {
+export function rolledItem(project: Project, op: Op): Array<string> {
   if (op.op !== "roll_edit") return [];
   for (const track of project.tracks) {
     const index = track.items.findIndex((i) => i.id === op.item);

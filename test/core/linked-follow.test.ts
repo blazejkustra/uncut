@@ -125,3 +125,49 @@ test("a trim of the clip still trims its linked voice where their ends line up, 
   assert.equal(lines.length, 2, lines.join("\n"));
   assert.match(lines[1]!, /Trimmed camera\.mp4 \(audio-7\) with the item it's linked to: end edge by 3\.3s/);
 });
+
+test("when a follow is in the way, the edit is refused with why and nothing is unlinked", async () => {
+  const p = project();
+  const fx: Item = { id: "fx", type: "audio", media: "cam", in: 0, start: 0, duration: 50 };
+  const blocked: Project = { ...p, tracks: p.tracks.map((t) => (t.id === "audio" ? { ...t, items: [fx, ...t.items] } : t)) };
+  const move: ReadonlyArray<Op> = [{ op: "move_item", item: "clip-10", start: 0 }];
+  assert.throws(() => linkedOps(blocked, move), /A linked item can't go along with that .*hold ⌥ on the timeline/);
+  const { rows, send } = editor(blocked);
+  assert.equal((await send(move))._tag, "Failure");
+  assert.equal(rows.length, 0);
+  assert.deepEqual(find(edit(p, move), "audio-6")!.start, 0, "with nothing in the way the voice moves with its clip");
+});
+
+test("an item linked to a clip that is already gone is left alone", () => {
+  const p = project({ linkedTo: "clip-gone" });
+  assert.deepEqual(linkedOps(p, restyle), restyle);
+  assert.deepEqual(find(edit(p, restyle), "audio-7"), find(p, "audio-7"));
+});
+
+test("rolling the cut between two linked voices rolls their clips' cut too, and the next clip edit keeps them in step", () => {
+  const rolled = edit(project(), [{ op: "roll_edit", item: "audio-6", frames: -30 }]);
+  const span = (p: Project, id: string) => [find(p, id)!.start, find(p, id)!.duration, find(p, id)!.in];
+  assert.deepEqual(span(rolled, "audio-6"), [939, 133, 3494]);
+  assert.deepEqual(span(rolled, "clip-10"), [939, 133, 3494]);
+  assert.deepEqual(span(rolled, "audio-7"), [1072, 763, 3650]);
+  assert.deepEqual(span(rolled, "clip-13"), [1072, 763, 3650]);
+  const trimmed = edit(rolled, [{ op: "trim_item", item: "clip-13", edge: "end", frames: 10 }]);
+  assert.deepEqual(span(trimmed, "audio-7"), [1072, 753, 3650]);
+});
+
+test("a sound that ends with its media keeps its length when linked, and a follow stops at its media's first frame", () => {
+  const atEnd = project({ in: 19900, duration: 100, linkedTo: undefined });
+  const link: ReadonlyArray<Op> = [
+    { op: "update_item", item: "audio-7", set: { link: "voice" } },
+    { op: "update_item", item: "clip-13", set: { link: "voice" } },
+  ];
+  assert.equal(find(edit(atEnd, link), "audio-7")!.duration, 100);
+  const early = project();
+  const nearStart: Project = {
+    ...early,
+    tracks: early.tracks.map((t) => (t.id === "audio" ? { ...t, items: t.items.map((i) => (i.id === "audio-6" ? { ...i, in: 40 } : i)) } : t)),
+  };
+  const grown = edit(nearStart, [{ op: "trim_item", item: "clip-10", edge: "start", frames: -100 }]);
+  assert.deepEqual([find(grown, "clip-10")!.start, find(grown, "clip-10")!.duration], [839, 263]);
+  assert.deepEqual([find(grown, "audio-6")!.start, find(grown, "audio-6")!.duration, find(grown, "audio-6")!.in ?? 0], [899, 203, 0]);
+});

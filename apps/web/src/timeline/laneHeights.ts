@@ -19,41 +19,33 @@ const BASE: Readonly<Record<LaneSize, { readonly picture: number; readonly main:
   large: { picture: 64, main: 80, sound: 112 },
 };
 
-export const MIN_LANE = 28;
-export const MAX_LANE = 240;
+const MIN_LANE = 28;
+const MAX_LANE = 240;
 
 const SIZE_KEY = "uncut.laneSize";
 const HEIGHTS_KEY = "uncut.laneHeights";
 
 type Heights = Readonly<Record<string, Readonly<Record<string, number>>>>;
+type Sizes = Readonly<Record<string, LaneSize>>;
 
-function readSize(): LaneSize {
+function readSaved<T extends object>(key: string): T | Record<string, never> {
   try {
-    const saved = localStorage.getItem(SIZE_KEY);
-    return LANE_SIZES.some((s) => s.id === saved) ? (saved as LaneSize) : "medium";
-  } catch {
-    return "medium";
-  }
-}
-
-function readHeights(): Heights {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(HEIGHTS_KEY) ?? "{}");
-    return saved && typeof saved === "object" ? (saved as Heights) : {};
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "{}");
+    return saved && typeof saved === "object" ? (saved as T) : {};
   } catch {
     return {};
   }
 }
 
-let size = readSize();
-let heights = readHeights();
+let sizes = readSaved<Sizes>(SIZE_KEY);
+let heights = readSaved<Heights>(HEIGHTS_KEY);
 let version = 0;
 const listeners = new Set<() => void>();
 
 function changed() {
   version++;
   try {
-    localStorage.setItem(SIZE_KEY, size);
+    localStorage.setItem(SIZE_KEY, JSON.stringify(sizes));
     localStorage.setItem(HEIGHTS_KEY, JSON.stringify(heights));
   } catch {}
   for (const l of listeners) l();
@@ -61,20 +53,24 @@ function changed() {
 
 const clampLane = (px: number) => Math.round(Math.min(MAX_LANE, Math.max(MIN_LANE, px)));
 
-export const laneSize = () => size;
+export function laneSize(dir: string | undefined): LaneSize {
+  const saved = dir === undefined ? undefined : sizes[dir];
+  return LANE_SIZES.find((s) => s.id === saved)?.id ?? "medium";
+}
 
 /** A lane's height before a graphic's element rows: its own if it was resized, else the size's. */
 export function laneHeight(dir: string | undefined, track: Track): number {
   const own = dir === undefined ? undefined : heights[dir]?.[track.id];
   if (typeof own === "number") return clampLane(own);
-  const base = BASE[size];
+  const base = BASE[laneSize(dir)];
   return track.kind === "audio" ? base.sound : track.role === "main" ? base.main : base.picture;
 }
 
-/** Every lane to `next`, forgetting the lanes this project resized on their own. */
+/** Every lane of the project to `next`, forgetting the lanes it resized on their own. */
 export function setLaneSize(dir: string | undefined, next: LaneSize) {
-  size = next;
-  if (dir !== undefined) heights = Object.fromEntries(Object.entries(heights).filter(([d]) => d !== dir));
+  if (dir === undefined) return;
+  sizes = { ...sizes, [dir]: next };
+  heights = Object.fromEntries(Object.entries(heights).filter(([d]) => d !== dir));
   changed();
 }
 

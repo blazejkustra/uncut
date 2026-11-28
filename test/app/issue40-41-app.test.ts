@@ -250,7 +250,7 @@ test(
     await page.click(itemSel("cam-1"));
     await tab("transcript");
     await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=tx-source]")?.value === "cam-1");
-    assert.deepEqual(await page.$$eval("[data-testid=tx-source] option", (els) => els.map((e) => e.textContent)), ["Main track", "Take camera, Camera"]);
+    assert.deepEqual(await page.$$eval("[data-testid=tx-source] option", (els) => els.map((e) => e.textContent)), ["V1", "Take camera, Camera"]);
     await page.waitForSelector("[data-testid=tx-block][data-media=m-mic] [data-testid=tx-transcribe]", { timeout: 15000 });
     await page.screenshot({ path: out("issue40-source.png") });
 

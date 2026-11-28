@@ -1,7 +1,7 @@
 // Timeline v2 phase 1 (D346) on the packaged app: tracks named V1, V2, A1; the audio lane 64 px
 // tall with a full-height waveform where the talk's speech and its silences show; lanes resized by
 // their head's bottom edge, ⌥ + wheel and the S/M/L toggle; ⇧⌘K splits V1, V2 and A1 at the
-// playhead in one edit, one ⌘Z.
+// playhead in one edit, one ⌘Z, and S right after splits every track again.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -186,6 +186,17 @@ test(
     assert.deepEqual(counts(), { screen: 2, main: 2, audio: 2 });
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 6);
     await (await page.$("[data-testid=timeline]"))!.screenshot({ path: out("timeline-v2-split-all.png") });
+
+    // The parts after the cut stay selected, so S at 4 s splits them all again.
+    for (let i = 0; i < 2; i++) await chord(page, ["Shift"], "ArrowRight");
+    for (let i = 0; i < 15; i++) await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === 120);
+    await page.keyboard.press("KeyS");
+    rev = await savedAfter(page, rev);
+    assert.deepEqual(counts(), { screen: 3, main: 3, audio: 3 });
+    await chord(page, ["Meta"], "KeyZ");
+    rev = await savedAfter(page, rev);
+    assert.deepEqual(counts(), { screen: 2, main: 2, audio: 2 });
     await chord(page, ["Meta"], "KeyZ");
     await savedAfter(page, rev);
     assert.deepEqual(counts(), { screen: 1, main: 1, audio: 1 });

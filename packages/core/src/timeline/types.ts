@@ -241,7 +241,7 @@ export interface Mixer {
   readonly gainDb?: number;
   readonly pan?: number;
   readonly mute?: boolean;
-  /** Audio (D123): the clip this sound was detached from; while set it follows that clip (arrange.ts withLinkedAudio). */
+  /** Legacy (D123): the clip this sound was detached from; read as a link with it and converted to `link` on open (D347). */
   readonly linkedTo?: Id;
   readonly solo?: boolean;
   readonly effects?: ReadonlyArray<ModuleUse>;
