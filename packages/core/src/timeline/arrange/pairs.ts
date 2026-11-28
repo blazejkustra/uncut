@@ -41,8 +41,14 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
 
 const ducks = (track: Track) => !!track.mixer?.effects?.some((fx) => fx.module === DUCK);
 
-/** A track holding clips' own sounds (an effect may sit there too) without ducking, bypassed or not. */
-export const holdsClipSounds = (project: Project, track: Track) => track.items.some((i) => soundOwner(project, i)) && !ducks(track);
+/**
+ * A track holding clips' own sounds: only those, or with other sounds (an effect) when it doesn't
+ * duck, bypassed or not (a ducking track with a song on it is a music bed).
+ */
+export const holdsClipSounds = (project: Project, track: Track) => {
+  const owned = track.items.filter((i) => soundOwner(project, i)).length;
+  return owned > 0 && (owned === track.items.length || !ducks(track));
+};
 
 /**
  * An empty track a clip's sound can start: one Uncut named, without ducking (an emptied music bed

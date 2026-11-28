@@ -190,3 +190,30 @@ test("D349: ⌘V of a song with a pair puts the pair's sound on a track of its o
   assert.notEqual(trackOf(p, song!).id, trackOf(p, sound!).id);
   assert.notEqual(trackOf(p, sound!).id, "music");
 });
+
+test("D349: a ducking track of clips' sounds (B-roll sound ducked under Main) takes the next B-roll's sound", () => {
+  let p = add(base());
+  const broll = (q: Project, frame: number) => {
+    const plan = planDropMedia(q, "cam", { frame, range: { in: 0, frames: 60 } });
+    if ("problem" in plan) throw new Error(plan.problem);
+    return { p: apply(q, plan.ops), clip: plan.itemId };
+  };
+  const first = broll(p, 30);
+  p = first.p;
+  const nat = trackOf(p, soundOf(p, first.clip));
+  p = { ...p, tracks: p.tracks.map((t) => (t.id === nat.id ? { ...t, mixer: { effects: [{ module: "audio.duck", params: { under: ["main"] } }] } } : t)) };
+  const second = broll(p, 150);
+  assert.equal(trackOf(second.p, soundOf(second.p, second.clip)).id, nat.id);
+});
+
+test("D349: a talk's linked sound on a track that looks like music gets no music-fades check", () => {
+  let p = add(base());
+  const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
+  const a1 = trackOf(p, sound).id;
+  p = { ...p, tracks: p.tracks.map((t) => (t.id === a1 ? { ...t, mixer: { effects: [{ module: "audio.duck", params: { under: ["music"] } }] } } : t)) };
+  const fades = projectChecks(p, { speechMedia: ["cam"] }).filter((c) => c.id === "music-fades");
+  assert.ok(
+    fades.every((c) => !JSON.stringify(c).includes(sound)),
+    JSON.stringify(fades),
+  );
+});
