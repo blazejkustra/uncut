@@ -276,6 +276,31 @@ test("transcript cut: the cut words leave the sound too, the rest stays under it
   }
 });
 
+test("slip: the mate slips by as much and keeps its edges, a J cut too, from either side", () => {
+  const aligned = edit(project(), [{ op: "slip_item", item: "a", frames: 10 }]);
+  assert.deepEqual(geo(aligned, "as"), [0, 10, 120]);
+  assert.equal(linkDrift(aligned, "as"), 0);
+  const j = edit(project(), [{ op: "trim_item", item: "vs", edge: "start", frames: -20, solo: true }]);
+  assert.deepEqual(geo(j, "vs"), [380, 480, 120]);
+  const picture = edit(j, [{ op: "slip_item", item: "v", frames: 10 }]);
+  assert.deepEqual(
+    [geo(picture, "v"), geo(picture, "vs")],
+    [
+      [400, 510, 100],
+      [380, 490, 120],
+    ],
+  );
+  const sound = edit(picture, [{ op: "slip_item", item: "vs", frames: -30 }]);
+  assert.deepEqual(
+    [geo(sound, "v"), geo(sound, "vs")],
+    [
+      [400, 480, 100],
+      [380, 460, 120],
+    ],
+  );
+  assert.equal(linkDrift(sound, "vs"), 0);
+});
+
 test("a J/L cut survives 20 unrelated edits", () => {
   let p = edit(project(), [{ op: "trim_item", item: "bs", edge: "end", frames: -15, solo: true }]);
   const before = geo(p, "bs");

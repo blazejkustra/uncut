@@ -160,6 +160,7 @@ function followOps(round: Round, driver: Item, pieces: ReadonlyArray<Placed>, sp
   const ye = ys + y.duration;
   const lone = pieces.length === 1 ? pieces[0]!.item : undefined;
   if (lone && speedChanged(driver, lone)) return speedOps(round, driver, lone, mate);
+  if (lone && slipped(round, driver, lone)) return slipOps(round, driver, lone, mate);
   if (lone && spans[0]!.foreign) return [];
   const grow = room(round.before, y);
   const y0 = Math.max(ys === bs ? spans[0]!.from : ys, ys - grow.before);
@@ -198,6 +199,24 @@ const speedChanged = (driver: Item, now: Item) =>
   !!now.reverse === !!driver.reverse &&
   ramp(now) === ramp(driver) &&
   (now.speed ?? 1) !== (driver.speed ?? 1);
+
+/** Only the driver's in point changed: its content slid under edges that stayed put. */
+const slipped = (round: Round, driver: Item, now: Item) =>
+  now.id === driver.id &&
+  (now.in ?? 0) !== (driver.in ?? 0) &&
+  now.duration === driver.duration &&
+  round.afterStarts.get(now.id) === round.beforeStarts.get(driver.id) &&
+  (now.speed ?? 1) === (driver.speed ?? 1) &&
+  now.media === driver.media &&
+  timed(round.before, driver) &&
+  timed(round.after, now);
+
+/** The driver was slipped: the mate slips by the same timeline frames, its edges (a J or L cut too) stay. */
+function slipOps(round: Round, driver: Item, now: Item, { item: y }: Placed): Array<Op> {
+  if (!timed(round.before, y)) return [];
+  const frames = Math.round(((now.in ?? 0) - (driver.in ?? 0)) / (driver.speed ?? 1));
+  return frames ? [{ op: "slip_item", item: y.id, frames }] : [];
+}
 
 /** The driver's speed changed: the mate's speed by the same factor, its timeline stretch scaled about the driver's start. */
 function speedOps(round: Round, driver: Item, now: Item, mate: Placed): Array<Op> {
@@ -265,8 +284,8 @@ function followLink(round: Round, members: ReadonlyArray<Placed>, ops: ReadonlyA
   if (!drivers.length || !mates.length) return undefined;
   const driver = driverOf(drivers, ops).item;
   const pieces = round.pieces.get(driver.id) ?? [];
-  const retimed = pieces.length === 1 && speedChanged(driver, pieces[0]!.item);
-  const spans = pieces.length && !retimed ? spansOf(round, driver, pieces) : [];
+  const inPlace = pieces.length === 1 && (speedChanged(driver, pieces[0]!.item) || slipped(round, driver, pieces[0]!.item));
+  const spans = pieces.length && !inPlace ? spansOf(round, driver, pieces) : [];
   return {
     ops: [...mates.flatMap((mate) => followOps(round, driver, pieces, spans, mate)), ...pieceLinkOps(spans)],
     onMain: mates.some((m) => m.track.role === "main"),
@@ -281,7 +300,7 @@ const ROUNDS = 4;
  * (a ripple on Main included), the same trim of an edge that lined up with the trimmed one (an edge
  * that didn't, a J or L cut, stays), a split at the same timeline frame where it falls inside (each
  * piece linked with the mate's part over it), the same middle cut out (a transcript cut), the same
- * speed change, deleted together. ⌥ ops (`solo`) and link changes don't spread; locked mates stay.
+ * slip (its edges kept), the same speed change, deleted together. ⌥ ops (`solo`) and link changes don't spread; locked mates stay.
  * A replaced fragment (another media) leaves its mates playing on there, unlinked. Refused, with
  * why, when a mate can't follow (something else is in its way). Pure; run where edits are applied
  * (the server) and drafted (the renderer).

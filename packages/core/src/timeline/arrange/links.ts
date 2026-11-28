@@ -18,6 +18,8 @@ export interface LinkIndex {
   readonly members: ReadonlyMap<string, ReadonlyArray<Placed>>;
 }
 
+const placedIn = (tracks: ReadonlyArray<Track>): Array<Placed> => tracks.flatMap((track) => track.items.map((item) => ({ item, track })));
+
 /** A legacy link's key: the clip the `linkedTo` items followed. */
 const LEGACY = "~";
 
@@ -26,7 +28,7 @@ const indexes = new WeakMap<ReadonlyArray<Track>, LinkIndex>();
 export function linkIndex(tracks: ReadonlyArray<Track>): LinkIndex {
   const cached = indexes.get(tracks);
   if (cached) return cached;
-  const placed = tracks.flatMap((track) => track.items.map((item) => ({ item, track })));
+  const placed = placedIn(tracks);
   const byId = new Map(placed.map((p) => [p.item.id, p.item]));
   const leaders = new Set(placed.flatMap(({ item }) => (!item.link && item.linkedTo ? [item.linkedTo] : [])));
   const keyFor = (item: Item): string | undefined => {
@@ -85,7 +87,7 @@ export function planLink(
   project: Project,
   ids: ReadonlyArray<Id>,
 ): { readonly ops: ReadonlyArray<Op>; readonly summary: string } | { readonly problem: string } {
-  const all = project.tracks.flatMap((track) => track.items.map((item) => ({ item, track })));
+  const all = placedIn(project.tracks);
   const chosen = [...new Set(ids)].map((id) => all.find((p) => p.item.id === id)).filter((p): p is Placed => !!p);
   if (chosen.length < 2) return { problem: "Select two or more clips or sounds to link them." };
   if (chosen.some((p) => !LINKABLE.has(p.item.type))) return { problem: "Only clips and sounds can be linked." };
@@ -110,7 +112,7 @@ export function planUnlink(
   const leaving = new Set(chosen);
   // A legacy leader holds no field: its followers let go of it.
   for (const id of chosen) for (const p of index.members.get(index.keyOf.get(id)!)!) if (p.item.linkedTo === id) leaving.add(p.item.id);
-  const all = new Map(project.tracks.flatMap((track) => track.items.map((item) => [item.id, { item, track }] as const)));
+  const all = new Map(placedIn(project.tracks).map((p) => [p.item.id, p] as const));
   const locked = [...leaving].find((id) => lockedPlaced(all.get(id)!));
   if (locked) return { problem: `${itemLabel(project, locked)} is locked. Unlock it to unlink it.` };
   const ops: Array<Op> = [...leaving].flatMap((id) => unlinkOp(all.get(id)!.item));
@@ -166,7 +168,7 @@ export const driftLabel = (frames: number) => `${frames > 0 ? "+" : "-"}${Math.a
 export function planMoveIntoSync(project: Project, id: Id): { readonly ops: ReadonlyArray<Op>; readonly summary: string } | { readonly problem: string } {
   const drift = linkDrift(project, id);
   if (!drift) return { problem: "It's in sync with what it's linked to." };
-  const all = project.tracks.flatMap((track) => track.items.map((item) => ({ item, track })));
+  const all = placedIn(project.tracks);
   const self = all.find((p) => p.item.id === id)!;
   const mate = linkMates(project, id).find((p) => linkDrift(project, p.item.id) === -drift);
   const target = self.track.role === "main" ? mate : self;
