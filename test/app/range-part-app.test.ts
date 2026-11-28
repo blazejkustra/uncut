@@ -1,7 +1,7 @@
 // Ranges to chat on the packaged app (background window), through the UI, on three clips over a
 // song:
-// - a drag on the ruler marks In to Out (drawn while dragging); a click still moves the playhead and
-//   the playhead's handle still scrubs;
+// - a click or drag on the ruler moves the playhead, also to the start and next to its handle, and
+//   marks nothing; a ⇧-drag marks In to Out (drawn while dragging); the handle scrubs even with ⇧;
 // - right-click inside the range: Add range to chat puts a chip in the composer; a second range adds
 //   a second chip; Export this range opens the dialog on In to Out; Clear range removes the marks.
 // Screenshots: test-output/range-part-*.png.
@@ -49,9 +49,10 @@ async function rulerAt(f: number) {
 }
 
 /** Press on the ruler at `from`, drag to `to` in steps (⌘ held: no snapping), check while held, release. */
-async function dragRuler(from: number, to: number, whileHeld?: () => Promise<void>) {
+async function dragRuler(from: number, to: number, { range = true, whileHeld }: { range?: boolean; whileHeld?: () => Promise<void> } = {}) {
   const a = await rulerAt(from);
   const b = await rulerAt(to);
+  if (range) await page.keyboard.down("Shift");
   await page.keyboard.down("Meta");
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
@@ -59,7 +60,15 @@ async function dragRuler(from: number, to: number, whileHeld?: () => Promise<voi
   await whileHeld?.();
   await page.mouse.up();
   await page.keyboard.up("Meta");
+  if (range) await page.keyboard.up("Shift");
 }
+
+const playheadNear = (f: number) =>
+  page.waitForFunction(
+    (want) => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) - want) <= 2,
+    { timeout: 5000 },
+    f,
+  );
 
 async function rightClickRuler(f: number, entry: string) {
   const { x, y } = await rulerAt(f);
@@ -141,33 +150,78 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("a drag on the ruler marks In to Out; a click moves the playhead; the handle scrubs", { skip, timeout: 60000 }, async () => {
+test("a click or drag on the ruler moves the playhead, to the start too, and marks nothing", { skip, timeout: 60000 }, async () => {
   assert.equal(await marks(), undefined);
-  await dragRuler(60, 210, async () => {
-    await page.waitForSelector("[data-testid=marks]", { timeout: 5000 });
-    const live = await marks();
-    near(live?.in, 60, "In while dragging");
-    near(live?.out, 210, "Out while dragging");
+  const click = await rulerAt(200);
+  await page.mouse.click(click.x, click.y);
+  await playheadNear(200);
+
+  // Back to the start the way people do it: press somewhere left of the playhead and drag to the ruler's left edge.
+  const press = await rulerAt(120);
+  const start = await rulerAt(0);
+  await page.mouse.move(press.x, press.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x - 20, start.y, { steps: 8 });
+  await page.mouse.up();
+  assert.equal(await playheadFrame(), 0, "the drag took the playhead to the start");
+  assert.equal(await marks(), undefined, "a drag on the ruler marks no range");
+  await page.screenshot({ path: shot("scrub-start") });
+
+  // A click near the start lands on it (snapped to frame 0).
+  await page.mouse.click(click.x, click.y);
+  await playheadNear(200);
+  await page.mouse.click(start.x + 2, start.y);
+  await playheadNear(0);
+  assert.equal(await marks(), undefined, "a click marks no range");
+
+  // A press just beside the playhead's handle scrubs too.
+  await page.mouse.click(click.x, click.y);
+  await playheadNear(200);
+  const handle = (await (await page.$("[data-testid=playhead] .playhead-handle"))!.boundingBox())!;
+  const to = await rulerAt(90);
+  await page.mouse.move(handle.x + handle.width + 4, start.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, start.y, { steps: 6 });
+  await page.mouse.up();
+  near(await playheadFrame(), 90, "a drag beside the handle scrubbed");
+  assert.equal(await marks(), undefined, "scrubbing marks no range");
+});
+
+test("a ⇧-drag on the ruler marks In to Out; a click moves the playhead; the handle scrubs", { skip, timeout: 60000 }, async () => {
+  assert.equal(await marks(), undefined);
+  await dragRuler(60, 210, {
+    whileHeld: async () => {
+      await page.waitForSelector("[data-testid=marks]", { timeout: 5000 });
+      const live = await marks();
+      near(live?.in, 60, "In while dragging");
+      near(live?.out, 210, "Out while dragging");
+    },
   });
   const range = await marks();
   near(range?.in, 60, "In");
   near(range?.out, 210, "Out");
   near(await playheadFrame(), 60, "the playhead at the press");
+  await page.screenshot({ path: shot("shift-drag") });
   assert.ok(await page.$("[data-testid=range-band]"), "the range is shown over the lanes");
 
   const click = await rulerAt(300);
   await page.mouse.click(click.x, click.y);
-  await page.waitForFunction(() => Math.abs(Number(document.querySelector<HTMLElement>("[data-testid=playhead]")!.dataset.frame) - 300) <= 2, {
-    timeout: 5000,
-  });
+  await playheadNear(300);
   assert.deepEqual(await marks(), range, "a click leaves the marks");
 
+  await dragRuler(300, 330, { range: false });
+  near(await playheadFrame(), 330, "a plain drag scrubbed");
+  assert.deepEqual(await marks(), range, "a plain drag leaves the marks");
+
+  // The handle scrubs, ⇧ held or not.
   const handle = (await (await page.$("[data-testid=playhead] .playhead-handle"))!.boundingBox())!;
   const to = await rulerAt(380);
+  await page.keyboard.down("Shift");
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
   await page.mouse.move(to.x, handle.y + handle.height / 2, { steps: 6 });
   await page.mouse.up();
+  await page.keyboard.up("Shift");
   near(await playheadFrame(), 380, "the handle scrubbed");
   assert.deepEqual(await marks(), range, "scrubbing leaves the marks");
 

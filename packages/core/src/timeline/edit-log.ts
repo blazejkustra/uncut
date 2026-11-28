@@ -7,7 +7,7 @@ import { KEY_PROPS } from "../visual/box.ts";
 import { DUCK, effectName, effectSummary, LIMITER, targetWords } from "../audio/effects.ts";
 import type { Id, LogEntry, Op, Project, Session } from "./types.ts";
 
-const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
+export const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
 
 /** An item by name and id, "rb.mp4 (clip-1)"; the bare id when it isn't in the project. */
 export function itemLabel(project: Project, id: Id) {

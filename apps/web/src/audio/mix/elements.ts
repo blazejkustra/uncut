@@ -5,6 +5,10 @@ import type { StageChain } from "./nodes.ts";
 export const RAMP_S = 1 / 60;
 /** Seek a playing element when it is this far from where the clock says it should be. */
 export const DRIFT_S = 0.12;
+/** ...at once when it is this far off (the playhead jumped); a smaller drift waits for the last seek to settle. */
+export const JUMP_S = 1;
+/** The most a playing element is aimed ahead of the clock to make up for its start-up time. */
+export const MAX_LAG_S = 0.5;
 /** Audio items starting this soon get their element ready. */
 export const WARM_S = 2;
 /** ...and this soon (while playing) it already runs, silent, so a cut doesn't wait for it to start. */

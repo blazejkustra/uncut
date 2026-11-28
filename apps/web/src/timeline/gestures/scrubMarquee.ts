@@ -50,13 +50,17 @@ export function makeScrubMarquee(ctx: ScrubMarqueeCtx) {
   };
 
   /**
-   * Press on the ruler: on the playhead's handle it scrubs; elsewhere a click moves the playhead
-   * there and a drag marks In to Out over the frames it covers (drawn as it goes, the preview
-   * showing the frame under the pointer).
+   * Press on the ruler: a click or drag moves the playhead (scrubs). With ⇧ held, away from the
+   * playhead's handle, a drag marks In to Out over the frames it covers instead (drawn as it goes,
+   * the preview showing the frame under the pointer).
    */
   const onRulerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    if ((e.target as Element).closest(".playhead")) return scrub(e);
+    if (!e.shiftKey || (e.target as Element).closest(".playhead")) return scrub(e);
+    markRange(e);
+  };
+
+  const markRange = (e: React.PointerEvent) => {
     e.preventDefault();
     playback.pause();
     const end = layoutOf(project).end;
