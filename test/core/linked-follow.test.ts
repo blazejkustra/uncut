@@ -153,3 +153,16 @@ test("rolling the cut into a linked voice unlinks it, so its clip's next edit ca
   const trimmed = edit(rolled, [{ op: "trim_item", item: "clip-13", edge: "end", frames: 10 }]);
   assert.deepEqual(find(trimmed, "audio-7"), find(rolled, "audio-7"));
 });
+
+test("a sound that ends with its media before its clip does can be linked at that length", () => {
+  const atEnd = (voice: Partial<Item>): Project => {
+    const p = project({ in: 19900, ...voice });
+    const camera = p.tracks.find((t) => t.id === "video-track-2")!;
+    return { ...p, tracks: p.tracks.map((t) => (t === camera ? { ...t, items: t.items.map((i) => (i.id === "clip-13" ? { ...i, in: 19900 } : i)) } : t)) };
+  };
+  const relink: ReadonlyArray<Op> = [{ op: "update_item", item: "audio-7", set: { gainDb: -3, linkedTo: "clip-13" } }];
+  const short = atEnd({ duration: 100 });
+  assert.equal(linkLengthProblem(edit(short, relink), relink), undefined, "100 frames is what the follow gives it");
+  const shorter = atEnd({ duration: 80, linkedTo: undefined });
+  assert.match(linkLengthProblem(edit(shorter, relink), relink) ?? "", /would make audio-7 100 frames\. Split or trim audio-7 to 100 frames first/);
+});
