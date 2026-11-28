@@ -91,7 +91,7 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
       ? [
           {
             id: "put-on-main",
-            label: "Put on Main",
+            label: "Put on V1",
             disabled: off || locked || (item.type === "audio" && !takeHasPicture(project, item)),
             run: () => void actions.putOnMain(item.id),
           },
@@ -408,6 +408,7 @@ export function emptyMenu(project: ProjectModel, frame: number, track: Track | u
     "-",
     { id: "paste-here", label: "Paste here", shortcut: "⌘V", disabled: off || !clipboardItems().length, run: () => void paste(frame) },
     { id: "split-playhead", label: "Split at the playhead", shortcut: "S", disabled: off, run: () => void actions.split() },
+    { id: "split-all", label: "Split all tracks at the playhead", ...keyHint("splitAll"), disabled: off, run: () => void actions.splitAll() },
     "-",
     {
       id: "select-all",

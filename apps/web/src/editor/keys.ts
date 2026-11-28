@@ -187,6 +187,8 @@ export function useEditorKeys(fps: number) {
           return (done(), playback.setMark("out", Math.round(getPlayback().frame)));
         case "split":
           return void (done(), e.repeat || void actions.split());
+        case "splitAll":
+          return void (done(), e.repeat || void actions.splitAll());
         case "delete":
         case "rippleDelete":
           done();

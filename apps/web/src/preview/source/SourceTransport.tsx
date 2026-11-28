@@ -55,7 +55,7 @@ export function SourceTransport({ media, fps, online }: { media: MediaItem; fps:
           </Tooltip>
         </>
       )}
-      <Tooltip label={media.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}>
+      <Tooltip label={media.kind === "audio" ? "Add to the audio track" : "Add to the end of V1"}>
         <button className="btn source-add" data-testid="source-add" disabled={!online} onClick={add}>
           <Plus />
           {marked ? "Add In to Out" : "Add"}

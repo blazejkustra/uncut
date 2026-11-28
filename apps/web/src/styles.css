@@ -256,10 +256,10 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .tl-ruler { position: sticky; top: 0; z-index: 8; height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); }
 .tl-ruler .tick { position: absolute; top: 24px; bottom: 0; border-left: 1px solid var(--border-strong); }
 .tl-ruler .tick span { position: absolute; left: 4px; top: -2px; font: 10px var(--mono); color: var(--dim); }
-.tl-head { height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.tl-head { position: relative; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
 .tl-head .name { flex: 1; min-width: 0; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.tl-head .name .badge { display: inline-flex; color: var(--muted); }
-.tl-head .name .badge svg.lucide { width: 13px; height: 13px; }
+.tl-head .name .code { flex: none; min-width: 20px; font: 600 11px var(--mono); color: var(--muted); }
+.tl-head.main .name .code { color: var(--fg); }
 .tl-head .icon-btn { width: 22px; height: 22px; }
 .tl-head .icon-btn svg.lucide { width: 13px; height: 13px; }
 .tl-head.main { height: 52px; background: var(--panel-2); }
@@ -729,6 +729,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .clip .fade-handle::before { content: ""; position: absolute; inset: -4px -5px -6px; }
 .clip.audio .fade-handle { opacity: 0.55; }
 .clip:hover .fade-handle, .clip.selected .fade-handle { opacity: 1; }
+.clip.audio:has(.fade-handle) .nm { padding: 0 14px; }
 .tl-head .icon-btn.on-soft { color: var(--select); }
 .track-volume { position: relative; display: inline-flex; }
 .track-volume-pop { position: absolute; left: -96px; top: 26px; z-index: 20; width: 240px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); box-shadow: 0 8px 24px rgb(0 0 0 / 50%); }

@@ -10,7 +10,7 @@ export { MIN_BEAT_PX, beatsInItem, visibleBeats, beatTargets, snapPlayhead, snap
 export type { BeatMap, BeatSnap, Snap } from "./edit/snap.ts";
 export { planMove, planMoveToNewTrack, newTrackIndexOver, planGroupMove, planLayer } from "./edit/move.ts";
 export type { MovePlan, NewTrackSide, GroupMovePlan } from "./edit/move.ts";
-export { planRippleDelete, planTrim, planSplit, planBladeSplit, planDelete, planGroupTrim } from "./edit/trim.ts";
+export { planRippleDelete, planTrim, planSplit, planSplitAll, planBladeSplit, planDelete, planGroupTrim } from "./edit/trim.ts";
 export type { TrimPlan, SplitPlan } from "./edit/trim.ts";
 export { planNest, planUnnest } from "./edit/nest.ts";
 export { planRoll, planSlip, rollTarget } from "./edit/slipRoll.ts";

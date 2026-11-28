@@ -307,7 +307,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
             value={scope ? (choices.find((c) => scopeKey(c.scope) === scopeKey(scope))?.id ?? "main") : "main"}
             onChange={(e) => transcriptStore.setSource(e.target.value === "main" ? undefined : e.target.value)}
           >
-            <option value="main">Main track</option>
+            <option value="main">V1</option>
             {choices.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}

@@ -949,7 +949,8 @@ function timelineProps(root: HTMLElement, o: Props, pps: number) {
   const laneOf = (track: string | number | undefined): HTMLElement | undefined => {
     if (typeof track === "number") return lanes[track];
     if (typeof track === "string") {
-      const i = heads.findIndex((h) => (h.querySelector(".name")?.textContent || "").trim().toLowerCase() === track.toLowerCase());
+      const named = (h: Element) => [h.getAttribute("data-name"), h.getAttribute("data-code"), (h.querySelector(".name")?.textContent || "").trim()];
+      const i = heads.findIndex((h) => named(h).some((n) => n?.toLowerCase() === track.toLowerCase()));
       return i >= 0 ? lanes[i] : lanes.find((l) => l.getAttribute("data-track") === track);
     }
     return lanes.find((l) => l.classList.contains("main"));

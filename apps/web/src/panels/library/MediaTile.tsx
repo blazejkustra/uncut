@@ -286,9 +286,7 @@ export function MediaTile({
             {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
           </span>
         )}
-        <Tooltip
-          label={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}
-        >
+        <Tooltip label={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of V1"}>
           <button
             className="tile-add"
             data-testid={generated ? "generated-add" : "add-to-timeline"}
