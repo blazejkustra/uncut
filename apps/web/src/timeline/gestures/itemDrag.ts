@@ -18,6 +18,7 @@ import {
   planTrim,
   rollTarget,
   SNAP_PX,
+  soloPlan,
   snapTargets,
   trimSnapTargets,
   type Plan,
@@ -122,8 +123,11 @@ export function makeItemDrag(ctx: ItemDragCtx) {
       const placed = findItem(base, item.id);
       if (!placed) return;
       const delta = (ev.clientX - x0) / ppf;
+      // D347: ⌥ edits only this item, not the items linked to it.
+      const own = <P extends Plan>(p: P): P => (ev.altKey ? soloPlan(p, item.id) : p);
       if (tool === "slip" || tool === "roll") {
-        const p = tool === "slip" ? planSlip(base, item.id, delta) : planRoll(base, rollTarget(placed, rollStart), delta);
+        const planned = tool === "slip" ? planSlip(base, item.id, delta) : planRoll(base, rollTarget(placed, rollStart), delta);
+        const p = "problem" in planned ? planned : own(planned);
         if ("problem" in p) return setDrag({ itemId: item.id, mode: tool, view: base, refused: p.problem, tipAt: placed.start, tip: p.problem });
         const draft = draftOf(base, p.ops);
         if (!("problem" in draft)) plan = p;
@@ -182,14 +186,14 @@ export function makeItemDrag(ctx: ItemDragCtx) {
       }
       if (edge) {
         // The edge goes where the pointer is, also when re-planned against a newer project.
-        const own = edge === "end" ? placed.start + placed.item.duration : placed.start;
+        const at = edge === "end" ? placed.start + placed.item.duration : placed.start;
         const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge, beats), threshold } : undefined;
         const trimmed = groupOnly
-          ? planGroupTrim(base, item.id, edge, pressEdge + delta - own, snap)
-          : planTrim(base, item.id, edge, pressEdge + delta - own, snap);
+          ? planGroupTrim(base, item.id, edge, pressEdge + delta - at, snap)
+          : planTrim(base, item.id, edge, pressEdge + delta - at, snap);
         if ("problem" in trimmed) return;
         // F11 (D156): overlays over a main clip follow its footage.
-        const p = placed.track.role === "main" && getPlayback().linkOverlays ? withOverlayRipple(base, trimmed) : trimmed;
+        const p = own(placed.track.role === "main" && getPlayback().linkOverlays ? withOverlayRipple(base, trimmed) : trimmed);
         const draft = draftOf(base, p.ops);
         if (!("problem" in draft)) plan = p;
         // A main clip trimmed from the left keeps its start (the rest ripples on release); while
@@ -227,13 +231,15 @@ export function makeItemDrag(ctx: ItemDragCtx) {
         const r = laneRect(hit.track!.id);
         return r ? (placed.item.type === "text" ? r.top : r.bottom) - lanesTop - 1 : 0;
       };
-      const p = side
+      const moved = side
         ? planMoveToNewTrack(base, item.id, side, desired, snap)
         : between !== undefined
           ? planMoveToNewTrack(base, item.id, { index: between }, desired, snap)
           : planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
       const newTrack = side || between !== undefined ? { side: side ?? ("between" as const), y: lineY() } : undefined;
-      if ("problem" in p) return setDrag({ itemId: item.id, mode: "move", view: base, refused: p.problem, tipAt: Math.max(0, desired), tip: p.problem });
+      if ("problem" in moved)
+        return setDrag({ itemId: item.id, mode: "move", view: base, refused: moved.problem, tipAt: Math.max(0, desired), tip: moved.problem });
+      const p = own(moved);
       const draft = draftOf(base, p.ops);
       if (!("problem" in draft)) plan = p;
       setDrag({

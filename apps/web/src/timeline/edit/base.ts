@@ -1,7 +1,7 @@
 // Shared bits of the timeline planners (edit.ts): finding an item, track fit and locks, the plan shape, drafts.
 import { applyEdit, createSession, EditError } from "@uncut/core/apply-ops";
 import { fitsTrackKind, timelineProblems } from "@uncut/core/rules";
-import { withLinkedAudio } from "@uncut/core/arrange";
+import { withLinks } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type Item, type Track, type ProjectModel, layoutOf } from "../../state/project.ts";
 
@@ -58,6 +58,15 @@ export interface Plan {
   readonly summary: string;
 }
 
+/** D347: `plan` with its ops on `id` marked solo (⌥), so the items linked to it stay as they are. */
+export function soloPlan<P extends Plan>(plan: P, id: string): P {
+  const solo = (op: Op): Op =>
+    (op.op === "move_item" || op.op === "trim_item" || op.op === "slip_item" || op.op === "split_item" || op.op === "update_item") && op.item === id
+      ? { ...op, solo: true }
+      : op;
+  return { ...plan, ops: plan.ops.map(solo) };
+}
+
 /** "0.5 s", "1.25 s": a transition's length for labels. */
 export const secondsLabel = (frames: number, fps: number) => `${Math.round((frames / fps) * 100) / 100} s`;
 
@@ -69,8 +78,10 @@ export const secondsLabel = (frames: number, fps: number) => `${Math.round((fram
 export function draftOf(project: ProjectModel, ops: ReadonlyArray<Op>): { readonly project: ProjectModel } | { readonly problem: string } {
   if (!ops.length) return { project };
   try {
-    // D123: linked sounds follow their clips, as the server applies it.
-    return { project: applyEdit(createSession(project), { actor: "user", ops: withLinkedAudio(project, ops) }, timelineProblems).project };
+    // D347: linked items get what the edit does to their mates, as the server applies it.
+    const linked = withLinks(project, ops);
+    if ("problem" in linked) return linked;
+    return { project: applyEdit(createSession(project), { actor: "user", ops: linked.ops }, timelineProblems).project };
   } catch (error) {
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `Can't do that: ${first?.message ?? (error as Error).message}.` };

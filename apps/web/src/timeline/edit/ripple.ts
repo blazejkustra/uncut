@@ -1,6 +1,7 @@
 // Overlays following main-track changes (F11) and grouping (D157), for the timeline planners (edit.ts).
 import type { Op } from "@uncut/core/types";
 import { localForSource, sourceFrames } from "@uncut/core/speedRamp";
+import { isLinked } from "@uncut/core/arrange";
 import { type ProjectModel, layoutOf, type Track } from "../../state/project.ts";
 import { type Plan, draftOf, withGroups, findItem, type Placed, lockOf } from "./base.ts";
 
@@ -58,7 +59,7 @@ export function withOverlayRipple<P extends Plan>(project: ProjectModel, plan: P
   for (const track of after.tracks) {
     if (track.role === "main" || track.locked) continue;
     for (const item of track.items) {
-      if (item.type === "captions" || item.linkedTo || item.locked || touched.has(item.id)) continue;
+      if (item.type === "captions" || isLinked(after, item.id) || item.locked || touched.has(item.id)) continue;
       const s = item.start ?? 0;
       const to = Math.max(0, map(s));
       if (to !== s) moves.push({ op: "move_item", item: item.id, start: to });

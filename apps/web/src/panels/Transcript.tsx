@@ -10,6 +10,7 @@
 // here (the Library's analysis job, with its progress); a missing whisper.cpp or speech model
 // points to Setup.
 import { fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
+import { linkMates } from "@uncut/core/arrange";
 import { AtSign, Captions, Scissors, X } from "lucide-react";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { memo, useEffect, useMemo, useRef } from "react";
@@ -153,7 +154,9 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
     const item = project.tracks.flatMap((t) => t.items).find((i) => i.id === timelineSelected);
     if (!item || item.type === "text" || item.type === "captions") return;
     const own = scopeOf(project, item.id);
-    const onMain = project.tracks.some((t) => t.role === "main" && t.items.some((i) => i.id === item.id || i.id === item.linkedTo));
+    const onMain =
+      project.tracks.some((t) => t.role === "main" && t.items.some((i) => i.id === item.id)) ||
+      linkMates(project, item.id).some((m) => m.track.role === "main");
     if (own) transcriptStore.setSource(item.id);
     else if (onMain) transcriptStore.setSource(undefined);
   }, [timelineSelected]);

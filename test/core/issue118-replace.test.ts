@@ -2,8 +2,9 @@
 // plans it (core planReplaceRange, the In to Out helper) and as the agent's replace_range expands.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { linkedOps } from "../helpers/links.ts";
 import { applyEdit, createSession, layout, loadModules, validateProject, type Op, type Project } from "../../packages/core/src/index.ts";
-import { planDetachAudio, planReplaceRange, takenIds, withLinkedAudio } from "../../packages/core/src/timeline/arrange.ts";
+import { linkMates, planDetachAudio, planReplaceRange, takenIds } from "../../packages/core/src/timeline/arrange.ts";
 import { planReplaceMarks } from "../../apps/web/src/timeline/replace.ts";
 import { expandArrangeOps } from "../../apps/server/src/agent/tools/expand.ts";
 import { OP_SHAPES, CONVENIENCE_OPS } from "../../apps/server/src/agent/tools/opShapes.ts";
@@ -132,10 +133,14 @@ test("replace a fragment of a clip whose sound was detached: the sound plays on 
   const plan = planReplaceRange(detached, { item: "c1", from: 30, to: 60, media: "m-b", in: 100 });
   assert.ok(!("problem" in plan), JSON.stringify(plan));
   // As the server applies an edit: the linked sound kept in step with its clip.
-  const after = applyEdit(createSession(detached), { actor: "user", ops: withLinkedAudio(detached, plan.ops) }).project;
+  const after = applyEdit(createSession(detached), { actor: "user", ops: linkedOps(detached, plan.ops) }).project;
   const [, piece, last] = after.tracks[0]!.items;
   assert.equal(piece!.media, "m-b");
-  const sound = after.tracks.find((t) => t.id === detach.trackId)!.items.map((i) => ({ start: i.start, in: i.in, duration: i.duration, linkedTo: i.linkedTo }));
+  const linkedWith = (id: string) => linkMates(after, id).map((m) => m.item.id)[0];
+  const sound = after.tracks
+    .find((t) => t.id === detach.trackId)!
+    .items.map((i) => ({ start: i.start, in: i.in, duration: i.duration, linkedTo: linkedWith(i.id) }))
+    .sort((a, b) => a.start! - b.start!);
   assert.deepEqual(sound, [
     { start: 0, in: 0, duration: 30, linkedTo: "c1" },
     // Under the new picture: the old clip's sound from where it was (not from the new media's frame 100), on its own.

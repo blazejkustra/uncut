@@ -9,6 +9,7 @@
 // goes through a reversed copy of a range of the media (`reverseRange`), made on the server.
 import { EASES, type Ease } from "../visual/box.ts";
 import type { Item, Media, Project } from "./types.ts";
+import { isLinked } from "./arrange/links.ts";
 
 export type RampEase = Ease;
 export interface SpeedKey {
@@ -300,7 +301,7 @@ export function rampProblem(project: Pick<Project, "media" | "tracks">, item: It
   return undefined;
 }
 
-const hasFollowers = (project: Pick<Project, "tracks">, item: Item) => project.tracks.some((t) => t.items.some((i) => i.linkedTo === item.id));
+const hasFollowers = (project: Pick<Project, "tracks">, item: Item) => isLinked(project, item.id);
 
 /** The local frame (fractional) at which an item's media is at `seconds` (sourceAt's seconds, a reversed clip's in its copy): sourceAt's inverse, loop and hold aside. */
 export function localAtSeconds(project: WithTracks, item: Item, seconds: number): number {

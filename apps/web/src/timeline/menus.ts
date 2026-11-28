@@ -2,7 +2,7 @@
 // in it), on track heads and on empty timeline. Every entry is an existing action (one edit, one
 // ⌘Z) or a UI step (rename in place, the Inspector's custom speed).
 import { soundMedia } from "@uncut/core/audio";
-import { SPEED_PRESETS, speedLabel } from "@uncut/core/arrange";
+import { driftLabel, isLinked, linkDrift, linkMates, planLink, planMoveIntoSync, planUnlink, SPEED_PRESETS, speedLabel } from "@uncut/core/arrange";
 import { planResolveReviewNote } from "@uncut/core/review";
 import { planLockRest, planMarkSection, planRemoveSection } from "@uncut/core/sections";
 
@@ -87,7 +87,7 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
     { id: "ripple-delete", label: "Ripple delete", shortcut: "⇧⌫", danger: true, disabled: off || locked, run: () => void actions.rippleDelete(ids) },
     "-",
     // D215: a picture off Main goes on it (a take from any of its parts: its picture, sounds linked under it).
-    ...(track.role !== "main" && item.type !== "captions" && !item.linkedTo && (item.type !== "audio" || !!item.group)
+    ...(track.role !== "main" && item.type !== "captions" && !onMainLink(project, item.id) && (item.type !== "audio" || !!item.group)
       ? [
           {
             id: "put-on-main",
@@ -196,6 +196,7 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
               },
         ]
       : []),
+    ...linkRows(project, item.id, ids, off || locked),
     // D157: a kicker and its title (or any items grouped here) move, trim and delete together.
     ...(item.group
       ? ["-" as const, { id: "ungroup", label: "Ungroup", disabled: off || locked, run: () => void actions.grouping(ids, false) }]
@@ -203,6 +204,32 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
         ? ["-" as const, { id: "group", label: `Group ${ids.length} items`, disabled: off || locked, run: () => void actions.grouping(ids, true) }]
         : []),
   ];
+}
+
+const onMainLink = (project: ProjectModel, id: string) => linkMates(project, id).some((m) => m.track.role === "main");
+
+/** D347: Unlink, Link (two or more selected) and Move into sync (a linked pair that drifted). */
+function linkRows(project: ProjectModel, itemId: string, ids: ReadonlyArray<string>, disabled: boolean): MenuItems {
+  const drift = linkDrift(project, itemId);
+  const rows: MenuItems = [
+    ...(ids.some((id) => isLinked(project, id))
+      ? [{ id: "unlink", label: "Unlink", disabled, run: () => void actions.timelineEdit(planUnlink(project, ids)) }]
+      : []),
+    ...(ids.length > 1 && !("problem" in planLink(project, ids))
+      ? [{ id: "link", label: `Link ${ids.length} items`, disabled, run: () => void actions.timelineEdit(planLink(project, ids)) }]
+      : []),
+    ...(drift
+      ? [
+          {
+            id: "move-into-sync",
+            label: `Move into sync (${driftLabel(drift)})`,
+            disabled,
+            run: () => void actions.timelineEdit(planMoveIntoSync(project, itemId)),
+          },
+        ]
+      : []),
+  ];
+  return rows.length ? ["-", ...rows] : [];
 }
 
 /** A sound's group has a picture to put on Main (D215). */

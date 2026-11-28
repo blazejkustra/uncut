@@ -27,6 +27,7 @@ import { copyFolder, copyNote, movedProjectText, reserveCopy } from "./projects/
 import { Recents } from "./recents.ts";
 import { Projects, type MediaRecord, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
 import { makeEditUnlocked } from "./projects/edit.ts";
+import { legacyLinkOps } from "@uncut/core/arrange";
 import {
   EXTERNAL_STOP,
   COMPACTED_STOP,
@@ -349,6 +350,23 @@ export const layer = Layer.effect(
 
     const editUnlocked = makeEditUnlocked({ format, commit });
 
+    /**
+     * D347: legacy linkedTo links (D123, D215) become links as one edit (one ⌘Z), right after
+     * opening; nothing that plays or exports changes. If that edit can't be made, the project
+     * stays open as it was (its linkedTo still reads as links).
+     */
+    const convertLegacyLinks = (opened: ProjectSnapshot) =>
+      Effect.suspend(() => {
+        const ops = current ? legacyLinkOps(current.session.project as Project) : [];
+        if (!current || !ops.length) return Effect.succeed(opened);
+        return editUnlocked(current, { ops, summary: "Linked clips and sounds now edit together" }).pipe(
+          Effect.catch((error) => {
+            console.error(`[uncut] couldn't convert linkedTo to links: ${String((error as Error).message ?? error)}`);
+            return Effect.succeed(opened);
+          }),
+        );
+      });
+
     const stateOf = (p: OpenProject) => (revision: number) => {
       try {
         return p.history.stateAt(revision);
@@ -409,7 +427,8 @@ export const layer = Layer.effect(
             const dir = yield* realDir(rawDir, "The project folder");
             const text = yield* readProjectFile(dir);
             const project = yield* parseProject(dir, text);
-            return yield* setOpen(dir, project, text, false);
+            const opened = yield* setOpen(dir, project, text, false);
+            return yield* convertLegacyLinks(opened);
           }),
         ),
 

@@ -17,6 +17,7 @@ const NOT_CONTENT = new Set([
   "name",
   "group",
   "linkedTo",
+  "link",
   "locked",
   "start",
   "gap",

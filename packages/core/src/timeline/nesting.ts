@@ -28,6 +28,7 @@ function withInnerIds(item: Item, owner: Id, start?: number): Item {
     ...item,
     id: inner(owner, item.id),
     ...(item.linkedTo ? { linkedTo: inner(owner, item.linkedTo) } : {}),
+    ...(item.link ? { link: inner(owner, item.link) } : {}),
     ...(item.group ? { group: inner(owner, item.group) } : {}),
     ...(start !== undefined ? { start } : {}),
   };

@@ -165,7 +165,7 @@ export function withGraphicRetime(
   for (const track of after.tracks) {
     if (track.role === "main" || track.locked) continue;
     for (const item of track.items) {
-      if (item.type !== "graphic" || item.locked || item.linkedTo || touched.has(item.id) || !starts.has(item.id)) continue;
+      if (item.type !== "graphic" || item.locked || item.linkedTo || item.link || touched.has(item.id) || !starts.has(item.id)) continue;
       const done = retimeOne(item, starts.get(item.id)!, spans, project.canvas.fps);
       if (!done) continue;
       extra.push(done.op);

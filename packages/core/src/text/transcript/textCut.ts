@@ -1,5 +1,5 @@
 import { applyEdit, createSession, EditError } from "../../timeline/apply-ops.ts";
-import { rippleMainGaps, withLinkedAudio } from "../../timeline/arrange.ts";
+import { linkMates, rippleMainGaps, withLinks } from "../../timeline/arrange.ts";
 import { mainEnd, resolveStarts, projectDuration, timelineProblems } from "../../timeline/rules.ts";
 import type { Op, Project, Item, Track } from "../../timeline/types.ts";
 import { type CutWord, ceilF, plural, floorF, spansFor, localRange, freeId, keptPieces, runsOf, quote, wordsText, wordIds, fitPiece } from "./cutSpans.ts";
@@ -141,6 +141,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const before = projectDuration(project);
   const mainBefore = mainEnd(project);
   const where = new Map(project.tracks.flatMap((t) => t.items.map((i, index) => [i.id, { item: i, track: t, index }] as const)));
+  const linkedToAny = (id: string, ids: ReadonlySet<string>) => linkMates(project, id).some((m) => ids.has(m.item.id));
   // The items whose words are measured (`src`: they play the media) and the item each cut goes into
   // (`target`: the same, or the clip a linked sound follows / a main clip's sound part speaks for).
   // `owner` is the id the panel's words name (a range's `clip`).
@@ -160,14 +161,13 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       const at = where.get(id);
       if (!at || (at.item.type !== "clip" && at.item.type !== "audio") || at.item.media !== mediaId || at.item.reverse) continue;
       // A linked item cuts its clip (it follows): they share their frames (start, length, speed).
-      const link = at.item.linkedTo ? where.get(at.item.linkedTo) : undefined;
-      const linked =
-        link &&
-        link.item.type === "clip" &&
-        (starts.get(link.item.id) ?? 0) === (starts.get(at.item.id) ?? 0) &&
-        link.item.duration === at.item.duration &&
-        (link.item.speed ?? 1) === (at.item.speed ?? 1);
-      const target = linked ? link : at;
+      const sameFrames = (other: Item) =>
+        other.type === "clip" &&
+        (starts.get(other.id) ?? 0) === (starts.get(at.item.id) ?? 0) &&
+        other.duration === at.item.duration &&
+        (other.speed ?? 1) === (at.item.speed ?? 1);
+      const link = at.item.type === "audio" ? linkMates(project, at.item.id).find((m) => sameFrames(m.item)) : undefined;
+      const target = link ? where.get(link.item.id)! : at;
       // One source per target (a muted clip and its detached sound in the same scope).
       if (sources.some((s) => s.target.id === target.item.id)) continue;
       sources.push({ src: at.item, target: target.item, track: target.track, owner: at.item.id });
@@ -256,7 +256,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     for (const track of project.tracks) {
       if (track.role === "main") continue;
       for (const item of track.items) {
-        if (item.group !== g || cutIds.has(item.id) || followers.some((f) => f.item.id === item.id) || (item.linkedTo && cutIds.has(item.linkedTo))) continue;
+        if (item.group !== g || cutIds.has(item.id) || followers.some((f) => f.item.id === item.id) || linkedToAny(item.id, cutIds)) continue;
         if ((item.type !== "clip" && item.type !== "audio") || item.locked || track.locked) continue;
         const s0 = starts.get(item.id) ?? 0;
         const local: Array<[number, number]> = [];
@@ -367,7 +367,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     const followed = new Set(sources.map((s) => s.src.id));
     const elsewhere = project.tracks
       .filter((t) => t.role !== "main")
-      .flatMap((t) => t.items.filter((i) => i.media === mediaId && !followed.has(i.id) && !(i.linkedTo && cutIds.has(i.linkedTo))).map((i) => i.id));
+      .flatMap((t) => t.items.filter((i) => i.media === mediaId && !followed.has(i.id) && !linkedToAny(i.id, cutIds)).map((i) => i.id));
     if (elsewhere.length && perClip.size)
       notes.push(
         `${elsewhere.join(", ")} on other tracks also ${elsewhere.length === 1 ? "uses" : "use"} ${media.name} and weren't cut: cut ${elsewhere.length === 1 ? "it" : "them"} by item.`,
@@ -376,7 +376,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
 
   let draft: Project;
   try {
-    // Linked items follow their clips in the draft as the server applies them (D123), so a plan
+    // Linked items follow their clips in the draft as the server applies them (D347), so a plan
     // chained on this one sees them where they'll be; the ops sent stay the plain ones.
     draft = applyEdit(createSession(project), { actor: "user", ops }).project;
     // Shorter pieces: fades, animations and keys that no longer fit are shortened in the same edit.
@@ -385,7 +385,9 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       const fix = piece && fitPiece(piece);
       if (fix) ops.push(fix);
     }
-    draft = applyEdit(createSession(project), { actor: "user", ops: withLinkedAudio(project, ops) }, timelineProblems).project;
+    const linked = withLinks(project, ops);
+    if ("problem" in linked) return linked;
+    draft = applyEdit(createSession(project), { actor: "user", ops: linked.ops }, timelineProblems).project;
   } catch (error) {
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `That cut doesn't work: ${first?.message ?? (error as Error).message}.` };
@@ -403,7 +405,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     const moved = new Set([...followers.map((f) => f.item.id), ...cutIds]);
     const shifted = project.tracks
       .filter((t) => t.role !== "main")
-      .flatMap((t) => t.items.filter((i) => !moved.has(i.id) && !(i.linkedTo && moved.has(i.linkedTo)) && (i.start ?? 0) + i.duration > firstCut));
+      .flatMap((t) => t.items.filter((i) => !moved.has(i.id) && !linkedToAny(i.id, moved) && (i.start ?? 0) + i.duration > firstCut));
     if (shifted.length)
       notes.push(
         `Items on other tracks (${shifted

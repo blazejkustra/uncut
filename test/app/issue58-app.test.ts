@@ -28,7 +28,9 @@ let page: Page;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const out = (name: string) => resolve("test-output", `issue58-${name}.png`);
 
-type Saved = { id: string; start?: number; gap?: number; duration: number; linkedTo?: string };
+type Saved = { id: string; start?: number; gap?: number; duration: number; link?: string };
+/** D347: the old project's linkedTo opened as a link the two share. */
+const sameLink = (a: Saved | undefined, b: Saved | undefined) => !!a?.link && a.link === b?.link;
 const onDisk = (): { tracks: Array<{ id: string; role?: string; items: Array<Saved> }> } => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 const mainItems = () => onDisk().tracks.find((t) => t.role === "main")!.items;
 const mainIds = () => mainItems().map((i) => i.id);
@@ -177,7 +179,7 @@ test(
       assert.deepEqual(await shown("blue"), { start: 135, duration: 60 });
       assert.equal(saved("green")!.gap, 15);
       assert.equal(audioItem("mic")!.start, 75);
-      assert.equal(audioItem("mic")!.linkedTo, "green", "the sound is still linked");
+      assert.ok(sameLink(audioItem("mic"), saved("green")), "the sound is still linked");
       await page.screenshot({ path: out("moved") });
 
       // ---- On right past blue's middle: green goes after blue (which stays), still with its sound ----
@@ -192,7 +194,7 @@ test(
       assert.deepEqual(await shown("blue"), { start: 135, duration: 60 });
       assert.deepEqual(await shown("green"), { start: 195, duration: 60 });
       assert.equal(audioItem("mic")!.start, 195);
-      assert.equal(audioItem("mic")!.linkedTo, "green");
+      assert.ok(sameLink(audioItem("mic"), saved("green")));
 
       // ---- ⌘Z: one step back to the first move, another to the start ----
       r = await revision();
@@ -206,7 +208,7 @@ test(
       assert.deepEqual(await shown("green"), { start: 60, duration: 60 });
       assert.deepEqual(await shown("blue"), { start: 120, duration: 60 });
       assert.equal(audioItem("mic")!.start, 60);
-      assert.equal(audioItem("mic")!.linkedTo, "green");
+      assert.ok(sameLink(audioItem("mic"), saved("green")));
       await page.screenshot({ path: out("undone") });
       assert.deepEqual(app!.errors, []);
     } catch (error) {

@@ -1,5 +1,5 @@
 // Move planners (edit.ts): one item, onto a new track, a group, and the layer order (F15).
-import { gapOpsFor, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain, shiftMainItems } from "@uncut/core/arrange";
+import { gapOpsFor, linkMates, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain, shiftMainItems } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type ProjectModel, uniqueId, type Item, type Track } from "../../state/project.ts";
 import { type Plan, findItem, lockOf, fitsTrack, lockedProblem, dropTransitions, draftOf, TRACK_KINDS, type Placed } from "./base.ts";
@@ -174,8 +174,8 @@ export interface GroupMovePlan extends Plan {
  * outside the group is in the way; captions never move. Main clips in the group (issue #58, D229)
  * move along in time, staying on Main in their order with the spaces between them (core
  * shiftMainItems: the other main clips stay put unless one lands on them); then the group moves in
- * time only (the lane offset is ignored). Items linked to a main clip of the group (D123, D215)
- * get no op of their own: they follow their clip, still linked.
+ * time only (the lane offset is ignored). Items linked to a main clip of the group (D347) get no
+ * op of their own: they go along with it by the same frames.
  */
 export function planGroupMove(
   project: ProjectModel,
@@ -216,12 +216,12 @@ export function planGroupMove(
   }
   const ops: Array<Op> = [];
   if (mains.length && shift !== 0) ops.push(...shiftMainItems(mains[0]!.track, new Set(mains.map((p) => p.item.id)), shift).ops);
-  // Linked to a main clip that moves: withLinkedAudio carries it (a move_item would unlink it).
-  const follows = (p: Placed) => typeof p.item.linkedTo === "string" && mains.some((m) => m.item.id === p.item.linkedTo);
+  // Linked to a main clip that moves: it goes along by the same frames (withLinks).
+  const follows = (p: Placed) => linkMates(project, p.item.id).some((mate) => mains.some((m) => m.item.id === mate.item.id));
   // D248: the free items land among the others where they'll be once the main clips have moved:
   // the sounds that follow them (selected or not, and those of main clips pushed later) included,
   // so nothing is refused for a sound that's moving away, and nothing lands on one that's coming
-  // (withLinkedAudio would unlink it rather than fail).
+  // (withLinks would refuse the move).
   const projected = ops.length ? draftOf(project, ops) : { project };
   if ("problem" in projected) return projected;
   const moving = new Set(placed.filter((p) => p.track.role !== "main" && !follows(p)).map((p) => p.item.id));
