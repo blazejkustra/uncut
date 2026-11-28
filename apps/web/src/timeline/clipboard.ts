@@ -2,7 +2,7 @@
 // in-app clipboard (⌘C/⌘X/⌘V, ⌘D). Pure: they turn the project and a gesture into edit ops the
 // server validates, like edit.ts.
 import type { Op } from "@uncut/core/types";
-import { keepMainTimes, linkIdsIn, newLinkId } from "@uncut/core/arrange";
+import { keepMainTimes, linkIdsIn, linkMates, newLinkId } from "@uncut/core/arrange";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { findItem, fitsTrack, homeKind, lockOf, type Plan } from "./edit.ts";
@@ -83,6 +83,16 @@ function pastedLinks(project: ProjectModel, clips: ReadonlyArray<Clip>): Map<str
   return new Map([...counts].filter(([, n]) => n > 1).map(([link]) => [link, newLinkId(taken)]));
 }
 
+/** Where items start once the pasted main clips push the later ones back (the items linked to those move along, D347). */
+function startsAfterRipple(project: ProjectModel, clips: ReadonlyArray<Clip>, main: Track | undefined, index: number, starts: ReadonlyMap<string, number>) {
+  const pushed = main ? clips.filter((c) => c.main && fitsTrack(c.item, main)).reduce((n, c) => n + c.item.duration, 0) : 0;
+  if (!main || !pushed) return starts;
+  const settled = new Map(starts);
+  for (const later of main.items.slice(index))
+    for (const mate of linkMates(project, later.id)) if (mate.track.role !== "main") settled.set(mate.item.id, (starts.get(mate.item.id) ?? 0) + pushed);
+  return settled;
+}
+
 /** How far from the playhead each linked main clip lands (after the clip under it), by its old link. */
 function mainShifts(clips: ReadonlyArray<Clip>, main: Track | undefined, index: number, starts: ReadonlyMap<string, number>, at: number): Map<string, number> {
   const shifts = new Map<string, number>();
@@ -121,7 +131,7 @@ export function planPaste(
   // Spans claimed on each track by this paste, so two pasted items don't land on each other.
   const claimed = new Map<string, Array<readonly [number, number]>>();
   const free = (t: Track, from: number, to: number) =>
-    t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= from || to <= (starts.get(i.id) ?? 0)) &&
+    t.items.every((i) => (settled.get(i.id) ?? 0) + i.duration <= from || to <= (settled.get(i.id) ?? 0)) &&
     (claimed.get(t.id) ?? []).every(([a, b]) => b <= from || to <= a);
   const tracks: Array<Track> = [...project.tracks];
   const main = project.tracks.find((t) => t.role === "main");
@@ -129,7 +139,9 @@ export function planPaste(
   // D157: pasted groups are new groups (the copies don't join the originals').
   const groups = new Map<string, string>();
   const links = pastedLinks(project, clips);
-  const shifts = mainShifts(clips, main && !main.locked ? main : undefined, mainIndex, starts, at);
+  const target = main && !main.locked ? main : undefined;
+  const shifts = mainShifts(clips, target, mainIndex, starts, at);
+  const settled = startsAfterRipple(project, clips, target, mainIndex, starts);
   for (const clip of clips) {
     const id = uniqueId(project, clip.item.id.replace(/-\d+$/, "") || "item", taken);
     taken.add(id);

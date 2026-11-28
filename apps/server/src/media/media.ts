@@ -457,7 +457,7 @@ export const layer = Layer.effect(
                 ...placeOps,
               ];
               return {
-                ops: droppedClips.length ? withSoundPairs(raw as Project, ops as ReadonlyArray<Op>, droppedClips) : ops,
+                ops: withSoundPairs(raw as Project, ops as ReadonlyArray<Op>, droppedClips),
                 summary: timelineOps.length
                   ? `Import timeline ${basename(timelines[0]!.path)}`
                   : options.multi

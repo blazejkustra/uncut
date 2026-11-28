@@ -90,15 +90,29 @@ interface MainEdges {
   readonly out?: Transition | undefined;
 }
 
-const edgesByTracks = new WeakMap<ReadonlyArray<Track>, ReadonlyMap<string, MainEdges>>();
+type SoundProject = Pick<Project, "tracks" | "media">;
+
+const edgesByProject = new WeakMap<SoundProject, ReadonlyMap<string, MainEdges>>();
+
+/** Whether the sound has the media an overlapping transition plays of it before its start / past its end. */
+function hasHandle(project: SoundProject, item: Item, side: "into" | "out", transition: Transition | undefined): boolean {
+  if (!transition || !overlaps(transition.module)) return true;
+  const half = (transition.duration / 2) * (item.speed ?? 1);
+  const from = item.in ?? 0;
+  if (side === "into") return from >= half;
+  const frames = project.media.find((m) => m.id === item.media)?.probe?.frames;
+  return !!item.loop || !frames || from + item.duration * (item.speed ?? 1) + half <= frames;
+}
 
 /**
  * D349: the main-track transitions each linked sound off the main track takes part in: those of
- * its main mate (same `link`), on each edge the two share (a J or L cut's edge has none).
+ * its main mate (same `link`), on each edge the two share (a J or L cut's edge has none) and the
+ * sound has the media for (a slipped sound without it cuts there).
  */
-function linkedEdges(tracks: ReadonlyArray<Track>): ReadonlyMap<string, MainEdges> {
-  const cached = edgesByTracks.get(tracks);
+function linkedEdges(project: SoundProject): ReadonlyMap<string, MainEdges> {
+  const cached = edgesByProject.get(project);
   if (cached) return cached;
+  const tracks = project.tracks;
   const mates = new Map<string, { start: number; end: number; into?: Transition | undefined; out?: Transition | undefined }>();
   for (const track of tracks) {
     if (track.role !== "main") continue;
@@ -115,18 +129,20 @@ function linkedEdges(tracks: ReadonlyArray<Track>): ReadonlyMap<string, MainEdge
       const mate = item.link ? mates.get(item.link) : undefined;
       if (!mate) continue;
       const start = item.start ?? 0;
-      edges.set(item.id, { into: start === mate.start ? mate.into : undefined, out: start + item.duration === mate.end ? mate.out : undefined });
+      const into = start === mate.start && hasHandle(project, item, "into", mate.into) ? mate.into : undefined;
+      const out = start + item.duration === mate.end && hasHandle(project, item, "out", mate.out) ? mate.out : undefined;
+      edges.set(item.id, { into, out });
     }
   }
-  edgesByTracks.set(tracks, edges);
+  edgesByProject.set(project, edges);
   return edges;
 }
 
 /** The transitions into and out of the item: its own on the main track, else its main mate's (with `project`). */
-function transitionsOf(track: Track, index: number, project: Pick<Project, "tracks"> | undefined): MainEdges {
+function transitionsOf(track: Track, index: number, project: SoundProject | undefined): MainEdges {
   const item = track.items[index]!;
   if (track.role === "main") return { into: item.transitionIn, out: track.items[index + 1]?.transitionIn };
-  return (project && linkedEdges(project.tracks).get(item.id)) ?? {};
+  return (project && linkedEdges(project).get(item.id)) ?? {};
 }
 
 /**
@@ -139,7 +155,7 @@ export function audioSpan(
   track: Track,
   index: number,
   start: number,
-  project?: Pick<Project, "tracks">,
+  project?: SoundProject,
 ): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
   const item = track.items[index]!;
   const { into, out } = transitionsOf(track, index, project);
@@ -246,7 +262,7 @@ export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): 
  * `duckDb` is the track's ducking at that moment (D85, ducking.ts duckDbAt), added to the combined
  * dB like a volume key (so the −60 dB cutoff covers it too).
  */
-export function itemGain(track: Track, index: number, local: number, duckDb = 0, project?: Pick<Project, "tracks">): number {
+export function itemGain(track: Track, index: number, local: number, duckDb = 0, project?: SoundProject): number {
   const item = track.items[index]!;
   const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0, project);
   const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0) + duckDb;

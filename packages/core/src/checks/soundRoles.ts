@@ -1,5 +1,5 @@
 import type { Id, Item, Project } from "../timeline/types.ts";
-import { audible, checkContext, isSpeechTrack, soundOf, startOf } from "./context.ts";
+import { audible, checkContext, isSpeechTrack, linkedClipTrack, soundOf, startOf } from "./context.ts";
 import { musicItems, sfxItems, type SfxKind } from "./soundSheet.ts";
 
 /** What a sound on the timeline is to the mix: speech, the music bed, an effect, or anything else (ambience). */
@@ -38,11 +38,9 @@ export function soundRoles(project: Project, options: { readonly speechMedia?: I
     }
   }
   if (![...out.values()].some((s) => s.role === "voice")) {
-    const main = project.tracks.find((t) => t.role === "main");
-    for (const item of main?.items ?? []) {
-      const heard = out.get(item.id);
-      if (heard?.role === "other") out.set(item.id, { ...heard, role: "voice" });
-    }
+    // A main clip's sound: its own, or (D349) the sound linked to it on an audio track.
+    const mainSound = (item: Item) => linkedClipTrack(ctx, item)?.role === "main" || project.tracks.some((t) => t.role === "main" && t.items.includes(item));
+    for (const [id, heard] of out) if (heard.role === "other" && mainSound(heard.item)) out.set(id, { ...heard, role: "voice" });
   }
   return out;
 }

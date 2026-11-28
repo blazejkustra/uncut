@@ -206,15 +206,29 @@ export function audible(ctx: CheckContext, track: Track) {
   }
   return a;
 }
+const clipsByLink = new WeakMap<ReadonlyArray<Track>, ReadonlyMap<string, Track>>();
+
+/** D349: the track of the clip a sound is linked to (the clip's own sound, on an audio track), if any. */
+export function linkedClipTrack(ctx: CheckContext, item: Item): Track | undefined {
+  if (item.type !== "audio" || !item.link) return undefined;
+  let byLink = clipsByLink.get(ctx.project.tracks);
+  if (!byLink) {
+    byLink = new Map(ctx.project.tracks.flatMap((t) => t.items.flatMap((i) => (i.type === "clip" && i.link ? [[i.link, t] as const] : []))));
+    clipsByLink.set(ctx.project.tracks, byLink);
+  }
+  return byLink.get(item.link);
+}
+
 /**
  * A track that carries speech, for ducking: named like a voice (or holding media named like one),
- * or the main track when its sound is known to be speech (in `speechMedia`, else captions made from it).
+ * or the main track when its sound is known to be speech (in `speechMedia`, else captions made from
+ * it), and so a track holding the sound of such a main clip.
  */
 export function isSpeechTrack(ctx: CheckContext, track: Track) {
   if (isMusicTrack(ctx, track)) return false;
   if (SPEECH_NAME.test(track.name) || track.items.some((i) => SPEECH_NAME.test(mediaOf(ctx, i)?.name ?? ""))) return true;
-  if (track.role === "main") return track.items.some((i) => !!i.media && ctx.speech.has(i.media));
-  return false;
+  const mainSound = (i: Item) => track.role === "main" || linkedClipTrack(ctx, i)?.role === "main";
+  return track.items.some((i) => mainSound(i) && !!i.media && ctx.speech.has(i.media));
 }
 /** A fade made with volume keys (D83): the envelope starts (or ends) about silent. */
 export const keyFade = (item: Item, side: "in" | "out") => {

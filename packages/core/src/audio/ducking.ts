@@ -80,13 +80,35 @@ function keyTracksOf(project: Pick<Project, "tracks" | "media">, track: Track, s
   return settings.under.map((id) => project.tracks.find((t) => t.id === id)).filter((t): t is Track => !!t && t.id !== track.id && trackAudible(project, t));
 }
 
-/** Media whose envelopes the project's ducking needs (on the heard key tracks of every ducked track). */
+interface KeySound {
+  readonly track: Track;
+  readonly index: number;
+}
+
+/**
+ * The sounds that key a ducked track: the items of its key tracks, and the sounds linked to their
+ * clips on other heard tracks (D349: a clip's own sound, on an audio track of its own).
+ */
+function keySoundsOf(project: Pick<Project, "tracks" | "media">, track: Track, settings: DuckSettings): Array<KeySound> {
+  const keys = keyTracksOf(project, track, settings);
+  const links = new Set(keys.flatMap((k) => k.items.flatMap((i) => (i.type === "clip" && i.link ? [i.link] : []))));
+  const own = keys.flatMap((k) => k.items.map((_, index) => ({ track: k, index })));
+  const linked = project.tracks
+    .filter((t) => t.id !== track.id && !keys.includes(t) && trackAudible(project, t))
+    .flatMap((t) => t.items.flatMap((i, index) => (i.type === "audio" && i.link && links.has(i.link) ? [{ track: t, index }] : [])));
+  return [...own, ...linked];
+}
+
+/** Media whose envelopes the project's ducking needs (the key sounds of every ducked track). */
 export function duckMediaIds(project: Pick<Project, "tracks" | "media">): Array<string> {
   const ids = new Set<string>();
   for (const track of project.tracks) {
     const settings = duckOf(track);
     if (!settings) continue;
-    for (const key of keyTracksOf(project, track, settings)) for (const item of key.items) if (soundMedia(project, item) && item.media) ids.add(item.media);
+    for (const { track: key, index } of keySoundsOf(project, track, settings)) {
+      const item = key.items[index]!;
+      if (soundMedia(project, item) && item.media) ids.add(item.media);
+    }
   }
   return [...ids].sort();
 }
@@ -107,38 +129,37 @@ export function duckCurve(
   const settings = duckOf(track);
   if (!settings) return undefined;
   const fps = project.canvas.fps;
-  const keys = keyTracksOf(project, track, settings);
+  const keys = keySoundsOf(project, track, settings);
   const missing = new Set<string>();
   // Speech as [start, end) in project seconds, on a 10 ms grid of project time.
   const runs: Array<[number, number]> = [];
-  for (const key of keys) {
-    key.items.forEach((item, index) => {
-      const media = soundMedia(project, item);
-      if (!media) return;
-      const env = envelopes.get(media.id);
-      if (env === undefined) return void missing.add(media.id);
-      if (!env || !env.db.length) return;
-      const rate = env.rate;
-      const thr = settings.thresholdDb ?? speechThreshold(env);
-      const start = starts.get(item.id) ?? 0;
-      const span = audioSpan(key, index, start, project);
-      const k0 = Math.max(0, Math.ceil((span.from / fps) * rate - 1e-9));
-      const k1 = Math.ceil((span.to / fps) * rate - 1e-9);
-      let open: number | undefined;
-      for (let k = k0; k < k1; k++) {
-        const local = (k / rate) * fps - start;
-        const src = sourceAt(project, item, local);
-        const level = env.db[Math.floor(src * rate + 1e-9)];
-        const on = level !== undefined && level >= thr && itemGain(key, index, local, 0, project) > 0 && !heldPast(project, item, local);
-        if (on && open === undefined) open = k;
-        if (!on && open !== undefined) {
-          runs.push([open / rate, k / rate]);
-          open = undefined;
-        }
+  keys.forEach(({ track: key, index }) => {
+    const item = key.items[index]!;
+    const media = soundMedia(project, item);
+    if (!media) return;
+    const env = envelopes.get(media.id);
+    if (env === undefined) return void missing.add(media.id);
+    if (!env || !env.db.length) return;
+    const rate = env.rate;
+    const thr = settings.thresholdDb ?? speechThreshold(env);
+    const start = starts.get(item.id) ?? 0;
+    const span = audioSpan(key, index, start, project);
+    const k0 = Math.max(0, Math.ceil((span.from / fps) * rate - 1e-9));
+    const k1 = Math.ceil((span.to / fps) * rate - 1e-9);
+    let open: number | undefined;
+    for (let k = k0; k < k1; k++) {
+      const local = (k / rate) * fps - start;
+      const src = sourceAt(project, item, local);
+      const level = env.db[Math.floor(src * rate + 1e-9)];
+      const on = level !== undefined && level >= thr && itemGain(key, index, local, 0, project) > 0 && !heldPast(project, item, local);
+      if (on && open === undefined) open = k;
+      if (!on && open !== undefined) {
+        runs.push([open / rate, k / rate]);
+        open = undefined;
       }
-      if (open !== undefined) runs.push([open / rate, k1 / rate]);
-    });
-  }
+    }
+    if (open !== undefined) runs.push([open / rate, k1 / rate]);
+  });
   const attack = settings.attackMs / 1000;
   const release = settings.releaseMs / 1000;
   const join = (list: Array<[number, number]>, gap: number) => {
@@ -163,7 +184,7 @@ export function duckCurve(
       );
     }
   }
-  return { settings, keys: out, keyTracks: keys.map((t) => t.id), missing: [...missing].sort() };
+  return { settings, keys: out, keyTracks: keyTracksOf(project, track, settings).map((t) => t.id), missing: [...missing].sort() };
 }
 
 /** Every ducked track's curve, by track id. */

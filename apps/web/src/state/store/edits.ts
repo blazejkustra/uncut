@@ -65,7 +65,6 @@ export async function addPlanned(plan: (project: ProjectModel) => Planned | { re
   }
   if (error) return;
   playback.pause();
-  // D349: a placed video with sound is selected with its sound, as a click selects them.
   playback.selectMany(state.snapshot ? withLinkMates(projectOf(state.snapshot), planned.itemId) : [planned.itemId]);
   playback.seek(planned.show ?? planned.start);
   // F20 (D158): the timeline scrolls to show what was added.

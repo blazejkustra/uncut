@@ -4,7 +4,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyEdit, audibleAt, createSession, layout, loadModules, validateProject, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
-import { linkIndex, planDetachAudio, planPutOnMain, takenIds } from "../../packages/core/src/timeline/arrange.ts";
+import {
+  insertedClips,
+  linkIndex,
+  planDetachAudio,
+  planPlaceMedia,
+  planPutOnMain,
+  takenIds,
+  withSoundPairs,
+} from "../../packages/core/src/timeline/arrange.ts";
 import { planAddAtPlayhead, planAddMedia, planDropMedia, type Planned } from "../../apps/web/src/state/project.ts";
 import { copyItems, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
 import { isLinkSelection, withLinkMates } from "../../apps/web/src/timeline/edit.ts";
@@ -218,4 +226,14 @@ test("D349: a J cut's edge (the sound's start moved off the cut) has no crossfad
     "b's sound alone from its own start",
   );
   assert.equal(at(65)[0]!.gain, 1, "no crossfade on an edge that left the cut");
+});
+
+test("D349: a file imported and dropped in one edit (a Finder drop) lands as a pair", () => {
+  const empty: Project = { ...project(), media: [] };
+  const entry = { id: "m-new", kind: "video" as const, name: "New.mp4", path: "/New.mp4", probe: talk };
+  const plan = planPlaceMedia(empty, [entry], { frame: 0, track: "main" }, takenIds(empty));
+  if ("problem" in plan) throw new Error(plan.problem);
+  const ops: Array<Op> = [{ op: "add_media", media: entry }, ...plan.ops];
+  const p = applied(empty, withSoundPairs(empty, ops, insertedClips(plan.ops)));
+  pairOf(p, plan.placed[0]!.itemId);
 });

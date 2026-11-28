@@ -91,8 +91,7 @@ export function makeItemDrag(ctx: ItemDragCtx) {
     const mates = withGroups(project, [item.id]);
     const current = toggle ? before : before.includes(item.id) ? withGroups(project, before) : mates;
     // D349: a clip and its linked sound are selected together, yet pressed and dragged as one item.
-    const grouped =
-      !toggle && current.length > 1 && current.includes(item.id) && !isLinkSelection(project, [item.id, ...current.filter((id) => id !== item.id)]);
+    const grouped = !toggle && current.length > 1 && current.includes(item.id) && !isLinkSelection(project, current);
     // Just its own group: its edges trim the whole group.
     const groupOnly = grouped && mates.length > 1 && current.length === mates.length && current.every((id) => mates.includes(id));
     const linked = e.altKey ? [item.id] : withLinkMates(project, item.id);

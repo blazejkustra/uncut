@@ -372,6 +372,5 @@ export function expandConvenienceOps(
   if ("problem" in arranged) return arranged;
   const placed = expandPlacement(project, arranged.ops);
   if ("problem" in placed) return placed;
-  // D349: a new clip with sound goes on the timeline with its sound linked on an audio track.
   return { ...placed, ops: [...withSoundPairs(project, placed.ops as ReadonlyArray<Op>, insertedClips(ops))] };
 }
