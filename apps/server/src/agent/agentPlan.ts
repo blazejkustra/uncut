@@ -1,7 +1,7 @@
 // The production process the agent follows (U7–U9, U15–U17, U19; D186–D191), pure: what each
 // message says about the brand kit, skills and plan, the build gate, ask_user's card and answer,
 // brand_write's merge and the beat grid (the critic is agentCritic.ts). agent.ts runs them with its state.
-import type { AgentAnswer, AgentPlan, AgentQuestion, AgentTurn, BrandKit, BrandSkill, BrandStyle } from "@uncut/contracts";
+import type { AgentAnswer, AgentPlan, AgentQuestion, AgentTurn, BrandKit, BrandSkill, BrandStyle, Review } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
 import { REVIEW_ROUNDS, REVIEW_ROUNDS_FIX } from "./agentCritic.ts";
 
@@ -182,7 +182,7 @@ export function planOnly(plan: AgentPlan): string {
       ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`),
     ];
     p.push(
-      `Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter(
+      `Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}${reviewedPart(last)}, ${REVIEW_SCORES.filter(
         (k) => last.scores[k] !== undefined,
       )
         .map((k) => `${k} ${last.scores[k]}`)
@@ -194,6 +194,10 @@ export function planOnly(plan: AgentPlan): string {
   // Nothing planned yet: no block (a small edit needs none).
   return p.length ? `<plan>\n${p.join("\n")}\n</plan>` : "";
 }
+
+/** What part of the timeline a round reviewed, for the plan's line: none for all of it. */
+const reviewedPart = (review: Review) =>
+  !review.range ? "" : review.range.marker ? ` of "${review.range.marker}"` : ` of frames ${review.range.from} to ${review.range.to}`;
 
 /** The <directions> block: each message of the user word for word, at most this many characters, */
 export const DIRECTION_CHARS = 1000;

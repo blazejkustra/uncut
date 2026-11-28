@@ -9,6 +9,7 @@ import { REVIEW_ROUNDS, REVIEW_ROUNDS_TURN } from "../../apps/server/src/agent/a
 import { normReview } from "../../apps/server/src/brand/store.ts";
 import { markerSection, rangeArgs, rangeBudget, rangeKey, rangeStoryboard, shiftIntended, shiftReview } from "../../apps/server/src/agent/timelineRange.ts";
 import { exportRange } from "../../apps/server/src/agent/tools/exportVideo.ts";
+import { planOnly } from "../../apps/server/src/agent/agentPlan.ts";
 
 const solid = (id: string, duration: number) => ({ id, type: "component", module: "component.solid", duration, props: { color: "#000" } });
 const project = {
@@ -170,4 +171,13 @@ test("exportRange: the marks and selection as before, a marker's section or fram
   assert.match((exportRange(project, { range: "whole" }, ranges) as { problem: string }).problem, /range must be/);
   assert.match((exportRange(project, { marker: "Promo 9" }, ranges) as { problem: string }).problem, /No marker is named "Promo 9"/);
   assert.deepEqual(exportRange(project, { range: "marks" }, { marks: { from: 40, to: 40 } }), { problem: "That range is empty." });
+});
+
+test("the plan's last review names the video or frames it reviewed", () => {
+  const round = (range?: Review["range"]) =>
+    ({ round: 2, by: "critic", scores: { hook: 8 }, defects: [], passed: true, at: "", ...(range ? { range } : {}) }) as unknown as Review;
+  const line = (review: Review) => /Last review[^\n]*/.exec(planOnly({ reviews: [review] } as never))![0];
+  assert.match(line(round({ from: 300, to: 450, marker: "Promo 2" })), /round 2 of "Promo 2", hook 8 \(passed\)/);
+  assert.match(line(round({ from: 30, to: 60 })), /round 2 of frames 30 to 60, hook 8/);
+  assert.match(line(round()), /round 2, hook 8/);
 });

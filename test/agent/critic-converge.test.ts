@@ -13,7 +13,7 @@ import { criticReview, criticText, parseCritic, reviewNext, reviewOutlook, sameF
 import { asksLoop, motionIntent, motionLines, motionScan } from "../../apps/server/src/agent/criticMotion.ts";
 import { requestedTypePx, textFloorPct, underFloor, legibilityFindings } from "../../apps/server/src/agent/agentLegibility.ts";
 import { criticRow, criticStatus } from "../../apps/server/src/agent/tools/criticRow.ts";
-import { criticLabel, elapsedText, momentText, roundTrail, roundVerdict } from "../../apps/web/src/panels/agent/criticWords.ts";
+import { criticLabel, elapsedText, momentText, rangeName, roundTrail, roundVerdict, sameRange } from "../../apps/web/src/panels/agent/criticWords.ts";
 import { findingFrames, FINDING_STILLS, withFrames } from "../../apps/server/src/agent/criticStills.ts";
 import { readPlan, writeReview } from "../../apps/server/src/brand/store.ts";
 import type { Running } from "../../apps/server/src/agent/session/types.ts";
@@ -270,6 +270,20 @@ test("the scorecard's verdict: a failed round, a first pass, and the turn from f
   );
   assert.equal(momentText(3.21, 96), "f 96, 3.2 s");
   assert.equal(momentText(3.21, undefined), "3.2 s");
+});
+
+test("rounds of several videos in one project: each row names its video and follows only that video's rounds", () => {
+  const round = (n: number, range?: Review["range"]) => ({ round: n, scores: {}, defects: [], passed: false, at: "", ...(range ? { range } : {}) }) as Review;
+  const launch = round(1, { from: 0, to: 90, marker: "Launch" });
+  const recap = round(2, { from: 90, to: 180, marker: "Recap" });
+  const frames = round(3, { from: 30, to: 60 });
+  const whole = round(4);
+  const launchAgain = round(5, { from: 0, to: 90, marker: "Launch" });
+  const all = [launch, recap, frames, whole, launchAgain];
+  assert.deepEqual([launch, frames, whole].map(rangeName), ["Launch", "frames 30 to 60", ""]);
+  assert.deepEqual(sameRange(all, recap), [recap], "Recap's first round has no earlier round to rise from");
+  assert.deepEqual(sameRange(all, launchAgain), [launch, launchAgain]);
+  assert.deepEqual(sameRange(all, whole), [whole]);
 });
 
 test("a round's findings carry their frame and, once kept, its still", () => {
