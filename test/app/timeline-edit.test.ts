@@ -373,7 +373,7 @@ test("split at the playhead: two items with the right in and duration, the pictu
   await seekTo(40);
   const before40 = await previewColour("split-40-before");
   const r = await revision();
-  // Nothing selected: S splits the main clip under the playhead.
+  // Nothing selected: S splits every track under the playhead (the main clip and the title over it).
   await page.keyboard.press("s");
   await waitRevision(r + 1);
   assert.deepEqual(mainIds(), ["clip-1", "clip-3", "clip-2"]);
