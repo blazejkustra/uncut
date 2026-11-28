@@ -284,6 +284,10 @@ const retimes = (op: Op): string | undefined => {
   return undefined;
 };
 
+/** A linked item's length, cut where its media ends (not when it loops or is a held clip). */
+const toMediaEnd = (frames: number | undefined, from: number, duration: number, speed: number, openEnded: boolean) =>
+  !frames || openEnded || from + duration * speed <= frames ? duration : Math.max(1, Math.floor((frames - from) / speed));
+
 /** What a linked item copies from its clip: while none of it changes, the linked item is left alone. */
 const FOLLOWED_KEYS = ["in", "duration", "speed", "keepPitch", "media", "loop"] as const;
 
@@ -383,7 +387,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         duration = e - s;
         keepPitch = a.keepPitch;
         linkedTo = undefined;
-      } else if (frames && !d.loop && !(isClip && a.hold) && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
+      } else duration = toMediaEnd(frames, from, duration, speed, !!d.loop || (isClip && !!a.hold));
       const several = pieces.length > 1;
       const fadeIn = i === 0 && a.fadeIn ? Math.min(a.fadeIn, duration) : undefined;
       const fadeOut = i === pieces.length - 1 && a.fadeOut ? Math.min(a.fadeOut, duration - (fadeIn ?? 0)) : undefined;
@@ -474,10 +478,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
 function followedLength(project: Project, follower: Item, clip: Item) {
   const media = project.media.find((m) => m.id === follower.media);
   const frames = media?.kind === "image" ? undefined : media?.probe?.frames;
-  const speed = clip.speed ?? 1;
-  const from = follower.in ?? 0;
-  if (!frames || clip.loop || (follower.type === "clip" && follower.hold) || from + clip.duration * speed <= frames) return clip.duration;
-  return Math.max(1, Math.floor((frames - from) / speed));
+  return toMediaEnd(frames, follower.in ?? 0, clip.duration, clip.speed ?? 1, !!clip.loop || (follower.type === "clip" && !!follower.hold));
 }
 
 /**
