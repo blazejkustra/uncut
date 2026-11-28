@@ -1,6 +1,6 @@
 // D349: a video with sound goes on the timeline as a linked pair, the clip (muted) and its sound
 // on an audio track, as Detach audio leaves it. Edits then follow by delta (D347).
-import { duckEntry } from "../../audio/ducking.ts";
+import { DUCK } from "../../audio/effects.ts";
 import { applyEdit, createSession } from "../apply-ops.ts";
 import { layout } from "../timeline.ts";
 import type { Id, Op, Project, Track } from "../types.ts";
@@ -39,20 +39,29 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
   return pairs.length ? [...ops, ...pairs] : ops;
 }
 
-/**
- * A track a clip's sound can join: one holding clips' own sounds, or an empty one Uncut named that
- * doesn't duck (an emptied music bed keeps its ducking; voice processing and volume are welcome).
- */
-const forClipSounds = (project: Project, track: Track) =>
-  track.items.length ? track.items.every((i) => soundOwner(project, i)) : isDefaultName(track.name) && !duckEntry(track);
+/** A track holding only clips' own sounds. */
+export const holdsClipSounds = (project: Project, track: Track) => track.items.length > 0 && track.items.every((i) => soundOwner(project, i));
 
-const isDefaultName = (name: string) => /^Audio( \d+)?$/.test(name);
+/**
+ * An empty track a clip's sound can start: one Uncut named that has no ducking, bypassed or not (an
+ * emptied music bed keeps its ducking; voice processing and volume are welcome).
+ */
+export const emptyForClipSounds = (track: Track) =>
+  !track.items.length && /^Audio( [1-9]\d*)?$/.test(track.name) && !track.mixer?.effects?.some((fx) => fx.module === DUCK);
+
+/**
+ * A track a clip's sound can join: a free one already holding clips' own sounds, else an empty one
+ * for them (emptyForClipSounds).
+ */
+export function clipSoundTrack(project: Project, start: number, duration: number): Track | undefined {
+  return freeAudioTrack(project, start, duration, (t) => holdsClipSounds(project, t)) ?? freeAudioTrack(project, start, duration, emptyForClipSounds);
+}
 
 /** The audio track for clip `id`'s sound: a free one for clips' sounds, else a new "Audio N" (with its op). */
 function soundTrack(project: Project, id: Id, taken: Set<string>): { readonly id: Id; readonly project: Project; readonly ops: ReadonlyArray<Op> } {
   const clip = project.tracks.flatMap((t) => t.items).find((i) => i.id === id);
   const start = layout(project).starts.get(id) ?? 0;
-  const found = clip && freeAudioTrack(project, start, clip.duration, (t) => forClipSounds(project, t));
+  const found = clip && clipSoundTrack(project, start, clip.duration);
   if (found) return { id: found.id, project, ops: [] };
   const track = { id: uniqueIn("audio-track", taken), kind: "audio" as const, name: nextName(project, "Audio") };
   const ops: ReadonlyArray<Op> = [{ op: "add_track", track }];

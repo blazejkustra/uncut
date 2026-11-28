@@ -10,7 +10,7 @@ import { soundRoles } from "../../packages/core/src/checks/soundRoles.ts";
 import { checkContext } from "../../packages/core/src/checks/context.ts";
 import { sfxItems } from "../../packages/core/src/checks/soundSheet.ts";
 import { planPlaceMedia, takenIds } from "../../packages/core/src/timeline/arrange.ts";
-import { planAddMedia } from "../../apps/web/src/state/project.ts";
+import { planAddMedia, planDropMedia } from "../../apps/web/src/state/project.ts";
 import { copyItems, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
 import { withLinkMates } from "../../apps/web/src/timeline/edit.ts";
 import { linkedOps } from "../helpers/links.ts";
@@ -35,6 +35,8 @@ function add(p: Project, range?: { in: number; frames: number }): Project {
   return apply(p, plan.ops);
 }
 const soundOf = (p: Project, clip: string) => withLinkMates(p, clip)[1]!;
+const trackOf = (p: Project, item: string) => p.tracks.find((t) => t.items.some((i) => i.id === item))!;
+const empty = (id: string, name: string, mixer?: object) => ({ id, kind: "audio" as const, name, items: [], ...(mixer ? { mixer } : {}) });
 
 test("D349: music ducked under Main ducks under a placed clip's linked sound", () => {
   const p = add(base());
@@ -125,13 +127,38 @@ test("D349: an effect dropped on the track of a talk's sound stays an effect whe
 test("D349: an emptied music bed (a Music track, or an Audio track that ducks) takes no placed sound; an emptied voice track keeps its processing", () => {
   const duck = { effects: [{ module: "audio.duck", params: { under: ["main"] } }] };
   const voice = { gainDb: -3, effects: [{ module: "audio.voice-enhance" }, { module: "audio.denoise" }] };
-  const empty = (id: string, name: string, mixer?: object) => ({ id, kind: "audio" as const, name, items: [], ...(mixer ? { mixer } : {}) });
   const trackOfSound = (tracks: Project["tracks"]) => {
     const p = add({ ...base(), tracks: [base().tracks[0]!, ...tracks] });
     const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
-    return p.tracks.find((t) => t.items.some((i) => i.id === sound))!.id;
+    return trackOf(p, sound).id;
   };
   assert.equal(trackOfSound([empty("music", "Music", { gainDb: -15 }), empty("spare", "Audio 2")]), "spare");
   assert.equal(trackOfSound([empty("bed", "Audio", duck), empty("spare", "Audio 2")]), "spare");
+  const bypassed = { effects: [{ module: "audio.duck", bypass: true, params: { under: ["main"] } }] };
+  assert.equal(trackOfSound([empty("bed", "Audio", bypassed), empty("spare", "Audio 2")]), "spare");
   assert.equal(trackOfSound([empty("a1", "Audio", voice), empty("spare", "Audio 2")]), "a1");
+});
+
+test("D349: a placed clip's sound joins the track of clips' sounds before an empty quieter one above it", () => {
+  let p = add({ ...base(), tracks: [base().tracks[0]!, empty("a1", "Audio 2")] });
+  p = { ...p, tracks: [p.tracks[0]!, empty("quiet", "Audio", { gainDb: -15 }), ...p.tracks.slice(1)] };
+  p = add(p);
+  assert.equal(trackOf(p, soundOf(p, p.tracks.find((t) => t.role === "main")!.items[1]!.id)).id, "a1");
+});
+
+test("D349: ⌘V of a pair whose sound's track is busy puts the sound on a new audio track, never on the Music track", () => {
+  let p = add(base());
+  const drop = planDropMedia(p, "cam", { frame: 400 });
+  if ("problem" in drop) throw new Error(drop.problem);
+  p = apply(p, drop.ops);
+  const plan = planPaste(p, copyItems(p, withLinkMates(p, drop.itemId)), 350);
+  if ("problem" in plan) throw new Error(plan.problem);
+  p = apply(p, plan.ops);
+  const sound = plan.ids.find((id) => p.tracks.some((t) => t.items.some((i) => i.id === id && i.type === "audio")))!;
+  const track = trackOf(p, sound);
+  assert.notEqual(track.id, "music");
+  assert.deepEqual(
+    track.items.map((i) => i.id),
+    [sound],
+  );
 });

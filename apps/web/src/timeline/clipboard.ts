@@ -2,7 +2,7 @@
 // in-app clipboard (⌘C/⌘X/⌘V, ⌘D). Pure: they turn the project and a gesture into edit ops the
 // server validates, like edit.ts.
 import type { Op } from "@uncut/core/types";
-import { keepMainTimes, linkIdsIn, linkMates, newLinkId } from "@uncut/core/arrange";
+import { emptyForClipSounds, holdsClipSounds, keepMainTimes, linkIdsIn, linkMates, newLinkId } from "@uncut/core/arrange";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { findItem, fitsTrack, homeKind, lockOf, type Plan } from "./edit.ts";
@@ -107,6 +107,10 @@ function mainShifts(clips: ReadonlyArray<Clip>, main: Track | undefined, index: 
   return shifts;
 }
 
+/** A clip's own sound pasted with its clip: it goes where placement would put it (D349), off music and effects tracks. */
+const isClipSound = (clips: ReadonlyArray<Clip>, item: Item) =>
+  item.type === "audio" && clips.some((c) => c.item.type === "clip" && c.item.link === item.link && c.item.media === item.media);
+
 const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video", text: "Text", audio: "Audio" };
 
 /**
@@ -159,7 +163,11 @@ export function planPaste(
     const to = from + item.duration;
     const own = tracks.find((t) => t.id === clip.track && t.role !== "main");
     const usable = (t: Track) => t.role !== "main" && !t.locked && fitsTrack(item, t) && free(t, from, to);
-    let track = own && usable(own) ? own : tracks.find(usable);
+    const fallback =
+      link && isClipSound(clips, clip.item)
+        ? (tracks.find((t) => usable(t) && holdsClipSounds(project, t)) ?? tracks.find((t) => usable(t) && emptyForClipSounds(t)))
+        : tracks.find(usable);
+    let track = own && usable(own) ? own : fallback;
     if (!track) {
       const tid = uniqueId(project, clip.kind, taken);
       taken.add(tid);

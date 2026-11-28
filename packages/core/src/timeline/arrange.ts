@@ -25,7 +25,7 @@ export {
 export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts";
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, planSpeedRamp, planReverse } from "./arrange/retime.ts";
 export { withLinks, linkLines } from "./arrange/linkFollow.ts";
-export { withSoundPairs, insertedClips } from "./arrange/pairs.ts";
+export { withSoundPairs, insertedClips, holdsClipSounds, emptyForClipSounds } from "./arrange/pairs.ts";
 export {
   linkIndex,
   linkIdsIn,
