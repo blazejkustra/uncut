@@ -32,11 +32,16 @@ function useLaneWheel(ref: React.RefObject<HTMLDivElement | null>, dir: string |
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    let pending = 0;
     const onWheel = (e: WheelEvent) => {
       if (!e.altKey) return;
       e.preventDefault();
       const px = e.deltaMode === 0 ? e.deltaY : e.deltaY * 16;
-      setLaneHeight(dir, track.id, laneHeight(dir, track) - Math.max(-100, Math.min(100, px)) * 0.2);
+      pending -= Math.max(-100, Math.min(100, px)) * 0.2;
+      const whole = Math.trunc(pending);
+      if (!whole) return;
+      pending -= whole;
+      setLaneHeight(dir, track.id, laneHeight(dir, track) + whole);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);

@@ -42,7 +42,7 @@ const project: Project = {
 
 const ok = (plan: object) => {
   assert.ok(!("problem" in plan), JSON.stringify(plan));
-  return plan as { ops: Array<{ op: string; item: string; at: number; newId: string }>; newIds: Array<string>; summary: string };
+  return plan as { ops: Array<{ op: string; item: string; at: number; newId: string }>; summary: string };
 };
 const apply = (p: Project, plan: object) => {
   const s = applyEdit(createSession(p), { actor: "user", ops: withLinkedAudio(p, ok(plan).ops as never) });
@@ -64,7 +64,7 @@ test("split all: every unlocked item under the playhead on V1, V2 and A1 in one 
     ],
     "a-sound isn't cut on its own: it follows a",
   );
-  assert.equal(new Set(plan.newIds).size, 4, "a new id per piece");
+  assert.equal(new Set(plan.ops.map((o) => o.newId)).size, 4, "a new id per piece");
   assert.equal(plan.summary, "Split 4 items at the playhead");
   const after = apply(project, plan);
   const counts = Object.fromEntries(after.tracks.map((t) => [t.id, t.items.length]));

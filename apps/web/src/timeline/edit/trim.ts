@@ -128,9 +128,8 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
 }
 
 export interface SplitPlan extends Plan {
-  /** The first part after the cut; `newIds` has one per item cut. */
+  /** The (first) part after the cut. */
   readonly newId: string;
-  readonly newIds: ReadonlyArray<string>;
 }
 
 const FURTHER = "Move the playhead further from it.";
@@ -169,9 +168,8 @@ export function planSplitAll(project: ProjectModel, frame: number): SplitPlan | 
     ops.push(...plan.ops);
     taken.add(plan.newId);
   }
-  const newIds = [...taken];
   const summary = targets.length > 1 ? `Split ${targets.length} items at the playhead` : `Split ${targets[0]!.item.id}`;
-  return { ops, summary, newId: newIds[0]!, newIds };
+  return { ops, summary, newId: [...taken][0]! };
 }
 
 /** What split all cuts at frame `f` (see planSplitAll). */
@@ -210,7 +208,7 @@ function splitAt(project: ProjectModel, target: Placed, f: number, further: stri
     if (at < 2 * own || target.item.duration - at < 2 * into) return { problem: `That's too close to a transition to split there. ${further}` };
   }
   const newId = uniqueId(project, target.item.id.replace(/-\d+$/, "") || "item", new Set(taken));
-  return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId, newIds: [newId] };
+  return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId };
 }
 
 /**
@@ -226,7 +224,7 @@ export function planBladeSplit(project: ProjectModel, itemId: string, frame: num
   const locked = lockOf(target);
   if (locked) return { problem: locked };
   const f = Math.round(frame);
-  if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newId: "", newIds: [] };
+  if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newId: "" };
   return splitAt(project, target, f, "Cut further from it.");
 }
 

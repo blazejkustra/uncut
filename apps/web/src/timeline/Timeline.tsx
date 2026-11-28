@@ -401,9 +401,9 @@ function TimelineView({ project }: { project: ProjectModel }) {
           {LANE_SIZES.map((s) => (
             <Tooltip key={s.id} label={s.label}>
               <button
-                className={laneSize() === s.id ? "active" : ""}
+                className={laneSize(dir) === s.id ? "active" : ""}
                 role="radio"
-                aria-checked={laneSize() === s.id}
+                aria-checked={laneSize(dir) === s.id}
                 data-testid={`lane-size-${s.id}`}
                 onClick={() => setLaneSize(dir, s.id)}
               >
