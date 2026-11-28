@@ -1,5 +1,6 @@
 // D349: a video with sound goes on the timeline as a linked pair, the clip (muted) and its sound
 // on an audio track, as Detach audio leaves it. Edits then follow by delta (D347).
+import { duckEntry } from "../../audio/ducking.ts";
 import { applyEdit, createSession } from "../apply-ops.ts";
 import { layout } from "../timeline.ts";
 import type { Id, Op, Project, Track } from "../types.ts";
@@ -40,10 +41,10 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
 
 /**
  * A track a clip's sound can join: one holding clips' own sounds, or an empty one Uncut named that
- * has no volume or effects of its own (an emptied Music track keeps its mixer).
+ * doesn't duck (an emptied music bed keeps its ducking; voice processing and volume are welcome).
  */
 const forClipSounds = (project: Project, track: Track) =>
-  track.items.length ? track.items.every((i) => soundOwner(project, i)) : isDefaultName(track.name) && !track.mixer?.gainDb && !track.mixer?.effects?.length;
+  track.items.length ? track.items.every((i) => soundOwner(project, i)) : isDefaultName(track.name) && !duckEntry(track);
 
 const isDefaultName = (name: string) => /^Audio( \d+)?$/.test(name);
 

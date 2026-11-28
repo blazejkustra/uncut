@@ -138,7 +138,7 @@ function linkedEdges(project: SoundProject): ReadonlyMap<string, MainEdges> {
   return edges;
 }
 
-/** The transitions into and out of the item: its own on the main track, else its main mate's (with `project`). */
+/** The transitions into and out of the item: its own on the main track, else its main mate's. */
 function transitionsOf(track: Track, index: number, project: SoundProject): MainEdges {
   const item = track.items[index]!;
   if (track.role === "main") return { into: item.transitionIn, out: track.items[index + 1]?.transitionIn };

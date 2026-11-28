@@ -122,11 +122,16 @@ test("D349: an effect dropped on the track of a talk's sound stays an effect whe
   }
 });
 
-test("D349: an emptied Music track (its volume and ducking kept) takes no placed clip's sound; an empty Audio track does", () => {
-  const music = { id: "music", kind: "audio" as const, name: "Music", items: [], mixer: { gainDb: -15 } };
-  const spare = { id: "spare", kind: "audio" as const, name: "Audio 2", items: [] };
-  const p = add({ ...base(), tracks: [base().tracks[0]!, music, spare] });
-  const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
-  assert.equal(p.tracks.find((t) => t.items.some((i) => i.id === sound))!.id, "spare");
-  assert.equal(p.tracks.length, 3);
+test("D349: an emptied music bed (a Music track, or an Audio track that ducks) takes no placed sound; an emptied voice track keeps its processing", () => {
+  const duck = { effects: [{ module: "audio.duck", params: { under: ["main"] } }] };
+  const voice = { gainDb: -3, effects: [{ module: "audio.voice-enhance" }, { module: "audio.denoise" }] };
+  const empty = (id: string, name: string, mixer?: object) => ({ id, kind: "audio" as const, name, items: [], ...(mixer ? { mixer } : {}) });
+  const trackOfSound = (tracks: Project["tracks"]) => {
+    const p = add({ ...base(), tracks: [base().tracks[0]!, ...tracks] });
+    const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
+    return p.tracks.find((t) => t.items.some((i) => i.id === sound))!.id;
+  };
+  assert.equal(trackOfSound([empty("music", "Music", { gainDb: -15 }), empty("spare", "Audio 2")]), "spare");
+  assert.equal(trackOfSound([empty("bed", "Audio", duck), empty("spare", "Audio 2")]), "spare");
+  assert.equal(trackOfSound([empty("a1", "Audio", voice), empty("spare", "Audio 2")]), "a1");
 });
