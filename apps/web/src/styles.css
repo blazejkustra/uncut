@@ -729,6 +729,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .clip .fade-handle::before { content: ""; position: absolute; inset: -4px -5px -6px; }
 .clip.audio .fade-handle { opacity: 0.55; }
 .clip:hover .fade-handle, .clip.selected .fade-handle { opacity: 1; }
+.clip.audio:has(.fade-handle) .nm { padding: 0 14px; }
 .tl-head .icon-btn.on-soft { color: var(--select); }
 .track-volume { position: relative; display: inline-flex; }
 .track-volume-pop { position: absolute; left: -96px; top: 26px; z-index: 20; width: 240px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); box-shadow: 0 8px 24px rgb(0 0 0 / 50%); }
