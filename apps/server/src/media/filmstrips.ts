@@ -15,6 +15,7 @@ import { mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import { FILMSTRIP_PATH, FILMSTRIP_TILE_H, type FilmstripLayout } from "@uncut/contracts";
+import type { MediaColour } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -280,7 +281,7 @@ interface MediaEntry {
   readonly id: string;
   readonly kind?: string;
   readonly path: string;
-  readonly probe?: { readonly frames?: number; readonly fps?: number };
+  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly colour?: MediaColour };
 }
 
 export const layer = Layer.unwrap(
@@ -349,7 +350,7 @@ export const layer = Layer.unwrap(
         const probe = media.probe;
         const seconds = probe?.frames && probe.fps ? probe.frames / probe.fps : undefined;
         const result = yield* Effect.promise(async (): Promise<Generated | undefined> => {
-          const key = await pictureKey(await tools.ffprobe(), path);
+          const key = await pictureKey(await tools.ffprobe(), path, media.probe?.colour);
           if (!key) return undefined;
           const name = `${dir}\0${id}--${key}`;
           let job = inFlight.get(name);
