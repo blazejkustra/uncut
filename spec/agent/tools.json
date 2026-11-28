@@ -506,7 +506,7 @@
           }
         }
       },
-      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], skipped: [{ path, reason }], failed: [{ path, message }]"
+      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio, hdr? (HDR (HLG) or HDR (PQ)) }], skipped: [{ path, reason }], failed: [{ path, message }]"
     },
     {
       "name": "media_download",
@@ -532,7 +532,7 @@
           }
         }
       },
-      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], source: { url, bytes, type }; for a font file: font: { family, file, url, bytes }, note"
+      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio, hdr? (HDR (HLG) or HDR (PQ)) }], source: { url, bytes, type }; for a font file: font: { family, file, url, bytes }, note"
     },
     {
       "name": "generate_media",

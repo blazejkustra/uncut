@@ -20,8 +20,8 @@ export const untaggedFilter = (height: number | undefined) =>
       : "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,";
 
 export interface CommandOptions {
-  /** Video files without colour tags, with their height (see untaggedFilter). */
-  readonly untagged?: ReadonlyMap<string, number> | undefined;
+  /** Per video file, the filters (each ending in a comma) that read its colour as the preview shows it: untaggedFilter, or HDR tone-mapped (exporter colourFilters). */
+  readonly colourFilters?: ReadonlyMap<string, string> | undefined;
   readonly background: string;
   readonly rasters: ReadonlyMap<VisualLayer, RasterOutput>;
   readonly caps: Caps;
@@ -182,7 +182,7 @@ export function placeAt(layer: VisualLayer, frames: ReadonlyArray<Placement>, fp
 export function videoSource(
   layer: Extract<VisualLayer, { kind: "video" }>,
   index: number,
-  opts: Pick<CommandOptions, "caps" | "untagged">,
+  opts: Pick<CommandOptions, "caps" | "colourFilters">,
   W: number,
   H: number,
   fps: number,
@@ -204,7 +204,7 @@ export function videoSource(
     layer.file,
   ];
   const timing = layer.times && !layer.cycle ? `setpts='${rampPts(layer.times, pre, fps)}'` : `setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
-  const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}${timing}`;
+  const decoded = `[${index}:v:0]${opts.colourFilters?.get(layer.file) ?? ""}${timing}`;
   // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
   // are padded with clones of the last one (before fps picks, so even a slice that starts at or
   // past the stream's end has a frame to show).
@@ -235,7 +235,7 @@ export function videoSource(
  * made at the effects' size (fxGraph's first step, in 8-bit RGBA), raw to stdout: one
  * w × h × 4 byte frame for each of the layer's frames.
  */
-export function shaderSourceArgs(layer: VisualLayer, opts: Pick<CommandOptions, "caps" | "untagged">, W: number, H: number, fps: number): Array<string> {
+export function shaderSourceArgs(layer: VisualLayer, opts: Pick<CommandOptions, "caps" | "colourFilters">, W: number, H: number, fps: number): Array<string> {
   if ((layer.kind !== "video" && layer.kind !== "image") || !layer.fx) throw new Error(`${layer.item.id} has no picture to shade`);
   const frames = layer.f1 - layer.f0;
   const size = `scale=w=${layer.fx.w}:h=${layer.fx.h}:out_range=pc,format=rgba`;

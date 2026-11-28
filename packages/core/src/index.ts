@@ -672,6 +672,7 @@ export {
 } from "./timeline/speedRamp.ts";
 export type { RampEase, RampPreset, ReverseRange, SpeedKey } from "./timeline/speedRamp.ts";
 export { CANVAS_FPS } from "./timeline/types.ts";
+export { hdrKind, hdrLabel } from "./media/colour.ts";
 export {
   FRAME_EPSILON_S,
   VISION_STEP_S,

@@ -55,7 +55,8 @@
     "./contributions": "./src/plugins/contributions.ts",
     "./skills": "./src/skills/skills.ts",
     "./templates": "./src/templates/index.ts",
-    "./mp4index": "./src/media/mp4index.ts"
+    "./mp4index": "./src/media/mp4index.ts",
+    "./colour": "./src/media/colour.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

@@ -93,6 +93,8 @@ test("it has the filters, encoders and decoders Uncut uses", T, () => {
   const decoders = ffmpeg("-decoders");
   for (const name of ["h264", "hevc", "prores", "vp9", "libdav1d", "aac", "mp3", "opus"]) assert.ok(decoders.includes(` ${name} `), name);
   assert.match(ffmpeg("-hwaccels"), /videotoolbox/);
+  const scale = ffmpeg("-h", "filter=scale");
+  assert.ok(/\bout_transfer\b/.test(scale) && /\bintent\b/.test(scale), "scale tone-maps HDR (media/hdr.ts)");
 });
 
 test("VideoToolbox makes H.264 and HEVC that decode", T, () => {

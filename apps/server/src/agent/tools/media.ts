@@ -1,7 +1,7 @@
 // The agent's media tools: media_import, contact_sheet, media_analyze and the analysis helpers they share.
 import { basename, isAbsolute, resolve } from "node:path";
 import type { Analyzer } from "@uncut/contracts";
-import { type Project, decodeEnvelope, describeOp, type Op, duckMediaIds, layout, type SpeechEnvelope } from "@uncut/core";
+import { type Project, decodeEnvelope, describeOp, type Op, duckMediaIds, hdrLabel, layout, type SpeechEnvelope } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import {
   cachedFor,
@@ -44,6 +44,7 @@ export const makeMediaTools = (ctx: CoreCtx) => {
     ...(e.probe.fps ? { fps: Number(e.probe.fps.toFixed(3)) } : {}),
     ...(e.probe.width ? { width: e.probe.width, height: e.probe.height } : {}),
     hasAudio: e.probe.hasAudio,
+    ...(hdrLabel(e.probe.colour) ? { hdr: hdrLabel(e.probe.colour) } : {}),
   });
 
   // media_import (D65): files or a folder's media files, through the Library's import job but

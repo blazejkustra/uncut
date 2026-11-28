@@ -8,6 +8,7 @@ import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
 import {
+  hdrKind,
   MAX_PROJECT_LUTS,
   planImportSubtitles,
   planImportTimeline,
@@ -32,6 +33,7 @@ import { ServerConfig } from "../app/config.ts";
 import { MediaCore, type ProbeInfo, type ProbeOutcome } from "./mediaCore.ts";
 import { probeSvg } from "../export/svg.ts";
 import { runProbe } from "./probe.ts";
+import { fileColour, pictureKey, toneMapFor, toneMappedKey } from "./hdr.ts";
 import { MATCH_FIRST_CLIP, Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { recordSubtitleSources } from "../export/subtitleSources.ts";
@@ -121,23 +123,55 @@ export const layer = Layer.effect(
         return r.kind === "done" && r.code === 0 ? fromFfprobe(r.stdout) : undefined;
       });
 
+    /** A media item's poster key: HDR video gets a new one (hdr.ts pictureKey), so posters made before tone mapping are made again. */
+    const currentPosterKey = (entry: MediaEntry, path: string) =>
+      Effect.gen(function* () {
+        if (entry.kind !== "video") return yield* Effect.promise(() => posterKey(path));
+        const ffprobeBin = yield* tool("ffprobe");
+        return yield* Effect.promise(() => pictureKey(ffprobeBin, path, entry.probe?.colour));
+      });
+
+    /** A video's probe with its colour (HDR or not), which the media core doesn't read. */
+    const withColour = (info: ProbeInfo, path: string) =>
+      Effect.gen(function* () {
+        if (info.kind !== "video" || info.colour) return info;
+        const bin = yield* tool("ffprobe");
+        const colour = yield* Effect.promise(() => fileColour(bin, path));
+        return colour ? { ...info, colour } : info;
+      });
+
     /** A poster for a video or image in `dir`; false (and no file) if ffmpeg is missing or fails. */
-    const makePoster = (stored: MediaEntry, info: ProbeInfo, dir: string) =>
+    const makePoster = (stored: MediaEntry, seconds: number | undefined, dir: string) =>
       Effect.gen(function* () {
         const entry = { ...stored, path: isAbsolute(stored.path) ? stored.path : resolve(dir, stored.path) };
         // No poster for audio, nor for SVG (ffmpeg can't read it; the Library shows the file itself).
         if (entry.kind === "audio" || extname(entry.path).toLowerCase() === ".svg") return false;
         const bin = yield* tool("ffmpeg");
-        const key = yield* Effect.promise(() => posterKey(entry.path));
+        const key = yield* currentPosterKey(entry, entry.path);
         if (!bin || !key) return false;
         const folder = thumbDir(dir);
         yield* Effect.promise(() => mkdir(folder, { recursive: true }));
         const out = join(folder, posterName(entry.id, key));
-        const at = entry.kind === "video" ? Math.min(1, (info.durationSeconds ?? 0) / 3) : 0;
+        const at = entry.kind === "video" ? Math.min(1, (seconds ?? 0) / 3) : 0;
         const input = entry.kind === "image" ? imageInput(entry.path) : ["-hwaccel", "videotoolbox", "-ss", at.toFixed(3), "-i", entry.path];
+        const toneMap = entry.kind === "video" ? yield* Effect.promise(() => toneMapFor(bin, entry.path)) : "";
         const r = yield* run(
           bin,
-          ["-v", "error", "-y", "-protocol_whitelist", "file,pipe", ...input, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", out],
+          [
+            "-v",
+            "error",
+            "-y",
+            "-protocol_whitelist",
+            "file,pipe",
+            ...input,
+            "-frames:v",
+            "1",
+            "-vf",
+            toneMap ? `scale=480:-2,${toneMap}` : "scale=480:-2",
+            "-q:v",
+            "4",
+            out,
+          ],
           30000,
         );
         const ok = r.kind === "done" && r.code === 0;
@@ -286,7 +320,7 @@ export const layer = Layer.effect(
             });
             continue;
           }
-          probed.push({ ...t, info: outcome.info });
+          probed.push({ ...t, info: yield* withColour(outcome.info, t.path) });
         }
         yield* update(jobId, { probed: paths.length, phase: "adding" });
 
@@ -498,7 +532,8 @@ export const layer = Layer.effect(
         let done = 0;
         yield* Effect.forEach(
           entries,
-          ({ entry, info }) => makePoster(entry, info, dir).pipe(Effect.tap((made) => (made ? update(jobId, { postersDone: ++done }) : Effect.void))),
+          ({ entry, info }) =>
+            makePoster(entry, info.durationSeconds, dir).pipe(Effect.tap((made) => (made ? update(jobId, { postersDone: ++done }) : Effect.void))),
           { concurrency: 2, discard: true },
         );
 
@@ -616,7 +651,7 @@ export const layer = Layer.effect(
           if (viaFfprobe?.durationSeconds || (viaFfprobe && !outcome.ok)) outcome = { ok: true, info: viaFfprobe };
         }
         if (!outcome.ok) return { ok: false as const, message: PROBE_ERRORS[outcome.code] ?? outcome.message };
-        return { ok: true as const, info: outcome.info };
+        return { ok: true as const, info: yield* withColour(outcome.info, path) };
       });
 
     const replaceMedia = ({ openId, dir, mediaId: id, path, source, overrun, turnId }: ReplaceMediaInput) =>
@@ -658,20 +693,67 @@ export const layer = Layer.effect(
         if (!result) return yield* new ProjectError({ reason: "io", message: "Nothing was swapped in.", details: [] });
         const done = result;
         // The new poster in the background (the old one goes: makePoster keeps only the current file's).
-        yield* Effect.forkIn(makePoster(done.entry, probed.info, dir).pipe(Effect.ignore), scope);
+        yield* Effect.forkIn(makePoster(done.entry, probed.info.durationSeconds, dir).pipe(Effect.ignore), scope);
         return { snapshot, ...done };
       });
+
+    /** The file of a media item's poster under `key`, if it's there. */
+    const posterAt = (id: string, key: string, files: ReadonlySet<string>, dir: string) =>
+      files.has(posterName(id, key)) ? join(thumbDir(dir), posterName(id, key)) : undefined;
+
+    const colourChecks = yield* Semaphore.make(2);
+    const colourChecked = new Set<string>();
+    /** An HDR video's poster from before it was tone-mapped (under its plain posterKey) is made again, in the background. */
+    const remakeIfHdr = (m: MediaEntry, seconds: number | undefined, path: string, dir: string) =>
+      colourChecks.withPermits(1)(
+        Effect.gen(function* () {
+          const ffprobeBin = yield* tool("ffprobe");
+          const colour = m.probe?.colour ?? (yield* Effect.promise(() => fileColour(ffprobeBin, path)));
+          if (hdrKind(colour)) yield* makePoster(m, seconds, dir).pipe(Effect.ignore);
+        }),
+      );
+
+    /**
+     * A video's poster on disk. One that may be from before HDR was tone-mapped (media imported before
+     * the colour was stored) is listed as it is and checked in the background; the next listing has the new one.
+     */
+    const videoPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string, fps: number) =>
+      Effect.gen(function* () {
+        const plain = yield* Effect.promise(() => posterKey(path));
+        if (!plain) return undefined;
+        const toneMapped = posterAt(m.id, toneMappedKey(plain), files, dir);
+        if (toneMapped) return toneMapped;
+        const stale = posterAt(m.id, plain, files, dir);
+        const check = `${m.id}\0${plain}`;
+        if (stale && (!m.probe?.colour || hdrKind(m.probe.colour)) && !colourChecked.has(check)) {
+          colourChecked.add(check);
+          yield* Effect.forkIn(remakeIfHdr(m, m.probe?.frames ? m.probe.frames / fps : undefined, path, dir), scope);
+        }
+        return stale;
+      });
+
+    const stillPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string) =>
+      Effect.map(
+        Effect.promise(() => posterKey(path)),
+        (key) => key && posterAt(m.id, key, files, dir),
+      );
 
     const currentPosters = Effect.gen(function* () {
       const open = yield* projects.current;
       if (!open) return new Map<string, string>();
-      const project = open.project as ProjectShape;
+      const project = open.project as unknown as { canvas: { fps: number }; media: ReadonlyArray<MediaEntry> };
       const files = new Set(yield* Effect.promise(() => readdir(thumbDir(open.dir)).catch(() => [] as Array<string>)));
       const out = new Map<string, string>();
-      for (const m of project.media) {
-        const key = yield* Effect.promise(() => posterKey(isAbsolute(m.path) ? m.path : resolve(open.dir, m.path)));
-        if (key && files.has(posterName(m.id, key))) out.set(m.id, join(thumbDir(open.dir), posterName(m.id, key)));
-      }
+      yield* Effect.forEach(
+        project.media,
+        (m) =>
+          Effect.gen(function* () {
+            const path = isAbsolute(m.path) ? m.path : resolve(open.dir, m.path);
+            const poster = m.kind === "video" ? yield* videoPoster(m, path, files, open.dir, project.canvas.fps) : yield* stillPoster(m, path, files, open.dir);
+            if (poster) out.set(m.id, poster);
+          }),
+        { concurrency: 2, discard: true },
+      );
       return out;
     });
 

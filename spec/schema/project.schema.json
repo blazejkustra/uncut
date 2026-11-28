@@ -229,7 +229,18 @@
             "fps": { "type": "number" },
             "width": { "type": "integer" },
             "height": { "type": "integer" },
-            "hasAudio": { "type": "boolean" }
+            "hasAudio": { "type": "boolean" },
+            "colour": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A video's colour tags as ffprobe names them; transfer arib-std-b67 (HLG) or smpte2084 (PQ) is HDR, tone-mapped to SDR.",
+              "properties": {
+                "transfer": { "type": "string" },
+                "primaries": { "type": "string" },
+                "matrix": { "type": "string" },
+                "bitDepth": { "type": "integer", "minimum": 1 }
+              }
+            }
           }
         }
       }

@@ -34,12 +34,21 @@ export interface TimedModule {
   readonly params?: { readonly [key: string]: unknown };
 }
 
+/** A video's colour tags as ffprobe names them (transfer "arib-std-b67" is HLG, "smpte2084" PQ). */
+export interface MediaColour {
+  readonly transfer?: string;
+  readonly primaries?: string;
+  readonly matrix?: string;
+  readonly bitDepth?: number;
+}
+
 export interface MediaProbe {
   readonly frames?: number;
   readonly fps?: number;
   readonly width?: number;
   readonly height?: number;
   readonly hasAudio?: boolean;
+  readonly colour?: MediaColour;
 }
 
 export interface Media {

@@ -15,6 +15,7 @@ import {
   reviewNotesTurnBlock,
   sectionsNote,
   sequencesNote,
+  hdrLabel,
 } from "@uncut/core";
 import { creditsText, creditsOf } from "@uncut/core/library";
 
@@ -66,6 +67,7 @@ function mediaLine(m: Project["media"][number], fps: number): string {
     frames ? `${frames}f ${Number((frames / fps).toFixed(2))}s` : "",
     width && height ? `${width}x${height}` : "",
     hasAudio ? "sound" : "",
+    hdrLabel(m.probe?.colour) ?? "",
   ];
   return parts.filter(Boolean).join(" ");
 }
@@ -190,6 +192,7 @@ export function projectSummary(
         kind: m.kind,
         name: m.name,
         ...(m.probe ? { probe: m.probe } : {}),
+        ...(hdrLabel(m.probe?.colour) ? { hdr: hdrLabel(m.probe?.colour) } : {}),
         ...(m.probe?.frames ? { seconds: Number((m.probe.frames / fps).toFixed(2)) } : {}),
       }))
     : project.media.map((m) => mediaLine(m, fps));

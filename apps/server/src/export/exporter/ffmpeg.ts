@@ -3,7 +3,8 @@ import { availableParallelism, setPriority } from "node:os";
 import { promisify } from "node:util";
 import { join, dirname } from "node:path";
 import type { Project, Media } from "@uncut/core";
-import { DENOISE_LAG_SAMPLES, stageFilter, type Caps, type ExportPlan } from "../exportPlan.ts";
+import { DENOISE_LAG_SAMPLES, stageFilter, untaggedFilter, type Caps, type ExportPlan } from "../exportPlan.ts";
+import { toneMapFilter, toneMapSupported } from "../../media/hdr.ts";
 import { systemPath } from "../../app/bundledTools.ts";
 import { which } from "../../app/setup.ts";
 import { withoutApiKey } from "../../app/shellEnv.ts";
@@ -275,27 +276,44 @@ export async function withPictureSizes(ffmpeg: string, project: Project, mediaPa
   return { ...project, media };
 }
 
+type ColourStream = { color_space?: string; color_transfer?: string; height?: number };
+
 /**
- * Video files of a plan whose first video stream has no colour tags, with their height (see
- * CommandOptions.untagged): the preview (Chromium on macOS) reads those as BT.601 with SMPTE-C
- * primaries below 720 lines and as BT.709 from 720 up.
+ * The filters (CommandOptions.colourFilters) that read a video stream as the preview shows it: HDR
+ * tone-mapped to SDR (when this ffmpeg can), and untagged video as Chromium on macOS reads it
+ * (BT.601 with SMPTE-C primaries below 720 lines, BT.709 from 720 up). Undefined: nothing to do.
  */
-export async function untaggedFiles(ffmpeg: string, plan: ExportPlan, signal: AbortSignal): Promise<Map<string, number>> {
+export function colourFilterOf(stream: ColourStream, toneMaps: boolean): string | undefined {
+  const toneMap = toneMaps ? toneMapFilter({ ...(stream.color_transfer ? { transfer: stream.color_transfer } : {}) }) : "";
+  if (toneMap) return `${toneMap},`;
+  if (!stream.color_space || stream.color_space === "unknown") return untaggedFilter(stream.height ?? 0);
+  return undefined;
+}
+
+/**
+ * Each video file of a plan whose colour needs a filter (colourFilterOf), with that filter: probed
+ * with the ffprobe beside `ffmpeg`, tone-mapped only when `runner` (the ffmpeg the filters run in) can.
+ */
+export async function colourFilters(ffmpeg: string, plan: ExportPlan, signal: AbortSignal, runner = ffmpeg): Promise<Map<string, string>> {
   const ffprobe = join(dirname(ffmpeg), "ffprobe");
-  const out = new Map<string, number>();
+  const out = new Map<string, string>();
   const videos = new Set(plan.visuals.flatMap((l) => (l.kind === "video" ? [l.file] : [])));
+  const toneMaps = videos.size > 0 && (await toneMapSupported(runner));
   for (const file of videos) {
-    const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,height", "-of", "json", file], signal).catch(
-      (error: Error) => {
-        if (error instanceof Cancelled) throw error;
-        return undefined;
-      },
-    );
-    let stream: { color_space?: string; height?: number } | undefined;
+    const r = await run(
+      ffprobe,
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_transfer,height", "-of", "json", file],
+      signal,
+    ).catch((error: Error) => {
+      if (error instanceof Cancelled) throw error;
+      return undefined;
+    });
+    let stream: ColourStream | undefined;
     try {
-      stream = r?.code === 0 ? (JSON.parse(r.stdout) as { streams?: Array<{ color_space?: string; height?: number }> }).streams?.[0] : undefined;
+      stream = r?.code === 0 ? (JSON.parse(r.stdout) as { streams?: Array<ColourStream> }).streams?.[0] : undefined;
     } catch {}
-    if (stream && (!stream.color_space || stream.color_space === "unknown")) out.set(file, stream.height ?? 0);
+    const filter = stream && colourFilterOf(stream, toneMaps);
+    if (filter) out.set(file, filter);
   }
   return out;
 }
