@@ -131,3 +131,25 @@ test("an item linked to a clip that is already gone is left alone", () => {
   assert.deepEqual(withLinkedAudio(p, restyle), restyle);
   assert.deepEqual(find(edit(p, restyle), "audio-7"), find(p, "audio-7"));
 });
+
+test("rolling the cut into a linked voice unlinks it, so its clip's next edit can't put it out of sync", () => {
+  const voices = (p: Project): Project => ({
+    ...p,
+    tracks: p.tracks.map((t) =>
+      t.id === "audio"
+        ? {
+            ...t,
+            items: [
+              { id: "audio-6", type: "audio", media: "cam", in: 3494, start: 939, duration: 163, linkedTo: "clip-10" },
+              { id: "audio-7", type: "audio", media: "cam", in: 3680, start: 1102, duration: 733, linkedTo: "clip-13" },
+            ],
+          }
+        : t,
+    ),
+  });
+  const rolled = edit(voices(project()), [{ op: "roll_edit", item: "audio-6", frames: -30 }]);
+  assert.equal(find(rolled, "audio-7")!.linkedTo, undefined, "the roll trimmed audio-7 itself");
+  assert.equal(find(rolled, "audio-6")!.linkedTo, undefined);
+  const trimmed = edit(rolled, [{ op: "trim_item", item: "clip-13", edge: "end", frames: 10 }]);
+  assert.deepEqual(find(trimmed, "audio-7"), find(rolled, "audio-7"));
+});

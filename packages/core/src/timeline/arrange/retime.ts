@@ -1,4 +1,4 @@
-import { applyEdit, createSession } from "../apply-ops.ts";
+import { applyEdit, createSession, rolledItem } from "../apply-ops.ts";
 import { itemLabel, secs } from "../edit-log.ts";
 import { layout } from "../timeline.ts";
 import { soundMedia } from "../../audio/audio.ts";
@@ -321,7 +321,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     return o === undefined || o === id ? id : originOf(o);
   };
   for (const op of ops) if (op.op === "split_item") origin.set(op.newId, op.item);
-  const touched = new Set(ops.map(retimes).filter((id): id is string => !!id));
+  const touched = new Set(ops.flatMap((op) => [retimes(op), ...rolledItem(project, op)]).filter((id): id is string => !!id));
   const { starts } = layout(after);
   const beforeStarts = layout(project).starts;
   const beforeItems = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
