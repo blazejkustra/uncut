@@ -36,6 +36,7 @@ function add(p: Project, range?: { in: number; frames: number }): Project {
 }
 const soundOf = (p: Project, clip: string) => withLinkMates(p, clip)[1]!;
 const trackOf = (p: Project, item: string) => p.tracks.find((t) => t.items.some((i) => i.id === item))!;
+const whoosh = { id: "whoosh", kind: "audio" as const, name: "whoosh.wav", path: "/whoosh.wav", probe: { frames: 20, fps: 30, hasAudio: true } };
 const empty = (id: string, name: string, mixer?: object) => ({ id, kind: "audio" as const, name, items: [], ...(mixer ? { mixer } : {}) });
 
 test("D349: music ducked under Main ducks under a placed clip's linked sound", () => {
@@ -161,4 +162,31 @@ test("D349: ⌘V of a pair whose sound's track is busy puts the sound on a new a
     track.items.map((i) => i.id),
     [sound],
   );
+});
+
+test("D349: a sound effect on A1 doesn't send the next talk's sound to a new track", () => {
+  let p: Project = { ...base(), tracks: [base().tracks[0]!], media: [...base().media, whoosh] };
+  p = add(p);
+  const plan = planAddMedia(p, "whoosh", 1000);
+  if ("problem" in plan) throw new Error(plan.problem);
+  p = apply(p, plan.ops);
+  const a1 = p.tracks.filter((t) => t.kind === "audio");
+  assert.equal(a1.length, 1, "the effect went on A1");
+  p = add(p);
+  assert.equal(trackOf(p, soundOf(p, p.tracks.find((t) => t.role === "main")!.items[1]!.id)).id, a1[0]!.id);
+});
+
+test("D349: ⌘V of a song with a pair puts the pair's sound on a track of its own, away from the pasted song", () => {
+  let p = add(base());
+  const drop = planDropMedia(p, "cam", { frame: 400 });
+  if ("problem" in drop) throw new Error(drop.problem);
+  p = apply(p, drop.ops);
+  const plan = planPaste(p, copyItems(p, ["s", ...withLinkMates(p, drop.itemId)]), 200);
+  if ("problem" in plan) throw new Error(plan.problem);
+  p = apply(p, plan.ops);
+  const [song, sound] = ["song", "cam"].map((media) =>
+    plan.ids.find((id) => p.tracks.some((t) => t.items.some((i) => i.id === id && i.type === "audio" && i.media === media)))!,
+  );
+  assert.notEqual(trackOf(p, song!).id, trackOf(p, sound!).id);
+  assert.notEqual(trackOf(p, sound!).id, "music");
 });

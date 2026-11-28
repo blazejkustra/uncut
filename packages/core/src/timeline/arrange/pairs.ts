@@ -39,21 +39,22 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
   return pairs.length ? [...ops, ...pairs] : ops;
 }
 
-/** A track holding only clips' own sounds. */
-export const holdsClipSounds = (project: Project, track: Track) => track.items.length > 0 && track.items.every((i) => soundOwner(project, i));
+const ducks = (track: Track) => !!track.mixer?.effects?.some((fx) => fx.module === DUCK);
+
+/** A track holding clips' own sounds (an effect may sit there too) without ducking, bypassed or not. */
+export const holdsClipSounds = (project: Project, track: Track) => track.items.some((i) => soundOwner(project, i)) && !ducks(track);
 
 /**
- * An empty track a clip's sound can start: one Uncut named that has no ducking, bypassed or not (an
- * emptied music bed keeps its ducking; voice processing and volume are welcome).
+ * An empty track a clip's sound can start: one Uncut named, without ducking (an emptied music bed
+ * keeps its ducking; voice processing and volume are welcome).
  */
-export const emptyForClipSounds = (track: Track) =>
-  !track.items.length && /^Audio( [1-9]\d*)?$/.test(track.name) && !track.mixer?.effects?.some((fx) => fx.module === DUCK);
+export const emptyForClipSounds = (track: Track) => !track.items.length && /^Audio( [1-9]\d*)?$/.test(track.name) && !ducks(track);
 
 /**
  * A track a clip's sound can join: a free one already holding clips' own sounds, else an empty one
  * for them (emptyForClipSounds).
  */
-export function clipSoundTrack(project: Project, start: number, duration: number): Track | undefined {
+function clipSoundTrack(project: Project, start: number, duration: number): Track | undefined {
   return freeAudioTrack(project, start, duration, (t) => holdsClipSounds(project, t)) ?? freeAudioTrack(project, start, duration, emptyForClipSounds);
 }
 

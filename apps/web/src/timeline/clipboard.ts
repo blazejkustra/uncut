@@ -134,6 +134,8 @@ export function planPaste(
   const ids: Array<string> = [];
   // Spans claimed on each track by this paste, so two pasted items don't land on each other.
   const claimed = new Map<string, Array<readonly [number, number]>>();
+  // Tracks this paste put a clip's own sound on, which more pasted sounds can join.
+  const soundTracks = new Set<string>();
   const free = (t: Track, from: number, to: number) =>
     t.items.every((i) => (settled.get(i.id) ?? 0) + i.duration <= from || to <= (settled.get(i.id) ?? 0)) &&
     (claimed.get(t.id) ?? []).every(([a, b]) => b <= from || to <= a);
@@ -163,10 +165,10 @@ export function planPaste(
     const to = from + item.duration;
     const own = tracks.find((t) => t.id === clip.track && t.role !== "main");
     const usable = (t: Track) => t.role !== "main" && !t.locked && fitsTrack(item, t) && free(t, from, to);
-    const fallback =
-      link && isClipSound(clips, clip.item)
-        ? (tracks.find((t) => usable(t) && holdsClipSounds(project, t)) ?? tracks.find((t) => usable(t) && emptyForClipSounds(t)))
-        : tracks.find(usable);
+    const sound = !!link && isClipSound(clips, clip.item);
+    const joins = (t: Track) => usable(t) && (holdsClipSounds(project, t) || soundTracks.has(t.id));
+    const starts = (t: Track) => usable(t) && emptyForClipSounds(t) && !claimed.has(t.id);
+    const fallback = sound ? (tracks.find(joins) ?? tracks.find(starts)) : tracks.find(usable);
     let track = own && usable(own) ? own : fallback;
     if (!track) {
       const tid = uniqueId(project, clip.kind, taken);
@@ -180,6 +182,7 @@ export function planPaste(
       tracks.splice(index, 0, track);
     }
     claimed.set(track.id, [...(claimed.get(track.id) ?? []), [from, to]]);
+    if (sound) soundTracks.add(track.id);
     ops.push({ op: "insert_item", track: track.id, item: { ...item, start: from } as Item });
   }
   return { ops, summary: ids.length === 1 ? `Paste ${ids[0]}` : `Paste ${ids.length} items`, ids };
