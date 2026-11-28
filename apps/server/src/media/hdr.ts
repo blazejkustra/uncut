@@ -34,7 +34,8 @@ export async function fileColour(ffprobe: string | undefined, path: string): Pro
   const name = `${path}\0${key}`;
   let colour = colours.get(name);
   if (!colour) {
-    if (colours.size > 512) colours.clear();
+    const oldest = colours.keys().next().value;
+    if (colours.size > 4096 && oldest !== undefined) colours.delete(oldest);
     colour = probeColour(ffprobe, path);
     colours.set(name, colour);
   }
@@ -68,12 +69,16 @@ export async function toneMapFor(ffmpeg: string, path: string): Promise<string> 
   return toneMapFilter(colour);
 }
 
+/** The cache key of tone-mapped pictures made from an HDR file whose posterKey is `key`. */
+export const toneMappedKey = (key: string) => createHash("sha1").update(`${key}\0sdr`).digest("hex").slice(0, 12);
+
 /**
  * The cache key of pictures made from a file (proxies, posters, filmstrips): its posterKey, and for
- * HDR another one, so pictures made before HDR was tone-mapped are made again.
+ * HDR another one, so pictures made before HDR was tone-mapped are made again. `known`: the colour
+ * stored on the media at import, which saves the ffprobe.
  */
-export async function pictureKey(ffprobe: string | undefined, path: string): Promise<string | undefined> {
+export async function pictureKey(ffprobe: string | undefined, path: string, known?: MediaColour): Promise<string | undefined> {
   const key = await posterKey(path);
-  if (!key || !hdrKind(await fileColour(ffprobe, path))) return key;
-  return createHash("sha1").update(`${key}\0sdr`).digest("hex").slice(0, 12);
+  if (!key || !hdrKind(known ?? (await fileColour(ffprobe, path)))) return key;
+  return toneMappedKey(key);
 }

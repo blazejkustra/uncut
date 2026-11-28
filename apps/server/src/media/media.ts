@@ -8,6 +8,7 @@ import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
 import {
+  hdrKind,
   MAX_PROJECT_LUTS,
   planImportSubtitles,
   planImportTimeline,
@@ -32,7 +33,7 @@ import { ServerConfig } from "../app/config.ts";
 import { MediaCore, type ProbeInfo, type ProbeOutcome } from "./mediaCore.ts";
 import { probeSvg } from "../export/svg.ts";
 import { runProbe } from "./probe.ts";
-import { fileColour, pictureKey, toneMapFor } from "./hdr.ts";
+import { fileColour, pictureKey, toneMapFor, toneMappedKey } from "./hdr.ts";
 import { MATCH_FIRST_CLIP, Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { recordSubtitleSources } from "../export/subtitleSources.ts";
@@ -123,11 +124,11 @@ export const layer = Layer.effect(
       });
 
     /** A media item's poster key: HDR video gets a new one (hdr.ts pictureKey), so posters made before tone mapping are made again. */
-    const currentPosterKey = (kind: string, path: string) =>
+    const currentPosterKey = (entry: MediaEntry, path: string) =>
       Effect.gen(function* () {
-        if (kind !== "video") return yield* Effect.promise(() => posterKey(path));
+        if (entry.kind !== "video") return yield* Effect.promise(() => posterKey(path));
         const ffprobeBin = yield* tool("ffprobe");
-        return yield* Effect.promise(() => pictureKey(ffprobeBin, path));
+        return yield* Effect.promise(() => pictureKey(ffprobeBin, path, entry.probe?.colour));
       });
 
     /** A video's probe with its colour (HDR or not), which the media core doesn't read. */
@@ -146,7 +147,7 @@ export const layer = Layer.effect(
         // No poster for audio, nor for SVG (ffmpeg can't read it; the Library shows the file itself).
         if (entry.kind === "audio" || extname(entry.path).toLowerCase() === ".svg") return false;
         const bin = yield* tool("ffmpeg");
-        const key = yield* currentPosterKey(entry.kind, entry.path);
+        const key = yield* currentPosterKey(entry, entry.path);
         if (!bin || !key) return false;
         const folder = thumbDir(dir);
         yield* Effect.promise(() => mkdir(folder, { recursive: true }));
@@ -696,6 +697,10 @@ export const layer = Layer.effect(
         return { snapshot, ...done };
       });
 
+    /** The file of a media item's poster under `key`, if it's there. */
+    const posterAt = (id: string, key: string, files: ReadonlySet<string>, dir: string) =>
+      files.has(posterName(id, key)) ? join(thumbDir(dir), posterName(id, key)) : undefined;
+
     const remaking = new Set<string>();
     /** Makes an HDR video's poster again when the one on disk is from before it was tone-mapped (under its plain posterKey). */
     const remakeStalePoster = (m: MediaEntry, seconds: number | undefined, path: string, files: ReadonlySet<string>, dir: string) =>
@@ -709,25 +714,60 @@ export const layer = Layer.effect(
         );
       });
 
+    const colourChecks = yield* Semaphore.make(2);
+    const colourChecked = new Set<string>();
+    /** For media without a stored colour (imported before it was stored): its poster is made again if the file is HDR. */
+    const remakeIfHdr = (m: MediaEntry, seconds: number | undefined, path: string, files: ReadonlySet<string>, dir: string) =>
+      colourChecks.withPermits(1)(
+        Effect.gen(function* () {
+          const ffprobeBin = yield* tool("ffprobe");
+          if (hdrKind(yield* Effect.promise(() => fileColour(ffprobeBin, path)))) yield* remakeStalePoster(m, seconds, path, files, dir);
+        }),
+      );
+
+    /**
+     * A video's poster on disk. A stale HDR one is made again first; one without a stored colour is
+     * listed as it is while its colour is asked in the background (the next listing has the new one).
+     */
+    const videoPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string, fps: number) =>
+      Effect.gen(function* () {
+        const plain = yield* Effect.promise(() => posterKey(path));
+        if (!plain) return undefined;
+        const toneMapped = posterAt(m.id, toneMappedKey(plain), files, dir);
+        if (toneMapped) return toneMapped;
+        const seconds = m.probe?.frames ? m.probe.frames / fps : undefined;
+        if (!m.probe?.colour) {
+          const check = `${m.id}\0${plain}`;
+          if (!colourChecked.has(check)) {
+            colourChecked.add(check);
+            yield* Effect.forkIn(remakeIfHdr(m, seconds, path, files, dir), scope);
+          }
+          return posterAt(m.id, plain, files, dir);
+        }
+        if (!hdrKind(m.probe.colour)) return posterAt(m.id, plain, files, dir);
+        return (yield* remakeStalePoster(m, seconds, path, files, dir)) ? join(thumbDir(dir), posterName(m.id, toneMappedKey(plain))) : undefined;
+      });
+
+    const stillPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string) =>
+      Effect.map(
+        Effect.promise(() => posterKey(path)),
+        (key) => key && posterAt(m.id, key, files, dir),
+      );
+
     const currentPosters = Effect.gen(function* () {
       const open = yield* projects.current;
       if (!open) return new Map<string, string>();
       const project = open.project as unknown as { canvas: { fps: number }; media: ReadonlyArray<MediaEntry> };
       const files = new Set(yield* Effect.promise(() => readdir(thumbDir(open.dir)).catch(() => [] as Array<string>)));
       const out = new Map<string, string>();
-      const stale: Array<{ m: MediaEntry; path: string; key: string }> = [];
-      for (const m of project.media) {
-        const path = isAbsolute(m.path) ? m.path : resolve(open.dir, m.path);
-        const key = yield* currentPosterKey(m.kind, path);
-        if (key && files.has(posterName(m.id, key))) out.set(m.id, join(thumbDir(open.dir), posterName(m.id, key)));
-        else if (key && m.kind === "video") stale.push({ m, path, key });
-      }
       yield* Effect.forEach(
-        stale,
-        ({ m, path, key }) =>
-          remakeStalePoster(m, m.probe?.frames ? m.probe.frames / project.canvas.fps : undefined, path, files, open.dir).pipe(
-            Effect.tap((made) => (made ? Effect.sync(() => out.set(m.id, join(thumbDir(open.dir), posterName(m.id, key)))) : Effect.void)),
-          ),
+        project.media,
+        (m) =>
+          Effect.gen(function* () {
+            const path = isAbsolute(m.path) ? m.path : resolve(open.dir, m.path);
+            const poster = m.kind === "video" ? yield* videoPoster(m, path, files, open.dir, project.canvas.fps) : yield* stillPoster(m, path, files, open.dir);
+            if (poster) out.set(m.id, poster);
+          }),
         { concurrency: 2, discard: true },
       );
       return out;
