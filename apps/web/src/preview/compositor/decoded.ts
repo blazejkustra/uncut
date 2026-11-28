@@ -115,7 +115,7 @@ export class DecodedPictures {
     return this.engine.starting(this.gated);
   }
 
-  /** Whether the engine draws this clip now (it has a lane): its <video> stays paused while playing. */
+  /** Whether the engine draws this clip now (it has a lane): its <video> is paused while playing (once a seek in flight has landed). */
   decodes(id: string) {
     return this.laned.has(id);
   }

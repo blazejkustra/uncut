@@ -315,7 +315,8 @@ export class Compositor extends CompositorBase {
       else if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       // D333: the engine draws it while playing; paused, its <video> is seeked to the frame as any other's.
       if (decodes && playing) {
-        if (!el.paused) el.pause();
+        // Paused mid-seek, Chromium can leave a <video> seeking forever (seen on CI's VMs): it pauses once the seek lands.
+        if (!el.paused && !el.seeking) el.pause();
         return;
       }
       if (decodes && el.preload !== "auto") el.preload = "auto";
