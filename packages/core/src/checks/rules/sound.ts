@@ -10,6 +10,8 @@ import {
   keyFade,
   mediaOf,
   isSpeechTrack,
+  mainSpeech,
+  linkedClipTrack,
   type Check,
   type CheckSeverity,
   secs,
@@ -62,7 +64,7 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
       ctx.project.tracks.flatMap((track) => {
         if (!isMusicTrack(ctx, track)) return [];
         return track.items.flatMap((item) => {
-          if (item.type !== "audio" || !soundOf(ctx, item)) return [];
+          if (item.type !== "audio" || !soundOf(ctx, item) || linkedClipTrack(ctx, item)) return [];
           const start = startOf(ctx, item);
           // A fade made with volume keys counts (the fix doesn't stack a fade on it).
           const needIn = !item.fadeIn && !keyFade(item, "in") && start === 0;
@@ -109,9 +111,13 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
         const keys = ctx.project.tracks.filter(
           (t) =>
             t.id !== track.id &&
-            isSpeechTrack(ctx, t) &&
             audible(ctx, t) &&
-            t.items.some((i) => soundOf(ctx, i) && spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s)),
+            t.items.some(
+              (i) =>
+                soundOf(ctx, i) &&
+                (isSpeechTrack(ctx, t) || mainSpeech(ctx, i)) &&
+                spans.some(([s, e]) => startOf(ctx, i) < e && startOf(ctx, i) + i.duration > s),
+            ),
         );
         if (!keys.length) return [];
         const mixer = {

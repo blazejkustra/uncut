@@ -416,7 +416,7 @@ async function exitCheck() {
   assert.equal(await page.$eval("[data-testid=remove-pauses]", (el) => (el as HTMLElement).dataset.count), "0", "no pause ≥ 0.5 s left");
   await page.screenshot({ path: out("phase5-transcript.png") });
   await page.click("[data-testid=bottom-timeline]");
-  await page.waitForFunction((n) => document.querySelectorAll("[data-testid=timeline-item]").length === n, {}, main.length);
+  await page.waitForFunction((n) => document.querySelectorAll("[data-testid=lane][data-track=main] [data-testid=timeline-item]").length === n, {}, main.length);
   await page.screenshot({ path: out("phase5-timeline.png") });
   await page.click("[data-testid=tab-history]");
   await waitFor("[data-testid=history-panel]");

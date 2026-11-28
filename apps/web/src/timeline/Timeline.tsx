@@ -44,7 +44,7 @@ import { captionCards, captionExtent } from "@uncut/core/captions";
 
 import { useBeats } from "../audio/beats.ts";
 import { useDuckCurves } from "../audio/ducking.ts";
-import { findItem } from "./edit.ts";
+import { findItem, isLinkSelection } from "./edit.ts";
 import { rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, trackCodes, type Item, type ProjectModel, type Track } from "../state/project.ts";
@@ -206,6 +206,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
   // The main track's cuts as drawn (a drag's planned result included).
   const cuts = cutsOf(view.tracks.find((t) => t.role === "main"));
   const selection = new Set(selected === undefined ? [] : [selected, ...also]);
+  const sole = !also.length || isLinkSelection(project, [...selection]);
   useElementsVersion();
   /** D316: what a track's lane adds for its graphics' element rows. */
   const elementsHeight = (track: Track) =>
@@ -571,7 +572,7 @@ function TimelineView({ project }: { project: ProjectModel }) {
                         }}
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable && item.type !== "captions"}
-                        envelope={item.id === selected && !also.length && editable && !dragged ? "edit" : "show"}
+                        envelope={item.id === selected && sole && editable && !dragged ? "edit" : "show"}
                         duck={ducks.get(track.id)?.keys}
                         renaming={renaming === item.id}
                         onRenamed={() => setRenaming(undefined)}

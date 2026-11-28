@@ -60,6 +60,11 @@ const savedMain = (dir: string) => {
   const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
   return project.tracks.find((t: any) => t.role === "main").items.map((i: any) => [i.id, i.in, i.duration]);
 };
+/** The timeline items on the main track (D349: a talk's sound is its own item on an audio track). */
+const mainItems = (dir: string) => {
+  const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
+  return `[data-testid=lane][data-track="${project.tracks.find((t: any) => t.role === "main").id}"] [data-testid=timeline-item]`;
+};
 async function untilSaved(dir: string, expected: unknown, timeout = 10000) {
   const deadline = Date.now() + timeout;
   for (;;) {
@@ -192,27 +197,33 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
     ["clip-2", 118, 37],
   ]);
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=remove-pauses]")?.dataset.count === "0");
+  const sounds = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).tracks.flatMap((t: any) => (t.kind === "audio" ? t.items : []));
+  assert.deepEqual(
+    sounds.map((i: any) => [i.in, i.duration]),
+    [
+      [13, 82],
+      [118, 37],
+    ],
+    "the clip's linked sound is cut with it",
+  );
   assert.equal(await page.$$eval("[data-testid=tx-word]", (els) => els.length), 8, "every word stays");
   assert.equal(await page.$$eval("[data-testid=tx-block]", (els) => els.length), 2, "one block per clip");
   await page.screenshot({ path: "test-output/transcript-pauses.png" });
 
   // The Timeline tab shows the two pieces, back to back.
   await page.click("[data-testid=bottom-timeline]");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 2);
-  assert.deepEqual(
-    await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])),
-    [
-      ["0", "82"],
-      ["82", "37"],
-    ],
-  );
+  await page.waitForFunction((sel: string) => document.querySelectorAll(sel).length === 2, {}, mainItems(dir));
+  assert.deepEqual(await page.$$eval(mainItems(dir), (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])), [
+    ["0", "82"],
+    ["82", "37"],
+  ]);
 
   // A clip whose media has no transcript, with whisper.cpp missing: its block points to Setup.
   await page.click("[data-testid=rail-media]");
   await page.click("[data-testid=import-plus]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
   await page.$eval("[data-testid=media-tile][data-id=m-other] [data-testid=add-to-timeline]", (el) => (el as HTMLElement).click());
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 3);
+  await page.waitForFunction((sel: string) => document.querySelectorAll(sel).length === 3, {}, mainItems(dir));
   await page.click("[data-testid=rail-transcript]");
   // (Other.mp4's sound differs from Talk.mp4's: the same content would share the cached transcript.)
   await waitFor(page, "[data-testid=tx-block][data-media=m-other] [data-testid=tx-no-whisper]");

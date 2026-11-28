@@ -90,14 +90,21 @@ export const placedLength = (media: PlaceMedia, fps: number, imageSeconds = IMAG
       : undefined;
 
 /**
- * The first unlocked, heard audio track (not main) free over [start, start + duration), or undefined
- * (D124: several sounds at once each get their own track; music, sfx and voice overlap freely).
+ * The first unlocked, heard audio track (not main) free over [start, start + duration) that `accept`
+ * takes, or undefined (D124: several sounds at once each get their own track; music, sfx and voice
+ * overlap freely).
  */
-export function freeAudioTrack(project: Pick<Project, "tracks">, start: number, duration: number): Track | undefined {
+export function freeAudioTrack(
+  project: Pick<Project, "tracks">,
+  start: number,
+  duration: number,
+  accept: (track: Track) => boolean = () => true,
+): Track | undefined {
   // Not a muted track, nor one a solo elsewhere silences: the new sound would be unheard.
   const solo = project.tracks.some((t) => t.mixer?.solo === true);
   return project.tracks.find(
-    (t) => t.kind === "audio" && t.role !== "main" && !t.locked && !t.mixer?.mute && (!solo || t.mixer?.solo === true) && isFree(t, start, duration),
+    (t) =>
+      t.kind === "audio" && t.role !== "main" && !t.locked && !t.mixer?.mute && (!solo || t.mixer?.solo === true) && isFree(t, start, duration) && accept(t),
   );
 }
 

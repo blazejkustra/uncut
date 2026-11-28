@@ -1,7 +1,20 @@
 import { duckEntry } from "../audio/ducking.ts";
 import { bundledSfxOf } from "../audio/library.ts";
 import type { Media, Item, Track, Project, Id } from "../timeline/types.ts";
-import { type CheckContext, audible, isSpeechTrack, isMusicTrack, soundOf, MUSIC_NAME, startOf, textLabel, checkContext, secs } from "./context.ts";
+import {
+  type CheckContext,
+  audible,
+  isSpeechTrack,
+  isMusicTrack,
+  linkedClipTrack,
+  mainSpeech,
+  soundOf,
+  MUSIC_NAME,
+  startOf,
+  textLabel,
+  checkContext,
+  secs,
+} from "./context.ts";
 
 // ---- sound design (D207, issue #31) ----
 //
@@ -152,7 +165,7 @@ export function musicItems(ctx: CheckContext) {
     const musicTrack = isMusicTrack(ctx, track);
     for (const item of track.items) {
       const m = soundOf(ctx, item);
-      if (!m || item.type !== "audio" || bundledSfxOf(m)) continue;
+      if (!m || item.type !== "audio" || bundledSfxOf(m) || linkedClipTrack(ctx, item)) continue;
       // D296: a long sound on a plain audio track ("Audio", a file named after its song) is music too,
       // unless it's named like an effect (and anything over 15 s: no effect is that long); before, a song not called "music" was neither music nor an effect.
       const effectNamed = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
@@ -171,7 +184,7 @@ export function sfxItems(ctx: CheckContext): Array<PlacedSfx> {
     if (track.kind !== "audio" || !audible(ctx, track) || isSpeechTrack(ctx, track)) continue;
     for (const item of track.items) {
       const m = soundOf(ctx, item);
-      if (!m || item.type !== "audio" || music.has(item.id)) continue;
+      if (!m || item.type !== "audio" || music.has(item.id) || linkedClipTrack(ctx, item)) continue;
       const bundled = bundledSfxOf(m);
       const named = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
       if (!bundled && !named && item.duration > 3 * ctx.fps) continue;
@@ -275,8 +288,9 @@ export function soundSheet(project: Project, options: { readonly speechMedia?: I
       `music ${secs(m.start, fps)} to ${secs(m.start + m.item.duration, fps)}: ${m.media.name}${m.bpm ? `, ${m.bpm} BPM` : m.bpm === null ? ", no steady beat" : ""}, at ${dbText(m.gain)}${m.item.fadeIn ? ", fades in" : ""}${m.item.fadeOut ? ", fades out" : ""}${duckEntry(m.track) ? ", ducked under the voice" : ""}`,
     );
   for (const track of ctx.project.tracks) {
-    if (!isSpeechTrack(ctx, track) || !audible(ctx, track)) continue;
-    const spoken = track.items.filter((i) => soundOf(ctx, i));
+    if (!audible(ctx, track)) continue;
+    const speech = isSpeechTrack(ctx, track);
+    const spoken = track.items.filter((i) => soundOf(ctx, i) && (speech || mainSpeech(ctx, i)));
     if (spoken.length)
       lines.push(`voice on ${track.name}: ${spoken.map((i) => `${secs(startOf(ctx, i), fps)} to ${secs(startOf(ctx, i) + i.duration, fps)}`).join(", ")}`);
   }

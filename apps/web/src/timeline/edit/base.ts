@@ -1,7 +1,7 @@
 // Shared bits of the timeline planners (edit.ts): finding an item, track fit and locks, the plan shape, drafts.
 import { applyEdit, createSession, EditError } from "@uncut/core/apply-ops";
 import { fitsTrackKind, timelineProblems } from "@uncut/core/rules";
-import { withLinks } from "@uncut/core/arrange";
+import { linkMates, withLinks } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type Item, type Track, type ProjectModel, layoutOf } from "../../state/project.ts";
 
@@ -86,6 +86,16 @@ export function draftOf(project: ProjectModel, ops: ReadonlyArray<Op>): { readon
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `Can't do that: ${first?.message ?? (error as Error).message}.` };
   }
+}
+
+/** D349: `id` and the items linked to it, which a click selects together (⌥-click: `id` alone). */
+export const withLinkMates = (project: ProjectModel, id: string): Array<string> => [id, ...linkMates(project, id).map((p) => p.item.id)];
+
+/** Whether `ids` are one item and exactly the items linked to it: edited and shown as that item. */
+export function isLinkSelection(project: ProjectModel, ids: ReadonlyArray<string>): boolean {
+  if (ids.length < 2) return false;
+  const linked = withLinkMates(project, ids[0]!);
+  return linked.length === ids.length && ids.every((id) => linked.includes(id));
 }
 
 // ---- groups (F19, D157): a kicker and its title move, trim and delete together ----

@@ -14,6 +14,7 @@ import {
   planGrouping,
   planLayer,
   planRippleDelete,
+  isLinkSelection,
 } from "../../../timeline/edit.ts";
 import { planResetPosition } from "../../../timeline/clip.ts";
 import { planDeleteElement } from "../../../timeline/graphicElements.ts";
@@ -152,7 +153,8 @@ export const timelineActions = {
   applyFx: (what: string, itemId?: string) =>
     itemEdit((project) => {
       const { selected, also } = getPlayback();
-      const selection = selected === undefined ? [] : [selected, ...also];
+      const picked = selected === undefined ? [] : [selected, ...also];
+      const selection = isLinkSelection(project, picked) ? [selected!] : picked;
       const targets = itemId === undefined ? selection : selection.length > 1 && selection.includes(itemId) ? selection : [itemId];
       const [kind, id = ""] = what.split(/:(.*)/s);
       const custom = kind === "look" ? state.contributions?.filters?.find((f) => f.id === id) : undefined;

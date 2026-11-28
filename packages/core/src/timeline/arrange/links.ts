@@ -55,6 +55,10 @@ export function linkMates(project: Pick<Project, "tracks">, id: Id): ReadonlyArr
   return key ? index.members.get(key)!.filter((p) => p.item.id !== id) : [];
 }
 
+/** D349: the clip whose own sound `item` is (an audio item linked to a clip of the same media), if any. */
+export const soundOwner = (project: Pick<Project, "tracks">, item: Item): Placed | undefined =>
+  item.type === "audio" ? linkMates(project, item.id).find((m) => m.item.type === "clip" && m.item.media === item.media) : undefined;
+
 export const isLinked = (project: Pick<Project, "tracks">, id: Id) => linkIndex(project.tracks).keyOf.has(id);
 
 /** Every link id in use (legacy keys aside), for handing out new ones. */

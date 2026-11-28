@@ -29,7 +29,7 @@ import { frameTimecode } from "../state/format.ts";
 import { itemLabel, layoutOf } from "../state/project.ts";
 import { actions, useApp, type Project } from "../state/store.ts";
 import { isBoxed } from "../timeline/clip.ts";
-import { findItem } from "../timeline/edit.ts";
+import { findItem, isLinkSelection } from "../timeline/edit.ts";
 import { rememberedSideTab, rememberSideTab, type SideTab } from "./layout.ts";
 import { useDocking } from "./agentStage.ts";
 
@@ -72,7 +72,7 @@ export function Side({
   // F2 (D147): several items selected: what they share, edited on all of them at once.
   // Texts only keep the text Inspector, which already restyles every selected text at once (X3).
   const picked = selected ? [selected.item.id, ...also.filter((id) => findItem(project, id))] : [];
-  const many = picked.every((id) => findItem(project, id)?.item.type === "text") ? [] : picked;
+  const many = picked.every((id) => findItem(project, id)?.item.type === "text") || isLinkSelection(project, picked) ? [] : picked;
   // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
   const cutId = usePlayback((s) => s.cut);
   const cut = findItem(project, cutId);

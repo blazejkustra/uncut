@@ -262,7 +262,7 @@ test("split and start trims keep the volume envelope continuous (a key goes on t
     { frame: 30, db: -12 },
   ]);
   // No step at the cut: the first half's last frame and the second's first are continuous.
-  near(itemGain(track, 0, 30), itemGain(track, 1, 0), 1e-12);
+  near(itemGain(track, 0, 30, 0, split), itemGain(track, 1, 0, 0, split), 1e-12);
   for (const f of [40, 59, 60, 61, 75, 100]) {
     const before = gain(p, f, "m")!;
     const after = at(split, f)["m"]?.gain ?? at(split, f)["m-2"]!.gain;

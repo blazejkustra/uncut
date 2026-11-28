@@ -8,10 +8,10 @@ import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
 import { libraryMediaOf, mediaIdFor, projectIds } from "@uncut/core/library";
-import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
+import { insertedClips, planPlaceMedia, takenIds, withSoundPairs } from "@uncut/core/arrange";
 import { defaultFrames, defaultSeconds } from "../settings/defaults.ts";
 
-import type { Item, Media, Project, Track } from "@uncut/core/types";
+import type { Item, Media, Op, Project, Track } from "@uncut/core/types";
 
 // The format types come from @uncut/core (spec/schema). Only type imports from the package root
 // would pull node:fs into the renderer, so these use the browser-safe subpaths.
@@ -90,7 +90,7 @@ export type MediaRange = { readonly in: number; readonly frames: number };
  * main track (D17: no gaps, nothing shifts); audio goes on the first unlocked audio track (one is
  * created if there is none) at the playhead if the track is free there for the sound's whole
  * length, else after its last item (D54). With `range`, only that stretch of a video or sound
- * (the source viewer's In to Out, D311).
+ * (the source viewer's In to Out, D311). A video with sound brings it on an audio track, linked (D349).
  */
 export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0, range?: MediaRange): Planned {
   const media = project.media.find((m) => m.id === mediaId);
@@ -106,8 +106,9 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0, 
   const itemId = uniqueId(project, "clip");
   const stretch =
     media.kind === "image" ? { in: 0, duration: defaultFrames("still", fps) } : range ? { in: range.in, duration: range.frames } : { in: 0, duration: frames! };
+  const ops: ReadonlyArray<Op> = [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, ...stretch } }];
   return {
-    ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, ...stretch } }],
+    ops: withSoundPairs(project, ops, [itemId]),
     summary: `Add ${media.name} to the timeline`,
     itemId,
     start: mainEnd,
@@ -133,7 +134,7 @@ export function planAddAtPlayhead(project: ProjectModel, mediaId: string, frame:
   const mainIndex = project.tracks.findIndex((t) => t.role === "main");
   const above = project.tracks.slice(0, Math.max(0, mainIndex)).reverse();
   const free = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
-  const ops: Array<unknown> = [];
+  const ops: Array<Op> = [];
   const taken = new Set<string>();
   let track = above.find((t) => t.kind === "video" && !t.locked && free(t));
   if (!track) {
@@ -144,7 +145,7 @@ export function planAddAtPlayhead(project: ProjectModel, mediaId: string, frame:
   }
   const itemId = uniqueId(project, "clip", taken);
   ops.push({ op: "insert_item", track: track.id, item: { id: itemId, type: "clip", media: media.id, in: 0, start, duration } });
-  return { ops, summary: `Add ${media.name} at the playhead`, itemId, start };
+  return { ops: withSoundPairs(project, ops, [itemId]), summary: `Add ${media.name} at the playhead`, itemId, start };
 }
 
 /**
@@ -170,7 +171,12 @@ export function planDropMedia(
   const plan = planPlaceMedia(project, [media], { ...at, imageSeconds: defaultSeconds("still") }, takenIds(project));
   if ("problem" in plan) return plan;
   const first = plan.placed[0]!;
-  return { ops: plan.ops, summary: `Add ${media.name} to the timeline`, itemId: first.itemId, start: first.start };
+  return {
+    ops: withSoundPairs(project, plan.ops, insertedClips(plan.ops)),
+    summary: `Add ${media.name} to the timeline`,
+    itemId: first.itemId,
+    start: first.start,
+  };
 }
 
 /** Music shorter than this before the video ends isn't worth adding (D91, D134). */

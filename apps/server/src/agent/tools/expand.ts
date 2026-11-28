@@ -17,7 +17,17 @@ import {
   type TextLook,
   planInsertText,
 } from "@uncut/core";
-import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed, planReplaceRange, planReverse, planSpeedRamp } from "@uncut/core/arrange";
+import {
+  insertedClips,
+  withSoundPairs,
+  planPutOnMain,
+  takenIds,
+  planDetachAudio,
+  planSetSpeed,
+  planReplaceRange,
+  planReverse,
+  planSpeedRamp,
+} from "@uncut/core/arrange";
 import type { SpeedKey } from "@uncut/core/speedRamp";
 import { expandPlacement, type PlacementNote } from "@uncut/core/agentPlace";
 import { withoutDecisionIds } from "./decisionIds.ts";
@@ -360,5 +370,7 @@ export function expandConvenienceOps(
   if ("problem" in captions) return captions;
   const arranged = expandArrangeOps(project, captions.ops);
   if ("problem" in arranged) return arranged;
-  return expandPlacement(project, arranged.ops);
+  const placed = expandPlacement(project, arranged.ops);
+  if ("problem" in placed) return placed;
+  return { ...placed, ops: [...withSoundPairs(project, placed.ops as ReadonlyArray<Op>, insertedClips(ops))] };
 }
