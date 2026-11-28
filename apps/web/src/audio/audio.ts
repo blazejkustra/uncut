@@ -144,15 +144,11 @@ export class Mix extends MixGraph {
     el.dataset.src = src;
     el.addEventListener("seeked", () => {
       const want = wanted.has(el!) ? reachable(el!, wanted.get(el!)!) : undefined;
-      if (want !== undefined && Math.abs(el!.currentTime - want) > 0.004) {
-        if (el!.paused) {
-          el!.currentTime = want;
-          return;
-        }
-        // Playing, it landed on an older target: drive() seeks it again as soon as it runs.
-        this.aimed.delete(el!);
-      }
-      wanted.delete(el!);
+      // Playing, the target is already behind the clock: drive() seeks again if it is still off.
+      if (want !== undefined && el!.paused && Math.abs(el!.currentTime - want) > 0.004) {
+        wanted.set(el!, want);
+        el!.currentTime = want;
+      } else wanted.delete(el!);
     });
     el.src = src;
     this.own.set(item.id, el);
