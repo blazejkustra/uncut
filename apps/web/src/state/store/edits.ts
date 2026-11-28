@@ -1,7 +1,7 @@
 import type { ProjectSnapshot } from "@uncut/contracts";
 import { type Connection, type CallError, type Result, isTransportError } from "../connection.ts";
 import { playback, getPlayback } from "../../preview/playback.ts";
-import { type Plan, draftOf, findItem, withOverlayRipple } from "../../timeline/edit.ts";
+import { type Plan, draftOf, findItem, withLinkMates, withOverlayRipple } from "../../timeline/edit.ts";
 import { planReverse, planSetSpeed, planSpeedRamp } from "@uncut/core/arrange";
 import type { SpeedKey } from "@uncut/core/speedRamp";
 import { type ShaderDef, SHADER, shaderUseOf } from "@uncut/core/shaders";
@@ -65,7 +65,8 @@ export async function addPlanned(plan: (project: ProjectModel) => Planned | { re
   }
   if (error) return;
   playback.pause();
-  playback.select(planned.itemId);
+  // D349: a placed video with sound is selected with its sound, as a click selects them.
+  playback.selectMany(state.snapshot ? withLinkMates(projectOf(state.snapshot), planned.itemId) : [planned.itemId]);
   playback.seek(planned.show ?? planned.start);
   // F20 (D158): the timeline scrolls to show what was added.
   revealItem(planned.itemId);

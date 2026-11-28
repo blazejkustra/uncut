@@ -139,6 +139,8 @@ test("timeline v2 phase 3: a dropped talk is a V1 clip and an A1 sound, selected
   assert.equal(await page.$(`${item(clip.id)} [data-testid=waveform]`), null, "the muted clip draws no waveform of its own");
   const wave = await rect(page, `${item(sound.id)} [data-testid=waveform]`);
   assert.ok(wave.height > 30, `the A1 waveform is tall (${wave.height} px)`);
+  await page.waitForFunction((n) => document.querySelectorAll(".clip.selected[data-testid=timeline-item]").length === n, { timeout: 5000 }, 2);
+  assert.deepEqual(await selectedIds(page), [clip.id, sound.id].sort(), "the new pair is selected");
 
   // A second talk after it: its sound on the same A1.
   await dropMedia(cdp, await xOf(page, 200), await laneY(page, "main"), "m-talk");
