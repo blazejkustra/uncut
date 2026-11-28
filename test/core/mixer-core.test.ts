@@ -167,7 +167,7 @@ test("the whole chain: item gain × keys × fades × track × pan × master, per
   const p = project({ voice: { mixer: { gainDb: -6, pan: 0.5 } }, master: { gainDb: -4 } });
   const voice = track(p, "voice");
   // Frame 60: keys −6, item −3, track −6 → −15 dB; no fade yet (it starts at 90).
-  near(itemGain(voice, 0, 60), dbToGain(-15), 1e-12);
+  near(itemGain(voice, 0, 60, 0, p), dbToGain(-15), 1e-12);
   const g = outputGains(p, voice, 0, 60);
   near(g.left, dbToGain(-15) * dbToGain(-4) * panGains(0.5).left, 1e-12);
   near(g.right, dbToGain(-15) * dbToGain(-4) * panGains(0.5).right, 1e-12);
@@ -175,7 +175,7 @@ test("the whole chain: item gain × keys × fades × track × pan × master, per
   near(outputGains(p, voice, 0, 105).left, dbToGain(-21) * 0.5 * dbToGain(-4) * panGains(0.5).left, 1e-12);
   // The −60 dB cutoff is on the combined item dB (item + keys + track), not per stage.
   const quiet = project({ voice: { mixer: { gainDb: -50 } } });
-  assert.equal(itemGain(track(quiet, "voice"), 0, 100), 0, "−3 −12 −50 = −65 dB: silence");
+  assert.equal(itemGain(track(quiet, "voice"), 0, 100, 0, quiet), 0, "−3 −12 −50 = −65 dB: silence");
   // An unpanned track at 0 dB master: exactly the item gain on both channels (as before D83).
   const plain = project();
   const m = outputGains(plain, track(plain, "music"), 0, 10);

@@ -234,7 +234,7 @@ test("ducking: from a synthetic envelope — down `attack` before the speech, th
   assert.equal(duckDbAt(c.keys, 5 * FPS), 0);
   assert.equal(duckDbAt(c.keys, 0), 0);
   // It is the item gain's extra dB on the ducked track (the preview's and the export's maths).
-  near(itemGain(track(p, "music"), 0, 2.5 * FPS, duckDbAt(c.keys, 2.5 * FPS)), dbToGain(-12), 1e-12);
+  near(itemGain(track(p, "music"), 0, 2.5 * FPS, duckDbAt(c.keys, 2.5 * FPS), p), dbToGain(-12), 1e-12);
   // A 0.2 s gap is held (< DUCK_HOLD_S); a 30 ms blip doesn't duck; runs closer than attack + release join.
   const gaps = duckCurve(
     p,

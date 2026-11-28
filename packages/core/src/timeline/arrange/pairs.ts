@@ -2,19 +2,18 @@
 // on an audio track, as Detach audio leaves it. Edits then follow by delta (D347).
 import { applyEdit, createSession } from "../apply-ops.ts";
 import { layout } from "../timeline.ts";
-import type { Id, Item, Op, Project, Track } from "../types.ts";
+import type { Id, Op, Project, Track } from "../types.ts";
 import { withLinks } from "./linkFollow.ts";
-import { linkMates } from "./links.ts";
+import { soundOwner } from "./links.ts";
 import { freeAudioTrack, nextName, takenIds, uniqueIn } from "./place.ts";
 import { planDetachAudio } from "./retime.ts";
 
 const applied = (project: Project, ops: ReadonlyArray<Op>) => applyEdit(createSession(project), { actor: "user", ops }).project;
 
 /**
- * `ops` plus the ops that give each clip in `placed` its own linked sound on a free audio track that
- * holds only clips' own sounds (never music or effects; a new one when none is), where the ops and
- * what their links follow (withLinks) leave room. A clip
- * without sound, muted, ramped, reversed or locked stays as it is, and so do ops that can't apply.
+ * `ops` plus the ops that give each clip in `placed` its own linked sound on a free audio track for
+ * clips' sounds (soundTrack), where the ops and what their links follow (withLinks) leave room. A
+ * clip without sound, muted, ramped, reversed or locked stays as it is, and so do ops that can't apply.
  */
 export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed: ReadonlyArray<Id>): ReadonlyArray<Op> {
   if (!placed.length) return ops;
@@ -39,14 +38,20 @@ export function withSoundPairs(project: Project, ops: ReadonlyArray<Op>, placed:
   return pairs.length ? [...ops, ...pairs] : ops;
 }
 
-const ownSound = (project: Project, item: Item) =>
-  item.type === "audio" && linkMates(project, item.id).some((m) => m.item.type === "clip" && m.item.media === item.media);
+/**
+ * A track a clip's sound can join: one holding clips' own sounds, or an empty one Uncut named that
+ * has no volume or effects of its own (an emptied Music track keeps its mixer).
+ */
+const forClipSounds = (project: Project, track: Track) =>
+  track.items.length ? track.items.every((i) => soundOwner(project, i)) : isDefaultName(track.name) && !track.mixer?.gainDb && !track.mixer?.effects?.length;
 
-/** The audio track for clip `id`'s sound: one free there with only clips' own sounds on it, else a new "Audio N" (with its op). */
+const isDefaultName = (name: string) => /^Audio( \d+)?$/.test(name);
+
+/** The audio track for clip `id`'s sound: a free one for clips' sounds, else a new "Audio N" (with its op). */
 function soundTrack(project: Project, id: Id, taken: Set<string>): { readonly id: Id; readonly project: Project; readonly ops: ReadonlyArray<Op> } {
   const clip = project.tracks.flatMap((t) => t.items).find((i) => i.id === id);
   const start = layout(project).starts.get(id) ?? 0;
-  const found = clip && freeAudioTrack(project, start, clip.duration, (t: Track) => t.items.every((i) => ownSound(project, i)));
+  const found = clip && freeAudioTrack(project, start, clip.duration, (t) => forClipSounds(project, t));
   if (found) return { id: found.id, project, ops: [] };
   const track = { id: uniqueIn("audio-track", taken), kind: "audio" as const, name: nextName(project, "Audio") };
   const ops: ReadonlyArray<Op> = [{ op: "add_track", track }];

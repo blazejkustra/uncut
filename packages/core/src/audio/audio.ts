@@ -139,23 +139,23 @@ function linkedEdges(project: SoundProject): ReadonlyMap<string, MainEdges> {
 }
 
 /** The transitions into and out of the item: its own on the main track, else its main mate's (with `project`). */
-function transitionsOf(track: Track, index: number, project: SoundProject | undefined): MainEdges {
+function transitionsOf(track: Track, index: number, project: SoundProject): MainEdges {
   const item = track.items[index]!;
   if (track.role === "main") return { into: item.transitionIn, out: track.items[index + 1]?.transitionIn };
-  return (project && linkedEdges(project).get(item.id)) ?? {};
+  return linkedEdges(project).get(item.id) ?? {};
 }
 
 /**
  * The frames an item sounds over: its own, plus half an overlapping transition on either side of a
  * main-track cut (the outgoing clip plays on into the incoming one, which starts early). `dipIn` /
  * `dipOut` are the fade lengths of a dip to black at its start / end (half the dip; no overlap).
- * With `project`, a linked sound off the main track takes its main mate's transitions (D349).
+ * A linked sound off the main track takes its main mate's transitions (D349).
  */
 export function audioSpan(
   track: Track,
   index: number,
   start: number,
-  project?: SoundProject,
+  project: SoundProject,
 ): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
   const item = track.items[index]!;
   const { into, out } = transitionsOf(track, index, project);
@@ -262,7 +262,7 @@ export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): 
  * `duckDb` is the track's ducking at that moment (D85, ducking.ts duckDbAt), added to the combined
  * dB like a volume key (so the −60 dB cutoff covers it too).
  */
-export function itemGain(track: Track, index: number, local: number, duckDb = 0, project?: SoundProject): number {
+export function itemGain(track: Track, index: number, local: number, duckDb: number, project: SoundProject): number {
   const item = track.items[index]!;
   const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0, project);
   const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0) + duckDb;

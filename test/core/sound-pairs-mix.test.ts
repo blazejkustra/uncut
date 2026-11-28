@@ -121,3 +121,12 @@ test("D349: an effect dropped on the track of a talk's sound stays an effect whe
     assert.equal(soundRoles(p, { speechMedia }).get(sound)?.role, "voice");
   }
 });
+
+test("D349: an emptied Music track (its volume and ducking kept) takes no placed clip's sound; an empty Audio track does", () => {
+  const music = { id: "music", kind: "audio" as const, name: "Music", items: [], mixer: { gainDb: -15 } };
+  const spare = { id: "spare", kind: "audio" as const, name: "Audio 2", items: [] };
+  const p = add({ ...base(), tracks: [base().tracks[0]!, music, spare] });
+  const sound = soundOf(p, p.tracks.find((t) => t.role === "main")!.items[0]!.id);
+  assert.equal(p.tracks.find((t) => t.items.some((i) => i.id === sound))!.id, "spare");
+  assert.equal(p.tracks.length, 3);
+});

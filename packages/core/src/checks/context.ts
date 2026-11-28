@@ -1,6 +1,6 @@
 import { trackAudible } from "../audio/audio.ts";
 import { duckEntry } from "../audio/ducking.ts";
-import { linkMates } from "../timeline/arrange/links.ts";
+import { soundOwner } from "../timeline/arrange/links.ts";
 import { textLook } from "../text/looks.ts";
 import { wordCount, textPlacement } from "../visual/render.ts";
 import { layout } from "../timeline/timeline.ts";
@@ -208,8 +208,7 @@ export function audible(ctx: CheckContext, track: Track) {
   return a;
 }
 /** D349: the track of the clip whose own sound this is (linked to it, the same media), if any. */
-export const linkedClipTrack = (ctx: CheckContext, item: Item): Track | undefined =>
-  item.type === "audio" ? linkMates(ctx.project, item.id).find((m) => m.item.type === "clip" && m.item.media === item.media)?.track : undefined;
+export const linkedClipTrack = (ctx: CheckContext, item: Item): Track | undefined => soundOwner(ctx.project, item)?.track;
 
 /** A main clip's own sound on an audio track, known to be speech. */
 export const mainSpeech = (ctx: CheckContext, item: Item) => linkedClipTrack(ctx, item)?.role === "main" && !!item.media && ctx.speech.has(item.media);
