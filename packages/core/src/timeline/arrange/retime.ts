@@ -1,4 +1,4 @@
-import { applyEdit, createSession } from "../apply-ops.ts";
+import { applyEdit, createSession, rolledItem } from "../apply-ops.ts";
 import { itemLabel, secs } from "../edit-log.ts";
 import { layout } from "../timeline.ts";
 import { soundMedia } from "../../audio/audio.ts";
@@ -284,6 +284,10 @@ const retimes = (op: Op): string | undefined => {
   return undefined;
 };
 
+/** A linked item's length, cut where its media ends (not when it loops or is a held clip). */
+const toMediaEnd = (frames: number | undefined, from: number, duration: number, speed: number, openEnded: boolean) =>
+  !frames || openEnded || from + duration * speed <= frames ? duration : Math.max(1, Math.floor((frames - from) / speed));
+
 /** What a linked item copies from its clip: while none of it changes, the linked item is left alone. */
 const FOLLOWED_KEYS = ["in", "duration", "speed", "keepPitch", "media", "loop"] as const;
 
@@ -321,7 +325,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     return o === undefined || o === id ? id : originOf(o);
   };
   for (const op of ops) if (op.op === "split_item") origin.set(op.newId, op.item);
-  const touched = new Set(ops.map(retimes).filter((id): id is string => !!id));
+  const touched = new Set(ops.flatMap((op) => [retimes(op), ...rolledItem(project, op)]).filter((id): id is string => !!id));
   const { starts } = layout(after);
   const beforeStarts = layout(project).starts;
   const beforeItems = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
@@ -358,7 +362,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     const media = after.media.find((m) => m.id === a.media);
     const frames = media?.kind === "image" ? undefined : media?.probe?.frames;
     // The linked item's in point moves with the clip's (equal for a detached sound: D123 unchanged).
-    const offset = (a.in ?? 0) - (clipBefore?.in ?? a.in ?? 0);
+    const offset = (a.in ?? 0) - (clipBefore.in ?? 0);
     const isClip = a.type === "clip";
     const aStart = beforeStarts.get(a.id) ?? 0;
     pieces.forEach(({ item: d }, i) => {
@@ -370,7 +374,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
       let linkedTo: string | undefined = d.id;
       // Issue #118: a piece that plays another media now (a replaced fragment): the linked item
       // plays on there as it did before (a cutaway over the same sound), no longer following it.
-      if (clipBefore && d.media !== clipBefore.media) {
+      if (d.media !== clipBefore.media) {
         const s = Math.max(start, aStart);
         const e = Math.min(start + d.duration, aStart + a.duration);
         if (e <= s) {
@@ -383,7 +387,7 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         duration = e - s;
         keepPitch = a.keepPitch;
         linkedTo = undefined;
-      } else if (frames && !d.loop && !(isClip && a.hold) && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
+      } else duration = toMediaEnd(frames, from, duration, speed, !!d.loop || (isClip && !!a.hold));
       const several = pieces.length > 1;
       const fadeIn = i === 0 && a.fadeIn ? Math.min(a.fadeIn, duration) : undefined;
       const fadeOut = i === pieces.length - 1 && a.fadeOut ? Math.min(a.fadeOut, duration - (fadeIn ?? 0)) : undefined;
@@ -467,13 +471,14 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   const check = tryOps(project, synced);
   if (!("problem" in check)) return synced;
   // Something is in the way: the linked items stop following rather than the edit failing.
-  return [
-    ...ops,
-    ...unlink,
-    ...following
-      .filter((id) => afterItems.has(id) && !unlink.some((u) => (u as { item: string }).item === id))
-      .map((id) => ({ op: "update_item" as const, item: id, set: { linkedTo: null } })),
-  ];
+  return [...ops, ...unlink, ...following.map((id) => ({ op: "update_item" as const, item: id, set: { linkedTo: null } }))];
+}
+
+/** The length a linked item takes from its clip: the clip's, ending where the item's media ends. */
+function followedLength(project: Project, follower: Item, clip: Item) {
+  const media = project.media.find((m) => m.id === follower.media);
+  const frames = media?.kind === "image" ? undefined : media?.probe?.frames;
+  return toMediaEnd(frames, follower.in ?? 0, clip.duration, clip.speed ?? 1, !!clip.loop || (follower.type === "clip" && !!follower.hold));
 }
 
 /**
@@ -488,10 +493,11 @@ export function linkLengthProblem(after: Project, ops: ReadonlyArray<Op>): strin
     if (follower?.linkedTo !== op.set.linkedTo) continue;
     const clip = locate(after, op.set.linkedTo)?.item;
     if (clip?.type !== "clip") return `${op.item} can't be linked to ${op.set.linkedTo}: there's no clip with that id.`;
-    if (follower.duration === clip.duration) continue;
+    const length = followedLength(after, follower, clip);
+    if (follower.duration === length) continue;
     return (
       `${op.item} is ${follower.duration} frames and ${clip.id} is ${clip.duration}. A linked item takes its clip's length, ` +
-      `so linking would cut ${op.item} to ${clip.duration} frames. Split or trim ${op.item} to ${clip.duration} frames first ` +
+      `so linking would make ${op.item} ${length} frames. Split or trim ${op.item} to ${length} frames first ` +
       `(and link the rest to the clip it plays under), or leave it unlinked.`
     );
   }
