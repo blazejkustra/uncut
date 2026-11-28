@@ -4,7 +4,7 @@
 // rules the server's validator uses (D52) before showing it as droppable.
 import { overlaps } from "../visual/transitions.ts";
 import { isRamped, sourceSpan } from "./speedRamp.ts";
-import type { Item, ItemType, Media, Problem, Project, Track } from "./types.ts";
+import type { Item, ItemType, Media, Op, Problem, Project, Track } from "./types.ts";
 
 const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>> = {
   clip: ["video"],
@@ -81,6 +81,76 @@ export function projectDuration(project: Pick<Project, "tracks">): number {
   // Captions (D82) draw only where their speech plays: their window doesn't make the video longer.
   for (const track of project.tracks) for (const item of track.items) if (item.type !== "captions") end = Math.max(end, starts.get(item.id)! + item.duration);
   return end;
+}
+
+type InertField = "keys" | "gainKeys";
+
+/** keys move only a clip's or a component's box, gainKeys only change a sound: on these types they do nothing, and what does. */
+const INERT_FIELDS: Readonly<Record<InertField, Partial<Record<ItemType, string>>>> = {
+  keys: {
+    graphic:
+      "a graphic draws itself: animate it in its own HTML (render(t)), move its parts with graphic_elements (x, y, scale, opacity per element), or fade it with animation in/out or transform.opacity",
+    audio: "a sound has no picture: gainKeys change its volume over time",
+    captions: "captions follow their speech and have no box to move: style places them",
+  },
+  gainKeys: {
+    graphic: "a graphic has no sound",
+    text: "a text has no sound",
+    captions: "captions have no sound: gainKeys go on the clip or sound they caption",
+  },
+};
+
+const fieldSet = (value: unknown) => Array.isArray(value) && value.length > 0;
+
+function itemsById(tracks: ReadonlyArray<Track>): Map<string, Item> {
+  return new Map(tracks.flatMap((t) => t.items.map((item): [string, Item] => [item.id, item])));
+}
+
+/** `fields` would give `item` (as it is before the edit) a field its type ignores. */
+function inertFieldOf(item: Item, fields: Partial<Record<InertField, unknown>>, path: string): Problem | undefined {
+  for (const field of Object.keys(INERT_FIELDS) as Array<InertField>) {
+    const instead = INERT_FIELDS[field][item.type];
+    if (!instead || !fieldSet(fields[field]) || fieldSet(item[field])) continue;
+    return err("inert-field", `${path}/${field}`, `"${item.id}" is a ${item.type} item, which ignores ${field}: ${instead}.`);
+  }
+  return undefined;
+}
+
+/**
+ * An edit that gives an item keys or gainKeys its type ignores (INERT_FIELDS), by insert_item or
+ * update_item, at the top level or inside edit_sequence. An item that already has them keeps
+ * them, so planners that carry them along (a trim, a ripple) still work.
+ */
+export function inertFieldProblem(
+  before: Pick<Project, "tracks" | "sequences">,
+  ops: ReadonlyArray<Op>,
+  tracks = before.tracks,
+  path = "/ops",
+): Problem | undefined {
+  const items = itemsById(tracks);
+  const opProblem = (op: Op, at: string): Problem | undefined => {
+    switch (op.op) {
+      case "insert_item": {
+        const old = items.get(op.item.id);
+        const problem = inertFieldOf({ ...op.item, keys: old?.keys, gainKeys: old?.gainKeys }, op.item, `${at}/item`);
+        items.set(op.item.id, op.item);
+        return problem;
+      }
+      case "update_item": {
+        const item = items.get(op.item);
+        return item && inertFieldOf(item, op.set as Partial<Record<InertField, unknown>>, `${at}/set`);
+      }
+      case "edit_sequence":
+        return inertFieldProblem(before, op.ops, before.sequences?.find((s) => s.id === op.sequence)?.tracks ?? [], `${at}/ops`);
+      default:
+        return undefined;
+    }
+  };
+  for (const [i, op] of ops.entries()) {
+    const problem = opProblem(op, `${path}/${i}`);
+    if (problem) return problem;
+  }
+  return undefined;
 }
 
 /** Problems with the timeline itself (see the header). Expects a project of the right shape. */

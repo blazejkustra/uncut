@@ -2,7 +2,20 @@
 // ops against the edit-ops schema before anything is applied.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, EditError, esc, layout, textHtml, validateOps, visualsAt, type Item, type Project } from "../../packages/core/src/index.ts";
+import {
+  applyEdit,
+  createSession,
+  EditError,
+  esc,
+  inertFieldProblem,
+  layout,
+  textHtml,
+  validateOps,
+  visualsAt,
+  type Item,
+  type Op,
+  type Project,
+} from "../../packages/core/src/index.ts";
 
 const project: Project = {
   format: "uncut/0",
@@ -298,4 +311,72 @@ test("trim and split: images keep in 0 and extend left; speed scales the source;
   assert.deepEqual(a!.animation, { in: { module: "move.fade", duration: 20 } }, "clamped to the half");
   assert.deepEqual(b!.animation, { out: { module: "move.fade", duration: 40 } });
   assert.deepEqual([a!.fadeIn, b!.fadeIn], [5, undefined]);
+});
+
+test("keys and gainKeys an item's type ignores are refused with what to use instead; ones it already has can still change", () => {
+  const p: Project = {
+    ...project,
+    media: [{ id: "v", kind: "video", name: "v.mp4", path: "/v.mp4", probe: { frames: 300, hasAudio: true } }],
+    tracks: [
+      { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 60, text: "Hi" }] },
+      {
+        id: "main",
+        kind: "video",
+        role: "main",
+        name: "Main",
+        items: [
+          { id: "c", type: "clip", media: "v", duration: 60 },
+          { id: "g", type: "graphic", src: "graphics/a.html", duration: 60 },
+          {
+            id: "old",
+            type: "graphic",
+            src: "graphics/b.html",
+            duration: 60,
+            keys: [
+              { frame: 0, x: 0 },
+              { frame: 50, x: 100 },
+            ],
+          },
+        ],
+      },
+      { id: "sound", kind: "audio", name: "Sound", items: [{ id: "a", type: "audio", media: "v", start: 0, duration: 60 }] },
+    ],
+    sequences: [
+      {
+        id: "s",
+        name: "S",
+        tracks: [{ id: "s-main", kind: "video", role: "main", name: "Main", items: [{ id: "sg", type: "graphic", src: "graphics/c.html", duration: 30 }] }],
+      },
+    ],
+  };
+  const keys = [
+    { frame: 0, scale: 1 },
+    { frame: 30, scale: 1.2 },
+  ];
+  const problem = (...ops: Array<Op>) => inertFieldProblem(p, ops);
+
+  const graphic = problem({ op: "update_item", item: "g", set: { keys } });
+  assert.equal(graphic?.code, "inert-field");
+  assert.equal(graphic?.path, "/ops/0/set/keys");
+  assert.match(graphic!.message, /"g" is a graphic item, which ignores keys: .*graphic_elements.*animation in\/out or transform.opacity/);
+  assert.match(problem({ op: "update_item", item: "a", set: { keys } })!.message, /audio item, which ignores keys: .*gainKeys/);
+  assert.match(problem({ op: "update_item", item: "t", set: { gainKeys: [{ frame: 0, db: -6 }] } })!.message, /text item, which ignores gainKeys/);
+  assert.equal(
+    problem({ op: "insert_item", track: "main", item: { id: "g2", type: "graphic", src: "graphics/a.html", duration: 30, keys } })?.path,
+    "/ops/0/item/keys",
+  );
+  assert.equal(
+    problem(
+      { op: "insert_item", track: "main", item: { id: "g3", type: "graphic", src: "graphics/a.html", duration: 30 } },
+      { op: "update_item", item: "g3", set: { keys } },
+    )?.path,
+    "/ops/1/set/keys",
+    "an item inserted in the same edit",
+  );
+  assert.equal(problem({ op: "edit_sequence", sequence: "s", ops: [{ op: "update_item", item: "sg", set: { keys } }] })?.path, "/ops/0/ops/0/set/keys");
+
+  assert.equal(problem({ op: "update_item", item: "c", set: { keys } }), undefined, "a clip moves by its keys");
+  assert.equal(problem({ op: "update_item", item: "a", set: { gainKeys: [{ frame: 0, db: -6 }] } }), undefined);
+  assert.equal(problem({ op: "update_item", item: "g", set: { keys: null } }), undefined, "taking keys off");
+  assert.equal(problem({ op: "update_item", item: "old", set: { keys: [{ frame: 0, x: 0 }] } }), undefined, "a trim or ripple carrying keys it already has");
 });

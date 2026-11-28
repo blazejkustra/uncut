@@ -1,4 +1,4 @@
-// Phrase transcription: a long take is split at its silences into phrases, each phrase is
+// Phrase transcription: a take is split at its silences into phrases, each phrase is
 // transcribed on its own (whisper carries no text between them, so a loop can't spread past one
 // phrase), and the answers are merged back into one transcript in seconds of the take.
 import { readFile, writeFile } from "node:fs/promises";
@@ -10,7 +10,7 @@ import type { Speech, TranscriptSegment, TranscriptWord } from "../../../../plug
 import type { SpeechRequest, Transcribe } from "./transcription.ts";
 
 /** Takes longer than this (seconds) are transcribed phrase by phrase. */
-export const PHRASE_TAKE_MIN_S = 90;
+export const PHRASE_TAKE_MIN_S = 15;
 
 export interface PhraseOptions {
   /** A quiet stretch at least this long (seconds) ends a phrase. */
@@ -347,6 +347,52 @@ export function mergePhrases(parts: ReadonlyArray<{ readonly span: Span; readonl
     phrases.push({ start: span.start, end: span.end, text, words: [offset, words.length], ...(guarded.dropped ? { dropped: guarded.dropped } : {}) });
   }
   return { words, segments, phrases };
+}
+
+// ---- retakes ----
+
+/** A phrase is compared with this many phrases after it. */
+export const RETAKE_LOOKAHEAD = 3;
+/** The share of a phrase's words, in order, that open the later phrase when it's a retake of it. */
+export const RETAKE_MATCH = 0.8;
+
+/** How many words of `a` appear in `b` in the same order (the longest common subsequence). */
+function commonWords(a: ReadonlyArray<string>, b: ReadonlyArray<string>): number {
+  let prev = new Array<number>(b.length + 1).fill(0);
+  for (const word of a) {
+    const row = [0];
+    for (let j = 0; j < b.length; j++) row.push(word === b[j] ? prev[j]! + 1 : Math.max(prev[j + 1]!, row[j]!));
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
+/** Whether `later` opens with (nearly) the words of `earlier`: the speaker started over. */
+function opensWith(later: ReadonlyArray<string>, earlier: ReadonlyArray<string>): boolean {
+  if (earlier.length < 2) return false;
+  const matched = commonWords(earlier, later.slice(0, earlier.length + 2));
+  return matched >= 2 && matched >= RETAKE_MATCH * earlier.length;
+}
+
+/**
+ * The phrases said again: a phrase whose words open one of the next RETAKE_LOOKAHEAD phrases (a
+ * false start, or an earlier take of the line). Each maps to the phrase where it's said the last
+ * time (phrase indices).
+ */
+export function retakesOf(phrases: ReadonlyArray<Pick<TranscriptPhrase, "words">>, words: ReadonlyArray<Pick<TranscriptWord, "text">>): Map<number, number> {
+  const texts = phrases.map((p) =>
+    words
+      .slice(p.words[0], p.words[1])
+      .map((w) => norm(w.text))
+      .filter(Boolean),
+  );
+  const again = new Map<number, number>();
+  texts.forEach((text, i) => {
+    const later = texts.slice(i + 1, i + 1 + RETAKE_LOOKAHEAD).findIndex((next) => opensWith(next, text));
+    if (later !== -1) again.set(i, i + 1 + later);
+  });
+  const lastOf = (i: number): number => (again.has(i) ? lastOf(again.get(i)!) : i);
+  return new Map([...again.keys()].map((i) => [i, lastOf(i)]));
 }
 
 /** The language most of the speech is in (by phrase length), from each phrase's detected one. */

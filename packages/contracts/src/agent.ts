@@ -149,6 +149,8 @@ export const Review = Schema.Struct({
   revision: Schema.optional(Schema.Number),
   at: Schema.String,
   turnId: Schema.optional(Schema.String),
+  // The part of the timeline the round reviewed (frames; marker: the section's marker); absent: all of it.
+  range: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number, marker: Schema.optional(Schema.String) })),
 });
 export type Review = typeof Review.Type;
 /**

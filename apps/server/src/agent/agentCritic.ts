@@ -22,8 +22,10 @@ import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCatego
 
 /** The critic's bar: every score at least this. */
 export const REVIEW_PASS = 8;
-/** At most this many review rounds in a turn. */
+/** At most this many review rounds in a turn for one part of the timeline (the whole of it, or one video's marker section). */
 export const REVIEW_ROUNDS = 3;
+/** At most this many review rounds in a turn across all its parts (five videos, three rounds each). */
+export const REVIEW_ROUNDS_TURN = 15;
 /** At most this many on a turn whose message points at a moment (@0:05.7): a fix the user checks themselves. */
 export const REVIEW_ROUNDS_FIX = 1;
 

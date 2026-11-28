@@ -318,7 +318,7 @@ export const makeCore = (ctx: AgentServices) => {
     const now = view();
     if (!now || now.openId !== r.openId) return "";
     const note = noteFor(now, r.owner.agentSeen, readerOf(r.owner));
-    if (!note || noteShowsAll(now, r.owner.agentSeen)) r.owner.seen.add(now.session.revision);
+    if (!note || noteShowsAll(now, r.owner.agentSeen, note)) r.owner.seen.add(now.session.revision);
     return note;
   };
 

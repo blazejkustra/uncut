@@ -118,10 +118,12 @@ export interface ExporterShape {
   /**
    * D292: `use` with one frame session of the open project (one rasteriser, one temp folder, the
    * plan once per width), closed when it ends: many renders without a rasteriser start each.
+   * `project`: draw this project instead, as for renderFrames (review_submit's part of the timeline).
    */
   readonly frameSession: <A, E, R>(
     use: (session: FrameSessionShape) => Effect.Effect<A, E, R>,
     options?: FrameSessionOptions,
+    project?: Project,
   ) => Effect.Effect<A, E | ExportError, R>;
   /** contact_sheet (D65): the first video stream of `path` at each of `seconds`, `width` px wide, as JPEGs. */
   readonly mediaFrames: (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) => Effect.Effect<ReadonlyArray<MediaFrame>, ExportError>;
@@ -134,7 +136,8 @@ export interface ExporterShape {
   /** D246: the loudness gain the export would use for `targetLufs` (the preview's At target). */
   readonly previewLoudness: (targetLufs: number) => Effect.Effect<{ gainDb?: number; lufs?: number; cancelled?: boolean }, ExportError>;
   /** The open project's mix as the export plays it, measured whole and by role (undefined: nothing sounds). */
-  readonly measureMix: () => Effect.Effect<MixTraces | undefined, ExportError>;
+  /** `project`: measure this project (the open one's folder and media) instead, as for renderFrames. */
+  readonly measureMix: (project?: Project) => Effect.Effect<MixTraces | undefined, ExportError>;
   /** JPEGs (rendered or pulled frames) as pixels, for the colour readout. */
   readonly jpegPixels: (jpegs: ReadonlyArray<Buffer>) => Effect.Effect<ReadonlyArray<RgbImage>, ExportError>;
 }
@@ -421,10 +424,11 @@ export const layer = Layer.effect(
       });
 
     const frameSlots = yield* Semaphore.make(FRAME_SESSIONS_MAX);
-    const frameSession = <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options: FrameSessionOptions = {}) =>
+    const frameSession = <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options: FrameSessionOptions = {}, instead?: Project) =>
       frameSlots.withPermits(1)(
         Effect.gen(function* () {
-          const { dir, project, mediaPath } = yield* current;
+          const { dir, project: open, mediaPath } = yield* current;
+          const project = instead ?? open;
           const bin = yield* Effect.promise(ffmpegBin);
           if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
           const failed = (error: unknown) => new ExportError({ reason: "missing-media", message: (error as Error).message });
@@ -513,9 +517,10 @@ export const layer = Layer.effect(
       });
 
     const mixMeasure = makeMixMeasure();
-    const measureMix = () =>
+    const measureMix = (instead?: Project) =>
       Effect.gen(function* () {
-        const { dir, project, mediaPath } = yield* current;
+        const { dir, project: open, mediaPath } = yield* current;
+        const project = instead ?? open;
         const bin = yield* Effect.promise(ffmpegBin);
         if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to measure the sound." });
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, project, true));

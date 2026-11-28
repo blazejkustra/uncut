@@ -1,6 +1,6 @@
 // A user or agent edit to the open project: checked (schema, D6, names), then committed (the projects layer).
 import type { ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, describeOp, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
+import { applyEdit, describeOp, EditConflict, EditError, inertFieldProblem, type Op, type Project, type Session } from "@uncut/core";
 import { withLinkedAudio } from "@uncut/core/arrange";
 import * as Effect from "effect/Effect";
 
@@ -56,6 +56,8 @@ export const makeEditUnlocked = <E>(ctx: EditCtx<E>) => {
           { code: "conflict", path: "/", message: what },
         ]);
       }
+      const inert = agent ? inertFieldProblem(p.session.project as Project, ops as ReadonlyArray<Op>) : undefined;
+      if (inert) return yield* refused(inert.message, [inert]);
       const applied = yield* Effect.try({
         // validateOps above checked every op against the edit-ops schema.
         try: () =>

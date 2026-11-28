@@ -209,7 +209,7 @@ export function talkTranscript(fixture: Fixture) {
     });
     segments.push({ start: r3(piece.start), end: r3(piece.end), text: piece.text!, words: [first, words.length] });
   }
-  return { hasAudio: true, seconds: r3(fixture.seconds), language: "en", requestedLanguage: "auto", model: "base", segments, words };
+  return { hasAudio: true, seconds: r3(fixture.seconds), language: "en", requestedLanguage: "auto", model: "base", segments, words, phrases: segments };
 }
 
 /**

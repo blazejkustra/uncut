@@ -5,6 +5,7 @@ import {
   type LogEntry,
   manualEditsNote,
   netZeroNote,
+  NOTE_IN_BRIEF,
   othersEditsNote,
   type Project,
   redoTurn,
@@ -57,13 +58,16 @@ export function noteFor(view: ProjectView, since: number, reader?: Reader): stri
 }
 
 /**
- * D6: whether noteFor(view, since) shows everything that changed: the net edits by item from the
- * state at `since`, with no change it can only name (an undo or redo of the agent's edits, Undo
- * turn, a History jump, a reload, an outside edit) and no fallback list of log entries. Only then
- * may the agent edit from the revision the note names without reading the project again.
+ * D6: whether `note`, noteFor(view, since), shows everything that changed: the net edits by item
+ * from the state at `since`, listed in full (a note in brief names only ids), with no change it
+ * can only name (an undo or redo of the agent's edits, Undo turn, a History jump, a reload, an
+ * outside edit) and no fallback list of log entries. Only then may the agent edit from the
+ * revision the note names without reading the project again.
  */
-export const noteShowsAll = (view: ProjectView, since: number) =>
-  view.stateAt(Math.max(since, view.openRevision)) !== undefined && !view.unlogged.some((u) => u.revision > since && !u.quiet && !u.unchanged);
+export const noteShowsAll = (view: ProjectView, since: number, note: string) =>
+  !note.includes(NOTE_IN_BRIEF) &&
+  view.stateAt(Math.max(since, view.openRevision)) !== undefined &&
+  !view.unlogged.some((u) => u.revision > since && !u.quiet && !u.unchanged);
 
 /** A note carried over from an earlier opening, then the current one (left out when the carried note already ends with it: a second reopen with nothing done in between). */
 export const joinNotes = (carried: string | undefined, current: string) =>

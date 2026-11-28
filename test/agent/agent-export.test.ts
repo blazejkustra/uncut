@@ -166,6 +166,7 @@ function harness(
     busy?: boolean;
     fail?: string;
     ranges?: unknown;
+    project?: Record<string, unknown>;
   } = {},
 ) {
   const started: Array<Record<string, any>> = [];
@@ -216,7 +217,16 @@ function harness(
   };
   const v = {
     dir: project,
-    session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } },
+    session: {
+      project: {
+        name: "Clip",
+        master: { loudness: { targetLufs: -16 } },
+        canvas: { width: 1080, height: 1350, fps: 30 },
+        tracks: [],
+        media: [],
+        ...opts.project,
+      },
+    },
   };
   const call = async (args: Record<string, unknown>) => {
     const out = (await Effect.runPromise(run(r as any, v as any, args))) as unknown as { isError?: boolean; content: Array<{ text: string }> };
@@ -382,6 +392,38 @@ test('export_video: a dangling link at the target gets " 2", at most a few expor
   assert.deepEqual(cancelled, ["j"]);
 });
 
+test("export_video: one video by its marker or frames, named after the marker; each part has its own exports in a turn", async () => {
+  process.env.HOME = home;
+  const desktop = join(home, "Desktop");
+  const solid = (id: string) => ({ id, type: "component", module: "component.solid", duration: 300, props: { color: "#000" } });
+  const promos = ["Promo 1", "Promo 2", "Promo 3", "Promo 4", "Promo 5"];
+  const h = harness({
+    prompt: "export each promo to desktop",
+    project: {
+      tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: promos.map((_, i) => solid(`p${i}`)) }],
+      markers: promos.map((label, i) => ({ frame: i * 300, label })),
+    },
+  });
+  for (const [i, marker] of promos.entries()) {
+    const out = await h.call({ folder: "Desktop", marker });
+    assert.equal(out.isError, false, out.text);
+    assert.equal(out.json.saved, join(desktop, `${marker}.mp4`));
+    assert.deepEqual(h.started[i]!.range, { from: i * 300, to: (i + 1) * 300 }, marker);
+  }
+  await h.call({ folder: "Desktop", from: 0, to: 300, name: "Cut" });
+  assert.deepEqual(h.started.at(-1)!.range, { from: 0, to: 300 });
+  assert.equal(h.started.length, 6, "five videos and a frame range, past the 3 a turn of one part");
+  await h.call({ folder: "Desktop", marker: "Promo 1" });
+  await h.call({ folder: "Desktop", marker: "Promo 1" });
+  const fourth = await h.call({ folder: "Desktop", marker: "promo 1" });
+  assert.equal(fourth.isError, true);
+  assert.match(fourth.json.refused, /already exported 3 videos of this part of the timeline/);
+  assert.match((await h.call({ folder: "Desktop", marker: "Promo 9" })).text, /No marker is named "Promo 9"/);
+  assert.match((await h.call({ folder: "Desktop", range: "marks", marker: "Promo 2" })).text, /not both/);
+  for (const name of ["Promo 1", "Promo 1 2", "Promo 1 3", "Promo 2", "Promo 3", "Promo 4", "Promo 5", "Cut"])
+    rmSync(join(desktop, `${name}.mp4`), { force: true });
+});
+
 test("export_video: a ProRes codec saves a .mov, and transparency needs ProRes 4444", async () => {
   process.env.HOME = home;
   const h = harness({ prompt: "lets export to desktop" });
@@ -400,12 +442,15 @@ test("export_video: the tool, its labels and the prompt line", () => {
     "codec",
     "folder",
     "fps",
+    "from",
     "loudness",
+    "marker",
     "motionBlur",
     "name",
     "preset",
     "range",
     "shortSide",
+    "to",
     "transparent",
   ]);
   assert.match(tool.description, /only when the user asks/);

@@ -1,12 +1,13 @@
 // The production process the agent follows (U7–U9, U15–U17, U19; D186–D191), pure: what each
 // message says about the brand kit, skills and plan, the build gate, ask_user's card and answer,
 // brand_write's merge and the beat grid (the critic is agentCritic.ts). agent.ts runs them with its state.
-import type { AgentAnswer, AgentPlan, AgentQuestion, BrandKit, BrandSkill, BrandStyle } from "@uncut/contracts";
+import type { AgentAnswer, AgentPlan, AgentQuestion, AgentTurn, BrandKit, BrandSkill, BrandStyle, Review } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
 import { REVIEW_ROUNDS, REVIEW_ROUNDS_FIX } from "./agentCritic.ts";
 
 import { normHex, normStyle } from "../brand/store.ts";
 import type { BeatsResult } from "../analysis/beats.ts";
+import { EXTERNAL_PROMPT } from "./session/types.ts";
 
 /** How long a question or storyboard card waits for the user (they may be thinking it over). */
 export const QUESTION_MS = 15 * 60_000;
@@ -182,7 +183,7 @@ export function planOnly(plan: AgentPlan): string {
       ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`),
     ];
     p.push(
-      `Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter(
+      `Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}${reviewedPart(last)}, ${REVIEW_SCORES.filter(
         (k) => last.scores[k] !== undefined,
       )
         .map((k) => `${k} ${last.scores[k]}`)
@@ -193,6 +194,46 @@ export function planOnly(plan: AgentPlan): string {
   }
   // Nothing planned yet: no block (a small edit needs none).
   return p.length ? `<plan>\n${p.join("\n")}\n</plan>` : "";
+}
+
+/** What part of the timeline a round reviewed, for the plan's line: none for all of it. */
+const reviewedPart = (review: Review) =>
+  !review.range ? "" : review.range.marker ? ` of "${review.range.marker}"` : ` of frames ${review.range.from} to ${review.range.to}`;
+
+/** The <directions> block: each message of the user word for word, at most this many characters, */
+export const DIRECTION_CHARS = 1000;
+/** and at most this many in all, the newest kept. */
+export const DIRECTIONS_CHARS = 5000;
+
+type Prompted = Pick<AgentTurn, "prompt" | "startedAt" | "kind">;
+
+const directionLine = (t: Prompted, n: number) => {
+  const text = t.prompt.trim();
+  return `Turn ${n}, ${t.startedAt.slice(0, 10)}: ${text.length > DIRECTION_CHARS ? `${text.slice(0, DIRECTION_CHARS)}…` : text}`;
+};
+
+function newestWithin(lines: ReadonlyArray<string>, max: number): Array<string> {
+  const kept: Array<string> = [];
+  let used = 0;
+  for (const l of [...lines].reverse()) {
+    if (used + l.length > max) break;
+    kept.unshift(l);
+    used += l.length + 1;
+  }
+  return kept;
+}
+
+/**
+ * The user's messages in this project as they wrote them (history.db keeps every turn's
+ * prompt), numbered and dated, newest last; "" before the first. Sent with every message and in
+ * plan_read, so a compaction or the agent's own brief never stands in for them.
+ */
+export function directionsBlock(turns: ReadonlyArray<Prompted>): string {
+  const lines = turns.filter((t) => t.kind !== "compact" && t.prompt !== EXTERNAL_PROMPT).map((t, i) => directionLine(t, i + 1));
+  const kept = newestWithin(lines, DIRECTIONS_CHARS);
+  if (!kept.length) return "";
+  const left = lines.length - kept.length;
+  return `<directions>\nThe user's messages in this project, word for word, newest last${left ? ` (${left} older ones left out)` : ""}. Each direction in them holds until a later message changes it; your brief, storyboard and summaries never replace them.\n${kept.join("\n")}\n</directions>`;
 }
 
 /** ask_user's question from its arguments, or why it isn't one. */
@@ -217,7 +258,7 @@ export function answerOut(q: AgentQuestion, outcome: "answered" | "skipped" | "t
     return {
       answered: false,
       message: outcome === "timeout" ? "Nobody answered the question in 15 minutes." : "The user skipped the question.",
-      next: "Don't invent what was asked about: go on with what you know, say in one line what you assumed, or stop and ask in your reply.",
+      next: "Don't invent what was asked about: go on with what you know (one of the options you offered, said in one line), or leave that part undone and say so in the reply's first sentence, or stop and ask in your reply. Never pick something you didn't offer.",
     };
   }
   const choices = answer.choices.filter((c) => q.options.some((o) => o.label === c));

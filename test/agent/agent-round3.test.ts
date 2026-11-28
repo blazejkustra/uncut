@@ -448,6 +448,12 @@ test(
       assert.match(planOf(3), /a teaser for Acme/, "after the compaction: whole again");
       assert.match(s.runs()[3]!.prompt, /<brand>\nNo brand kit is chosen/, "the brand block whole too");
       assert.equal(s.runs()[3]!.pid, s.runs()[0]!.pid, "the same claude (not a new session)");
+      assert.doesNotMatch(s.runs()[0]!.prompt, /<directions>/, "the first message has no earlier ones");
+      assert.match(
+        s.runs()[3]!.prompt,
+        /<directions>\n[^]*Turn 1, \d{4}-\d\d-\d\d: one\nTurn 2, [^:]*: two\nTurn 3, [^:]*: three\n<\/directions>/,
+        "D341: after the compaction the user's earlier messages come word for word",
+      );
       const read = readFileSync(results, "utf8")
         .trim()
         .split("\n")
@@ -455,6 +461,7 @@ test(
         .map((l) => JSON.parse(l))
         .find((x) => x.tool === "plan_read");
       assert.match(JSON.stringify(read?.result), /a teaser for Acme/, "plan_read gives the brief");
+      assert.match(JSON.stringify(read?.result), /Turn 4, [^:]*: four/, "and the user's messages, this one too");
     } finally {
       await s.stop();
     }

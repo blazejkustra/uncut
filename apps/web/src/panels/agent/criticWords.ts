@@ -21,6 +21,13 @@ export function criticLabel(status: CriticRun["status"], review: Review | undefi
 /** A round as its trail chip says it. */
 export const roundOutcome = (review: Review): string => criticLabel(statusOf(review), review);
 
+/** The part of the timeline a round reviewed, as its row names it: its marker or frames; "" for all of it. */
+export const rangeName = (review: Review | undefined): string =>
+  !review?.range ? "" : (review.range.marker ?? `frames ${review.range.from} to ${review.range.to}`);
+
+/** The rounds that reviewed the same part of the timeline as `review`. */
+export const sameRange = (reviews: ReadonlyArray<Review>, review: Review): ReadonlyArray<Review> => reviews.filter((r) => rangeName(r) === rangeName(review));
+
 /** The rounds up to this one, the last ones when there are many. */
 export const roundTrail = (reviews: ReadonlyArray<Review>, round: number, most = 4): ReadonlyArray<Review> =>
   reviews.filter((r) => r.round <= round).slice(-most);

@@ -21,7 +21,7 @@ const CLIP_SAMPLES = [0.25, 0.5, 0.75];
 
 /** review_submit's measured sound facts for the critic's sound sheet. */
 export const measuredMixLines = (exporter: Pick<ExporterShape, "measureMix">, project: Project) =>
-  exporter.measureMix().pipe(
+  exporter.measureMix(project).pipe(
     Effect.map((traces) => (traces ? mixLines(mixReport(project, traces)) : [])),
     Effect.catch((e) => Effect.succeed([`The mix couldn't be measured: ${e.message}`])),
   );

@@ -8,7 +8,7 @@ import { locksNote, type Project, reviewNotesTurnBlock, sectionsNote } from "@un
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { calledSkills, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
+import { calledSkills, directionsBlock, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, playheadLine } from "../agentTools.ts";
@@ -184,7 +184,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       const note = compacting ? "" : joinNotes(owner.carried, changes);
       // The note names the revision the project is at now ("now at revision N"): the agent may edit
       // from it when it shows every change (noteShowsAll) and no earlier opening's note comes with it.
-      if (changes && !owner.carried && noteShowsAll(v, owner.agentSeen)) owner.seen.add(v.session.revision);
+      if (changes && !owner.carried && noteShowsAll(v, owner.agentSeen, changes)) owner.seen.add(v.session.revision);
       const project = v.session.project as Project;
       // What the prompt's @labels point at (D140), only those still in the prompt.
       const pointed = (mentions ?? [])
@@ -325,6 +325,7 @@ export const makeSend = (ctx: SpawnCtx) => {
       // failed before claude read it doesn't count).
       const blocks = committedBlocks(owner, s);
       const lean = leanPlanBlock(planBlock, blocks.committed);
+      const directions = compacting ? "" : directionsBlock(owner.turns);
       let message = compacting
         ? text
         : [
@@ -333,6 +334,7 @@ export const makeSend = (ctx: SpawnCtx) => {
             contextBlock(project, pointed),
             foldersBlock,
             planBlock ? lean.text : "",
+            directions,
             team,
             context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : "",
           ]

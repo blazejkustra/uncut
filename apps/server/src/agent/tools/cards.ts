@@ -31,7 +31,6 @@ import {
   defectForAgent,
   noMoreRounds,
   reviewNext,
-  reviewOutlook,
   roundLimit,
   roundLimitLine,
   runCritic,
@@ -101,6 +100,9 @@ import { censusNear, legibilityFacts, legibilityFindings, requestedTypePx, textF
 import { criticRow } from "./criticRow.ts";
 import { findingFrames, stillName, withFrames } from "../criticStills.ts";
 import { typedPromptCheck } from "../agentTypedPrompt.ts";
+import { rangeArgs, rangeBudget, rangeKey, rangeStoryboard, shiftIntended, shiftReview } from "../timelineRange.ts";
+import { flattenSequences } from "@uncut/core/nesting";
+import { sliceProject } from "@uncut/core/slice";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_REVIEW_MS = 30_000;
@@ -465,27 +467,31 @@ export const makeCardTools = (ctx: GenerateCtx) => {
    */
   const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
-      const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
-      // The last round of an earlier turn: a turn's first round that finds the same again stops there.
-      const earlier = r.owner.plan.reviews.filter((x) => x.turnId !== r.turn.id).at(-1);
-      // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
+      const whole = v.session.project as Project;
+      const picked = rangeArgs(whole, args);
+      if ("problem" in picked) return textResult(picked.problem, true);
+      const { range } = picked;
+      const key = rangeKey(range);
       const ceiling = reviewCeiling(r.turn.prompt);
-      const outlook = reviewOutlook(turnReviews(), r.reviewRounds, earlier, ceiling);
-      if (!outlook.more) {
-        return textResult(noMoreRounds(outlook.why, turnReviews().at(-1)), true);
-      }
-      const project = v.session.project as Project;
+      const budget = () =>
+        rangeBudget(r.owner.plan.reviews, { turnId: r.turn.id, range, done: r.rangeRounds.get(key) ?? 0, turnDone: r.reviewRounds, cap: ceiling });
+      const { outlook, rounds, last: lastRound } = budget();
+      if (!outlook.more) return textResult(noMoreRounds(outlook.why, rounds.at(-1)), true);
+      const sliced = range ? sliceProject(flattenSequences(whole), range) : whole;
+      if ("problem" in sliced) return textResult(sliced.problem, true);
+      const project = sliced;
       const fps = project.canvas.fps;
+      const offset = range ? range.from / fps : 0;
       const { starts, duration } = layout(project);
       if (!project.tracks.some((t) => t.items.length) || duration <= 0) return textResult("The timeline is empty: there's nothing to review yet.", true);
-      const stamp = stampOf(r, v);
+      const stamp = `${key} ${stampOf(r, v)}`;
       if (r.reviewedStamp === stamp)
         return textResult(
           `Nothing changed since round ${r.reviewRounds}: fix what the critic found (timeline_edit, graphic_write), look at the fixed moments, then review_submit again.`,
           true,
         );
       // The fix claims: ids from the last round, each moment rendered after the last change.
-      const prev = r.owner.plan.reviews.at(-1);
+      const prev = lastRound && shiftReview(lastRound, -offset);
       const findings = prev ? [...(prev.blockers ?? []), ...prev.defects] : [];
       const claims: Array<CriticClaim> = [];
       for (const raw of Array.isArray(args.fixes) ? args.fixes.slice(0, 10) : []) {
@@ -513,7 +519,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           );
         claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what, ...(found.fix ? { fix: found.fix } : {}) });
       }
-      const round = r.reviewRounds + 1;
+      const round = (r.rangeRounds.get(key) ?? 0) + 1;
       // The review's number across the project (the row's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
       const row = criticRow(r, number, () => persist(r.owner), publish);
@@ -539,7 +545,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         // The evidence, rendered by Uncut at this revision: a contact sheet, phone-size frames, each claimed fix's moment.
         const last = duration - 1;
         const clampF = (f: number) => Math.max(0, Math.min(last, Math.round(f)));
-        const sb = r.owner.plan.storyboard;
+        const sb = range ? rangeStoryboard(r.owner.plan.storyboard, range, fps) : r.owner.plan.storyboard;
         const phoneFrames = [...new Set([0, clampF(2 * fps), ...(sb?.beats ?? []).map((b) => clampF(b.end * fps - 1)), last])]
           .sort((a, b) => a - b)
           .slice(0, 8);
@@ -797,6 +803,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 return { mine, evidence, motion, rehearsal };
               }),
             { downscale: true },
+            project,
           )
           .pipe(
             Effect.catch((error) =>
@@ -816,7 +823,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         row.step("Running Uncut's layout, sound and text checks");
         // The second render of each graphic, in a session of its own.
         const theirs = twiceOf.length
-          ? yield* exporter.frameSession(hashes, { downscale: true }).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>)))
+          ? yield* exporter.frameSession(hashes, { downscale: true }, project).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>)))
           : [];
         const checked: Array<string> = [];
         const differed: Array<string> = [];
@@ -854,7 +861,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         // D217: the rubric (the brief's type, the active skills, a kit) sets the sound profile; density
         // and level fail a round only under the strict one. Findings the user marked Intended stay out.
         const rubric = yield* rubricOf(v, r);
-        const intended = r.owner.plan.intended ?? [];
+        const intended = shiftIntended(r.owner.plan.intended ?? [], -offset);
         const checks: Array<CriticFinding> = projectChecks(project, {
           rules: [...LAYOUT_RULES, fontCheck],
           disabled: CHECK_IDS.filter((id) => !keep.has(id)),
@@ -1013,18 +1020,26 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           usage: "usage" in run ? run.usage : undefined,
         });
         row.step("Keeping the frames the findings point at");
-        const review = withFrames(judged, fps, last, yield* keepFindingStills(v, judged, last));
+        const placed = { ...shiftReview(judged, offset), ...(range ? { range } : {}) };
+        const timelineLast = layout(whole).duration - 1;
+        const review = withFrames(placed, fps, timelineLast, yield* keepFindingStills(v, placed, timelineLast));
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
-        r.reviewRounds = round;
+        r.reviewRounds += 1;
+        r.rangeRounds.set(key, round);
         r.looked = { sheet: false, phone: false };
         r.measuredPosition = false;
         r.reviewedStamp = review.passed ? undefined : stamp;
         yield* refreshPlan(r, v);
-        const after = reviewOutlook(turnReviews(), r.reviewRounds, earlier, ceiling);
-        const limit = roundLimit(review, after, r.reviewRounds);
+        const after = budget().outlook;
+        const limit = roundLimit(review, after, round);
         row.done(review, limit ? roundLimitLine(review) : undefined);
+        const onTimeline = (frame: number) => clampF(frame) + (range?.from ?? 0);
+        const timelineCensus = [...evidence.fixCensus, ...census].map((c) => ({ ...c, frame: c.frame + (range?.from ?? 0) }));
         return textResult({
           round: number,
+          ...(range
+            ? { range: { ...range, motionFrames: `the motion scan's frames count from frame ${range.from}; every other time is the timeline's` } }
+            : {}),
           passed: review.passed,
           ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
           scores: review.scores,
@@ -1066,14 +1081,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             after,
             (at) => {
               // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
-              const f = clampF(at * fps);
+              const f = clampF((at - offset) * fps);
               const g = project.tracks
                 .filter((t) => !t.hidden)
                 .flatMap((t) => t.items)
                 .find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
               const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
-              const measured = censusNear([...evidence.fixCensus, ...census], at, fps);
-              return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}${measured ? `; ${measured}` : ""}`;
+              const measured = censusNear(timelineCensus, at, fps);
+              return `f ${onTimeline(f)}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${onTimeline(f - 6)} to ${onTimeline(f + 6)}${measured ? `; ${measured}` : ""}`;
             },
             { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) },
           ),

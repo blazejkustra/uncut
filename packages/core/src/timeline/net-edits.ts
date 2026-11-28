@@ -2,8 +2,9 @@
 // last saw against the project now, per item, track and media entry, with final values. Anything
 // that was done and then undone, deleted or reverted nets to nothing and isn't listed.
 import { applyEdit, EditError } from "./apply-ops.ts";
-import { describeOp, itemLabel } from "./edit-log.ts";
-import type { Id, Item, LogEntry, Media, Project, Session, Track } from "./types.ts";
+import { describeOp, HAND_EDITS_KEPT, itemLabel } from "./edit-log.ts";
+import { itemUsesMedia, usedMediaIds } from "./mediaPlan.ts";
+import type { Id, Item, LogEntry, Media, Op, Project, Session, Track } from "./types.ts";
 
 /** Which log entries a note reports; the rest are the reader's own (today: the agent's). */
 export type EntryFilter = (entry: LogEntry) => boolean;
@@ -29,6 +30,21 @@ function changedFields(before: object, after: object, skip: ReadonlySet<string>)
   }
   return set;
 }
+
+/** In a note too long to list in full, the item or media a change is counted under, by verb (and track). */
+interface Brief {
+  readonly verb: "Added" | "Changed" | "Removed";
+  readonly id: Id;
+  readonly media?: true;
+  readonly track?: Id;
+}
+
+interface Change {
+  readonly text: string;
+  readonly brief?: Brief;
+}
+
+const things = (n: number) => `${n} thing${n === 1 ? "" : "s"}`;
 
 const seconds = (frames: number, fps: number) => `${(frames / fps).toFixed(1)}s`;
 
@@ -83,7 +99,7 @@ function fieldLines(after: Project, item: Item, set: Record<string, unknown>): A
   return groups.map((g) => describeOp({ op: "update_item", item: item.id, set: Object.fromEntries(g.map((k) => [k, set[k]])) }, after));
 }
 
-function changedItem(after: Project, was: Placed, now: Placed): Array<string> {
+function changedItem(after: Project, was: Placed, now: Placed): Array<Change> {
   const fps = after.canvas.fps;
   const timing: Array<string> = [];
   if (was.track.id !== now.track.id) timing.push(`moved to track ${now.track.id}`);
@@ -93,7 +109,8 @@ function changedItem(after: Project, was: Placed, now: Placed): Array<string> {
   if ((was.item.in ?? 0) !== (now.item.in ?? 0)) timing.push(`source in ${framesChange(was.item.in ?? 0, now.item.in ?? 0, fps)}`);
   const lines = timing.length ? [`Changed ${itemLabel(after, now.item.id)}: ${timing.join(", ")}`] : [];
   const set = changedFields(was.item, now.item, TIMING);
-  return [...lines, ...fieldLines(after, now.item, set)];
+  const brief: Brief = { verb: "Changed", id: now.item.id };
+  return [...lines, ...fieldLines(after, now.item, set)].map((text) => ({ text, brief }));
 }
 
 /** A track whose surviving items play in another order (a main track's reorder, which shifts every later start). */
@@ -104,32 +121,34 @@ function reordered(before: Track, after: Track) {
   return !same(was, now);
 }
 
-function itemLines(before: Project, after: Project): Array<string> {
+function itemLines(before: Project, after: Project): Array<Change> {
   const a = placedItems(before);
   const b = placedItems(after);
-  const lines: Array<string> = [];
+  const lines: Array<Change> = [];
   for (const [id, now] of b) {
     const was = a.get(id);
-    if (!was) lines.push(addedItem(after, now));
+    if (!was) lines.push({ text: addedItem(after, now), brief: { verb: "Added", id, track: now.track.id } });
     else if (!same(was.item, now.item) || was.track.id !== now.track.id) lines.push(...changedItem(after, was, now));
   }
-  for (const [id, was] of a) if (!b.has(id)) lines.push(`Removed ${itemLabel(before, id)} from track ${was.track.id}`);
+  for (const [id, was] of a)
+    if (!b.has(id)) lines.push({ text: `Removed ${itemLabel(before, id)} from track ${was.track.id}`, brief: { verb: "Removed", id, track: was.track.id } });
   for (const track of after.tracks) {
     const old = before.tracks.find((t) => t.id === track.id);
-    if (old && track.role === "main" && reordered(old, track)) lines.push(`Reordered track ${track.id}: ${track.items.map((i) => i.id).join(", ")}`);
+    if (old && track.role === "main" && reordered(old, track)) lines.push({ text: `Reordered track ${track.id}: ${track.items.map((i) => i.id).join(", ")}` });
   }
   return lines;
 }
 
 const TRACK_SKIP = new Set(["id", "items"]);
 
-function trackLines(before: Project, after: Project): Array<string> {
+/** A track added since that is empty now (a take's track whose take was deleted) says nothing the agent needs. */
+function trackLines(before: Project, after: Project): Array<Change> {
   const lines: Array<string> = [];
   for (const track of after.tracks) {
     const old = before.tracks.find((t) => t.id === track.id);
     if (!old) {
-      const { items: _, ...fields } = track;
-      lines.push(describeOp({ op: "add_track", track: fields }, after));
+      const { items, ...fields } = track;
+      if (items.length) lines.push(describeOp({ op: "add_track", track: fields }, after));
       continue;
     }
     const set = changedFields(old, track, TRACK_SKIP);
@@ -140,34 +159,54 @@ function trackLines(before: Project, after: Project): Array<string> {
   const order = (p: Project, keep: (id: Id) => boolean) => p.tracks.map((t) => t.id).filter(keep);
   const inBoth = (id: Id) => before.tracks.some((t) => t.id === id) && after.tracks.some((t) => t.id === id);
   if (!same(order(before, inBoth), order(after, inBoth))) lines.push(`Reordered the tracks: ${after.tracks.map((t) => t.id).join(", ")}`);
-  return lines;
+  return lines.map((text) => ({ text }));
 }
 
-function mediaLines(before: Project, after: Project): Array<string> {
-  const lines: Array<string> = [];
+/** `discarded`: media added since whose every use was deleted again (a take recorded and thrown away), left out. */
+function mediaLines(before: Project, after: Project, discarded: ReadonlySet<Id>): Array<Change> {
+  const lines: Array<Change> = [];
   const byId = (list: ReadonlyArray<Media>, id: Id) => list.find((m) => m.id === id);
   for (const m of after.media) {
     const old = byId(before.media, m.id);
-    if (!old) lines.push(describeOp({ op: "add_media", media: m }, after));
-    else {
-      const set = changedFields(old, m, new Set(["id"]));
-      if (Object.keys(set).length) lines.push(describeOp({ op: "update_media", media: m.id, set }, after));
+    if (!old) {
+      if (!discarded.has(m.id)) lines.push({ text: describeOp({ op: "add_media", media: m }, after), brief: { verb: "Added", id: m.id, media: true } });
+      continue;
     }
+    const set = changedFields(old, m, new Set(["id"]));
+    if (Object.keys(set).length)
+      lines.push({ text: describeOp({ op: "update_media", media: m.id, set }, after), brief: { verb: "Changed", id: m.id, media: true } });
   }
-  for (const m of before.media) if (!byId(after.media, m.id)) lines.push(describeOp({ op: "delete_media", media: m.id }, before));
+  for (const m of before.media)
+    if (!byId(after.media, m.id))
+      lines.push({ text: describeOp({ op: "delete_media", media: m.id }, before), brief: { verb: "Removed", id: m.id, media: true } });
   return lines;
 }
 
 const PROJECT_SKIP = new Set(["tracks", "media"]);
 
-function projectLines(before: Project, after: Project): Array<string> {
+function projectLines(before: Project, after: Project): Array<Change> {
   const set = changedFields(before, after, PROJECT_SKIP);
-  return Object.entries(set).map(([k, v]) => describeOp({ op: "update_project", set: { [k]: v } }, after));
+  return Object.entries(set).map(([k, v]) => ({ text: describeOp({ op: "update_project", set: { [k]: v } }, after) }));
+}
+
+function changesBetween(before: Project, after: Project, discarded: ReadonlySet<Id> = new Set()): Array<Change> {
+  return [...projectLines(before, after), ...trackLines(before, after), ...mediaLines(before, after, discarded), ...itemLines(before, after)];
 }
 
 /** Every difference from `before` to `after`, in words, one entry each (no "- "; an added item's fields as SUB_LINEs). */
 export function projectChanges(before: Project, after: Project): Array<string> {
-  return [...projectLines(before, after), ...trackLines(before, after), ...mediaLines(before, after), ...itemLines(before, after)];
+  return changesBetween(before, after).map((c) => c.text);
+}
+
+const insertedItems = (ops: ReadonlyArray<Op>): Array<Item> =>
+  ops.flatMap((op) => (op.op === "insert_item" ? [op.item] : op.op === "edit_sequence" ? insertedItems(op.ops) : []));
+
+/** Media the reported entries since `since` put on the timeline that nothing uses any more: takes recorded and deleted. */
+function discardedMedia(session: Session, since: number, reported: EntryFilter): Set<Id> {
+  const { tracks, sequences = [] } = session.project;
+  const used = usedMediaIds({ tracks: [...tracks, ...sequences.flatMap((s) => s.tracks)] });
+  const placed = session.log.filter((e) => e.revision > since && reported(e)).flatMap((e) => insertedItems(e.ops));
+  return new Set(session.project.media.filter((m) => !used.has(m.id) && placed.some((item) => itemUsesMedia(item, m.id))).map((m) => m.id));
 }
 
 /**
@@ -188,10 +227,53 @@ export function knownProject(before: Project, session: Session, since: number, r
   return s.project;
 }
 
+function netEntries(before: Project, session: Session, since: number, reported: EntryFilter): Array<Change> {
+  return changesBetween(knownProject(before, session, since, reported), session.project, discardedMedia(session, since, reported));
+}
+
 /** The net changes made by the entries `reported` accepts since `since`, `before` being the project at `since`. */
 export function netChanges(before: Project, session: Session, since: number, reported: EntryFilter = byUser): Array<string> {
-  return projectChanges(knownProject(before, session, since, reported), session.project);
+  return netEntries(before, session, since, reported).map((c) => c.text);
 }
+
+/** Past this many characters of listed changes, a note names the touched items and media by id instead (D6). */
+export const NOTE_DETAIL_CHARS = 1500;
+
+const BRIEF_IDS = 12;
+
+/** Ends a note in brief: the agent reads the details on demand. */
+export const NOTE_IN_BRIEF =
+  "That was too much to list in full, so only their ids are named: project_read shows them as they are now. Read it before editing them.";
+
+const inFull = (changes: ReadonlyArray<Change>) => changes.reduce((n, c) => n + c.text.length + 3, 0) <= NOTE_DETAIL_CHARS;
+
+const briefKey = (b: Brief) => `${b.verb} ${b.media ? "media" : "items"} ${b.track ?? ""}`;
+
+function idList(ids: ReadonlyArray<Id>) {
+  if (ids.length <= BRIEF_IDS) return ids.join(", ");
+  return `${ids.slice(0, BRIEF_IDS).join(", ")} and ${ids.length - BRIEF_IDS} more`;
+}
+
+function briefLine(briefs: ReadonlyArray<Brief>) {
+  const { verb, media, track } = briefs[0]!;
+  const noun = media ? "media" : briefs.length === 1 ? "item" : "items";
+  const where = track ? ` ${verb === "Removed" ? "from" : "on"} track ${track}` : "";
+  return `${verb} ${briefs.length} ${noun}${where}: ${idList(briefs.map((b) => b.id))}`;
+}
+
+/** The changes as one line per verb and track naming the ids, after the changes that have no item or media (track and project settings) as they are. */
+function briefLines(changes: ReadonlyArray<Change>): Array<string> {
+  const groups = new Map<string, Array<Brief>>();
+  for (const { brief } of changes) {
+    if (!brief) continue;
+    const group = groups.get(briefKey(brief)) ?? [];
+    if (!group.some((b) => b.id === brief.id)) group.push(brief);
+    groups.set(briefKey(brief), group);
+  }
+  return [...changes.filter((c) => !c.brief).map((c) => c.text), ...[...groups.values()].map(briefLine)];
+}
+
+const listed = (changes: ReadonlyArray<Change>, full: boolean) => (full ? changes.map((c) => c.text) : briefLines(changes));
 
 /** Said when the user did things since the agent's last look that cancel out. */
 export const netZeroNote = (revision: number) =>
@@ -202,19 +284,19 @@ export const netZeroNote = (revision: number) =>
  * final values. Empty when nothing was done; netZeroNote when what was done cancels out.
  */
 export function netEditsNote(before: Project, session: Session, since: number, reported: EntryFilter = byUser): string {
-  const lines = netChanges(before, session, since, reported);
-  if (!lines.length) return session.log.some((e) => e.revision > since && reported(e)) ? netZeroNote(session.revision) : "";
+  const changes = netEntries(before, session, since, reported);
+  if (!changes.length) return session.log.some((e) => e.revision > since && reported(e)) ? netZeroNote(session.revision) : "";
+  const full = inFull(changes);
   return [
-    `The user changed ${lines.length} thing${lines.length === 1 ? "" : "s"} by hand since your last turn (now at revision ${session.revision}). This is the net result: anything they did and then undid or reverted isn't listed.`,
-    "They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.",
-    ...lines.map((l) => `- ${l}`),
+    `The user changed ${things(changes.length)} by hand since your last turn (now at revision ${session.revision}). This is the net result: anything they did and then undid or reverted isn't listed.`,
+    HAND_EDITS_KEPT,
+    ...listed(changes, full).map((l) => `- ${l}`),
+    ...(full ? [] : [NOTE_IN_BRIEF]),
   ].join("\n");
 }
 
 /** C12: the name of the other agent that made an entry, or undefined for the user's. */
 export type EntryAuthor = (entry: LogEntry) => string | undefined;
-
-const things = (n: number) => `${n} thing${n === 1 ? "" : "s"}`;
 
 /**
  * C12: the note for one of several agents: the net edits of every entry `reported` accepts (the
@@ -226,24 +308,24 @@ export function othersEditsNote(before: Project, session: Session, since: number
   const newer = session.log.filter((e) => e.revision > since && reported(e));
   const names = [...new Set(newer.flatMap((e) => agentName(e) ?? []))];
   if (!names.length) return netEditsNote(before, session, since, reported);
-  const userLines = netChanges(before, session, since, (e) => reported(e) && agentName(e) === undefined);
-  const agentLines = names.flatMap((name) => netChanges(before, session, since, (e) => reported(e) && agentName(e) === name).map((l) => `by ${name}: ${l}`));
-  if (!userLines.length && !agentLines.length) return netZeroNote(session.revision);
-  const user = userLines.length
-    ? [
-        `The user changed ${things(userLines.length)} by hand. They are intentional. Keep them, build on them, and don't undo or question them unless the user asks.`,
-        ...userLines.map((l) => `- ${l}`),
-      ]
+  const userChanges = netEntries(before, session, since, (e) => reported(e) && agentName(e) === undefined);
+  const byAgent = names.map((name) => ({ name, changes: netEntries(before, session, since, (e) => reported(e) && agentName(e) === name) }));
+  const agentCount = byAgent.reduce((n, a) => n + a.changes.length, 0);
+  if (!userChanges.length && !agentCount) return netZeroNote(session.revision);
+  const full = inFull([...userChanges, ...byAgent.flatMap((a) => a.changes)]);
+  const user = userChanges.length
+    ? [`The user changed ${things(userChanges.length)} by hand. ${HAND_EDITS_KEPT}`, ...listed(userChanges, full).map((l) => `- ${l}`)]
     : [];
-  const agents = agentLines.length
+  const agents = agentCount
     ? [
-        `Other agents in this project changed ${things(agentLines.length)}. Build on their edits; don't redo or revert them (if you disagree, tell the user).`,
-        ...agentLines.map((l) => `- ${l}`),
+        `Other agents in this project changed ${things(agentCount)}. Build on their edits; don't redo or revert them (if you disagree, tell the user).`,
+        ...byAgent.flatMap(({ name, changes }) => listed(changes, full).map((l) => `- by ${name}: ${l}`)),
       ]
     : [];
   return [
     `The project changed since your last turn (now at revision ${session.revision}). This is the net result: anything done and then undone or reverted isn't listed.`,
     ...user,
     ...agents,
+    ...(full ? [] : [NOTE_IN_BRIEF]),
   ].join("\n");
 }

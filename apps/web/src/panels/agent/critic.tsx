@@ -5,7 +5,7 @@ import type { AgentCard } from "@uncut/contracts";
 import { ChevronDown, ChevronRight, Gauge, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useApp } from "../../state/store.ts";
-import { criticLabel, elapsedText, statusOf } from "./criticWords.ts";
+import { criticLabel, elapsedText, rangeName, sameRange, statusOf } from "./criticWords.ts";
 import { ReviewBody } from "./review.tsx";
 import "./critic.css";
 
@@ -33,6 +33,7 @@ export function CriticItem({ card }: { card: AgentCard }) {
   const now = useNow(running);
   const round = critic?.round ?? review?.round ?? 0;
   const line = critic?.line || review?.notes || "";
+  const part = rangeName(review);
   const started = critic ? Date.parse(critic.startedAt) : NaN;
   const ended = critic?.endedAt ? Date.parse(critic.endedAt) : running ? now : NaN;
   const elapsed = Number.isFinite(started) && Number.isFinite(ended) ? elapsedText(ended - started) : "";
@@ -48,7 +49,9 @@ export function CriticItem({ card }: { card: AgentCard }) {
         <span className={`critic-icon ${status}`}>{running ? <LoaderCircle className="spin" /> : <Gauge />}</span>
         <span className="critic-text">
           <span className="critic-title">
-            <span className="critic-name">Critic, round {round}</span>
+            <span className="critic-name">
+              Critic, {part && `${part}, `}round {round}
+            </span>
             <span className={`card-outcome critic-status ${status}`} data-testid="critic-status">
               {criticLabel(status, review)}
             </span>
@@ -66,7 +69,9 @@ export function CriticItem({ card }: { card: AgentCard }) {
         )}
         {review && (open ? <ChevronDown /> : <ChevronRight />)}
       </button>
-      {open && review && <ReviewBody review={review} reviews={reviews} intended={app.agent?.plan?.intended ?? []} online={app.connection === "connected"} />}
+      {open && review && (
+        <ReviewBody review={review} reviews={sameRange(reviews, review)} intended={app.agent?.plan?.intended ?? []} online={app.connection === "connected"} />
+      )}
     </div>
   );
 }

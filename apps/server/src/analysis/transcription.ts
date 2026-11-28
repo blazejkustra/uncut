@@ -69,7 +69,7 @@ export interface TranscriptResult {
   readonly model?: string;
   readonly segments?: ReadonlyArray<TranscriptSegment>;
   readonly words?: ReadonlyArray<TranscriptWord>;
-  /** A long take's phrases (split at its silences, each transcribed on its own), in order. */
+  /** The phrases of a take over PHRASE_TAKE_MIN_S (split at its silences, each transcribed on its own), in order. */
   readonly phrases?: ReadonlyArray<TranscriptPhrase>;
 }
 
@@ -304,12 +304,16 @@ const isSpan = (value: unknown, n: number) => {
     x.words[0] <= x.words[1]
   );
 };
-/** Whether a cached value has the transcript's shape (anything else is a miss, redone and rewritten). */
+/** A take long enough to go phrase by phrase that was transcribed whole. */
+const wantsPhrases = (r: Record<string, unknown>) => r.phrases === undefined && num(r.seconds) && (r.seconds as number) > PHRASE_TAKE_MIN_S;
+
+/** Whether a cached value has the transcript's shape and phrases where a take needs them (anything else is a miss, redone and rewritten). */
 export function isTranscriptResult(value: unknown): value is TranscriptResult {
   if (!value || typeof value !== "object") return false;
   const r = value as Record<string, unknown>;
   if (typeof r.hasAudio !== "boolean") return false;
   if (!r.hasAudio) return true;
+  if (wantsPhrases(r)) return false;
   if (r.seconds !== undefined && !num(r.seconds)) return false;
   if (r.language !== undefined && typeof r.language !== "string") return false;
   if (!Array.isArray(r.words) || !Array.isArray(r.segments)) return false;

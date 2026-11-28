@@ -6,6 +6,7 @@
 import { speechWords, type SpeechEnvelope } from "@uncut/core/transcript";
 
 import { framesFor } from "./agentVideo.ts";
+import { retakesOf } from "../analysis/phrases.ts";
 import { fillersOf, pausesOf, type Filler, type Pause, type TranscriptResult } from "../analysis/transcription.ts";
 
 /** Words per answer: text lines, or one object per word. */
@@ -34,7 +35,13 @@ export const TRANSCRIPT_NOTE =
   "Frames are project frames of the media (use them as in): a word runs from start (the frame it begins in) to end (the frame after it), a pause from start to end inside the gap. Text lines start with the index of their first word (w12) and its frames; {braces} mark fillers, (pause 1.2 s) a gap of at least 0.3 s. fillers: kind hesitation (um, uh, yyy, eee: safe to cut) or maybe (discourse words like no, znaczy, you know: judge in context). pauses: silent says whether the sound is below the silence threshold there (from the loudness analysis; absent when it hasn't run); edge start/end is before the first or after the last word. Times come from the speech model and are good to about 0.1 s; look at the frames before a tight cut.";
 
 export const PHRASES_NOTE =
-  "This long take was transcribed phrase by phrase (split at its silences, each phrase on its own, so a misheard stretch can't spread): each text line is one phrase, a retake is a line of its own. Pick the take to keep by its lines and cut whole phrases; caption timing follows the same words.";
+  "This take was transcribed phrase by phrase (split at its silences, each phrase on its own, so a misheard stretch can't spread): each text line is one phrase, a retake is a line of its own. A line marked (said again at w37) opens like the later line starting at w37: the speaker started over, so for one take keep that later line and cut the marked one whole (read both first: similar sentences in a row can look alike). Pick the take to keep by its lines and cut whole phrases; caption timing follows the same words.";
+
+/** Each phrase said again later (its index) and the id of the first word where it's said the last time. */
+function saidAgain(result: TranscriptResult): Map<number, string> {
+  const phrases = result.phrases ?? [];
+  return new Map([...retakesOf(phrases, result.words ?? [])].map(([i, last]) => [i, `w${phrases[last]!.words[0]}`]));
+}
 
 /** transcript_read's answer for a finished transcript. */
 export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
@@ -55,6 +62,7 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
     ...(result.phrases ? { phrases: result.phrases.length } : {}),
   };
   if (!words.length) return { ...base, text: "", note: "No speech was found in it." };
+  const again = saidAgain(result);
   const fillers = fillersOf(words, result.language);
   // Where the words are heard (D74: whisper's edges widened to its segments, the silences and the
   // envelope), as the cut planner sees them: their frames, the range and the pauses all come from it.
@@ -104,9 +112,12 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
       return { i, text: w.text, start: wordStart(i), end: wordEnd(i), ...(w.p < 0.5 ? { unsure: true } : {}), ...(f ? { filler: f.kind } : {}) };
     });
     if (result.phrases) {
-      out.phrases = result.phrases.flatMap((p) => {
+      out.phrases = result.phrases.flatMap((p, k) => {
         const ids = picked.filter((i) => i >= p.words[0] && i < p.words[1]);
-        return ids.length ? [{ from: `w${p.words[0]}`, to: `w${p.words[1] - 1}`, start: wordStart(p.words[0]), end: wordEnd(p.words[1] - 1) }] : [];
+        if (!ids.length) return [];
+        const at = again.get(k);
+        const span = { from: `w${p.words[0]}`, to: `w${p.words[1] - 1}`, start: wordStart(p.words[0]), end: wordEnd(p.words[1] - 1) };
+        return [at ? { ...span, saidAgainAt: at } : span];
       });
     }
   } else {
@@ -115,7 +126,7 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
     const lines: Array<string> = [];
     const lead = listedPauses.find((p) => p.edge === "start");
     if (lead) lines.push(`(pause ${secs(lead.end - lead.start)} before the first word)`);
-    for (const s of result.phrases ?? segments) {
+    for (const [k, s] of (result.phrases ?? segments).entries()) {
       const ids = picked.filter((i) => i >= s.words[0] && i < s.words[1]);
       if (!ids.length) continue;
       const parts = ids.map((i) => {
@@ -126,7 +137,9 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
         const p = pauseAfter.get(i);
         return p ? `${t} (pause ${secs(p.end - p.start)})` : t;
       });
-      lines.push(`w${ids[0]} [${wordStart(ids[0]!)}–${wordEnd(ids.at(-1)!)}] ${parts.join(" ")}`);
+      const at = again.get(k);
+      const mark = at ? `(said again at ${at}) ` : "";
+      lines.push(`w${ids[0]} [${wordStart(ids[0]!)}–${wordEnd(ids.at(-1)!)}] ${mark}${parts.join(" ")}`);
     }
     out.text = lines.join("\n");
   }
@@ -169,7 +182,7 @@ export function transcriptSummary(
     ...(result.model ? { model: result.model } : {}),
     words: words.length,
     segments: result.segments?.length ?? 0,
-    ...(result.phrases ? { phrases: result.phrases.length } : {}),
+    ...(result.phrases ? { phrases: result.phrases.length, retakes: saidAgain(result).size } : {}),
     fillers: { hesitation: fillers.filter((f) => f.kind === "hesitation").length, maybe: fillers.filter((f) => f.kind === "maybe").length },
     pauses: pauses.length,
     pauseSeconds: Math.round(pauses.reduce((s, p) => s + p.end - p.start, 0) * 10) / 10,

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { applyEdit, createSession, EditConflict, redoTurn, undoTurn } from "../../packages/core/src/timeline/apply-ops.ts";
-import { netChanges, netEditsNote, netZeroNote } from "../../packages/core/src/timeline/net-edits.ts";
+import { NOTE_DETAIL_CHARS, NOTE_IN_BRIEF, netChanges, netEditsNote, netZeroNote } from "../../packages/core/src/timeline/net-edits.ts";
 import type { Edit, Op, Project, Session } from "../../packages/core/src/timeline/types.ts";
 
 const promo: Project = JSON.parse(await readFile(new URL("../../spec/examples/close-the-loop.uncut/project.json", import.meta.url), "utf8"));
@@ -27,11 +27,90 @@ test("recording takes and deleting them nets to nothing", () => {
   assert.equal(netEditsNote(start.project, s, 0), netZeroNote(s.revision));
 });
 
-test("a take whose clip is deleted but whose media stays in the bin is one line", () => {
+test("a take recorded on a new track and deleted, its media still in the bin, nets to nothing", () => {
   const start = createSession(promo);
-  let s = user(start, ...take(1));
+  let s = user(
+    start,
+    { op: "add_track", track: { id: "cam-1", kind: "video", name: "Camera" } },
+    ...take(1).map((op) => (op.op === "insert_item" ? { ...op, track: "cam-1" } : op)),
+  );
+  for (const frame of [10, 20, 30]) s = user(s, { op: "move_item", item: "clip-1", start: frame });
   s = user(s, { op: "delete_item", item: "clip-1" });
-  assert.deepEqual(netChanges(start.project, s, 0), ["Added media Take 1 (take-1)"]);
+  assert.deepEqual(netChanges(start.project, s, 0), []);
+  assert.equal(netEditsNote(start.project, s, 0), netZeroNote(s.revision));
+});
+
+test("media imported and never placed is still news; a take placed and deleted next to it isn't", () => {
+  const start = createSession(promo);
+  let s = user(start, { op: "add_media", media: { id: "m-broll", kind: "video", name: "B-roll.mov", path: "media/broll.mov" } as never });
+  s = user(s, ...take(1));
+  s = user(s, { op: "delete_item", item: "clip-1" });
+  assert.deepEqual(netChanges(start.project, s, 0), ["Added media B-roll.mov (m-broll)"]);
+});
+
+test("a take nested into a sequence still uses its media, so the media is still news", () => {
+  const start = createSession(promo);
+  const main = promo.tracks.find((t) => t.role === "main")!.id;
+  let s = user(
+    start,
+    { op: "add_media", media: { id: "take-1", kind: "video", name: "Take 1", path: "media/take-1.mov" } as never },
+    { op: "insert_item", track: main, index: 0, item: { id: "clip-1", type: "clip", media: "take-1", duration: 90 } },
+  );
+  s = user(s, { op: "nest_items", items: ["clip-1"], sequence: "seq-take", item: "nest-take", name: "Take" });
+  assert.ok(netChanges(start.project, s, 0).includes("Added media Take 1 (take-1)"));
+});
+
+test("many moves and trims of one item are one line with its final values", () => {
+  const start = createSession(promo);
+  let s = start;
+  for (const frame of [255, 262, 270, 281, 290]) s = user(s, { op: "move_item", item: "txt-taps", start: frame });
+  for (let i = 0; i < 4; i++) s = user(s, { op: "trim_item", item: "txt-taps", edge: "end", frames: 6 });
+  assert.deepEqual(netChanges(start.project, s, 0), ['Changed text "It taps through the login itself" (txt-taps): start 8.3s → 9.7s, length 11.0s → 10.2s']);
+});
+
+const clips = (track: string, from: number, n: number): Array<Op> =>
+  Array.from({ length: n }, (_, i) => ({
+    op: "insert_item" as const,
+    track,
+    item: {
+      id: `${track}-clip-${from + i}`,
+      type: "clip" as const,
+      media: "m-sim-login",
+      start: (from + i) * 30,
+      duration: 30,
+      transform: { x: 1200, y: 600, w: 640, h: 360 },
+    },
+  }));
+
+test("a note over the detail budget names the touched items by id, grouped, and says where the details are", () => {
+  const start = createSession(promo);
+  let s = user(start, { op: "add_track", track: { id: "v3", kind: "video", name: "Camera" } }, ...clips("v3", 0, 20));
+  s = user(s, { op: "update_track", track: "a1", set: { mixer: { mute: true } } });
+  s = user(s, { op: "trim_item", item: "aud-vo", edge: "end", frames: -6 }, { op: "update_item", item: "aud-vo", set: { gainDb: -3 } });
+  s = user(s, { op: "delete_item", item: "cmp-tap" });
+  const full = netChanges(start.project, s, 0);
+  assert.ok(full.join("\n").length > NOTE_DETAIL_CHARS, "the setup is over the budget");
+  const note = netEditsNote(start.project, s, 0);
+  assert.match(note, new RegExp(`^The user changed ${full.length} things by hand since your last turn \\(now at revision ${s.revision}\\)`));
+  const listed = note.split("\n").filter((l) => l.startsWith("- "));
+  assert.deepEqual(listed, [
+    "- Muted track a1",
+    '- Added video track "Camera" (v3)',
+    "- Changed 1 item: aud-vo",
+    `- Added 20 items on track v3: ${Array.from({ length: 12 }, (_, i) => `v3-clip-${i}`).join(", ")} and 8 more`,
+    "- Removed 1 item from track v2: cmp-tap",
+  ]);
+  assert.ok(note.endsWith(NOTE_IN_BRIEF));
+  assert.ok(note.length < 800, `${note.length} chars`);
+  assert.doesNotMatch(note, /on the canvas/, "no field lines");
+});
+
+test("a note under the detail budget lists every change in full", () => {
+  const start = createSession(promo);
+  const s = user(start, ...clips("v2", 10, 2));
+  const note = netEditsNote(start.project, s, 0);
+  assert.doesNotMatch(note, new RegExp(NOTE_IN_BRIEF.slice(0, 20)));
+  assert.match(note, /- Added clip v2-clip-10 on track v2 .*\n  - Moved /);
 });
 
 test("a nudge and its revert, and a trim extended back, net to nothing", () => {
