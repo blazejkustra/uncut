@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { lockApps, unlockApps } from "../helpers/app.ts";
 import { posterKey } from "../../apps/server/src/media/media.ts";
+import { until } from "../helpers/wait.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip =
@@ -290,7 +291,7 @@ test("a reused id gets its own poster, not the old file's", T, async () => {
   assert.equal(readdirSync(join(dir, ".cache/thumbs")).filter((f) => f.startsWith("m-same--")).length, 1, "the old poster is gone");
 });
 
-test("an HDR clip's poster from before tone mapping is made again before the Library lists it", T, async () => {
+test("an HDR clip imported before colour was stored: its old poster is listed at once, then made again tone-mapped", T, async () => {
   const hlg = join(root, "HLG Clip.mp4");
   ffmpeg(
     ...["-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p10le"],
@@ -299,15 +300,25 @@ test("an HDR clip's poster from before tone mapping is made again before the Lib
   const job = await s.importAndWait([hlg]);
   const id = job.result.imported[0].id as string;
   const thumbs = join(dir, ".cache/thumbs");
-  const poster = () => readdirSync(thumbs).filter((f) => f.startsWith(`${id}--`));
-  const [current] = poster();
+  const posters = () => readdirSync(thumbs).filter((f) => f.startsWith(`${id}--`));
+  const [current] = posters();
   assert.ok(current, "the import made a poster");
   const stale = `${id}--${await posterKey(hlg)}.jpg`;
   assert.notEqual(current, stale, "an HDR poster has its own key");
+
+  // As an earlier Uncut left it: no colour on the media, the poster under the plain key.
+  await s.end();
+  const file = join(dir, "project.json");
+  const project = JSON.parse(readFileSync(file, "utf8"));
+  delete project.media.find((m: { id: string }) => m.id === id).probe.colour;
+  writeFileSync(file, JSON.stringify(project, null, 2));
   renameSync(join(thumbs, current), join(thumbs, stale));
+  s = await session();
+  await s.ok("project.open", { dir });
 
   assert.ok((await s.ok("media.thumbnails")).includes(id));
-  assert.deepEqual(poster(), [current]);
+  await until(() => posters().join() === current, "the tone-mapped poster in place of the old one");
+  assert.ok((await s.ok("media.thumbnails")).includes(id));
   assert.equal((await fetch(`${s.base}/media/thumb/${id}?token=${s.token}`)).status, 200);
 });
 

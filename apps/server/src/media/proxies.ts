@@ -9,7 +9,7 @@ import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
 import type { ProjectSnapshot, ProxyState } from "@uncut/contracts";
-import { hdrKind, type Project } from "@uncut/core";
+import { hdrKind, type MediaColour, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -173,7 +173,7 @@ export interface ProxyQueueOptions {
   readonly hardware?: () => Promise<boolean>;
 }
 
-type Media = { readonly id: string; readonly kind?: string; readonly path: string };
+type Media = { readonly id: string; readonly kind?: string; readonly path: string; readonly probe?: { readonly colour?: MediaColour } };
 
 /**
  * The proxies of the open project: reconciled with its media on every change (`sync`), made one at
@@ -208,7 +208,7 @@ export class ProxyQueue {
     if (s?.phase !== "done" || !s.key || !dir) return undefined;
     const m = this.media.find((x) => x.id === id);
     if (!m) return undefined;
-    if ((await pictureKey(await this.options.ffprobe(), isAbsolute(m.path) ? m.path : resolve(dir, m.path))) !== s.key) {
+    if ((await pictureKey(await this.options.ffprobe(), isAbsolute(m.path) ? m.path : resolve(dir, m.path), m.probe?.colour)) !== s.key) {
       void this.sync(dir, this.media);
       return undefined;
     }
@@ -270,7 +270,7 @@ export class ProxyQueue {
     for (const m of media) {
       if (m.kind !== "video" || typeof m.path !== "string") continue;
       const path = isAbsolute(m.path) ? m.path : resolve(dir, m.path);
-      const key = await pictureKey(ffprobe, path);
+      const key = await pictureKey(ffprobe, path, m.probe?.colour);
       if (!key) continue;
       const name = proxyName(m.id, key);
       if (files.includes(name)) {

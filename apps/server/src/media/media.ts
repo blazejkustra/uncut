@@ -701,33 +701,21 @@ export const layer = Layer.effect(
     const posterAt = (id: string, key: string, files: ReadonlySet<string>, dir: string) =>
       files.has(posterName(id, key)) ? join(thumbDir(dir), posterName(id, key)) : undefined;
 
-    const remaking = new Set<string>();
-    /** Makes an HDR video's poster again when the one on disk is from before it was tone-mapped (under its plain posterKey). */
-    const remakeStalePoster = (m: MediaEntry, seconds: number | undefined, path: string, files: ReadonlySet<string>, dir: string) =>
-      Effect.gen(function* () {
-        const stale = yield* Effect.promise(() => posterKey(path));
-        if (!stale || !files.has(posterName(m.id, stale)) || remaking.has(m.id)) return false;
-        remaking.add(m.id);
-        return yield* makePoster(m, seconds, dir).pipe(
-          Effect.catchCause(() => Effect.succeed(false)),
-          Effect.ensuring(Effect.sync(() => remaking.delete(m.id))),
-        );
-      });
-
     const colourChecks = yield* Semaphore.make(2);
     const colourChecked = new Set<string>();
-    /** For media without a stored colour (imported before it was stored): its poster is made again if the file is HDR. */
-    const remakeIfHdr = (m: MediaEntry, seconds: number | undefined, path: string, files: ReadonlySet<string>, dir: string) =>
+    /** An HDR video's poster from before it was tone-mapped (under its plain posterKey) is made again, in the background. */
+    const remakeIfHdr = (m: MediaEntry, seconds: number | undefined, path: string, dir: string) =>
       colourChecks.withPermits(1)(
         Effect.gen(function* () {
           const ffprobeBin = yield* tool("ffprobe");
-          if (hdrKind(yield* Effect.promise(() => fileColour(ffprobeBin, path)))) yield* remakeStalePoster(m, seconds, path, files, dir);
+          const colour = m.probe?.colour ?? (yield* Effect.promise(() => fileColour(ffprobeBin, path)));
+          if (hdrKind(colour)) yield* makePoster(m, seconds, dir).pipe(Effect.ignore);
         }),
       );
 
     /**
-     * A video's poster on disk. A stale HDR one is made again first; one without a stored colour is
-     * listed as it is while its colour is asked in the background (the next listing has the new one).
+     * A video's poster on disk. One that may be from before HDR was tone-mapped (media imported before
+     * the colour was stored) is listed as it is and checked in the background; the next listing has the new one.
      */
     const videoPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string, fps: number) =>
       Effect.gen(function* () {
@@ -735,17 +723,13 @@ export const layer = Layer.effect(
         if (!plain) return undefined;
         const toneMapped = posterAt(m.id, toneMappedKey(plain), files, dir);
         if (toneMapped) return toneMapped;
-        const seconds = m.probe?.frames ? m.probe.frames / fps : undefined;
-        if (!m.probe?.colour) {
-          const check = `${m.id}\0${plain}`;
-          if (!colourChecked.has(check)) {
-            colourChecked.add(check);
-            yield* Effect.forkIn(remakeIfHdr(m, seconds, path, files, dir), scope);
-          }
-          return posterAt(m.id, plain, files, dir);
+        const stale = posterAt(m.id, plain, files, dir);
+        const check = `${m.id}\0${plain}`;
+        if (stale && (!m.probe?.colour || hdrKind(m.probe.colour)) && !colourChecked.has(check)) {
+          colourChecked.add(check);
+          yield* Effect.forkIn(remakeIfHdr(m, m.probe?.frames ? m.probe.frames / fps : undefined, path, dir), scope);
         }
-        if (!hdrKind(m.probe.colour)) return posterAt(m.id, plain, files, dir);
-        return (yield* remakeStalePoster(m, seconds, path, files, dir)) ? join(thumbDir(dir), posterName(m.id, toneMappedKey(plain))) : undefined;
+        return stale;
       });
 
     const stillPoster = (m: MediaEntry, path: string, files: ReadonlySet<string>, dir: string) =>
