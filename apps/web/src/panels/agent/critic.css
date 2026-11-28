@@ -6,7 +6,7 @@
 .critic-icon.passed svg { color: var(--ok); }
 .critic-icon.failed svg, .critic-icon.unresolved svg, .critic-icon.error svg { color: var(--warn); }
 .critic-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.critic-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.critic-title { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
 .critic-name { font-weight: 500; white-space: nowrap; }
 .critic-status { background: none; padding: 0; }
 .critic-status.passed { color: var(--ok); }
