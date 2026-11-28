@@ -9,14 +9,13 @@ import type * as Semaphore from "effect/Semaphore";
 import { isTestRun } from "../../generate/providers.ts";
 import { mcpTools } from "../agentTools.ts";
 import type { McpResult } from "../agent.ts";
-import { freshTurnState, type ClaudeSession, type Loaded, type Running, type StoredTurn } from "./types.ts";
+import { EXTERNAL_PROMPT, freshTurnState, type ClaudeSession, type Loaded, type Running, type StoredTurn } from "./types.ts";
 import type { SpawnCtx } from "./spawn.ts";
 
 export const EXTERNAL_AGENT_NAME = "Outside agent";
 export const NO_PROJECT_MESSAGE =
   "No project is open in Uncut. Call project_open with a footage folder or a .uncut project, or ask the user to open one, then try again.";
 
-const EXTERNAL_PROMPT = "An outside agent is working over MCP";
 const STOPPED_MESSAGE = "The user pressed Stop in Uncut. Stop working and ask them what to do next.";
 const IDLE_MS = 30_000;
 

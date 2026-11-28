@@ -48,6 +48,18 @@ test("media imported and never placed is still news; a take placed and deleted n
   assert.deepEqual(netChanges(start.project, s, 0), ["Added media B-roll.mov (m-broll)"]);
 });
 
+test("a take nested into a sequence still uses its media, so the media is still news", () => {
+  const start = createSession(promo);
+  const main = promo.tracks.find((t) => t.role === "main")!.id;
+  let s = user(
+    start,
+    { op: "add_media", media: { id: "take-1", kind: "video", name: "Take 1", path: "media/take-1.mov" } as never },
+    { op: "insert_item", track: main, index: 0, item: { id: "clip-1", type: "clip", media: "take-1", duration: 90 } },
+  );
+  s = user(s, { op: "nest_items", items: ["clip-1"], sequence: "seq-take", item: "nest-take", name: "Take" });
+  assert.ok(netChanges(start.project, s, 0).includes("Added media Take 1 (take-1)"));
+});
+
 test("many moves and trims of one item are one line with its final values", () => {
   const start = createSession(promo);
   let s = start;

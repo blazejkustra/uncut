@@ -203,7 +203,8 @@ const insertedItems = (ops: ReadonlyArray<Op>): Array<Item> =>
 
 /** Media the reported entries since `since` put on the timeline that nothing uses any more: takes recorded and deleted. */
 function discardedMedia(session: Session, since: number, reported: EntryFilter): Set<Id> {
-  const used = usedMediaIds(session.project);
+  const { tracks, sequences = [] } = session.project;
+  const used = usedMediaIds({ tracks: [...tracks, ...sequences.flatMap((s) => s.tracks)] });
   const placed = session.log.filter((e) => e.revision > since && reported(e)).flatMap((e) => insertedItems(e.ops));
   return new Set(session.project.media.filter((m) => !used.has(m.id) && placed.some((item) => itemUsesMedia(item, m.id))).map((m) => m.id));
 }

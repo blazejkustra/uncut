@@ -180,6 +180,9 @@ export function pushEdit(r: Running, edit: AgentEdit) {
 }
 
 /** A new turn's record-keeping, empty. */
+/** The prompt of a turn an outside agent works in over MCP (no user wrote it). */
+export const EXTERNAL_PROMPT = "An outside agent is working over MCP";
+
 export const freshTurnState = () => ({
   delivered: false,
   abort: new AbortController(),

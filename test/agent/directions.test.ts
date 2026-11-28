@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { answerOut, DIRECTION_CHARS, DIRECTIONS_CHARS, directionsBlock } from "../../apps/server/src/agent/agentPlan.ts";
 import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { COMPACT_HOOKS } from "../../apps/server/src/agent/permissions/settings.ts";
+import { EXTERNAL_PROMPT } from "../../apps/server/src/agent/session/types.ts";
 import { HAND_EDITS_KEPT } from "../../packages/core/src/timeline/edit-log.ts";
 
 type Prompted = Parameters<typeof directionsBlock>[0][number];
@@ -30,6 +31,13 @@ test("a /compact turn isn't a direction and doesn't take a turn number", () => {
   const block = directionsBlock([turn("no colour grading"), turn("/compact", 21, "compact"), turn("stop cropping", 22)]);
   assert.doesNotMatch(block, /\/compact/);
   assert.match(block, /Turn 1, 2026-11-20: no colour grading\nTurn 2, 2026-11-22: stop cropping/);
+});
+
+test("an outside agent's turns aren't the user's messages", () => {
+  const block = directionsBlock([turn("no colour grading"), turn(EXTERNAL_PROMPT, 21), turn("stop cropping", 22)]);
+  assert.doesNotMatch(block, /outside agent/);
+  assert.match(block, /Turn 1, 2026-11-20: no colour grading\nTurn 2, 2026-11-22: stop cropping/);
+  assert.equal(directionsBlock([turn(EXTERNAL_PROMPT)]), "");
 });
 
 test("a long message is cut, and past the total the oldest ones go first", () => {

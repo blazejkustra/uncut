@@ -7,6 +7,7 @@ import { REVIEW_ROUNDS, REVIEW_ROUNDS_FIX } from "./agentCritic.ts";
 
 import { normHex, normStyle } from "../brand/store.ts";
 import type { BeatsResult } from "../analysis/beats.ts";
+import { EXTERNAL_PROMPT } from "./session/types.ts";
 
 /** How long a question or storyboard card waits for the user (they may be thinking it over). */
 export const QUESTION_MS = 15 * 60_000;
@@ -228,7 +229,7 @@ function newestWithin(lines: ReadonlyArray<string>, max: number): Array<string> 
  * plan_read, so a compaction or the agent's own brief never stands in for them.
  */
 export function directionsBlock(turns: ReadonlyArray<Prompted>): string {
-  const lines = turns.filter((t) => t.kind !== "compact").map((t, i) => directionLine(t, i + 1));
+  const lines = turns.filter((t) => t.kind !== "compact" && t.prompt !== EXTERNAL_PROMPT).map((t, i) => directionLine(t, i + 1));
   const kept = newestWithin(lines, DIRECTIONS_CHARS);
   if (!kept.length) return "";
   const left = lines.length - kept.length;
